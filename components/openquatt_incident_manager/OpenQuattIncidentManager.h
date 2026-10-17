@@ -20,6 +20,7 @@
 #include "OpenQuattRestartHandoff.h"
 #include "PsramBuffer.h"
 #include "includes/control/oq_hp_restart_guard.h"
+#include "includes/control/oq_hp_boot_resume.h"
 #include "includes/diagnostics/oq_pump_ipwm_feedback.h"
 #include "includes/incidents/oq_hp_incident_engine.h"
 #include "includes/incidents/oq_manual_reset_latch_policy.h"
@@ -56,6 +57,14 @@ class OpenQuattIncidentManager : public Component {
   void request_restart() { this->restart_requested_.store(true); }
   void invalidate_restart_credit(uint8_t hp_index);
   bool startup_inhibited(uint8_t hp_index) const;
+  void observe_boot_readback(uint8_t hp_index, uint16_t address, float value, uint32_t now_ms);
+  bool boot_resume_pending(uint8_t hp_index, uint32_t now_ms) const;
+  int boot_resume_level(uint8_t hp_index) const;
+  bool boot_resume_safety_ready(uint8_t hp_index, uint32_t now_ms) const;
+  bool ota_resume_candidate(uint8_t hp_index, uint32_t now_ms) const;
+  bool boot_protection_hold(uint8_t hp_index, uint32_t now_ms) const;
+  int update_boot_resume(uint8_t hp_index, bool abort, bool safety_ready, bool inputs_ready, bool allow_resume,
+                         uint32_t now_ms);
   uint32_t minimum_off_remaining_ms(uint8_t hp_index, uint32_t now_ms) const;
 
   void setup() override;
@@ -147,6 +156,7 @@ class OpenQuattIncidentManager : public Component {
   struct UnitState {
     oq_incidents::HpIncidentEngine engine{};
     oq_hp_restart_guard::Policy restart_guard{};
+    oq_boot_resume::Policy boot_resume{};
     bool restart_credit_pending{false};
     uint32_t restart_credit_pending_since_ms{0U};
     bool startup_released{false};

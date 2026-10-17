@@ -506,6 +506,7 @@ interval:
           oq_power_house_runtime::runtime().tick({
               (uint32_t) ${oq_ph_demand_loop_s} * 1000UL,
               (uint32_t) ${oq_hp_min_off_s} * 1000UL,
+              (int) ${oq_hp_min_runtime_min_s},
               (uint32_t) ${oq_hp_water_temp_stale_s} * 1000UL,
               (int) ${oq_strategy_demand_max_f},
               ${oq_temp_guard_delta_c}f,

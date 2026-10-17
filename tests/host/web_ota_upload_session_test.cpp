@@ -32,6 +32,8 @@ struct httpd_req_t {
   void (*free_ctx)(void*) = nullptr;
 };
 
+void vTaskDelay(uint32_t) {}
+
 constexpr int HTTP_POST = 1;
 class AsyncWebServerResponse {
  public:

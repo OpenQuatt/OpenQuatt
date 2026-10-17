@@ -19,6 +19,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("hp2_water_out_temp_last_update_ms", text)
         self.assertIn("config.hp_water_temp_stale_ms", text)
         self.assertIn("select_performance_supply(", DISPATCH_LOGIC)
+        for marker in ("result.stop_inhibited =", "boot_protection_hold(", "min_runtime_window_active("):
+            self.assertIn(marker, text)
         # #608 run extension: base house need stays apart from effective HP target.
         self.assertIn("oq_power_house_run_extension::evaluate(", text)
         self.assertIn("run_ext_input.inputs_valid = demand.valid && room_inputs_valid;", text)
@@ -43,6 +45,17 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         for marker in ("filter_demand(", "oq_demand_filter_ramp_up", "now_ms > id(oq_ph_request_last_loop_ms)", "fminf(requested_w", "struct DuoCandidate"):
             self.assertNotIn(marker, text)
             self.assertNotIn(marker, yaml)
+
+    def test_boot_restore_cannot_reintroduce_warmup_comfort_memory(self) -> None:
+        # Restoring after the warmup reset would feed saved comfort memory into
+        # the current demand calculation, even if demand.next is cleared later.
+        text = RUNTIME
+        restore = text.index("this->restore_boot_demand_(demand_input, demand_tuning, config);")
+        clear = text.index("if (warming || this->was_warming_) this->demand_state_.comfort_memory_c = 0.0f;")
+        calculate = text.index("oq_power_house::decide_startup_demand(")
+        self.assertLess(restore, clear)
+        self.assertLess(clear, calculate)
+        self.assertIn("if (warming) demand.next.comfort_memory_c = 0.0f;", text)
 
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = RUNTIME

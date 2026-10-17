@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import binary_sensor, globals as globals_component, time
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, CONF_OTA, CONF_PLATFORM
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
 
 AUTO_LOAD = ["globals", "time", "web_server_base"]
@@ -60,7 +60,7 @@ CONFIG_SCHEMA = cv.Schema(
 async def to_code(config):
     # Consume before safe_mode's generated early return, not in Component::setup().
     initialize = openquatt_incident_manager_ns.initialize_restart_handoff(config[CONF_MINIMUM_OFF_TIME])
-    cg.add(cg.RawExpression(f"if (!{initialize}) {{ esphome::arch_restart(); return; }}"))
+    cg.add(initialize)
     CORE.add_job(_runtime_to_code, config)
 
 
@@ -85,3 +85,8 @@ async def _runtime_to_code(config):
     await cg.register_component(ota_handoff, config)
     cg.add(ota_handoff.set_incident_manager(var))
     cg.add(ota_handoff.set_minimum_off_ms(config[CONF_MINIMUM_OFF_TIME]))
+
+    for ota_config in CORE.config.get(CONF_OTA, []):
+        if ota_config[CONF_PLATFORM] == "web_server":
+            web_ota = await cg.get_variable(ota_config[CONF_ID])
+            cg.add(ota_handoff.set_background_ota(web_ota))
