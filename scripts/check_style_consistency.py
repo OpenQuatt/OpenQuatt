@@ -231,6 +231,7 @@ NESTED_KEY_ORDER_RULES = {
         "hp1_odu_runtime_frequency_table",
     ),
     ("openquatt/profiles/heatpump_controller_q.yaml", "packages"): (
+        "oq_partition_migration",
         "oq_power_house_learning",
         "oq_hardware_revision",
         "oq_status_leds",
