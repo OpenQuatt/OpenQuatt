@@ -93,6 +93,18 @@ export function settingsBackupMqttNeedsPassword(mqtt) {
   return Boolean(mqtt?.password_was_set);
 }
 
+// Backups from before the R2 run-on setting existed describe a relay without run-on. Restoring their
+// function must not inherit the controller's current run-on, so an absent run-on mode means Disabled.
+export function migrateLegacySettingsBackupSettings(settings) {
+  const installation = settings?.installation;
+  if (!isObject(installation)
+      || !Object.prototype.hasOwnProperty.call(installation, "auxRelayFunction")
+      || Object.prototype.hasOwnProperty.call(installation, "auxRunOnMode")) {
+    return settings;
+  }
+  return { ...settings, installation: { ...installation, auxRunOnMode: "Disabled" } };
+}
+
 export function normalizeSettingsBackupOduProfiles(value) {
   if (value === null || value === undefined) return {};
   if (!isObject(value)) throw new Error(t("settingsBackup.invalidOduSettings"));

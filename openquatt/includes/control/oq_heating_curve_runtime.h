@@ -317,7 +317,7 @@ class Runtime {
     const float supply_c = id(oq_system_supply_temp).state;
     const float temperature_error_c = std::isfinite(target_c) && std::isfinite(supply_c) ? target_c - supply_c : NAN;
     const bool heat_phase = demand_active && id(oq_curve_regime_code) == 1;
-    const int previous_capped = id(oq_demand_filtered_prev);
+    const bool demand_rundown = oq_curve::update_demand_rundown(capped, this->previous_capped_demand_);
     bool hp1_model_available = false;
     bool hp2_model_available = false;
     const auto model = oq_water_performance::capture(
@@ -402,7 +402,6 @@ class Runtime {
         duo_floor_w = std::fmin(duo_floor_w, item.power_w);  // fmin ignores the initial NAN
       }
 
-    const bool demand_rundown = capped < previous_capped;
     const float target_power_w =
         demand_active ? oq_curve::phase_target_power_w(heat_phase, demand_u, owner_capacity_w, duo_capacity_w) : 0.0f;
     oq_curve::DispatchCandidate best_single;
@@ -597,6 +596,7 @@ class Runtime {
   }
   void reset_request_(int owner) {
     this->dispatch_snapshot_initialized_ = false;
+    this->previous_capped_demand_ = 0;
     oq_curve::reset_request_state(id(oq_curve_request_last_loop_ms), id(oq_curve_request_total_level),
                                   id(oq_curve_request_owner_hp), id(oq_curve_dispatch_hp1_level),
                                   id(oq_curve_dispatch_hp2_level), id(oq_curve_capacity_mode_code));
@@ -646,6 +646,7 @@ class Runtime {
   bool last_dispatch_demand_{false};
   bool last_hp1_available_{false};
   bool last_hp2_available_{false};
+  int previous_capped_demand_{0};
 };
 
 inline Runtime& runtime() {

@@ -248,3 +248,4 @@ Controleer daarna pas of de PID of `Duo`-grenzen te scherp staan.
 - [Regelgedrag van OpenQuatt](regelgedrag-van-openquatt.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)
 - [Problemen oplossen](problemen-oplossen.md)
+- [Verwarmingsregeling voor ontwikkelaars](development/verwarmingsregeling.md)

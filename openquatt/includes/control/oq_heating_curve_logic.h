@@ -429,6 +429,12 @@ inline float power_capped_demand_u(float demand, int cap_f, int max_f) {
   return std::max(0.0f, std::min({demand, (float)cap_f, (float)max_f})) / (float)max_f;
 }
 
+inline bool update_demand_rundown(int capped, int& previous_capped) {
+  const bool decreasing = capped < previous_capped;
+  previous_capped = capped;
+  return decreasing;
+}
+
 inline float phase_target_power_w(bool heat_phase, float capped_demand_u, float single_cap_w, float duo_cap_w) {
   if (!isfinite(capped_demand_u) || capped_demand_u <= 0.0f) return 0.0f;
   const float single_target_w = isfinite(single_cap_w) ? (single_cap_w * capped_demand_u) : 0.0f;

@@ -2,6 +2,11 @@
 
 This document explains the current OpenQuatt architecture as implemented in the YAML codebase.
 
+For the operating principles, equations and worked examples, read
+[Verwarmingsregeling](verwarmingsregeling.md) and [Koelregeling](koelregeling.md).
+YAML owns configuration and scheduler wiring; stateful `*_runtime.h` adapters
+and testable `*_logic.h` decisions implement the control paths.
+
 ## Table of Contents
 
 - [1. Top-Level Composition](#1-top-level-composition)
@@ -45,6 +50,13 @@ been removed. Update custom includes and saved commands as follows:
 | `single_wifi.yaml`, `single_eth.yaml` | `single.yaml` |
 | `duo_wifi.yaml`, `duo_eth.yaml` | `duo.yaml` |
 | `duo_wifi_hil.yaml` | `duo_hil.yaml` |
+
+Custom entrypoints must also replace the removed connection packages
+`openquatt/connection/wifi.yaml`, `openquatt/connection/eth.yaml` and
+`openquatt/connection/wifi_w5500_power_down.yaml` with
+`openquatt/connection/wifi_eth.yaml`. This package owns both interfaces and their
+runtime selection, including W5500 power management. Do not retain the former
+separate SPI power-down component alongside it.
 
 Historical release-artifact aliases remain available for existing download and
 OTA paths. `duo_hil.yaml` has a separate testcontroller identity; scenario
@@ -180,7 +192,7 @@ after the applicable timeout the signal returns to the existing `NaN` fail-safe 
 Strategy packages compute:
 
 - `oq_demand_raw` (`0..20`) for the selected heating strategy
-- `oq_cooling_demand_raw` (`0..20`) for cooling
+- `oq_cooling_demand_raw` (`0..10`, further limited by `Cooling Demand Max`) for cooling
 - explicit `oq_strategy_*` status for downstream diagnostics and supervisory logic
 
 ### 4.4 Thermal request layer
@@ -188,7 +200,7 @@ Strategy packages compute:
 `oq_thermal_request_control` computes:
 
 - `oq_demand_filtered`
-- HP level requests and applied levels
+- finalized HP level requests and actuator inputs (applied-state bookkeeping belongs to the actuator)
 - shared `oq_P_hp_cap_w` and `oq_P_deficit_w` diagnostics for strategy paths that use them
 
 ### 4.5 Supervisory and safety layer
@@ -241,10 +253,12 @@ The log stream is a local UI diagnostic interface, not a public API contract. It
 Computes requested power from:
 
 - outdoor temperature model (`Tc`, `T0`, `Pr`)
-- room error below the cold comfort edge and warm-side pullback above room setpoint
+- room error below the effective cold comfort edge and warm-side pullback above `setpoint + comfort above`, with stateful comfort memory
 - response profile plus rise/fall times scaled to rated house power (`Pr`)
 
-Then maps requested power to demand scale `0..20`.
+Then publishes normalized demand `0..20` and uses requested watts for candidate
+selection. The normalized scale is not a physical ODU level or frequency. See
+[the full Power House and heating-curve path](verwarmingsregeling.md).
 
 Power House stability guards in supervisory:
 
@@ -281,15 +295,17 @@ Heating-curve stability guards around zero-demand edge:
 
 ## 6. Thermal Request Control Mechanics
 
-`oq_thermal_request_control` enforces, in order:
+`oq_thermal_request_control.yaml` schedules `oq_thermal_request_runtime.h`.
+The runtime selects an explicit manual-service, inactive or strategy path. It
+combines demand/cap diagnostics, per-HP startup inhibition, strategy request
+selection, frequency constraints and minimum-runtime stop handling. Automatic
+heating is allowed in CM2/CM3 and automatic cooling in CM5; CM4 requests zero
+automatic HP output. Manual HP service has its own guarded ownership path.
 
-1. demand normalization and clamp
-2. power cap clamp (`oq_power_cap_f`)
-3. Control Mode gating (CM2/CM3 only; CM4 always requests zero HP output)
-4. strategy-specific level logic
-5. allowed-level switch constraints
-6. min-runtime stop blocking (all strategies)
-7. write-on-change application and runtime counters
+`oq_thermal_actuator_runtime.h` owns the final guards, mode/level writes,
+write-on-change behavior and application bookkeeping. Requests alone do not
+confirm physical execution. See [Koelregeling](koelregeling.md) for cooling
+dispatch, limiter and restart semantics.
 
 Power House uses `Power House demand rise time` as its single upward rate limiter. A validated room-demand or
 thermostat-raise first start may temporarily request the lowest viable capacity; normal watt regulation resumes after
@@ -343,7 +359,7 @@ Safety is distributed but coordinated:
 - confirmed HP faults can block a new start, request a stop and mark only the affected HP unavailable
 - Duo fallback requires that no HP remains available and that every unavailable HP has an explicitly allowed fallback cause
 - CM4 entry requires confirmed HP stop plus valid flow, supply temperature, boiler permission and temperature guards
-- compressor-zero enforcement outside CM2/CM3 in thermal request control
+- automatic compressor requests gated to CM2/CM3 for heating and CM5 for cooling; manual service has separate guarded ownership
 - shared water-temperature limiter/trip across strategy manager, thermal request control, and boiler control
 - stale feed invalidation in CIC ingest
 - conservative fallback on invalid numeric inputs
