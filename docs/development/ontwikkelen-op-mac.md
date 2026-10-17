@@ -27,6 +27,19 @@ is aangepast; de bootstrap ververst een bestaande `.venv` dan opnieuw naar de ge
 
 ## Hoofdworkflow
 
+Voor de volledige softwaretestomgeving installeer je daarnaast Node.js 24.x uit
+de `.node-version`-reeks en `jq`. Activeer de ESPHome-omgeving en installeer de
+webdependencies:
+
+```bash
+source .venv/bin/activate
+npm ci --ignore-scripts
+npm test
+```
+
+Zie [Testomgeving](../../tests/README.md) voor gerichte suites, ASan/UBSan,
+testconventies en de scheiding met fysieke HIL-validatie.
+
 Gebruik deze commando's als primaire lokale workflow:
 
 ```bash

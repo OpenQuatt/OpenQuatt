@@ -4,6 +4,7 @@ Deze documenten beschrijven onderhoud, architectuur, validatie en releasewerk vo
 bijdragers. Ze zijn bewust geen onderdeel van de gebruikerssite.
 
 - [Ontwikkelen op Mac](ontwikkelen-op-mac.md): lokale setup en validatie.
+- [Testomgeving](../../tests/README.md): testindeling, gedeelde runner, vereisten en sanitizerchecks.
 - [System overview](system-overview.md): runtime-architectuur en subsystemownership.
 - [Verwarmingsregeling](verwarmingsregeling.md): Power House, stooklijn, dispatch en de start-/stopketen.
 - [Koelregeling](koelregeling.md): koelvraag, watermarge, limiter, HP-keuze en herstart.
