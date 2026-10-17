@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <initializer_list>
 
 #include "../../openquatt/includes/control/oq_hp_candidate_logic.h"
 
@@ -40,6 +41,26 @@ int main() {
   assert(minimum_off_ready(240001U, 1U, 240000U, 0));
   assert(minimum_off_ready(25U, UINT32_MAX - 50U, 75U, 0));
   assert(minimum_off_ready(100U, 99U, 240000U, 4));
+
+  // Readback can precede software adoption. Observe only valid physical levels,
+  // never increase an already-applied level, and veto idle starts on both HPs
+  // while either one is still acquiring its boot inputs.
+  using oq_hp_candidate::candidate_during_boot_resume;
+  const auto observed = candidate_during_boot_resume(HpCandidateState{0, true}, true, 4, true, 20);
+  assert(observed.previous_applied_level == 4 && !observed.available_for_start);
+  assert(may_serve_candidate(observed));
+  const auto idle_peer = candidate_during_boot_resume(HpCandidateState{0, true}, false, 0, true, 20);
+  assert(idle_peer.previous_applied_level == 0 && !may_serve_candidate(idle_peer));
+  for (int invalid_level : {-1, 0, 21}) {
+    const auto invalid = candidate_during_boot_resume(HpCandidateState{0, true}, true, invalid_level, true, 20);
+    assert(invalid.previous_applied_level == 0 && !may_serve_candidate(invalid));
+  }
+  const auto applied = candidate_during_boot_resume(HpCandidateState{3, true}, true, 4, true, 20);
+  assert(applied.previous_applied_level == 3);
+  const auto stopped = candidate_during_boot_resume(HpCandidateState{0, true, true}, true, 4, true, 20);
+  assert(!may_serve_candidate(stopped));
+  const auto released = candidate_during_boot_resume(HpCandidateState{0, true}, false, 4, false, 20);
+  assert(released.previous_applied_level == 0 && may_serve_candidate(released));
 
   // Missing performance data preserves already-active topology but never
   // starts an idle heat pump. Independent must-stop and demand removal win.

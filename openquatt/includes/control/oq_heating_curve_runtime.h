@@ -259,21 +259,48 @@ class Runtime {
       return;
     }
     const uint32_t now_ms = static_cast<uint32_t>(millis());
-    auto hp1_candidate =
-        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), id(hp1_last_applied_level));
+    const auto frequency = oq_frequency_runtime::capture();
+    bool any_resume_pending = id(oq_incident_manager).boot_resume_pending(1, now_ms);
+#if OQ_TOPOLOGY_DUO
+    any_resume_pending |= id(oq_incident_manager).boot_resume_pending(2, now_ms);
+#endif
+    const auto capture_candidate = [&](uint8_t hp, int previous) {
+      return oq_hp_candidate::candidate_during_boot_resume(
+          oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(hp), previous),
+          id(oq_incident_manager).boot_resume_pending(hp, now_ms), id(oq_incident_manager).boot_resume_level(hp),
+          any_resume_pending, oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX);
+    };
+    auto hp1_candidate = capture_candidate(1, id(hp1_last_applied_level));
     hp1_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
         now_ms, id(hp1_last_stop_ms), config.minimum_off_ms, id(hp1_last_applied_level));
-    const bool hp1_available = oq_hp_candidate::may_serve_candidate(hp1_candidate);
 #if OQ_TOPOLOGY_DUO
-    auto hp2_candidate =
-        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), id(hp2_last_applied_level));
+    auto hp2_candidate = capture_candidate(2, id(hp2_last_applied_level));
     hp2_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
         now_ms, id(hp2_last_stop_ms), config.minimum_off_ms, id(hp2_last_applied_level));
-    const bool hp2_available = oq_hp_candidate::may_serve_candidate(hp2_candidate);
 #else
     const oq_hp_candidate::HpCandidateState hp2_candidate;
-    const bool hp2_available = false;
 #endif
+    const auto fixed_boot_level = [&](uint8_t hp, oq_hp_candidate::HpCandidateState& candidate, bool protection_cycle) {
+      const bool pending = id(oq_incident_manager).boot_resume_pending(hp, now_ms);
+      const bool boot_hold = id(oq_incident_manager).boot_protection_hold(hp, now_ms) && !protection_cycle;
+      if (candidate.must_stop || (!pending && !boot_hold)) return 0;
+      // Availability, fixed constraints and model/suspect retention must all
+      // observe the same frequency veto before selecting the surviving owner.
+      if (candidate.previous_applied_level > 0 &&
+          !frequency.frequency_allowed(hp == 1, 2, candidate.previous_applied_level)) {
+        candidate.must_stop = true;
+        return 0;
+      }
+      return candidate.previous_applied_level;
+    };
+    const int hp1_fixed_level = fixed_boot_level(
+        1, hp1_candidate, id(hp1_4_way_valve).state || id(hp1_defrost).state || id(hp1_prot_oil_return).state);
+#if OQ_TOPOLOGY_DUO
+    const int hp2_fixed_level = fixed_boot_level(
+        2, hp2_candidate, id(hp2_4_way_valve).state || id(hp2_defrost).state || id(hp2_prot_oil_return).state);
+#endif
+    const bool hp1_available = oq_hp_candidate::may_serve_candidate(hp1_candidate);
+    const bool hp2_available = oq_hp_candidate::may_serve_candidate(hp2_candidate);
     const bool demand_active_now = id(oq_curve_heat_request_active);
     const bool urgent = !this->dispatch_snapshot_initialized_ || demand_active_now != this->last_dispatch_demand_ ||
                         (demand_active_now &&
@@ -299,7 +326,6 @@ class Runtime {
     const bool lead_is_hp1 = true;
 #endif
     id(oq_last_lead_hp) = lead_is_hp1 ? 1 : 2;
-    const auto frequency = oq_frequency_runtime::capture();
     const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
     id(oq_P_hp_cap_w) = 0.0f;
     id(oq_P_deficit_w) = 0.0f;
@@ -352,9 +378,15 @@ class Runtime {
       }
       return 0;
     };
-    const int previous_hp1 = id(hp1_last_applied_level);
-    const int previous_hp2 = id(hp2_last_applied_level);
+    const int previous_hp1 = hp1_candidate.previous_applied_level;
+    const int previous_hp2 = hp2_candidate.previous_applied_level;
     const auto candidate = [&](int candidate_hp1, int candidate_hp2, float target_power_w) {
+      // Score the command the actuator can actually apply during boot hold.
+      // The capacity scale remains the full owner capacity, so a held
+      // low level cannot hide legitimate demand for the available peer.
+      if ((hp1_fixed_level > 0 && candidate_hp1 != hp1_fixed_level) ||
+          (hp2_fixed_level > 0 && candidate_hp2 != hp2_fixed_level))
+        return oq_curve::invalid_dispatch_candidate();
       if ((candidate_hp1 > 0 && !hp1_available) || (candidate_hp2 > 0 && !hp2_available))
         return oq_curve::invalid_dispatch_candidate();
       if ((candidate_hp1 > 0 && !frequency.frequency_allowed(true, 2, candidate_hp1)) ||
@@ -382,6 +414,7 @@ class Runtime {
 
     int single_owner = oq_curve::pick_single_owner(demand_active, id(oq_curve_single_owner_hp), previous_hp1 > 0,
                                                    previous_hp2 > 0, lead_is_hp1);
+    if (demand_active && (hp1_fixed_level > 0) != (hp2_fixed_level > 0)) single_owner = hp1_fixed_level > 0 ? 1 : 2;
     if (single_owner == 1 && !hp1_available)
       single_owner = hp2_available ? 2 : 0;
     else if (single_owner == 2 && !hp2_available)
@@ -429,8 +462,9 @@ class Runtime {
     constexpr float duo_disable_margin_w = 250.0f;
     const float duo_enable_min_u = heat_phase ? 0.90f : 0.80f;
     const float duo_disable_max_u = heat_phase ? 0.70f : 0.55f;
-    const bool single_saturated =
-        best_single.valid && owner_capacity_w > 0.0f && best_single.power_w >= 0.90f * owner_capacity_w;
+    const bool owner_fixed = (single_owner == 1 ? hp1_fixed_level : hp2_fixed_level) > 0;
+    const bool single_saturated = best_single.valid && owner_capacity_w > 0.0f &&
+                                  (owner_fixed || best_single.power_w >= 0.90f * owner_capacity_w);
     const bool duo_better =
         best_duo.valid && best_single.valid && best_duo.error_w + duo_enable_margin_w < best_single.error_w;
     const bool single_sufficient =
@@ -477,7 +511,9 @@ class Runtime {
       }
     }
     const bool dual_enabled =
-        demand_active && best_duo.valid && (forced_capacity || dual_defrost || id(oq_dual_hp_enabled));
+        demand_active && best_duo.valid &&
+        (forced_capacity || dual_defrost || id(oq_dual_hp_enabled) ||
+         ((hp1_fixed_level > 0 || hp2_fixed_level > 0) && previous_hp1 > 0 && previous_hp2 > 0 && !best_single.valid));
     if (!demand_active) {
       id(oq_curve_capacity_mode_code) = 0;
     } else if (dual_enabled) {
@@ -498,10 +534,17 @@ class Runtime {
       this->dispatch_stop_reason_ =
           esphome::openquatt_decision_log::heating_stop::curve_single_reason(regular_single_stop, best_duo.valid);
     }
-    if (model.coupled && (previous_hp1 > 0 || previous_hp2 > 0) && model.pair(previous_hp1, previous_hp2).valid())
-      hp1_model_available = hp2_model_available = true;
-    const bool active_model_missing = (previous_hp1 > 0 && !hp1_candidate.must_stop && !hp1_model_available) ||
-                                      (previous_hp2 > 0 && !hp2_candidate.must_stop && !hp2_model_available);
+    const bool active_pair_model_available = model.coupled && !hp1_candidate.must_stop && !hp2_candidate.must_stop &&
+                                             (previous_hp1 > 0 || previous_hp2 > 0) &&
+                                             model.pair(previous_hp1, previous_hp2).valid();
+    if (active_pair_model_available) hp1_model_available = hp2_model_available = true;
+    const bool hp1_fixed_model_missing = hp1_fixed_level > 0 && !std::isfinite(level_power_w(true, hp1_fixed_level));
+    const bool hp2_fixed_model_missing = hp2_fixed_level > 0 && !std::isfinite(level_power_w(false, hp2_fixed_level));
+    const bool active_model_missing =
+        (previous_hp1 > 0 && !hp1_candidate.must_stop &&
+         (!hp1_model_available || (!active_pair_model_available && hp1_fixed_model_missing))) ||
+        (previous_hp2 > 0 && !hp2_candidate.must_stop &&
+         (!hp2_model_available || (!active_pair_model_available && hp2_fixed_model_missing)));
     const bool idle_model_missing =
         previous_hp1 <= 0 && previous_hp2 <= 0 && !hp1_model_available && !hp2_model_available;
     if (demand_active && (active_model_missing || (!best_single.valid && !best_duo.valid && idle_model_missing))) {
@@ -541,13 +584,15 @@ class Runtime {
     oq_curve::DispatchCandidate best;
     if (demand_active && hp1_available) {
       for (int level = 1; level <= frequency.automatic_level_limit(true, 2); ++level) {
+        if (hp1_fixed_level > 0 && level != hp1_fixed_level) continue;
         if (!std::isfinite(powers[level])) continue;
         const oq_curve::DispatchCandidate item{true, level, 0, powers[level], std::fabs(powers[level] - target_power_w),
                                                1,    0};
-        if (oq_curve::better_dispatch_candidate(item, best, id(hp1_last_applied_level), 0)) best = item;
+        if (oq_curve::better_dispatch_candidate(item, best, hp1_candidate.previous_applied_level, 0)) best = item;
       }
       hp1_level = best.valid ? best.hp1_level : 0;
-      if (!model_available)
+      if (!model_available ||
+          (hp1_fixed_level > 0 && (hp1_fixed_level > level_cap || !std::isfinite(powers[hp1_fixed_level]))))
         hp1_level =
             oq_hp_candidate::preserve_active_topology_without_model(true, hp1_candidate, hp2_candidate).hp1_level;
     }

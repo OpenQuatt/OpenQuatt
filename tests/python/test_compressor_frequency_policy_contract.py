@@ -81,7 +81,15 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
         self.assertEqual(STRATEGY_RUNTIMES.count("oq_frequency_runtime::capture()"), 4)
         self.assertEqual(STRATEGY_RUNTIMES.count("oq_perf::predict_candidate("), 3)
-        self.assertEqual(STRATEGY_RUNTIMES.count("frequency.frequency_allowed("), 3)
+        # Verify the actual candidate gates; additional boot-retention checks
+        # must not invalidate this wiring contract merely by adding calls.
+        for gate in (
+            "candidate_hp1 > 0 && !frequency.frequency_allowed(true, 2, candidate_hp1)",
+            "candidate_hp2 > 0 && !frequency.frequency_allowed(false, 2, candidate_hp2)",
+            "prediction.frequency_policy_allowed && power.valid() && power.thermal_w > 0",
+            "const bool allowed = prediction.frequency_policy_allowed;",
+        ):
+            self.assertIn(gate, STRATEGY_RUNTIMES)
         self.assertIn("const auto boosted = make_candidate(", DISPATCH)
         self.assertIn("estimate.allowed", DISPATCH)
         self.assertIn("frequency.frequency_allowed(hp1, 1, level)", STRATEGY_RUNTIMES)

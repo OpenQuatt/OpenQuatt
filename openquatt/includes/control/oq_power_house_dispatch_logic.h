@@ -134,16 +134,6 @@ inline int applied_level(const HpInput& hp) {
   const int level = hp.candidate.previous_applied_level;
   return level >= 0 && level <= kMaxLevel ? level : 0;
 }
-// Observe an existing physical cycle before the actuator commits software
-// adoption. No idle peer may start from a request calculated during acquisition.
-inline oq_hp_candidate::HpCandidateState candidate_during_boot_resume(oq_hp_candidate::HpCandidateState candidate,
-                                                                      bool pending, int resume_level,
-                                                                      bool any_pending) {
-  if (pending && candidate.previous_applied_level <= 0 && resume_level > 0 && resume_level <= kMaxLevel)
-    candidate.previous_applied_level = resume_level;
-  if (any_pending) candidate.available_for_start = false;
-  return candidate;
-}
 inline oq_hp_candidate::HpCandidateState sanitized_candidate(const HpInput& hp) {
   auto candidate = hp.candidate;
   candidate.previous_applied_level = applied_level(hp);

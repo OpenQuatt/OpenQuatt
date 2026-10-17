@@ -279,7 +279,8 @@ int main() {
     for(int slot : {0,1}) {
       auto& hp=slot==0?in.hp1:in.hp2;
       const auto& boot=oq_incident_manager.boot[slot];
-      hp.candidate=candidate_during_boot_resume(hp.candidate,pending[slot],boot.level(),pending[0] || pending[1]);
+      hp.candidate=oq_hp_candidate::candidate_during_boot_resume(
+          hp.candidate,pending[slot],boot.level(),pending[0] || pending[1],kMaxLevel);
       const bool held=boot.protection_hold(in.now_ms);
       hp.stop_inhibited=pending[slot] || held;
       hp.fixed_level=pending[slot]?boot.level():(held?applied_level(hp):0);
