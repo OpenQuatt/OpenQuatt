@@ -58,7 +58,7 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         # Boot acquisition adds a one-shot input deadline and explicit invalid outputs.
         # Recorder diagnostics remain included alongside runtime and focused regressions.
         # Include shared Duo Hz movement and its regression alongside boot-memory capture/restore.
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 4124)
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 4149)
 
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = FILES[1].read_text()

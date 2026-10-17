@@ -71,6 +71,8 @@ struct DispatchInput {
   float requested_w = NAN;
   bool duo = false, performance_valid = false, lead_hp1 = true;
   HpInput hp1, hp2;
+  std::array<float, 2> (*pair_power)(const void*, int, int) = nullptr;
+  const void* pair_context = nullptr;
 };
 
 enum class PerformanceSupplyRoute : uint8_t { NONE = 0, SYSTEM, HP1_OUTLET, HP2_OUTLET };
@@ -115,7 +117,7 @@ struct DispatchDecision {
   bool output_valid = false, saturated = false;
 };
 struct Candidate {
-  bool valid = false;
+  bool valid = false, model_valid = false;
   int hp1_level = 0, hp2_level = 0;
   float thermal_w = 0.0f, electrical_w = 0.0f, error_w = 0.0f, over_soft_w = 0.0f;
   int level_moves = 0, active_count = 0, balance_gap = 0;
@@ -188,6 +190,7 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
     if (level <= 0) return true;
     if (!hp_may_serve(hp)) return false;
     const auto& estimate = hp.levels[level];
+    if (in.pair_power != nullptr) return estimate.allowed;
     if (!estimate.allowed || !estimate.thermal_valid || !estimate.electrical_valid ||
         !std::isfinite(estimate.thermal_w) || !std::isfinite(estimate.electrical_w) || estimate.thermal_w < 0.0f ||
         estimate.electrical_w < 0.0f)
@@ -196,9 +199,17 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
     result.electrical_w += estimate.electrical_w;
     return true;
   };
-  if (!add_hp(in.hp1, result.hp1_level) || !add_hp(in.hp2, result.hp2_level) || !std::isfinite(result.thermal_w) ||
-      !std::isfinite(result.electrical_w) || result.electrical_w > tuning.peak_limit_w)
+  if (!add_hp(in.hp1, result.hp1_level) || !add_hp(in.hp2, result.hp2_level)) return result;
+  if (in.pair_power != nullptr) {
+    const auto power = in.pair_power(in.pair_context, result.hp1_level, result.hp2_level);
+    result.thermal_w = power[0];
+    result.electrical_w = power[1];
+  }
+  if (!std::isfinite(result.thermal_w) || result.thermal_w < 0 || !std::isfinite(result.electrical_w) ||
+      result.electrical_w < 0)
     return result;
+  result.model_valid = true;
+  if (result.electrical_w > tuning.peak_limit_w) return result;
   result.valid = true;
   result.error_w = std::fabs(result.thermal_w - target_w);
   result.over_soft_w = std::max(0.0f, result.electrical_w - tuning.soft_limit_w);
@@ -237,12 +248,14 @@ inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tu
   float best_error_w = INFINITY;
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
+      if (topology(hp1, hp2) != active_count) continue;
       const auto candidate = make_candidate(in, tuning, hp1, hp2, target_w);
       if (candidate.valid && candidate.active_count == active_count)
         best_error_w = std::min(best_error_w, candidate.error_w);
     }
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
+      if (topology(hp1, hp2) != active_count) continue;
       const auto candidate = make_candidate(in, tuning, hp1, hp2, target_w);
       if (candidate.valid && candidate.active_count == active_count && candidate.error_w <= best_error_w + tie_band_w &&
           (!chosen.valid || better_candidate(candidate, chosen)))
@@ -250,12 +263,13 @@ inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tu
     }
   return chosen;
 }
-inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tuning) {
+inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tuning, bool* model_available = nullptr) {
   if (!in.performance_valid || !electrical_limits_valid(tuning)) return 0.0f;
   float capacity_w = 0.0f;
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
       const auto candidate = make_candidate(in, tuning, hp1, hp2, 0.0f);
+      if (model_available && candidate.active_count > 0 && candidate.model_valid) *model_available = true;
       if (candidate.valid && candidate.thermal_w > capacity_w) capacity_w = candidate.thermal_w;
     }
   return capacity_w;
@@ -264,7 +278,8 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
                                         const DispatchState& state) {
   DispatchDecision out;
   const bool request_valid = std::isfinite(in.requested_w) && in.requested_w >= 0.0f;
-  out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning) : NAN;
+  bool model_available = false;
+  out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning, &model_available) : NAN;
   out.deficit_w = request_valid && in.performance_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : NAN;
   out.saturated = in.demand_level > 0 && std::isfinite(out.deficit_w) && out.deficit_w > 0.0f;
   if (in.demand_level <= 0) {
@@ -292,7 +307,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
     out.reason = Reason::NO_CANDIDATE;
     return out;
   }
-  if (!in.performance_valid) {
+  if (!in.performance_valid || (in.pair_power != nullptr && !model_available)) {
     auto retained = [&](const HpInput& hp) {
       const int level = applied_level(hp);
       return level > 0 && level <= kMaxLevel && !hp.candidate.must_stop && hp.levels[level].allowed ? level : 0;

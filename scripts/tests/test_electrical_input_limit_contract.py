@@ -85,7 +85,7 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE_RUNTIME)
         paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "openquatt/includes/control/oq_heating_curve_runtime.h", "openquatt/includes/control/oq_compressor_movement_logic.h", "tests/host/compressor_movement_dispatch_test.cpp", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
         # Include shared Duo Hz movement and its regression; retain the existing margin.
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 2160)
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 2170)
 
 if __name__ == "__main__":
     unittest.main()

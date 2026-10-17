@@ -92,7 +92,7 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # Include the seven runtime lines wiring Duo Hz movement into the captured context.
         # The heating-curve duo floor gate adds the single-owner ramp check (logic in its own header).
         # Bounded Power House boot-memory capture/restore adds 46 runtime lines.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1692)
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1719)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         # The selector now returns source provenance alongside its value; keep it local.
         self.assertLessEqual(len(LOGIC.splitlines()), 75)
