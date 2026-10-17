@@ -61,8 +61,11 @@ reservering van de gezamenlijke build- en HIL-queue.
    afwijkende `Origin` bij `/mqtt/save`. Verwacht dezelfde 403. Vergelijk voor en
    na iedere MQTT-weigering broker/port, enabled, credential-aanwezigheid en alle
    input-policyvelden; een geweigerde request mag geen configuratie wijzigen.
-   Log-clear en recorder-start mogen geen clear/start veroorzaken; vergelijk
-   hun beschikbare status/counters, niet vluchtige timestamps.
+   Recorder-start mag geen start veroorzaken; vergelijk de beschikbare stabiele
+   status/counters. Controleer log-clear met fingerprints van oude entries
+   (`seq`, `ts`, `level`, `tag`, `message`): een overlap van alleen `seq` bewijst
+   geen inhoudsbehoud, omdat clear de sequenceteller kan terugzetten. Houd
+   normale nieuwe logregels en ringbufferrotatie apart van een clear.
 4. **Authenticatie:** een request zonder login moet nog steeds een 401 met
    Digest-challenge krijgen; een foutieve login mag geen mutatie uitvoeren.
    Gebruik een verse, niet-geauthenticeerde sessie om dit apart vast te stellen.
