@@ -239,7 +239,7 @@ struct ActuatorRuntime {
 };
 void seed_boot(int slot,uint32_t started_ms) {
   auto& boot=oq_incident_manager.boot[slot]; boot.begin(true,started_ms);
-  for(const auto [address,value]:std::array<std::pair<uint16_t,float>,4>{{{3999,2},{1999,1},{2099,2},{2103,20}}})
+  for(const auto& [address,value]:std::array<std::pair<uint16_t,float>,4>{{{3999,2},{1999,1},{2099,2},{2103,20}}})
     boot.observe(address,value,clock_ms);
 }
 void reset(bool hp1_running) {
