@@ -222,9 +222,11 @@ class MqttIngressLifecycleContractTest(unittest.TestCase):
         self.assertIn("MutationResult::RECOVERY_PENDING", CPP)
         self.assertIn("MutationResult::PERSISTENCE_PENDING", CPP)
         self.assertIn('"preference_commit_pending"', CPP)
-        self.assertIn(
-            'request->send(503, "application/json", R"({"ok":false,"error":"preference_commit_pending"})")',
+        self.assertRegex(
             CPP,
+            r'openquatt_common::send_http_status\(\*request, '
+            r'openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,\s*'
+            r'R"\(\{"ok":false,"error":"preference_commit_pending"\}\)"\)',
         )
         self.assertIn('"pending":true', CPP)
         self.assertIn('"runtime_pending":%s', CPP)

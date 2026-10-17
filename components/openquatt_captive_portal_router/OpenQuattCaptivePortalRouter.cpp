@@ -1,5 +1,6 @@
 #include "OpenQuattCaptivePortalRouter.h"
 
+#include "OpenQuattHttpStatus.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -37,7 +38,7 @@ bool OpenQuattCaptivePortalRouter::canHandle(AsyncWebServerRequest* request) con
 void OpenQuattCaptivePortalRouter::handleRequest(AsyncWebServerRequest* request) {
   auto* portal = captive_portal::global_captive_portal;
   if (portal == nullptr) {
-    request->send(503);
+    openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE);
     return;
   }
   portal->handleRequest(request);

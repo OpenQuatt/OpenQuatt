@@ -34,6 +34,7 @@ oq_cpp_headers_dir: "${openquatt_root}/includes"     # Copy and include the grou
 oq_component_psram_buffer_header: "${components_root}/openquatt_common/PsramBuffer.h" # Shared PSRAM-backed buffer helper for custom components.
 oq_component_external_telemetry_transport_header: "${components_root}/openquatt_common/OpenQuattExternalTelemetryTransport.h" # Shared outbound-only telemetry transport interface.
 oq_component_flash_layout_header: "${components_root}/openquatt_common/OpenQuattFlashLayout.h" # Shared openquatt_data archive layout.
+oq_component_http_status_header: "${components_root}/openquatt_common/OpenQuattHttpStatus.h" # Shared IDF response-status compatibility helper.
 external_components_path: "${components_root}"      # Local custom component directory.
 oq_timezone: "Europe/Amsterdam"                         # SNTP timezone used by runtime timestamps.
 oq_webserver_css_include: "${openquatt_root}/web/css/openquatt-app.css" # Bundled OpenQuatt web UI stylesheet.
