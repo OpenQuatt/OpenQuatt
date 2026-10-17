@@ -16,7 +16,7 @@ namespace esphome {
 namespace openquatt_entities {
 
 using openquatt_common::PsramBuffer;
-using EntityJsonGenerator = json::SerializationBuffer<> (*)(web_server::WebServer*, void*);
+using EntityJsonGenerator = void (*)(web_server::WebServer*, void*, json::JsonBuilder&);
 
 static const char* const TAG = "openquatt.entities";
 
@@ -61,9 +61,14 @@ bool parse_curve_value(const std::string& raw, float* value) {
   return true;
 }
 
+// Match JsonBuilder::serialize()'s maximum supported document size.
+constexpr size_t ENTITY_JSON_BUFFER_SIZE = 5120;
+
 class ChunkedJsonWriter {
  public:
   explicit ChunkedJsonWriter(httpd_req_t* req) : req_(req) { this->buffer_.allocate(BUFFER_SIZE); }
+
+  bool ready() const { return static_cast<bool>(this->buffer_); }
 
   bool write_char(char c) { return this->write_bytes_(&c, 1); }
 
@@ -455,7 +460,13 @@ bool OpenQuattEntities::queue_curve_batch(const std::array<float, 6>& values) {
 }
 
 void OpenQuattEntities::write_entities(httpd_req_t* req, const std::string& detail, const std::string& entities) const {
+  PsramBuffer<char> serialized;
   ChunkedJsonWriter writer(req);
+  if (!serialized.allocate_external(ENTITY_JSON_BUFFER_SIZE) || !writer.ready()) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_send(req, R"({"ok":false,"error":"serialization_unavailable"})", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
   const bool detail_all = detail == "all";
   // Mirror ESPHome's direct entity endpoints: an explicitly requested internal entity is returned,
   // even when internal entities are not listed in the web UI.
@@ -480,14 +491,25 @@ void OpenQuattEntities::write_entities(httpd_req_t* req, const std::string& deta
 
     const EntityJsonGenerator generator =
         detail_all || payload.state_generator == nullptr ? payload.all_generator : payload.state_generator;
-    auto data = generator(this->web_server_, payload.source);
+    size_t serialized_size;
+    {
+      json::JsonBuilder builder;
+      generator(this->web_server_, payload.source, builder);
+      serialized_size = builder.serialize_to(serialized.data(), serialized.size());
+    }
+    // serialize_to() returns the buffer capacity on truncation. Do not emit
+    // an entity key or any of its JSON until the complete document fits.
+    if (serialized_size >= serialized.size()) {
+      errors.push_back(entity.key);
+      continue;
+    }
 
     if (!first_entity && !writer.write_char(',')) {
       break;
     }
     first_entity = false;
     if (!writer.write_json_string(entity.key.c_str(), entity.key.size()) || !writer.write_char(':') ||
-        !writer.write_literal(data.c_str())) {
+        !writer.write_literal(serialized.data())) {
       break;
     }
   }
