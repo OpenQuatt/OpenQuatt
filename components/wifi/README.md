@@ -1,6 +1,6 @@
 # OpenQuatt Wi-Fi compatibility patch
 
-ESP32-bronnen uit ESPHome **2026.10.0b3** (`esphome/components/wifi`), tagcommit `2c4b1f3ed566e0b595fdb4432f3f24068402fdc3`, onder de
+ESP32-bronnen uit ESPHome **2026.10.0b4** (`esphome/components/wifi`), tagcommit `9d530f5c5638dd285353d3ff3f6f95c245b07b89`, onder de
 upstream MIT-licentie: zie `../web_server_base/LICENSE-MIT`. Formatting volgt
 de repository; niet-ESP32 platformimplementaties zijn niet meegenomen.
 
@@ -33,3 +33,6 @@ In b3 gebruiken de connect/fallback-automations numerieke timeout-ID's;
 de AP-handover gebruikt eveneens een numerieke ID op LN882x. Deze
 upstreamwijzigingen zijn overgenomen; de lokale preference-, opslag- en
 provisioningpatches zijn behouden.
+
+B4 neemt ook upstreamvalidatie over die WPA3 op ESP8266 afwijst. De lokale
+override ondersteunt alleen ESP32; de bestaande ESP32-authconfiguratie blijft gelijk.

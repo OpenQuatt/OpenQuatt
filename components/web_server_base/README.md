@@ -1,6 +1,6 @@
 # OpenQuatt web-auth override
 
-Based on [ESPHome 2026.10.0b3](https://github.com/esphome/esphome/tree/2026.10.0b3/esphome/components/web_server_base).
+Based on [ESPHome 2026.10.0b4](https://github.com/esphome/esphome/tree/2026.10.0b4/esphome/components/web_server_base).
 Copyright (c) 2019 ESPHome. C++: GPLv3 (../../LICENSE); Python: MIT (LICENSE-MIT).
 Modified by OpenQuatt on 2026-09-22. Only ESP32 is supported.
 
@@ -23,11 +23,15 @@ SSE revocation, HA/Wi-Fi reset and hardware memory/timing validation remain pend
 Checks: `test_web_auth_middleware.py`, `test_esphome_compatibility_contract.py`,
 `npm run check:cpp-format` and the Q Duo Wi-Fi firmware build.
 
-Upstream tag: `2026.10.0b3` (`2c4b1f3ed566e0b595fdb4432f3f24068402fdc3`).
+Upstream tag: `2026.10.0b4` (`9d530f5c5638dd285353d3ff3f6f95c245b07b89`).
 The upstream base sources are unchanged from 2026.9.0; the owned credential,
 mutex and recovery patches are retained. Upstream `web_server_idf` now respects
 the explicit 4096-byte HTTP request header limit in `openquatt/base/common.yaml`,
 so the late codegen workaround in `openquatt_web_auth` is no longer required.
 
 The upstream component sources are identical between 2026.10.0b1 and
-2026.10.0b3; the existing local patches are retained.
+2026.10.0b4; the existing local patches are retained.
+
+The build-local four-decimal formatter backport from ESPHome #20800 remains
+active on b4. The installed b4 helper sources are checked by the regression
+test before use; see ../web_server/README.md for scope and removal criteria.

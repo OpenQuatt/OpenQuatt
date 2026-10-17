@@ -1,6 +1,6 @@
 # ESPHome web_server compatibility override
 
-Source: ESPHome 2026.10.0b3, `esphome/components/web_server`. Copyright ESPHome.
+Source: ESPHome 2026.10.0b4, `esphome/components/web_server`. Copyright ESPHome.
 C++ is GPLv3 (repository LICENSE); Python is MIT (../web_server_base/LICENSE-MIT).
 Copied upstream files retain the existing component and generated index assets;
 C++ is formatted with the OpenQuatt formatter.
@@ -14,7 +14,7 @@ actions already queued for the main loop, even after recovery ends.
 The version gate lives in the accompanying `web_server_base` override. When
 upgrading ESPHome, compare this small functional patch against the new upstream.
 
-Upstream tag: `2026.10.0b3` (`2c4b1f3ed566e0b595fdb4432f3f24068402fdc3`).
+Upstream tag: `2026.10.0b4` (`9d530f5c5638dd285353d3ff3f6f95c245b07b89`).
 Controller callbacks are registered by codegen; SSE generators fill the caller's
 `JsonBuilder`, including the ESP-IDF stack arena. The OpenQuatt recovery-epoch
 checks and atomic firmware `manifest_revision` remain local patches.
@@ -22,7 +22,7 @@ The 8 KiB loop stack and internal heap margin require baseline/candidate HIL
 validation before this beta migration is released.
 
 The upstream component sources are identical between 2026.10.0b1 and
-2026.10.0b3; the existing local patches are retained.
+2026.10.0b4; the existing local patches are retained.
 
 ## SSE lifecycle compatibility
 
@@ -68,4 +68,3 @@ qualification; power-off cold starts and full worst-case overlap remain open.
 Remove `core_four_decimals.py` and its `to_code()` call after upgrading to and
 validating an ESPHome release that contains #20800. Review the other local
 web-server compatibility changes independently during that upgrade.
-
