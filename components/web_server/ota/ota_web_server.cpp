@@ -9,6 +9,10 @@
 #include "esphome/components/ota/ota_backend_factory.h"
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
+#ifdef USE_ESP32
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
 #endif
 
 #ifdef USE_CAPTIVE_PORTAL
@@ -274,6 +278,11 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
     }
     this->ota_read_length_ += len;
     this->report_ota_progress_(request);
+#ifdef USE_ESP32
+    // HTTPD has higher priority than the control loop. Leave a scheduling
+    // window between flash writes so Modbus RX and polling can keep running.
+    vTaskDelay(1);
+#endif
   }
 
   // Finalize

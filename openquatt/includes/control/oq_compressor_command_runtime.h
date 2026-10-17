@@ -1,5 +1,6 @@
 #pragma once
 #include "oq_compressor_command_guard.h"
+#include "oq_boot_resume_runtime.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 #include "../odu/oq_odu_eeprom_maintenance.h"
@@ -16,6 +17,19 @@ inline float minimum_defrost_flow_lph = NAN;
 
 inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = false) {
   const unsigned hp = hp1 ? 1U : 2U;
+  if (oq_boot_resume_runtime::ota_hold(hp1)) return false;
+  oq_boot_resume_runtime::update(hp1);
+  if (id(oq_incident_manager).boot_resume_pending(hp, millis())) return false;
+  if (address == 2010 || address == 2015) {
+#if OQ_TOPOLOGY_DUO
+    // A stopped peer can own the shared circulation during running acquisition.
+    oq_boot_resume_runtime::update(!hp1);
+    if (id(oq_incident_manager).boot_resume_pending(hp1 ? 2U : 1U, millis())) return false;
+#endif
+    if (oq_boot_resume_runtime::ota_hold(!hp1)) return false;
+    return true;
+  }
+  if (address == 2006) return true;
   const auto incident = id(oq_incident_manager).get_outputs(hp);
   const bool hard_stop = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) || incident.must_stop ||
                          incident.run_state == oq_incidents::RunState::STOPPING ||
@@ -108,7 +122,8 @@ inline bool eeprom_runtime_clear(bool hp1) {
   const auto incident = id(oq_incident_manager).get_outputs(hp);
   const auto& service = hp1 ? id(hp1_odu_defrost) : OQ_COMMAND_SECONDARY_ID(odu_defrost);
   const float hz = hp1 ? id(hp1_compressor_frequency).state : OQ_COMMAND_SECONDARY_ID(compressor_frequency).state;
-  return !id(oq_water_temp_hard_trip_active) && !id(oq_lowflow_fault_active) && !incident.must_stop &&
+  return !oq_boot_resume_runtime::ota_hold(hp1) && !id(oq_incident_manager).boot_resume_pending(hp, millis()) &&
+         !id(oq_water_temp_hard_trip_active) && !id(oq_lowflow_fault_active) && !incident.must_stop &&
          incident.run_state != oq_incidents::RunState::STOPPING &&
          incident.run_state != oq_incidents::RunState::STOP_UNCONFIRMED && !incident.running_confirmed &&
          !id(oq_commissioning_active) && !id(oq_runtime_polling_paused).state &&

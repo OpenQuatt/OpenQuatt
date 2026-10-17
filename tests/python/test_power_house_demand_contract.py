@@ -19,6 +19,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("hp2_water_out_temp_last_update_ms", text)
         self.assertIn("config.hp_water_temp_stale_ms", text)
         self.assertIn("select_performance_supply(", DISPATCH_LOGIC)
+        for marker in ("result.stop_inhibited =", "boot_protection_hold(", "min_runtime_window_active("):
+            self.assertIn(marker, text)
         # #608 run extension: base house need stays apart from effective HP target.
         self.assertIn("oq_power_house_run_extension::evaluate(", text)
         self.assertIn("run_ext_input.inputs_valid = demand.valid && room_inputs_valid;", text)

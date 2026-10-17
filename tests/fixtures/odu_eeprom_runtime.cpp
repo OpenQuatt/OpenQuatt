@@ -258,16 +258,37 @@ int main() {
   lose_address = 4000U;
   command(lost, OpenQuattOduEeprom::Action::COMMIT);
   assert(lost.state() == State::UNCERTAIN && commits == 1U && oq_eeprom::holding());
+  // Inhibiting factory-reset setup must also retire a previous rapid count.
+  durable["262521054"] = {2U};  // ESPHome POWER_CYCLES_KEY 0x0FA5C0DE.
   Device rebooted;
   oq_eeprom::hold_mask.store(0U);
   attach(rebooted);
   assert(oq_eeprom::holding() && rebooted.state() == State::UNCERTAIN && reset_counter.failed);
   assert(!rebooted.power_cycle_safe());
+  assert(durable.at("262521054") == std::vector<uint8_t>{0U});
   for (unsigned i = 0; i < 20U; ++i) rebooted.loop();
   assert(modbus::requests.empty() && commits == 1U);
   cold_boot(rebooted);
   command(rebooted, OpenQuattOduEeprom::Action::VERIFY, 0U, true);
   assert(rebooted.result() == "VERIFIED");
+  test_now += 20000U;
+  Device safe_reboot;
+  attach(safe_reboot);
+  // A later ordinary POWERON starts at one, never the destructive third boot.
+  assert(durable.at("262521054").at(0) + 1U == 1U);
+
+  reset();
+  Device reset_write_failure;
+  attach(reset_write_failure);
+  backup(reset_write_failure);
+  prepare(reset_write_failure);
+  durable["262521054"] = {2U};
+  nvs_write_ok = false;
+  Device blocked_reset;
+  attach(blocked_reset);
+  assert(blocked_reset.result() == "STORAGE_FAILED" && reset_counter.failed && oq_eeprom::holding());
+  assert(durable.at("262521054").at(0) == 2U);
+  assert(!blocked_reset.enqueue(OpenQuattOduEeprom::Action::CANCEL, 0U, blocked_reset.generation(), false));
 
   reset();
   Device persistence;

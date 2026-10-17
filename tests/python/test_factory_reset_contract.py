@@ -30,7 +30,7 @@ class FactoryResetContractTest(unittest.TestCase):
         reset_action = COMMON.split("    id: factory_reset_button\n", 1)[1].split("\nswitch:", 1)[0]
         self.assertIn("device_class: restart", reset_action)
         self.assertIn("icon: mdi:restart-alert", reset_action)
-        self.assertIn("lambda: return oq_eeprom::factory_reset_allowed();", reset_action)
+        self.assertIn("lambda: |-\n              return oq_eeprom::factory_reset_allowed();", reset_action)
         delayed = reset_action.split("- delay: 100ms", 1)[1]
         self.assertLess(delayed.index("if (!oq_eeprom::factory_reset_allowed()) return;"),
                         delayed.index("global_preferences->reset();"))
@@ -40,6 +40,14 @@ class FactoryResetContractTest(unittest.TestCase):
         )
         self.assertNotIn("oq_factory_reset", RUNTIME_PACKAGE)
         self.assertNotIn("!extend factory_reset_button", RUNTIME_PACKAGE)
+
+    def test_inhibited_counter_key_matches_pinned_esphome(self) -> None:
+        import esphome
+        source = (Path(esphome.__file__).parent / "components/factory_reset/factory_reset.cpp").read_text()
+        self.assertIn("POWER_CYCLES_KEY = 0xFA5C0DE;", source)
+        self.assertIn("make_preference<uint8_t>(POWER_CYCLES_KEY, true)", source)
+        implementation = (ROOT / "components/openquatt_odu_eeprom/OpenQuattOduEeprom.cpp").read_text()
+        self.assertIn("constexpr uint32_t key = 0x0FA5C0DEU;", implementation)
 
 
 if __name__ == "__main__":

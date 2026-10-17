@@ -1,5 +1,6 @@
 #include "OpenQuattOduEepromDump.h"
 
+#include "OpenQuattHttpStatus.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -169,7 +170,8 @@ class OpenQuattOduEepromDumpRequestHandler : public AsyncWebHandler {
       const bool include_extended = request->arg("extended") != "0";
       const OpenQuattOduEepromDump::StartResult result = this->parent_->start(include_extended);
       if (result == OpenQuattOduEepromDump::StartResult::UNAVAILABLE) {
-        request->send(503, "application/json", R"({"ok":false,"error":"psram_unavailable"})");
+        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                           R"({"ok":false,"error":"psram_unavailable"})");
         return;
       }
       if (result == OpenQuattOduEepromDump::StartResult::BUSY) {

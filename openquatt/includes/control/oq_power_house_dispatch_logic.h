@@ -46,6 +46,8 @@ struct LevelEstimate {
 struct HpInput {
   oq_hp_candidate::HpCandidateState candidate;
   bool defrost = false, valve_defrost = false;
+  bool stop_inhibited = false;
+  uint8_t fixed_level = 0;
   std::array<LevelEstimate, kMaxLevel + 1> levels{};
 };
 struct TimedTail {
@@ -132,6 +134,16 @@ inline int applied_level(const HpInput& hp) {
   const int level = hp.candidate.previous_applied_level;
   return level >= 0 && level <= kMaxLevel ? level : 0;
 }
+// Observe an existing physical cycle before the actuator commits software
+// adoption. No idle peer may start from a request calculated during acquisition.
+inline oq_hp_candidate::HpCandidateState candidate_during_boot_resume(oq_hp_candidate::HpCandidateState candidate,
+                                                                      bool pending, int resume_level,
+                                                                      bool any_pending) {
+  if (pending && candidate.previous_applied_level <= 0 && resume_level > 0 && resume_level <= kMaxLevel)
+    candidate.previous_applied_level = resume_level;
+  if (any_pending) candidate.available_for_start = false;
+  return candidate;
+}
 inline oq_hp_candidate::HpCandidateState sanitized_candidate(const HpInput& hp) {
   auto candidate = hp.candidate;
   candidate.previous_applied_level = applied_level(hp);
@@ -187,7 +199,9 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
       result.hp2_level < 0 || result.hp1_level > kMaxLevel || result.hp2_level > kMaxLevel)
     return result;
   auto add_hp = [&](const HpInput& hp, int level) {
-    if (level <= 0) return true;
+    // Score only topologies the actuator can actually apply during its existing holds.
+    if (hp.fixed_level > 0 && applied_level(hp) > 0 && !hp.candidate.must_stop && level != hp.fixed_level) return false;
+    if (level <= 0) return !hp.stop_inhibited || applied_level(hp) <= 0 || hp.candidate.must_stop;
     if (!hp_may_serve(hp)) return false;
     const auto& estimate = hp.levels[level];
     if (in.pair_power != nullptr) return estimate.allowed;

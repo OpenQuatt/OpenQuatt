@@ -17,6 +17,44 @@ esphome:
     priority: -100
     then:
       - lambda: |-
+          esphome::openquatt_incident_manager::set_power_house_resume_reader([]() {
+            return oq_power_house_runtime::runtime().restart_state();
+          });
+          oq_boot_resume_runtime::ota_hold_reader = esphome::openquatt_incident_manager::ota_cycle_hold;
+          esphome::openquatt_incident_manager::set_ota_resume_guard_reader([]() {
+            const uint32_t now = millis();
+            uint8_t mask = 0U;
+            if (id(oq_incident_manager).ota_resume_candidate(1U, now) && oq_boot_resume_runtime::capture(true).ready)
+              mask |= 1U;
+            #if OQ_TOPOLOGY_DUO
+            if (id(oq_incident_manager).ota_resume_candidate(2U, now) && oq_boot_resume_runtime::capture(false).ready)
+              mask |= 2U;
+            #endif
+            return mask;
+          });
+          oq_boot_resume_runtime::minimum_flow_lph = (float) ${oq_cm_min_flow_lph};
+          oq_boot_resume_runtime::read_sources = [](uint64_t now) {
+            const auto& sources = oq_sensor_source::runtime();
+            const auto flow = sources.flow_selection();
+            #if OQ_TOPOLOGY_DUO
+            const auto& hp2_flow = oq_sources::hp2.flow;
+            #else
+            const oq_sources::RawFloatReceipt hp2_flow{};
+            #endif
+            #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+            const auto& controller_flow = oq_sources::controller_flow;
+            const bool primary_is_controller = id(hp_generation).has_state() &&
+                id(hp_generation).current_option() == "V1";
+            #else
+            const oq_sources::RawFloatReceipt controller_flow{};
+            const bool primary_is_controller = false;
+            #endif
+            const bool fresh = oq_boot_resume::flow_fresh(
+                flow, {oq_sources::hp1.flow, hp2_flow, controller_flow, primary_is_controller, OQ_TOPOLOGY_DUO != 0},
+                now, oq_boot_resume::TELEMETRY_FRESH_MS);
+            return oq_boot_resume_runtime::Sources{sources.heating_enable_valid(), sources.heating_enable_value(),
+                                                   fresh, flow.value};
+          };
           // Keep technical-stop and defrost gates live for queued control writes/retries.
           id(mod_bus).set_command_guard(oq_command_runtime::queued_address);
           oq_nvs_cleanup::log_stats("boot");
@@ -1311,7 +1349,8 @@ button:
     on_press:
       - if:
           condition:
-            lambda: return oq_eeprom::factory_reset_allowed();
+            lambda: |-
+              return oq_eeprom::factory_reset_allowed();
           then:
             - delay: 100ms
             - lambda: |-

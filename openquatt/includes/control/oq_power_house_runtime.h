@@ -10,8 +10,11 @@
 #include "../performance/oq_water_performance_runtime.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_heat_intent_runtime.h"
+#include "oq_boot_resume_runtime.h"
+#include "esphome/components/openquatt_incident_manager/OpenQuattRestartHandoff.h"
 #include "oq_power_house_demand_logic.h"
 #include "oq_power_house_dispatch_logic.h"
+#include "oq_thermal_request_logic.h"
 #include "oq_power_house_run_extension_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
@@ -20,6 +23,7 @@ namespace oq_power_house_runtime {
 struct TickConfig {
   uint32_t loop_ms;
   uint32_t minimum_off_ms;
+  int minimum_runtime_floor_s;
   uint32_t hp_water_temp_stale_ms;
   int demand_max_f;
   float temperature_guard_c;
@@ -115,6 +119,7 @@ class Runtime {
       this->demand_state_.last_w = std::max(this->demand_state_.last_w, this->fast_floor_w_);
       this->fast_floor_w_ = 0.0f;
     }
+    this->restore_boot_demand_(demand_input, demand_tuning, config);
     const auto previous_startup_phase = this->startup_phase_;
     const auto demand =
         oq_power_house::decide_startup_demand(demand_input, demand_tuning, this->demand_state_, this->startup_phase_);
@@ -153,16 +158,28 @@ class Runtime {
     id(oq_last_lead_hp) = lead_is_hp1 ? 1 : 2;
 
     const auto frequency = oq_frequency_runtime::capture();
+    const uint32_t minimum_runtime_ms =
+        1000UL * static_cast<uint32_t>(oq_request::minimum_runtime_seconds(
+                     id(oq_min_runtime_min).has_state(), id(oq_min_runtime_min).state, config.minimum_runtime_floor_s));
     const float outside_c = id(outside_temp_selected).state;
     const float system_supply_c = id(oq_system_supply_temp).state;
     const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
-    auto hp1_candidate =
-        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), id(hp1_last_applied_level));
+    bool any_resume_pending = id(oq_incident_manager).boot_resume_pending(1, now_ms);
+#if OQ_TOPOLOGY_DUO
+    any_resume_pending |= id(oq_incident_manager).boot_resume_pending(2, now_ms);
+#endif
+    const auto capture_candidate = [&](uint8_t hp, int previous) {
+      return oq_power_house_dispatch::candidate_during_boot_resume(
+          oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(hp), previous),
+          id(oq_incident_manager).boot_resume_pending(hp, now_ms), id(oq_incident_manager).boot_resume_level(hp),
+          any_resume_pending);
+    };
+    auto hp1_candidate = capture_candidate(1, id(hp1_last_applied_level));
     hp1_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
         now_ms, id(hp1_last_stop_ms), config.minimum_off_ms, id(hp1_last_applied_level));
     const bool hp1_defrost_active = id(hp1_defrost).state;
 #if OQ_TOPOLOGY_DUO
-    auto hp2_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), hp2_applied_level);
+    auto hp2_candidate = capture_candidate(2, hp2_applied_level);
     hp2_candidate.minimum_off_ready =
         oq_hp_candidate::minimum_off_ready(now_ms, id(hp2_last_stop_ms), config.minimum_off_ms, hp2_applied_level);
     const bool hp2_defrost_active = id(hp2_defrost).state;
@@ -203,6 +220,18 @@ class Runtime {
     const auto build_hp = [&](oq_power_house_dispatch::HpInput& result, bool hp1,
                               const oq_hp_candidate::HpCandidateState& candidate, bool defrost, bool valve_defrost) {
       result.candidate = candidate;
+      uint32_t last_start_ms = id(hp1_last_real_heat_start_ms);
+#if OQ_TOPOLOGY_DUO
+      if (!hp1) last_start_ms = id(hp2_last_real_heat_start_ms);
+#endif
+      const uint8_t hp_index = hp1 ? 1U : 2U;
+      const bool pending = id(oq_incident_manager).boot_resume_pending(hp_index, now_ms);
+      const bool boot_hold = id(oq_incident_manager).boot_protection_hold(hp_index, now_ms) && !defrost &&
+                             !valve_defrost && !(hp1 ? hp1_oil_return : hp2_oil_return);
+      result.fixed_level = pending || boot_hold ? candidate.previous_applied_level : 0;
+      result.stop_inhibited =
+          candidate.previous_applied_level > 0 && !candidate.must_stop &&
+          (pending || boot_hold || oq_request::min_runtime_window_active(now_ms, last_start_ms, minimum_runtime_ms));
       result.defrost = defrost;
       result.valve_defrost = valve_defrost;
       result.levels[0] = {true, true, true, 0.0f, 0.0f};
@@ -450,6 +479,18 @@ class Runtime {
              dispatch.owner_hp, static_cast<int>(dispatch.reason));
   }
 
+  esphome::openquatt_incident_manager::restart_handoff::PowerHouseResumeState restart_state() const {
+    if (id(oq_strategy_active_code) != 3 || this->startup_phase_ != oq_power_house::StartupPhase::READY ||
+        (id(hp1_last_applied_level) <= 0
+#if OQ_TOPOLOGY_DUO
+         && id(hp2_last_applied_level) <= 0
+#endif
+         ))
+      return {};
+    return {this->demand_state_.last_w, this->demand_state_.comfort_memory_c,
+            this->run_extension_state_.last_setpoint_c};
+  }
+
   void reset() {
     this->stop_snapshot_ = {};
     this->dispatch_state_ = {};
@@ -512,6 +553,37 @@ class Runtime {
   float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
 
  private:
+  void restore_boot_demand_(const oq_power_house::DemandInput& input, const oq_power_house::DemandTuning& tuning,
+                            const TickConfig& config) {
+    if (this->boot_demand_checked_) return;
+    const bool pending = id(oq_incident_manager).boot_resume_pending(1U, input.now_ms)
+#if OQ_TOPOLOGY_DUO
+                         || id(oq_incident_manager).boot_resume_pending(2U, input.now_ms)
+#endif
+        ;
+    if (pending && (!oq_power_house::decide_demand(input, tuning, this->demand_state_).valid ||
+                    !oq_heat_intent_runtime::room_temperature_fresh(config.ot_room_temperature_fresh) ||
+                    !oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh) ||
+                    !((id(oq_incident_manager).boot_resume_safety_ready(1U, input.now_ms) &&
+                       oq_boot_resume_runtime::capture(true).ready)
+#if OQ_TOPOLOGY_DUO
+                      || (id(oq_incident_manager).boot_resume_safety_ready(2U, input.now_ms) &&
+                          oq_boot_resume_runtime::capture(false).ready)
+#endif
+                          )))
+      return;
+    this->boot_demand_checked_ = true;
+    esphome::openquatt_incident_manager::restart_handoff::PowerHouseResumeState saved{};
+    if (!esphome::openquatt_incident_manager::take_power_house_resume(&saved) ||
+        !esphome::openquatt_incident_manager::restart_handoff::may_restore_power_house(saved, pending, input.room_c,
+                                                                                       input.setpoint_c))
+      return;
+    // New uptime domain: the first fresh calculation starts at the saved demand,
+    // then the existing slew, comfort bounds and current safety inputs take over.
+    this->demand_state_ = {saved.last_w, input.now_ms - 1U, saved.comfort_memory_c};
+    ESP_LOGI("quatt.strategy", "Power House demand memory restored after planned restart");
+  }
+  bool boot_demand_checked_{false};
   esphome::openquatt_decision_log::heating_stop::Snapshot stop_snapshot_;
   void publish_startup_wait_(uint32_t now_ms, float requested_w) {
     // No stale strategy request or boiler-assist output may survive acquisition.

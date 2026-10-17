@@ -1,5 +1,6 @@
 #include "OpenQuattMqttConfig.h"
 
+#include "OpenQuattHttpStatus.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -283,13 +284,16 @@ bool send_mutation_error_(AsyncWebServerRequest* request, OpenQuattMqttConfig::M
       request->send(409, "application/json", R"({"ok":false,"error":"invalid_configuration"})");
       break;
     case OpenQuattMqttConfig::MutationResult::BUSY:
-      request->send(503, "application/json", R"({"ok":false,"error":"configuration_busy"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"configuration_busy"})");
       break;
     case OpenQuattMqttConfig::MutationResult::UNAVAILABLE:
-      request->send(503, "application/json", R"({"ok":false,"error":"configuration_unavailable"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"configuration_unavailable"})");
       break;
     case OpenQuattMqttConfig::MutationResult::TIMEOUT:
-      request->send(504, "application/json", R"({"ok":false,"error":"configuration_timeout"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::GATEWAY_TIMEOUT,
+                                         R"({"ok":false,"error":"configuration_timeout"})");
       break;
     case OpenQuattMqttConfig::MutationResult::SAVE_FAILED:
       request->send(500, "application/json", R"({"ok":false,"error":"preference_save_failed"})");
@@ -298,19 +302,23 @@ bool send_mutation_error_(AsyncWebServerRequest* request, OpenQuattMqttConfig::M
       request->send(500, "application/json", R"({"ok":false,"error":"preference_sync_failed"})");
       break;
     case OpenQuattMqttConfig::MutationResult::APPLY_FAILED:
-      request->send(503, "application/json", R"({"ok":false,"error":"runtime_apply_failed"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"runtime_apply_failed"})");
       break;
     case OpenQuattMqttConfig::MutationResult::RUNTIME_PENDING:
-      request->send(202, "application/json", R"({"ok":true,"pending":true,"status":"runtime_pending"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::ACCEPTED,
+                                         R"({"ok":true,"pending":true,"status":"runtime_pending"})");
       break;
     case OpenQuattMqttConfig::MutationResult::RECOVERY_FAILED:
       request->send(500, "application/json", R"({"ok":false,"error":"storage_recovery_failed"})");
       break;
     case OpenQuattMqttConfig::MutationResult::RECOVERY_PENDING:
-      request->send(503, "application/json", R"({"ok":false,"error":"storage_recovery_pending"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"storage_recovery_pending"})");
       break;
     case OpenQuattMqttConfig::MutationResult::PERSISTENCE_PENDING:
-      request->send(503, "application/json", R"({"ok":false,"error":"preference_commit_pending"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"preference_commit_pending"})");
       break;
   }
   return true;
@@ -407,7 +415,8 @@ class MqttConfigHandler : public AsyncWebHandler {
 
     if (url == "/mqtt/save" && request->method() == HTTP_POST) {
       if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        request->send(403, "application/json", R"({"ok":false,"error":"forbidden"})");
+        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                           R"({"ok":false,"error":"forbidden"})");
         return;
       }
 
@@ -465,7 +474,8 @@ class MqttConfigHandler : public AsyncWebHandler {
 
     if (url == "/mqtt/input/save" && request->method() == HTTP_POST) {
       if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        request->send(403, "application/json", R"({"ok":false,"error":"forbidden"})");
+        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                           R"({"ok":false,"error":"forbidden"})");
         return;
       }
 
@@ -487,7 +497,8 @@ class MqttConfigHandler : public AsyncWebHandler {
 
     if (url == "/mqtt/input/retained/save" && request->method() == HTTP_POST) {
       if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        request->send(403, "application/json", R"({"ok":false,"error":"forbidden"})");
+        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                           R"({"ok":false,"error":"forbidden"})");
         return;
       }
 

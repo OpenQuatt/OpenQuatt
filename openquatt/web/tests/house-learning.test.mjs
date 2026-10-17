@@ -744,7 +744,7 @@ test("firmware-endpoint bewaart caches en requestscratch uitsluitend in PSRAM", 
   assert.match(source, /export_buffer_\.allocate_external/);
   assert.match(source, /request_buffer_\.allocate_external/);
   assert.match(source, /xSemaphoreTake\(this->request_mutex_, 0\)/);
-  assert.match(source, /request->send\(429/);
+  assert.match(source, /openquatt_common::send_http_status\(\*request,\s*openquatt_common::HttpStatus::TOO_MANY_REQUESTS/);
   assert.match(source, /request_is_authenticated/);
   assert.match(source, /snapshot_(?:status|export).*write_snapshot/s);
   assert.match(runtime, /\\\"invalid_reasons\\\":/);

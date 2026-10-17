@@ -26,11 +26,11 @@ class NvsBudgetTest(unittest.TestCase):
         self.assertEqual(sum(budget.estimate_custom_preferences({"openquatt_odu_eeprom": [{}, {}]}).values()), 277)
     def test_custom_budget_tracks_configured_components_and_hp_instances(self) -> None:
         self.assertEqual(sum(budget.estimate_custom_preferences({}).values()), 0)
-        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(1)).values()), 55)
-        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(2)).values()), 64)
+        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(1)).values()), 56)
+        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(2)).values()), 65)
         config = q_config()
         del config["openquatt_debug_recorder"]
-        self.assertEqual(sum(budget.estimate_custom_preferences(config).values()), 61)
+        self.assertEqual(sum(budget.estimate_custom_preferences(config).values()), 62)
         self.assertEqual(budget.estimate_custom_preferences({"openquatt_odu_defrost": []}), {})
 
     def test_phy_noise_factory_reset_and_namespaces_are_not_hidden_in_margin(self) -> None:
@@ -69,7 +69,7 @@ class NvsBudgetTest(unittest.TestCase):
             ), contextlib.redirect_stdout(io.StringIO()) as output:
                 result = budget.check_config(Path("unused.yaml"))
             self.assertEqual(result, 1)
-            self.assertIn("estimated=585 available=45 required=100", output.getvalue())
+            self.assertIn("estimated=586 available=44 required=100", output.getvalue())
             self.assertIn("NVS budget: FAIL", output.getvalue())
             self.assertEqual(budget.REQUIRED_AVAILABLE_ENTRIES, 100)
 

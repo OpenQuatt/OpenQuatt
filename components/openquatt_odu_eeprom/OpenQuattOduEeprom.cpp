@@ -41,6 +41,25 @@ bool blank(const oq_eeprom::Record& record) {
     if (bytes[index] != 0xFFU) return false;
   return true;
 }
+bool clear_factory_reset_count() {
+  // ESPHome's pinned FactoryResetComponent uses a one-byte flash preference
+  // with this key in the "esphome" namespace. Its setup is inhibited below,
+  // including the timeout that would otherwise clear a previous count of 2.
+  constexpr uint32_t key = 0x0FA5C0DEU;
+  char name[16];
+  std::snprintf(name, sizeof(name), "%lu", static_cast<unsigned long>(key));
+  nvs_handle_t handle{};
+  if (nvs_open("esphome", NVS_READWRITE, &handle) != ESP_OK) return false;
+  const uint8_t zero = 0U;
+  bool saved = nvs_set_blob(handle, name, &zero, sizeof(zero)) == ESP_OK && nvs_commit(handle) == ESP_OK;
+  nvs_close(handle);
+  if (!saved || nvs_open("esphome", NVS_READONLY, &handle) != ESP_OK) return false;
+  uint8_t count = 0xFFU;
+  size_t bytes = sizeof(count);
+  saved = nvs_get_blob(handle, name, &count, &bytes) == ESP_OK && bytes == sizeof(count) && count == 0U;
+  nvs_close(handle);
+  return saved;
+}
 class Handler : public AsyncWebHandler {
  public:
   Handler(OpenQuattOduEeprom* owner, uint8_t hp) : owner_(owner) {
@@ -223,7 +242,13 @@ void OpenQuattOduEeprom::setup() {
   }
   // The reset counter is deliberately scheduled after both journal loads.
   // Component::mark_failed() prevents its setup() from erasing pending evidence.
-  if (oq_eeprom::holding() && factory_reset_ != nullptr) factory_reset_->mark_failed();
+  if (oq_eeprom::holding() && factory_reset_ != nullptr) {
+    factory_reset_->mark_failed();
+    if (!clear_factory_reset_count()) {
+      storage_bad_ = true;
+      oq_eeprom::hold(hp_, true);
+    }
+  }
   oq_eeprom::checked_mask.fetch_or(1U << (hp_ - 1U), std::memory_order_release);
   status_.available = available;
   // No writes are resumed on boot. Pending jobs need a new, observed power interruption.

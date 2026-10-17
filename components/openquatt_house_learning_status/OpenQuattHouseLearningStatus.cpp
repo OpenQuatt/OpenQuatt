@@ -1,5 +1,6 @@
 #include "OpenQuattHouseLearningStatus.h"
 
+#include "OpenQuattHttpStatus.h"
 #include <cstring>
 
 #include "esphome/core/log.h"
@@ -36,11 +37,13 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
       return;
     }
     if (!this->parent_->storage_available()) {
-      request->send(503, "application/json", R"({"ok":false,"error":"psram_unavailable"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"psram_unavailable"})");
       return;
     }
     if (!this->parent_->try_begin_request()) {
-      request->send(429, "application/json", R"({"ok":false,"error":"request_busy"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::TOO_MANY_REQUESTS,
+                                         R"({"ok":false,"error":"request_busy"})");
       return;
     }
 
@@ -52,7 +55,8 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
         exporting ? this->parent_->snapshot_export(&snapshot_length) : this->parent_->snapshot_status(&snapshot_length);
     if (!snapshot_ready) {
       this->parent_->end_request();
-      request->send(503, "application/json", R"({"ok":false,"error":"snapshot_unavailable"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"snapshot_unavailable"})");
       return;
     }
 

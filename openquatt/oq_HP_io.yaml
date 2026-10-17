@@ -666,6 +666,9 @@ select:
     address: 3999
     value_type: U_WORD
     optimistic: true
+    lambda: |-
+      id(oq_incident_manager).observe_boot_readback(${hp_index}, 3999U, static_cast<float>(x), millis());
+      return {};
     optionsmap:
       "Standby": 0
       "Cooling": 1
@@ -685,6 +688,9 @@ select:
     address: 1999
     value_type: U_WORD
     optimistic: true
+    lambda: |-
+      id(oq_incident_manager).observe_boot_readback(${hp_index}, 1999U, static_cast<float>(x), millis());
+      return {};
     write_lambda: |-
       if (!oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value)) {
         id(${hp_id}_compressor_command_revalidation_required) = true;
@@ -722,6 +728,9 @@ select:
     address: 2006
     value_type: U_WORD
     optimistic: true
+    write_lambda: |-
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 2006, value)) return {};
+      return value;
     optionsmap:
       "Off": 0
       "On": 1
@@ -734,6 +743,9 @@ select:
     address: 2010
     value_type: U_WORD
     optimistic: true
+    write_lambda: |-
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 2010, value)) return {};
+      return value;
     optionsmap:
       "Off": 0
       "On": 4096
@@ -779,6 +791,9 @@ number:
     register_type: holding
     address: 2015
     value_type: U_WORD
+    write_lambda: |-
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 2015, x)) return {};
+      return x;
     min_value: 0
     max_value: 1000
     mode: slider

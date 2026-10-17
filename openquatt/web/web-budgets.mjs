@@ -11,7 +11,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // Historical heating-stop reasons and both locale catalogues add ~10.6 kB raw.
     // Aux relay (R2) run-on settings, copy in both locales and legacy-backup migration add ~2.2 kB raw / ~0.7 kB gzip.
     // The existing relative gzip growth limit remains unchanged.
-    // EEPROM service flow adds 13,940 B raw / 4,344 B gzip (Node 24.19.0).
+    // EEPROM service for all four ODU variants adds ~15.3 kB raw / ~4.7 kB gzip (Node 24.19.0).
     raw: 1_351_000,
     gzipBaselineCeiling: 362_000,
   },

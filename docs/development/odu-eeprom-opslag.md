@@ -67,7 +67,13 @@ setup uit voordat de counter kan wissen. De resetknop vereist dat beide
 geconfigureerde journaalchecks zijn afgerond en controleert die gate plus de
 gedeelde blokkering ook opnieuw na zijn wachttijd. Na veilige afronding is de knop weer
 beschikbaar; de bij boot geblokkeerde powercyclecounter wordt pas bij een volgende
-veilige boot actief. Een volledige NVS-erase buiten deze firmware of de
+veilige boot actief. Omdat de overgeslagen countersetup ook zijn automatische
+timeout mist, wordt uitsluitend zijn bestaande éénbytecounter
+`esphome/262521054` (`0x0FA5C0DE`, gepinde ESPHome-key) native op nul gezet:
+set, commit, heropenen en exacte readback. Een oude stand van twee kan daardoor
+na herstel geen veel latere onverwachte fabrieksreset veroorzaken. Elke fout bij
+dit wissen houdt de hele herstelservice geblokkeerd; andere preferences en het
+EEPROM-journaal worden niet gewist. Een volledige NVS-erase buiten deze firmware of de
 initialisatie-/herstelpaden van ESP-IDF kan het journaal niet overleven; die
 platformgrens vereist afzonderlijk herstelbewijs en wordt niet als veilige
 annulering behandeld.

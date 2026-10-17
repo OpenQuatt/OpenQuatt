@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "esphome/core/component.h"
+#include "OpenQuattRestartHandoffPolicy.h"
 #ifdef USE_OTA_STATE_LISTENER
 #include "esphome/components/ota/ota_backend.h"
 #endif
@@ -12,12 +13,22 @@ namespace esphome::openquatt_incident_manager {
 class OpenQuattIncidentManager;
 
 // Must run before ESPHome safe-mode and all component setup. A false return means
-// the caller must restart immediately: an existing record could not be consumed.
+// the caller must keep control inhibited: an existing record could not be consumed.
 bool initialize_restart_handoff(uint32_t minimum_off_ms);
 bool restart_handoff_storage_ready();
+bool boot_resume_eligible(uint8_t hp_index = 0U);
+bool boot_resume_image_confirmed();
+using OtaResumeGuardReader = uint8_t (*)();
+void set_ota_resume_guard_reader(OtaResumeGuardReader reader);
+uint8_t current_running_resume_mask();
+bool ota_cycle_hold(uint8_t hp_index, uint32_t now_ms);
+using PowerHouseResumeReader = restart_handoff::PowerHouseResumeState (*)();
+void set_power_house_resume_reader(PowerHouseResumeReader reader);
+bool take_power_house_resume(restart_handoff::PowerHouseResumeState* state);
 uint32_t restored_off_credit_ms(uint8_t hp_index);
-bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);
-bool arm_completed_ota_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);
+bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms, uint8_t resume_mask);
+bool arm_completed_ota_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms, uint8_t resume_mask = 0U,
+                               const restart_handoff::PowerHouseResumeState& power_house = {});
 
 class OpenQuattOtaHandoff : public Component
 #ifdef USE_OTA_STATE_LISTENER
@@ -30,7 +41,10 @@ class OpenQuattOtaHandoff : public Component
   void set_minimum_off_ms(uint32_t value) { this->minimum_off_ms_ = value; }
 
   void setup() override;
+  void loop() override;
+  bool cycle_hold(uint8_t hp_index, uint32_t now_ms);
 #ifdef USE_OTA_STATE_LISTENER
+  void set_background_ota(ota::OTAComponent* component) { this->background_ota_ = component; }
   void on_ota_global_state(ota::OTAState state, float progress, uint8_t error, ota::OTAComponent* component) override;
 #endif
 
@@ -43,6 +57,12 @@ class OpenQuattOtaHandoff : public Component
   uint32_t ota_hp1_credit_ms_{0U};
   uint32_t ota_hp2_credit_ms_{0U};
   bool ota_handoff_attempted_{false};
+  bool ota_active_{false};
+#ifdef USE_OTA_STATE_LISTENER
+  ota::OTAComponent* background_ota_{nullptr};
+#endif
+  restart_handoff::OtaResumePolicy ota_resume_;
+  restart_handoff::PowerHouseResumeState ota_power_house_{};
 };
 
 }  // namespace esphome::openquatt_incident_manager

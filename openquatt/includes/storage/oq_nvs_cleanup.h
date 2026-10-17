@@ -9,6 +9,7 @@
 
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "esp_partition.h"
 #include "esphome/core/entity_base.h"
 #include "esphome/core/log.h"
 
@@ -24,10 +25,16 @@ inline void log_stats(const char* phase) {
     ESP_LOGW(TAG, "NVS stats unavailable at %s: %s", phase, esp_err_to_name(err));
     return;
   }
-  ESP_LOGI(TAG, "NVS %s: used=%u free=%u available=%u total=%u namespaces=%u", phase,
+  const esp_partition_t* partition =
+      esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, "nvs");
+  if (partition == nullptr) {
+    ESP_LOGW(TAG, "NVS partition unavailable at %s", phase);
+    return;
+  }
+  ESP_LOGI(TAG, "NVS %s: used=%u free=%u available=%u total=%u namespaces=%u size=%u KiB", phase,
            static_cast<unsigned>(stats.used_entries), static_cast<unsigned>(stats.free_entries),
            static_cast<unsigned>(stats.available_entries), static_cast<unsigned>(stats.total_entries),
-           static_cast<unsigned>(stats.namespace_count));
+           static_cast<unsigned>(stats.namespace_count), static_cast<unsigned>(partition->size / 1024U));
 }
 
 inline bool erase_esphome_preferences(std::span<const uint32_t> keys, const char* reason) {
