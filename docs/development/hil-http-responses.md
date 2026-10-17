@@ -32,7 +32,7 @@ rapporten en lokale credentials alleen in genegeerde `.tmp/hil/<run>/`.
 Lokale checks:
 
 ```bash
-python3 -m unittest scripts.tests.test_http_status_runtime scripts.tests.test_mqtt_ingress_lifecycle_contract
+npm run check:python
 npm run check:cpp-format
 python3 scripts/dev.py validate --config-only --config configs/heatpump_controller_q/duo.yaml
 ```
