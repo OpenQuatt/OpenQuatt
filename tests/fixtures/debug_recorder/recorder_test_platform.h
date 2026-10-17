@@ -187,9 +187,9 @@ class RAMAllocator {
     const size_t call = ++recorder_test::allocation_calls;
     if (recorder_test::allocation_hook) recorder_test::allocation_hook();
     if (recorder_test::fail_allocation_at == call) return nullptr;
-    auto* storage = static_cast<T*>(std::malloc(count * sizeof(T)));
+    void* storage = std::malloc(count * sizeof(T));
     if (storage != nullptr) std::memset(storage, 0xa5, count * sizeof(T));
-    return storage;
+    return static_cast<T*>(storage);
   }
 
  private:
