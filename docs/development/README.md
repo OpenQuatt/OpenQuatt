@@ -12,6 +12,7 @@ bijdragers. Ze zijn bewust geen onderdeel van de gebruikerssite.
 - [Beslislog: contract en vragenmatrix](control-replay-firmware.md): eventcontract tussen firmware en web-app.
 - [Hardware-in-the-loop-tests](hil-testing.md): veiligheidscontract en HIL-runs.
 - [Defrostprofielen testen](hil-defrost-profiles.md): herbruikbaar HIL-testplan.
+- [EEPROM opslag en hardwarevrijgave](odu-eeprom-opslag.md): permanente ODU-instellingen, UI en herstelcontract.
 - [NVS capaciteit en persistentie](nvs-persistence.md): opslagbudget, migratie en herstel.
 - [Netwerkdiagnostiek](netwerkdiagnostiek.md): DNS-herstel en socketbegroting.
 - [Power House Auto-Tuning](power-house-autotuning-development.md): implementatie en Adaptive-roadmap.

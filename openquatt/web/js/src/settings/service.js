@@ -1251,6 +1251,7 @@ import { formatNumber, t } from "../i18n/index.js";
           <div class="oq-settings-system-summary oq-settings-service-task-list">
             ${service.tasks.map((task) => renderSettingsServiceTaskRow(task)).join("")}
             ${renderSettingsOduEepromDumpRow()}
+            ${renderSettingsSystemRow({ label: t("oduEepromWrite.title"), value: t("oduEepromWrite.rowValue"), note: t("oduEepromWrite.rowNote"), action: `<button type="button" class="oq-helper-button oq-helper-button--ghost" data-oq-action="open-odu-eeprom-write">${escapeHtml(t("settingsInstallation.openAction"))}</button>` })}
           </div>
         </div>
       `,

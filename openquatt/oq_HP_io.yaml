@@ -79,6 +79,7 @@ modbus_controller:
             // so an outstanding recovery probe is gone: allow a fresh one.
             id(${hp_id}_recovery_probe_pending) = false;
             id(${hp_id}_odu_defrost)->offline();
+            id(${hp_id}_odu_eeprom)->offline();
             // Preserve validated control metadata; the incident manager decides
             // whether a transport interruption requires a stop.
             id(${hp_id}_odu_generation_request_token) =
@@ -182,6 +183,15 @@ openquatt_odu_defrost:
   - id: ${hp_id}_odu_defrost
     controller: ${hp_id}
     eeprom_dump: ${hp_id}_odu_eeprom_dump
+    web_auth: oq_web_auth_store
+    hp_index: ${hp_index}
+
+openquatt_odu_eeprom:
+  - id: ${hp_id}_odu_eeprom
+    controller: ${hp_id}
+    eeprom_dump: ${hp_id}_odu_eeprom_dump
+    settings: ${hp_id}_odu_settings
+    defrost: ${hp_id}_odu_defrost
     web_auth: oq_web_auth_store
     hp_index: ${hp_index}
 
@@ -1909,7 +1919,7 @@ interval:
           // Defrost reserves service access, but needs live mode/bit telemetry
           // throughout the cycle. Other EEPROM operations still pause polling.
           if (id(${hp_id}_odu_eeprom_dump).is_active() &&
-              !id(${hp_id}_odu_defrost)->reserved()) {
+              !id(${hp_id}_odu_defrost)->reserved() && !oq_eeprom::holding()) {
             return;
           }
           if (id(oq_runtime_polling_paused).state) {

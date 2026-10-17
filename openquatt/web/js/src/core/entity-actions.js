@@ -1,3 +1,4 @@
+import { handleEepromWriteAction, updateEepromWriteDraft } from "../features/odu-eeprom-write.js";
 import { handlePerformanceTelemetryPromptAction, handlePerformanceTelemetryPromptKeyDown } from "../features/performance-telemetry-prompt.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { hasEntity } from "./app-shared.js";
@@ -41,6 +42,7 @@ import { updateCurvePointDraft, updateSimpleCurveDraft } from "./simple-curve.js
 import { patchRunExtensionThresholds, renderSimpleCurvePreview } from "../settings/heating.js";
 
 const actionDelegates = [
+  handleEepromWriteAction,
   handlePerformanceTelemetryPromptAction,
   handleViewAction,
   handleControlReplayAction,
@@ -435,6 +437,10 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
+    if (event.target.dataset.oqEepromWriteHp) {
+      updateEepromWriteDraft(event.target);
+      return;
+    }
     if (event.target.dataset.oqOduDefrostHp) {
       updateOduDefrostDraft(event.target);
       return;

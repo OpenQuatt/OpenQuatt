@@ -110,6 +110,14 @@ keys met onbewezen herkomst vallen buiten deze cleanup.
 
 ## Budgetberekening
 
+De experimentele [EEPROM-opslagservice](odu-eeprom-opslag.md) reserveert in de
+checker aanvullend maximaal 139 entries voor Single of 277 voor Duo: twee
+2116-byte-journalblobs per HP plus één namespace. Zij schrijft uitsluitend op
+een daadwerkelijk gevonden NVS-partitie van minimaal 64 KiB en bewaakt vóór
+elke write de marge van 100 beschikbare entries plus de nieuwe blob. De
+24 KiB-tabellen hieronder beschrijven de eerdere inventaris zonder die nieuwe
+journalrecords; zij vormen geen vrijgave voor de EEPROM-functie.
+
 Een NVS-pagina bevat 126 entries. Van de zes pagina's blijft één beschikbaar
 voor garbage collection: 630 entries voor live records. Een blob kost
 `1 + aantal_chunks + ceil(bytes / 32)` entries. Kleine ESPHome-blobs kosten

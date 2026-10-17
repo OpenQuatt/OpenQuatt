@@ -1,5 +1,6 @@
 #include <assert.h>
 
+#include "../../openquatt/includes/odu/oq_odu_eeprom_maintenance.h"
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -19,6 +20,18 @@ struct FakeCall {
   void set_value(float) {}
   void perform() {}
 };
+struct FakeSwitch {
+  bool state{false};
+};
+namespace esphome::web_server_base {
+struct Server {
+  bool recovery{false};
+  bool is_recovery_active() const { return recovery; }
+};
+inline Server server;
+inline Server* global_web_server_base = &server;
+}  // namespace esphome::web_server_base
+FakeSwitch oq_runtime_polling_paused;
 struct FakeSensor {
   float state{0};
   bool present{true};
@@ -201,6 +214,11 @@ bool queued(bool is_hp1, uint16_t address, uint16_t value) {
 }
 
 void reset() {
+  oq_eeprom::hold_mask.store(0U);
+  oq_eeprom::permit = {};
+  oq_eeprom::configured_mask = 0U;
+  esphome::web_server_base::server.recovery = false;
+  oq_runtime_polling_paused.state = false;
   test_now_ms = 1000;
   oq_water_temp_hard_trip_active = oq_lowflow_fault_active = false;
   oq_commissioning_active = oq_manual_hp_active = false;
@@ -494,7 +512,48 @@ void queued_heating_mode_rechecks_user_frequency_constraints() {
 
 }  // namespace
 
+void eeprom_dispatch_rechecks_live_state_after_cached_safe_snapshot() {
+  reset();
+  oq_eeprom::configured_mask = OQ_TOPOLOGY_DUO ? 3U : 1U;
+  oq_eeprom::hold(1U, true);
+  for (unsigned index = 0; index < (OQ_TOPOLOGY_DUO ? 2U : 1U); ++index) {
+    oq_eeprom::safety[index] = {true, true, true, true, true, 0, test_now_ms};
+    auto& service = index == 0 ? hp1_odu_defrost : hp2_odu_defrost;
+    service.cycle.observe_mode(0, test_now_ms);
+    service.cycle.observe_bit(0, test_now_ms);
+    oq_incident_manager.outputs[index].running_confirmed = false;
+    oq_incident_manager.outputs[index].run_state = oq_incidents::RunState::STOPPED;
+  }
+  hp1_compressor_frequency.state = hp2_compressor_frequency.state = 0;
+  const uint8_t pdu[]{6U, 15U, 161U, 6U, 50U};  // 4001 = 0x0632
+  oq_eeprom::permit = {nullptr, 4001U, 1U, 0x0632U, 1U, 1U, 6U, true};
+  assert(oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  hp1_odu_defrost.cycle.mode = 2;  // A new RX arrived after the actuator snapshot.
+  assert(oq_eeprom::safe(test_now_ms, 1U, true));
+  assert(!oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  hp1_odu_defrost.cycle.mode = 5;  // Data mode belongs only to the permit owner.
+  assert(oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  hp1_odu_defrost.cycle.manual = true;
+  assert(!oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  hp1_odu_defrost.cycle.manual = false;
+  hp1_odu_defrost.automatic_enabled = false;  // Empty defrost-editor cache after offline is irrelevant.
+  assert(oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  hp1_odu_defrost.automatic_enabled = true;
+#if OQ_TOPOLOGY_DUO
+  hp2_odu_defrost.cycle.mode = 5;
+  assert(!oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  hp2_odu_defrost.cycle.mode = 0;
+#endif
+  esphome::web_server_base::server.recovery = true;
+  assert(!oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  esphome::web_server_base::server.recovery = false;
+  oq_incident_manager.outputs[0].must_stop = true;
+  assert(!oq_command_runtime::queued_address(1U, pdu, sizeof(pdu)));
+  assert(oq_eeprom::stop_epoch > 0U);
+}
+
 int main() {
+  eeprom_dispatch_rechecks_live_state_after_cached_safe_snapshot();
   forced_defrost_requires_live_ownership_and_gates();
   queued_safety_zero_is_readonly_and_temperature_independent();
   queued_heating_rechecks_selected_level_and_frequency_policy();

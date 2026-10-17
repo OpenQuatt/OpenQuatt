@@ -1,5 +1,10 @@
 # Defrostdiagnostiek
 
+De afzonderlijke experimentele functie [Permanent bewaren in buitenunit](odu-eeprom.md)
+kan alleen de reeds instelbare ontdooimethode in EEPROM bewaren. Overige
+defrostparameters blijven alleen-lezen. Deze functie heeft een eigen backup,
+bevestiging en controle na spanningsonderbreking.
+
 Onder **Instellingen buitenunit → Ontdooien** staan live metingen en een handmatige aanvraag per HP. De buitenunit blijft eigenaar van de ontdooicyclus. OpenQuatt stuurt geen eigen compressorfrequentie, ventilator of vierwegklep tijdens die cyclus.
 
 De UI scheidt status en handmatige bediening, één methodekeuze met korte uitleg en ingeklapte **Technische metingen**. De keuze blijft een concept tot **Toepassen** en de aparte bevestiging; de uitgelezen methode blijft zichtbaar.

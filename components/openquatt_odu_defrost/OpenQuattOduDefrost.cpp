@@ -1,4 +1,5 @@
 #include "OpenQuattOduDefrost.h"
+#include "includes/odu/oq_odu_eeprom_maintenance.h"
 #include <cstdio>
 #include <cstring>
 #include "esphome/components/web_server_base/web_server_base.h"
@@ -173,6 +174,7 @@ bool OpenQuattOduDefrost::supports_mode(int mode) const {
 }
 
 bool OpenQuattOduDefrost::enqueue(Action action) {
+  if (oq_eeprom::holding() && action != Action::LOAD) return false;
   portENTER_CRITICAL(&mux_);
   const bool accepted = !action_pending_ && !snapshot_.busy;
   if (accepted) {
@@ -184,6 +186,7 @@ bool OpenQuattOduDefrost::enqueue(Action action) {
 }
 
 bool OpenQuattOduDefrost::enqueue_save(int desired, int expected, bool auto_reapply) {
+  if (oq_eeprom::holding()) return false;
   portENTER_CRITICAL(&mux_);
   const bool accepted = !action_pending_ && !snapshot_.busy;
   if (accepted) {
@@ -213,7 +216,7 @@ void OpenQuattOduDefrost::loop() {
     save_auto_reapply = pending_auto_reapply_;
   }
   portEXIT_CRITICAL(&mux_);
-  if (action == Action::NONE && profile_available_ && consent_authorized_ &&
+  if (!oq_eeprom::holding() && action == Action::NONE && profile_available_ && consent_authorized_ &&
       oq_defrost::profile_reconcile_ready(profile_, profile_state_, variant_, control_board_item_, snapshot.online,
                                           snapshot.fresh, snapshot.identity, busy(), request_pending) &&
       reconcile_due_ms_ != 0U && static_cast<int32_t>(millis() - reconcile_due_ms_) >= 0) {
@@ -358,6 +361,22 @@ void OpenQuattOduDefrost::finish_profile_(bool verified) {
   reconcile_ = false;
   if (profile_available_ && consent_authorized_) reconcile_due_ms_ = millis() + 60000U;
 }
+bool OpenQuattOduDefrost::revoke_auto_reapply() {
+  if (!profile_available_) return true;
+  consent_authorized_ = false;
+  const auto consent = oq_defrost::make_consent(profile_, false);
+  const bool saved = consent_pref_.save(&consent);
+  const bool synced = global_preferences != nullptr && global_preferences->sync();
+  oq_defrost::Consent actual;
+  if (!saved || !synced || !consent_pref_.load(&actual) || !oq_defrost::valid_consent(actual) ||
+      std::memcmp(&actual, &consent, sizeof(actual)) != 0) {
+    profile_state_ = "REVOKE_FAILED";
+    return false;
+  }
+  profile_state_ = "CONSENT_REQUIRED";
+  reconcile_due_ms_ = 0U;
+  return true;
+}
 bool OpenQuattOduDefrost::take_trigger() {
   // Finish all previously accepted traffic before the single forced command.
   auto* hub = controller_->hub();
@@ -376,6 +395,10 @@ bool OpenQuattOduDefrost::take_save(int& desired, int& expected) {
   return true;
 }
 bool OpenQuattOduDefrost::send_forced_once(uint32_t now) {
+  if (oq_eeprom::holding()) {
+    reject("BUSY");
+    return false;
+  }
   // Called only by the actuator after its current guards. ModbusClientDevice
   // deliberately does not retry this non-idempotent write on a lost response.
   clear_tx_queue_for_address();
@@ -392,6 +415,10 @@ bool OpenQuattOduDefrost::send_forced_once(uint32_t now) {
   return true;
 }
 bool OpenQuattOduDefrost::send_mode_once(int desired, uint32_t now) {
+  if (oq_eeprom::holding()) {
+    reject("BUSY");
+    return false;
+  }
   // Single defrost-mode write without retry; readback must prove success.
   if (!oq_defrost::is_supported_defrost_mode(desired, variant_)) {
     reject("INVALID_MODE");
@@ -422,6 +449,10 @@ bool OpenQuattOduDefrost::send_mode_once(int desired, uint32_t now) {
   return true;
 }
 bool OpenQuattOduDefrost::normal_write_allowed(int value, bool safety_stop) {
+  if (oq_eeprom::holding()) {
+    if (value != 0 || !safety_stop) return false;
+    ++oq_eeprom::stop_epoch;
+  }
   if (value == 0 && safety_stop) {
     if (holding()) {
       clear_tx_queue_for_device();

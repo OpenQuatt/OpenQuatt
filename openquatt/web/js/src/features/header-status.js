@@ -1,3 +1,4 @@
+import { renderEepromWriteModal } from "./odu-eeprom-write.js";
 import { renderPerformanceTelemetryPrompt } from "./performance-telemetry-prompt.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
@@ -518,6 +519,8 @@ import { render } from "../core/render-scheduler.js";
     if (state.systemModal === "water-sensor-corrections") {
       return renderHpWaterSensorOffsetsModal();
     }
+
+    if (state.systemModal === "odu-eeprom-write") return renderEepromWriteModal();
 
     if (state.systemModal === "odu-eeprom-dump") {
       return renderOduEepromDumpModal();

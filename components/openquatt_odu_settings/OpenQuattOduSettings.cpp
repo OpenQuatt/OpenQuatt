@@ -10,6 +10,7 @@
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
+#include "includes/odu/oq_odu_eeprom_maintenance.h"
 
 namespace esphome {
 namespace openquatt_odu_settings {
@@ -335,6 +336,7 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_load() {
 
 OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_save(const oq_odu::BottomPlateSettings& settings,
                                                                        bool auto_reapply) {
+  if (oq_eeprom::holding()) return RequestResult::BUSY;
   if (!oq_odu::valid_bottom_plate_settings(settings)) return RequestResult::INVALID_SETTINGS;
   if (!this->available_.load(std::memory_order_acquire) || !this->online_.load(std::memory_order_acquire)) {
     return RequestResult::UNAVAILABLE;
@@ -383,7 +385,22 @@ bool OpenQuattOduSettings::persist_profile_(const oq_odu::BottomPlateProfileStor
   if (verified && (!queued || !sync_ok)) {
     ESP_LOGW(TAG, "HP%u profile write reported failure but read-back verified it", this->hp_index_);
   }
-  return verified;
+  return queued && sync_ok && verified;
+}
+
+bool OpenQuattOduSettings::revoke_auto_reapply() {
+  if (!this->profile_available_.load()) return true;
+  auto profile = this->stored_profile_;
+  profile.flags = 0U;
+  profile.checksum = oq_odu::bottom_plate_profile_checksum(profile);
+  if (!this->persist_profile_(profile)) return false;
+  portENTER_CRITICAL(&this->state_mux_);
+  this->stored_profile_ = profile;
+  this->auto_reapply_.store(false);
+  this->manual_apply_pending_.store(false);
+  this->reconcile_due_ms_ = 0U;
+  portEXIT_CRITICAL(&this->state_mux_);
+  return true;
 }
 
 bool OpenQuattOduSettings::begin_operation_(Operation operation, uint32_t operation_token) {
@@ -401,6 +418,7 @@ bool OpenQuattOduSettings::token_matches_(uint32_t operation_token) const {
 }
 
 void OpenQuattOduSettings::loop() {
+  if (oq_eeprom::holding() && !this->busy_.load()) return;
   if (!this->busy_.load(std::memory_order_acquire)) {
     if ((this->auto_reapply_.load(std::memory_order_acquire) ||
          this->manual_apply_pending_.load(std::memory_order_acquire)) &&

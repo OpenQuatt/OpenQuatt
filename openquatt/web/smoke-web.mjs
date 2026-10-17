@@ -34,6 +34,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/house-learning.js",
   "core/entity-actions.js -> features/mqtt-actions.js",
   "core/entity-actions.js -> features/odu-eeprom-dump.js",
+  "core/entity-actions.js -> features/odu-eeprom-write.js",
   "core/entity-actions.js -> features/odu-defrost.js",
   "core/entity-actions.js -> features/odu-runtime-frequency.js",
   "core/entity-actions.js -> features/odu-settings.js",
