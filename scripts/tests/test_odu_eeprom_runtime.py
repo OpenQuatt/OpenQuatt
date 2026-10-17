@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -15,6 +16,7 @@ class OduEepromRuntimeTest(unittest.TestCase):
             self.skipTest("C++ compiler unavailable")
         wrappers = (
             "esp_partition.h", "nvs.h", "PsramBuffer.h", "esphome/core/log.h",
+            "esphome/components/factory_reset/factory_reset.h",
             "esphome/components/openquatt_odu_settings/OpenQuattOduSettings.h",
             "esphome/components/openquatt_odu_defrost/OpenQuattOduDefrost.h",
         )
@@ -25,8 +27,12 @@ class OduEepromRuntimeTest(unittest.TestCase):
                 header.parent.mkdir(parents=True, exist_ok=True)
                 header.write_text('#include "odu_eeprom_stubs.h"\n')
             binary = temporary / "odu_eeprom_runtime"
-            compiled = subprocess.run([
-                compiler, "-std=c++20", "-I", str(temporary), "-I", str(FIXTURES),
+            compiler_args = [compiler, "-std=c++20"]
+            if sys.platform == "darwin":
+                sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()
+                compiler_args += ["-isystem", str(Path(sdk) / "usr/include/c++/v1")]
+            compiled = subprocess.run(compiler_args + [
+                "-I", str(temporary), "-I", str(FIXTURES),
                 "-I", str(ROOT), "-I", str(ROOT / "openquatt"),
                 str(FIXTURES / "odu_eeprom_runtime.cpp"), "-o", str(binary),
             ], capture_output=True, text=True)

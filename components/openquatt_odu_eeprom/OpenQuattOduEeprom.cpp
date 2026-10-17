@@ -219,6 +219,10 @@ void OpenQuattOduEeprom::setup() {
     image_.release();
     frame_.release();
   }
+  // The reset counter is deliberately scheduled after both journal loads.
+  // Component::mark_failed() prevents its setup() from erasing pending evidence.
+  if (oq_eeprom::holding() && factory_reset_ != nullptr) factory_reset_->mark_failed();
+  oq_eeprom::checked_mask.fetch_or(1U << (hp_ - 1U), std::memory_order_release);
   status_.available = available;
   // No writes are resumed on boot. Pending jobs need a new, observed power interruption.
   publish_(storage_bad_ ? "STORAGE_FAILED" : available ? "READY" : "STORAGE_UNAVAILABLE");

@@ -107,7 +107,7 @@ class AsyncWebHandler {
 };
 namespace esphome {
 namespace setup_priority {
-constexpr float WIFI = 200.0f;
+constexpr float WIFI = 250.0f;
 }
 class Component {
  public:
@@ -116,6 +116,13 @@ class Component {
   virtual void loop() {}
   virtual float get_setup_priority() const { return 0.0f; }
 };
+namespace factory_reset {
+class FactoryResetComponent {
+ public:
+  bool failed{false};
+  void mark_failed() { failed = true; }
+};
+}  // namespace factory_reset
 namespace openquatt_common {
 template <typename T>
 class PsramBuffer {

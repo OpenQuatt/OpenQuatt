@@ -188,6 +188,7 @@ openquatt_odu_defrost:
 
 openquatt_odu_eeprom:
   - id: ${hp_id}_odu_eeprom
+    factory_reset_counter: oq_factory_reset_counter
     controller: ${hp_id}
     eeprom_dump: ${hp_id}_odu_eeprom_dump
     settings: ${hp_id}_odu_settings

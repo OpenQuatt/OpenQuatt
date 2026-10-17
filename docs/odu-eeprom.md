@@ -85,4 +85,5 @@ Bij een opslagfout mag de UI geen geslaagde EEPROM-opslag melden. Herstart
 OpenQuatt om de duurzaam opgeslagen opdracht opnieuw te laden en controleer het
 resultaat. Voer tijdens een onafgeronde opdracht geen downgrade uit naar firmware
 zonder deze EEPROM-blokkering. Een gewone instellingenbackup is geen backup van
-dit hersteljournaal.
+dit hersteljournaal. De resetknop en de automatische fabrieksreset na snelle
+powercycles zijn tijdens een onafgeronde opdracht geblokkeerd.

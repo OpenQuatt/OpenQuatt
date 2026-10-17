@@ -15,6 +15,8 @@ struct Safety {
 };
 inline std::array<Safety, 2> safety{};
 inline uint8_t configured_mask{0U};
+inline uint8_t expected_mask{0U};  // Set by configuration before App.setup().
+inline std::atomic<uint8_t> checked_mask{0U};
 inline std::atomic<uint8_t> hold_mask{0U};
 inline uint32_t stop_epoch{0U};
 struct WritePermit {
@@ -26,6 +28,10 @@ struct WritePermit {
 inline WritePermit permit{};
 
 inline bool holding() { return hold_mask.load(std::memory_order_acquire) != 0U; }
+inline bool factory_reset_allowed() {
+  return expected_mask != 0U && (checked_mask.load(std::memory_order_acquire) & expected_mask) == expected_mask &&
+         !holding();
+}
 inline void hold(uint8_t hp, bool enabled) {
   const uint8_t bit = static_cast<uint8_t>(1U << (hp - 1U));
   if (enabled)

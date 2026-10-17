@@ -50,7 +50,19 @@ slagen. Een callback-ACK of een preferences-cache geldt niet als duurzame opslag
 Bij een afgebroken write blijft de vorige slotkopie beschikbaar; bij boot wint
 de nieuwste generatie uitsluitend als beide slots geldig of leeg zijn. Een
 niet-leeg corrupt of onleesbaar slot blokkeert altijd, ook naast een geldige
-oudere baseline: het kan een onderbroken schrijfopdracht hebben bevat. Een verse installatie begint zonder job of automatische write.
+oudere baseline: het kan een onderbroken schrijfopdracht hebben bevat. Een verse
+installatie begint zonder job of automatische write.
+
+De factory-resetcounter heeft setupprioriteit `246`, na beide journaalladers
+(`WIFI - 3 = 247`). Een pending, corrupt of onleesbaar journaal schakelt zijn
+setup uit voordat de counter kan wissen. De resetknop vereist dat beide
+geconfigureerde journaalchecks zijn afgerond en controleert die gate plus de
+gedeelde blokkering ook opnieuw na zijn wachttijd. Na veilige afronding is de knop weer
+beschikbaar; de bij boot geblokkeerde powercyclecounter wordt pas bij een volgende
+veilige boot actief. Een volledige NVS-erase buiten deze firmware of de
+initialisatie-/herstelpaden van ESP-IDF kan het journaal niet overleven; die
+platformgrens vereist afzonderlijk herstelbewijs en wordt niet als veilige
+annulering behandeld.
 
 ## Transactie en herstel
 

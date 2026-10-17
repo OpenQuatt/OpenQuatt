@@ -13,6 +13,7 @@ struct Device : OpenQuattOduEeprom {
   bool busy() const { return status_.busy; }
   bool available() const { return status_.available; }
 };
+factory_reset::FactoryResetComponent reset_counter;
 modbus_controller::ModbusController controller;
 openquatt_odu_eeprom_dump::OpenQuattOduEepromDump dump;
 openquatt_odu_settings::OpenQuattOduSettings settings;
@@ -26,24 +27,27 @@ uint16_t lose_address = 0U;
 uint16_t write_status = 0U;
 
 void safe() { oq_eeprom::safety[0] = {true, true, true, true, true, mode, test_now}; }
-void attach(Device& device) {
+void attach(Device& device, uint8_t hp = 1U) {
   dump.busy = false;
+  device.set_factory_reset_counter(&reset_counter);
   device.set_controller(&controller);
   device.set_eeprom_dump(&dump);
   device.set_settings(&settings);
   device.set_defrost(&defrost);
   device.set_web_auth(&auth);
-  device.set_hp_index(1U);
+  device.set_hp_index(hp);
   device.setup();
 }
 void reset() {
+  reset_counter.failed = false;
   durable.clear();
   pending_storage.clear();
   modbus::requests.clear();
   instances[0] = instances[1] = nullptr;
   bus_owner = nullptr;
   oq_eeprom::hold_mask.store(0U);
-  oq_eeprom::configured_mask = 0U;
+  oq_eeprom::configured_mask = oq_eeprom::expected_mask = 0U;
+  oq_eeprom::checked_mask.store(0U);
   oq_eeprom::stop_epoch = 0U;
   oq_eeprom::permit = {};
   allocation_ok = nvs_write_ok = nvs_commit_ok = nvs_read_ok = commit_works = profile_sync_ok = true;
@@ -158,10 +162,14 @@ void prepare(Device& device) {
 int main() {
   static_assert(sizeof(oq_eeprom::Record) == 2116U);
   reset();
+  assert(!oq_eeprom::factory_reset_allowed());
   Device happy;
   attach(happy);
+  assert(oq_eeprom::factory_reset_allowed());
   backup(happy);
+  assert(oq_eeprom::factory_reset_allowed());
   prepare(happy);
+  assert(!oq_eeprom::factory_reset_allowed());
   assert(!happy.enqueue(OpenQuattOduEeprom::Action::COMMIT, 0U, happy.generation() - 1U, false));
   command(happy, OpenQuattOduEeprom::Action::COMMIT);
   assert(writes == 9U && commits == 1U && happy.state() == State::WAIT_VERIFY && oq_eeprom::holding());
@@ -235,7 +243,7 @@ int main() {
   Device rebooted;
   oq_eeprom::hold_mask.store(0U);
   attach(rebooted);
-  assert(oq_eeprom::holding() && rebooted.state() == State::UNCERTAIN);
+  assert(oq_eeprom::holding() && rebooted.state() == State::UNCERTAIN && reset_counter.failed);
   for (unsigned i = 0; i < 20U; ++i) rebooted.loop();
   assert(modbus::requests.empty() && commits == 1U);
   cold_boot(rebooted);
@@ -272,13 +280,13 @@ int main() {
   oq_eeprom::hold_mask.store(0U);
   Device no_memory;
   attach(no_memory);
-  assert(!no_memory.available() && oq_eeprom::holding());
+  assert(!no_memory.available() && oq_eeprom::holding() && reset_counter.failed && !oq_eeprom::factory_reset_allowed());
 
   reset();
   test_partition.size = 24576U;
   Device small;
   attach(small);
-  assert(!small.available() && !oq_eeprom::holding() && durable.empty());
+  assert(!small.available() && !oq_eeprom::holding() && durable.empty() && !reset_counter.failed);
 
   reset();
   program = 0x0122U;
@@ -323,7 +331,7 @@ int main() {
   oq_eeprom::hold_mask.store(0U);
   Device corrupt_reboot;
   attach(corrupt_reboot);
-  assert(corrupt_reboot.result() == "STORAGE_FAILED" && oq_eeprom::holding());
+  assert(corrupt_reboot.result() == "STORAGE_FAILED" && oq_eeprom::holding() && reset_counter.failed);
   assert(!corrupt_reboot.enqueue(OpenQuattOduEeprom::Action::BEGIN_BACKUP, 0U, 0U, false));
 
   reset();
@@ -375,6 +383,14 @@ int main() {
   cold_boot(manual_config);
   command(manual_config, OpenQuattOduEeprom::Action::CAPTURE, 0U, true);
   assert(manual_config.result() == "INVALID_IMAGE" && writes == 0U && oq_eeprom::holding());
+
+  reset();
+  oq_eeprom::expected_mask = 3U;
+  Device primary, secondary;
+  attach(primary);
+  assert(!oq_eeprom::factory_reset_allowed());
+  attach(secondary, 2U);
+  assert(oq_eeprom::factory_reset_allowed());
 
   std::cout << "EEPROM production runtime: PASS\n";
 }

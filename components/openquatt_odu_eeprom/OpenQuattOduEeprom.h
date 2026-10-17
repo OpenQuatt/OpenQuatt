@@ -3,6 +3,7 @@
 #include <esp_partition.h>
 #include "PsramBuffer.h"
 #include <nvs.h>
+#include "esphome/components/factory_reset/factory_reset.h"
 #include "esphome/components/openquatt_odu_settings/OpenQuattOduSettings.h"
 #include "esphome/components/openquatt_odu_defrost/OpenQuattOduDefrost.h"
 #include "includes/odu/oq_odu_eeprom_image.h"
@@ -18,7 +19,11 @@ class OpenQuattOduEeprom : public Component, public modbus::ModbusClientDevice {
   void set_settings(openquatt_odu_settings::OpenQuattOduSettings* value) { settings_ = value; }
   void set_defrost(openquatt_odu_defrost::OpenQuattOduDefrost* value) { defrost_ = value; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* value) { auth_ = value; }
-  void set_hp_index(uint8_t value) { hp_ = value; }
+  void set_factory_reset_counter(factory_reset::FactoryResetComponent* value) { factory_reset_ = value; }
+  void set_hp_index(uint8_t value) {
+    hp_ = value;
+    oq_eeprom::expected_mask |= 1U << (hp_ - 1U);
+  }
   void setup() override;
   void loop() override;
   float get_setup_priority() const override { return setup_priority::WIFI - 3.0f; }
@@ -54,6 +59,7 @@ class OpenQuattOduEeprom : public Component, public modbus::ModbusClientDevice {
   openquatt_odu_settings::OpenQuattOduSettings* settings_{nullptr};
   openquatt_odu_defrost::OpenQuattOduDefrost* defrost_{nullptr};
   openquatt_web_auth::OpenQuattWebAuth* auth_{nullptr};
+  factory_reset::FactoryResetComponent* factory_reset_{nullptr};
   const esp_partition_t* partition_{nullptr};
   openquatt_common::PsramBuffer<oq_eeprom::Record> records_{};
   openquatt_common::PsramBuffer<oq_eeprom::Image> image_{};

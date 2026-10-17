@@ -98,6 +98,9 @@ provisioning:
       - logger.log: "API provisioning window closed; power-cycle to reopen it"
 
 factory_reset:
+  id: oq_factory_reset_counter
+  # ODU EEPROM journals load at WIFI - 3 (247); pending evidence must win.
+  setup_priority: 246
   resets_required: 3
   max_delay: 10s
   on_increment:
@@ -1299,10 +1302,27 @@ button:
             - lambda: |-
                 ESP_LOGW("oq_fw", "Firmware install request ignored because an OTA operation is already active.");
 
-  - platform: factory_reset
+  - platform: template
     id: factory_reset_button
     name: "Factory reset"
     entity_category: config
+    device_class: restart
+    icon: mdi:restart-alert
+    on_press:
+      - if:
+          condition:
+            lambda: return oq_eeprom::factory_reset_allowed();
+          then:
+            - delay: 100ms
+            - lambda: |-
+                // Recheck after the delay: a service request may have arrived.
+                if (!oq_eeprom::factory_reset_allowed()) return;
+                esphome::global_preferences->reset();
+                esphome::App.safe_reboot();
+          else:
+            - logger.log:
+                level: WARN
+                format: "Factory reset blocked: finish ODU EEPROM recovery first"
 
 switch:
   - platform: template
