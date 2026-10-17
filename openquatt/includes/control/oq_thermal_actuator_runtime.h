@@ -579,15 +579,6 @@ class Runtime {
       applied = cycle.frequency.pick_allowed_level(is_hp1, expected_mode, applied, 1, policy_maximum);
     }
 
-    if (applied > 0 && cycle.manual_service_active) {
-      applied = cycle.frequency.pick_temperature_level(is_hp1, expected_mode, applied);
-      if (applied == 0) {
-        block_reason = "temperature envelope blocks manual heating request";
-        candidate_reason = openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
-        this->service_guard_(cycle, is_hp1) = "temperatuurbegrenzing blokkeert handmatige verwarming";
-      }
-    }
-
     oq_odu::LevelCommand command{};
     if (applied > 0) {
       command = cycle.manual_service_active

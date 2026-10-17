@@ -25,6 +25,7 @@ oq_ot_display::HeatPump hp(oq_odu::Variant variant, float mode, float frequency)
   result.working_mode.observe(mode, NOW, true);
   result.compressor_frequency.observe(frequency, NOW, true);
   result.defrost.observe(0.0f, NOW, true);
+  result.water_out.observe(35.0f, NOW, true);
   return result;
 }
 
@@ -122,7 +123,13 @@ int main() {
   // Unknown model inputs invalidate only the percentage, not the activity icon.
   assert(std::isnan(display(first, {}, false, NOW, NAN).modulation_percent));
   assert(display(first, {}, false, NOW, NAN).heating_active);
-  assert(std::isnan(display(first, {}, false, NOW, 7.0f, NAN).modulation_percent));
+  near(display(first, {}, false, NOW, 7.0f, NAN).modulation_percent, single.modulation_percent);
+  missing = first;
+  missing.water_out.invalidate();
+  assert(std::isnan(display(missing).modulation_percent));
+  missing = first;
+  missing.water_out.observe(40, NOW, true);
+  assert(std::fabs(display(missing).modulation_percent - single.modulation_percent) > .1f);
   missing = first;
   missing.compressor_frequency.observe(121.0f, NOW, true);
   assert(!display(missing).heating_active);

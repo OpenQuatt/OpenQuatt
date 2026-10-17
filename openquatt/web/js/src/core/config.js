@@ -71,6 +71,7 @@
     ["installationTopology", DOMAIN_TEXT_SENSOR, "OpenQuatt Installation Topology"],
     ["hardwareProfileText", DOMAIN_TEXT_SENSOR, "OpenQuatt Hardware Profile"],
     ["hardwareRevisionText", DOMAIN_TEXT_SENSOR, "OpenQuatt Hardware Revision"],
+    ["hardwareSerial", DOMAIN_SENSOR, "OpenQuatt Hardware Serial"],
     ["connectionText", DOMAIN_TEXT_SENSOR, "OpenQuatt Connection"],
     ["preferredConnection", DOMAIN_SELECT, "Preferred Connection"],
     ["hp1Generation", DOMAIN_TEXT_SENSOR, "HP1 - ODU generation"],
@@ -409,6 +410,8 @@
     ["auxHeatingStartTemp", DOMAIN_NUMBER, "Aux Relay Heating Start Temp"],
     ["auxCoolingStartTemp", DOMAIN_NUMBER, "Aux Relay Cooling Start Temp"],
     ["auxTempHysteresis", DOMAIN_NUMBER, "Aux Relay Temp Hysteresis"],
+    ["auxRunOnMode", DOMAIN_SELECT, "Aux Relay Run-on"],
+    ["auxRunOnTime", DOMAIN_NUMBER, "Aux Relay Run-on Time"],
     ["auxRelayActive", DOMAIN_BINARY_SENSOR, "Aux relay active"],
     ["auxRelayStatus", DOMAIN_TEXT_SENSOR, "Aux relay status"],
     ["systemHeatPower", DOMAIN_SENSOR, "System Heat Power"],
@@ -1413,9 +1416,9 @@
     "hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz",
   ];
   export const COMPRESSOR_SETTING_KEYS = ["minRuntime", ...EXCLUDED_FREQUENCY_KEYS];
-  // Restore order: gate + thresholds first, the function last, so a backup
+  // Restore order: gate, thresholds and run-on first, the function last, so a backup
   // restore cannot energize the relay with stale gate settings in between.
-  export const AUX_RELAY_SETTING_KEYS = ["auxWaitForSupplyTemp", "auxHeatingStartTemp", "auxCoolingStartTemp", "auxTempHysteresis", "auxRelayFunction"];
+  export const AUX_RELAY_SETTING_KEYS = ["auxWaitForSupplyTemp", "auxHeatingStartTemp", "auxCoolingStartTemp", "auxTempHysteresis", "auxRunOnTime", "auxRunOnMode", "auxRelayFunction"];
   export const AUX_RELAY_STATE_KEYS = ["auxRelayActive", "auxRelayStatus"];
   export const SILENT_SETTING_KEYS = ["silentStartTime", "silentEndTime", ...FREQUENCY_CAP_KEYS];
   export const BOILER_SUPPORT_SWITCHING_KEYS = ["boilerSupportStartThreshold", "boilerSupportStopThreshold"];

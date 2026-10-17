@@ -188,7 +188,7 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   bool build_payload_();
   void commit_modbus_counter_snapshot_();
   void clear_payload_();
-  std::string read_hardware_revision_() const;
+  std::string read_hardware_revision_(uint16_t& serial) const;
   static bool time_reached_(uint32_t now_ms, uint32_t target_ms);
   static std::string format_uuid_(const std::array<uint8_t, 16>& bytes);
   static std::string random_message_id_();

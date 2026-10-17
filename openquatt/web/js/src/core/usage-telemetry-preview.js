@@ -13,6 +13,7 @@ export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "releaseChannelText",
   "hardwareProfileText",
   "hardwareRevisionText",
+  "hardwareSerial",
   "installationTopology",
   "connectionText",
   "preferredConnection",
@@ -140,6 +141,11 @@ function hardwareRevisionValue(value) {
   return revision === "Read error" || revision === "Not programmed" ? null : revision;
 }
 
+function hardwareSerialValue(value) {
+  const serial = Number(optionalText(value));
+  return Number.isInteger(serial) && serial >= 1 && serial <= 1023 ? serial : null;
+}
+
 function connectionWireValue(value) {
   const connection = optionalText(value);
   if (connection === "Automatic") {
@@ -170,6 +176,7 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
     release_channel: optionalText(values.releaseChannelText),
     hardware_profile: optionalText(values.hardwareProfileText),
     hardware_revision: hardwareRevisionValue(values.hardwareRevisionText),
+    hardware_serial: values.hardwareProfileText === "heatpump_controller_q" ? hardwareSerialValue(values.hardwareSerial) : null,
     topology: optionalText(values.installationTopology),
     connection: connectionWireValue(values.connectionText),
     connection_preference: connectionWireValue(values.preferredConnection || values.connectionText),

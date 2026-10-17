@@ -13,3 +13,59 @@ actions already queued for the main loop, even after recovery ends.
 
 The version gate lives in the accompanying `web_server_base` override. When
 upgrading ESPHome, compare this small functional patch against the new upstream.
+
+## Temporary SSE lifecycle test fix
+
+`openquatt/oq_web_access.yaml` selects only `web_server_idf` from ESPHome
+merge commit `9309cf96b9710ad81d3e01a07a6f76637ba117a1`
+([ESPHome #17800](https://github.com/esphome/esphome/pull/17800)).
+Compared with 2026.9.0, the C++ changes cover the SSE close lifecycle and URL
+storage (`std::string` to `StringRef`). The local `/events` string literal has
+the required lifetime and is explicitly wrapped in `StringRef` in `web_server.h`
+because the 2026.9.0 conversion constructor is explicit.
+Its Python configuration is unchanged. Other components and
+the local auth/recovery overrides remain on the existing baseline.
+
+Stalled streams close after 20 seconds without send progress. HTTPD owns the
+shutdown, verifies session identity, and retains the response while close work
+is queued. Queue failures retry; queued work must never release its lifetime
+pin merely because a timeout elapsed. ESPHome 2026.9.0 recommends ESP-IDF 5.5.5;
+the upstream fix requires separate queue-work validation with older SDKs.
+
+This is a candidate fix for repeated lwIP/heap crashes, not a proven diagnosis.
+Test stalled/non-reading clients, abrupt disconnects, repeated reconnects,
+multiple streams and Wi-Fi reconnects with normal controller/API/MQTT load.
+Compare baseline and candidate internal free/minimum heap, largest block,
+PSRAM and task-stack watermarks; check HTTP/SSE recovery and session headroom.
+Remove the pin after upgrading to and validating an ESPHome release containing
+the fix. Hardware validation is still required before release.
+
+## Temporary four-decimal formatter backport
+
+The accompanying `web_server_base` override applies the two-file core change
+from [ESPHome #20800](https://github.com/esphome/esphome/pull/20800) after ESPHome
+copies sources into each build. Only generated `esphome/core/helpers.cpp` and
+`helpers.h` are replaced; the installed ESPHome package is not changed. This
+works with direct YAML compilation, the local developer helper and CI, including
+the native ESP-IDF toolchain. The existing ESPHome 2026.9.0 version gate also
+covers this backport.
+
+The original finite-value/range checks, rounding and fallback are retained;
+precision four uses the existing integer formatter and the factor `10000`.
+No task-stack allocation, heap policy, Ki range or control behavior changes.
+Unexpected or partially patched helper sources stop generation instead of
+silently building without the fix. A complete already-patched pair is accepted.
+The hook is installed once, while its activation is reset with ESPHome's
+per-config `CORE.data`, so later unrelated configs in the same process are not
+patched. Source generation restores the upstream files before each application.
+
+The original ESP32-S3 HIL comparison measured cumulative HTTPD stack watermarks
+of 160 versus 416 bytes in two paired OTA boots, with 431 direct Ki GETs per
+variant and unchanged output. The upstream PR records the host comparisons,
+decoded intermittent stack-overflow-detection backtrace, heap variation and
+limitations. This is measured stack headroom, not a proven crash fix or release
+qualification; power-off cold starts and full worst-case overlap remain open.
+
+Remove `core_four_decimals.py` and its `to_code()` call after upgrading to and
+validating an ESPHome release that contains #20800. Review the other local
+web-server compatibility changes independently during that upgrade.

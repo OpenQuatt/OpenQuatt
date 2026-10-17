@@ -7,6 +7,7 @@
 #include "esphome/components/openquatt_decision_log/OpenQuattHeatingStop.h"
 
 #include "../performance/hp_perf_frequency.h"
+#include "../performance/oq_water_performance_runtime.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_heat_intent_runtime.h"
 #include "oq_power_house_demand_logic.h"
@@ -197,7 +198,10 @@ class Runtime {
         {system_supply_c, hp1_outlet_c, hp2_outlet_c, oq_hp_candidate::may_serve_candidate(hp1_candidate),
          duo && oq_hp_candidate::may_serve_candidate(hp2_candidate)});
     const float supply_c = performance_supply.supply_c;
-    const bool performance_valid = std::isfinite(outside_c) && performance_supply.valid;
+    const auto model = oq_water_performance::capture(
+        frequency, supply_c, hp1_valve_defrost || hp2_valve_defrost || hp1_defrost_active || hp2_defrost_active);
+    const bool performance_valid = std::isfinite(outside_c) && (model.coupled || std::isfinite(model.outlet[0]) ||
+                                                                (duo && std::isfinite(model.outlet[1])));
 
     float defrost_factor = config.defrost_power_factor;
     if (!std::isfinite(defrost_factor)) defrost_factor = 0.55f;
@@ -216,8 +220,9 @@ class Runtime {
         const auto prediction = oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
                                                            outside_c, supply_c, allow_low_supply_boundary_estimate);
         const bool allowed = prediction.frequency_policy_allowed;
-        float thermal_w = performance_valid ? prediction.performance.pth_w : NAN;
-        float electrical_w = performance_valid ? prediction.performance.pel_w : NAN;
+        const auto power = model.unit(hp1, level);
+        float thermal_w = performance_valid ? power.thermal_w : NAN;
+        float electrical_w = performance_valid ? power.electrical_w : NAN;
         if (valve_defrost && std::isfinite(thermal_w)) thermal_w *= defrost_factor;
         const bool thermal_valid = std::isfinite(thermal_w) && thermal_w >= 0.0f;
         const bool electrical_valid = std::isfinite(electrical_w) && electrical_w >= 0.0f;
@@ -225,7 +230,7 @@ class Runtime {
                                 thermal_w, electrical_w,  static_cast<uint8_t>(prediction.runtime_frequency_hz)};
         bool& model_available = hp1 ? hp1_model_available : hp2_model_available;
         bool& runnable_candidate = hp1 ? hp1_runnable_candidate : hp2_runnable_candidate;
-        model_available |= prediction.runtime_frequency_known && prediction.performance.available;
+        model_available |= prediction.runtime_frequency_known && power.valid();
         runnable_candidate |= allowed && thermal_valid && electrical_valid;
       }
     };
@@ -242,7 +247,12 @@ class Runtime {
     const bool any_servable_candidate =
         (oq_hp_candidate::may_serve_candidate(hp1_candidate) && hp1_runnable_candidate) ||
         (duo && oq_hp_candidate::may_serve_candidate(hp2_candidate) && hp2_runnable_candidate);
-    dispatch_input.performance_valid = performance_valid && any_servable_candidate && !active_model_missing;
+    dispatch_input.performance_valid =
+        performance_valid && (model.coupled || (any_servable_candidate && !active_model_missing));
+    if (model.coupled) {
+      dispatch_input.pair_power = &oq_water_performance::CandidateModel::dispatch;
+      dispatch_input.pair_context = &model;
+    }
     float minimum_viable_w = NAN;
     const auto include_minimum = [&](const oq_power_house_dispatch::HpInput& hp) {
       if (!oq_hp_candidate::may_serve_candidate(hp.candidate)) return;

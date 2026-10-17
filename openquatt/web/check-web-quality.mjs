@@ -9,6 +9,7 @@ const webDir = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoots = [path.join(webDir, "js", "src"), path.join(webDir, "css", "src")];
 const mojibakePattern = /â€|Ã.|Â(?:\s|\u00a0)/u;
 const bundleBaseRef = process.env.OPENQUATT_WEB_BUNDLE_BASE_REF?.trim();
+const bundleBaseDir = process.env.OPENQUATT_WEB_BUNDLE_BASE_DIR?.trim();
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -55,12 +56,15 @@ for (const budget of WEB_BUNDLE_BUDGETS) {
     budgetFailures.push(`${budget.file} raw: ${rawBytes} > ${budget.raw} bytes`);
   }
 
-  if (!bundleBaseRef) {
+  if (!bundleBaseDir && !bundleBaseRef) {
     bundleReports.push(`${budget.file}: raw ${rawBytes} B, gzip ${gzipBytes} B (no base comparison)`);
     continue;
   }
 
-  const baseGzipBytes = gzipSync(readBundleAtRef(bundleBaseRef, budget.file)).byteLength;
+  const baseContents = bundleBaseDir
+    ? await readFile(path.join(bundleBaseDir, budget.file))
+    : readBundleAtRef(bundleBaseRef, budget.file);
+  const baseGzipBytes = gzipSync(baseContents).byteLength;
   const gzipDelta = gzipBytes - baseGzipBytes;
   const ratioLimit = Math.floor(baseGzipBytes * WEB_BUNDLE_GZIP_GROWTH_LIMIT.ratio);
   const regularAllowedIncrease = Math.min(WEB_BUNDLE_GZIP_GROWTH_LIMIT.bytes, ratioLimit);
@@ -87,7 +91,8 @@ for (const budget of WEB_BUNDLE_BUDGETS) {
   }
 }
 
-console.log(`Web bundle sizes${bundleBaseRef ? ` compared with ${bundleBaseRef}` : ""}:`);
+const baseLabel = bundleBaseRef || bundleBaseDir;
+console.log(`Web bundle sizes${baseLabel ? ` compared with ${baseLabel}` : ""}:`);
 bundleReports.forEach((report) => console.log(`- ${report}`));
 
 if (encodingFailures.length || budgetFailures.length) {

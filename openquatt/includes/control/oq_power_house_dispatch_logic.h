@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "oq_hp_candidate_logic.h"
+#include "oq_compressor_movement_logic.h"
 
 namespace oq_power_house_dispatch {
 constexpr int kMaxLevel = 20;
@@ -70,6 +71,8 @@ struct DispatchInput {
   float requested_w = NAN;
   bool duo = false, performance_valid = false, lead_hp1 = true;
   HpInput hp1, hp2;
+  std::array<float, 2> (*pair_power)(const void*, int, int) = nullptr;
+  const void* pair_context = nullptr;
 };
 
 enum class PerformanceSupplyRoute : uint8_t { NONE = 0, SYSTEM, HP1_OUTLET, HP2_OUTLET };
@@ -114,10 +117,11 @@ struct DispatchDecision {
   bool output_valid = false, saturated = false;
 };
 struct Candidate {
-  bool valid = false;
+  bool valid = false, model_valid = false;
   int hp1_level = 0, hp2_level = 0;
   float thermal_w = 0.0f, electrical_w = 0.0f, error_w = 0.0f, over_soft_w = 0.0f;
   int level_moves = 0, active_count = 0, balance_gap = 0;
+  int modulation_hz = -1, starts = 0, stops = 0;
   bool single_on_lead = false;
 };
 inline int topology(int hp1_level, int hp2_level) { return (hp1_level > 0 ? 1 : 0) + (hp2_level > 0 ? 1 : 0); }
@@ -186,6 +190,7 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
     if (level <= 0) return true;
     if (!hp_may_serve(hp)) return false;
     const auto& estimate = hp.levels[level];
+    if (in.pair_power != nullptr) return estimate.allowed;
     if (!estimate.allowed || !estimate.thermal_valid || !estimate.electrical_valid ||
         !std::isfinite(estimate.thermal_w) || !std::isfinite(estimate.electrical_w) || estimate.thermal_w < 0.0f ||
         estimate.electrical_w < 0.0f)
@@ -194,14 +199,30 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
     result.electrical_w += estimate.electrical_w;
     return true;
   };
-  if (!add_hp(in.hp1, result.hp1_level) || !add_hp(in.hp2, result.hp2_level) || !std::isfinite(result.thermal_w) ||
-      !std::isfinite(result.electrical_w) || result.electrical_w > tuning.peak_limit_w)
+  if (!add_hp(in.hp1, result.hp1_level) || !add_hp(in.hp2, result.hp2_level)) return result;
+  if (in.pair_power != nullptr) {
+    const auto power = in.pair_power(in.pair_context, result.hp1_level, result.hp2_level);
+    result.thermal_w = power[0];
+    result.electrical_w = power[1];
+  }
+  if (!std::isfinite(result.thermal_w) || result.thermal_w < 0 || !std::isfinite(result.electrical_w) ||
+      result.electrical_w < 0)
     return result;
+  result.model_valid = true;
+  if (result.electrical_w > tuning.peak_limit_w) return result;
   result.valid = true;
   result.error_w = std::fabs(result.thermal_w - target_w);
   result.over_soft_w = std::max(0.0f, result.electrical_w - tuning.soft_limit_w);
   result.level_moves =
       std::abs(result.hp1_level - applied_level(in.hp1)) + std::abs(result.hp2_level - applied_level(in.hp2));
+  const int previous_hp1 = applied_level(in.hp1), previous_hp2 = applied_level(in.hp2);
+  result.starts = (previous_hp1 == 0 && result.hp1_level > 0) + (previous_hp2 == 0 && result.hp2_level > 0);
+  result.stops = (previous_hp1 > 0 && result.hp1_level == 0) + (previous_hp2 > 0 && result.hp2_level == 0);
+  result.modulation_hz = oq_compressor_movement::modulation_hz(
+      {oq_compressor_movement::frequency(previous_hp1, in.hp1.levels[previous_hp1].frequency_hz),
+       oq_compressor_movement::frequency(previous_hp2, in.hp2.levels[previous_hp2].frequency_hz)},
+      {oq_compressor_movement::frequency(result.hp1_level, in.hp1.levels[result.hp1_level].frequency_hz),
+       oq_compressor_movement::frequency(result.hp2_level, in.hp2.levels[result.hp2_level].frequency_hz)});
   result.balance_gap = std::abs(static_cast<int>(in.hp1.levels[result.hp1_level].frequency_hz) -
                                 static_cast<int>(in.hp2.levels[result.hp2_level].frequency_hz));
   return result;
@@ -210,7 +231,10 @@ inline bool better_candidate(const Candidate& a, const Candidate& b) {
   if (std::fabs(a.over_soft_w - b.over_soft_w) > 1.0f) return a.over_soft_w < b.over_soft_w;
   if (std::fabs(a.electrical_w - b.electrical_w) > 1.0f) return a.electrical_w < b.electrical_w;
   if (std::fabs(a.error_w - b.error_w) > 1.0f) return a.error_w < b.error_w;
-  if (a.level_moves != b.level_moves) return a.level_moves < b.level_moves;
+  if (a.starts != b.starts) return a.starts < b.starts;
+  if (a.stops != b.stops) return a.stops < b.stops;
+  if (a.modulation_hz >= 0 && b.modulation_hz >= 0 && a.modulation_hz != b.modulation_hz)
+    return a.modulation_hz < b.modulation_hz;
   const int a_balance = a.balance_gap;
   const int b_balance = b.balance_gap;
   if (a.active_count == 2 && b.active_count == 2 && a_balance != b_balance) return a_balance < b_balance;
@@ -224,12 +248,14 @@ inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tu
   float best_error_w = INFINITY;
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
+      if (topology(hp1, hp2) != active_count) continue;
       const auto candidate = make_candidate(in, tuning, hp1, hp2, target_w);
       if (candidate.valid && candidate.active_count == active_count)
         best_error_w = std::min(best_error_w, candidate.error_w);
     }
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
+      if (topology(hp1, hp2) != active_count) continue;
       const auto candidate = make_candidate(in, tuning, hp1, hp2, target_w);
       if (candidate.valid && candidate.active_count == active_count && candidate.error_w <= best_error_w + tie_band_w &&
           (!chosen.valid || better_candidate(candidate, chosen)))
@@ -237,12 +263,13 @@ inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tu
     }
   return chosen;
 }
-inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tuning) {
+inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tuning, bool* model_available = nullptr) {
   if (!in.performance_valid || !electrical_limits_valid(tuning)) return 0.0f;
   float capacity_w = 0.0f;
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
       const auto candidate = make_candidate(in, tuning, hp1, hp2, 0.0f);
+      if (model_available && candidate.active_count > 0 && candidate.model_valid) *model_available = true;
       if (candidate.valid && candidate.thermal_w > capacity_w) capacity_w = candidate.thermal_w;
     }
   return capacity_w;
@@ -251,7 +278,8 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
                                         const DispatchState& state) {
   DispatchDecision out;
   const bool request_valid = std::isfinite(in.requested_w) && in.requested_w >= 0.0f;
-  out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning) : NAN;
+  bool model_available = false;
+  out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning, &model_available) : NAN;
   out.deficit_w = request_valid && in.performance_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : NAN;
   out.saturated = in.demand_level > 0 && std::isfinite(out.deficit_w) && out.deficit_w > 0.0f;
   if (in.demand_level <= 0) {
@@ -279,7 +307,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
     out.reason = Reason::NO_CANDIDATE;
     return out;
   }
-  if (!in.performance_valid) {
+  if (!in.performance_valid || (in.pair_power != nullptr && !model_available)) {
     auto retained = [&](const HpInput& hp) {
       const int level = applied_level(hp);
       return level > 0 && level <= kMaxLevel && !hp.candidate.must_stop && hp.levels[level].allowed ? level : 0;

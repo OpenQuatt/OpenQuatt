@@ -1,8 +1,8 @@
 # HIL-plan: persistente defrostprofielen
 
-Dit plan is voorbereiding, geen uitgevoerde HIL-run. Het bewaakt P276-opslag per
-HP in controller-NVS en veilig opnieuw toepassen na een echte restart. Eerdere
-manual-defrost-, flow- en CM1-stopresultaten bewijzen dit contract niet.
+Dit herbruikbare plan bewaakt P276-opslag per HP in controller-NVS en veilig
+opnieuw toepassen na een echte restart. Manual-defrost-, flow- en
+CM1-stopresultaten bewijzen dit contract niet.
 
 ## Voorwaarden en eigenaarschap
 
@@ -116,9 +116,11 @@ actieve faultinjectie indien aanwezig, onder dezelfde lock. Laat gewone
 controller-/simulatorinstellingen staan volgens de afspraak voor deze bench;
 registreer de eindstate voor de volgende eigenaar.
 
-## Voorbereidingsstatus
+## Rapportage
 
-Alleen bron- en harnessinspectie; geen devicequery, smoke, OTA, reboot,
-NVS-reset of muterende test uitgevoerd. Er is nog geen uitvoerbare
-`defrost`-scenariorunner; bovenstaande stages zijn een testplan, geen bestaande
-CLI-opties.
+Bewaar runresultaten in de bijbehorende PR, niet als testverslag in de repo. De
+[historische profiel-, consent- en vrijgavechecks](https://github.com/OpenQuatt/OpenQuatt/pull/763#issuecomment-6232030600)
+staan bij PR #763 en gelden alleen voor de daar genoemde kandidaten en testgrenzen.
+
+Er is geen uitvoerbare `defrost`-scenariorunner; bovenstaande stages zijn een
+testplan, geen bestaande CLI-opties.
