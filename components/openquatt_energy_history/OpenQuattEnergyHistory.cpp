@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "esp_random.h"
+#include "lwip/sockets.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -169,21 +170,51 @@ class ChunkedTextWriter {
  public:
   explicit ChunkedTextWriter(httpd_req_t* req) : req_(req) {}
 
-  bool printf(const char* format, ...) {
-    char scratch[192];
-    va_list args;
-    va_start(args, format);
-    const int written = std::vsnprintf(scratch, sizeof(scratch), format, args);
-    va_end(args);
-    if (written < 0) {
+  bool begin_response(const char* content_type, bool download = false) {
+    if (!this->scratch_.allocate_external(192U)) {
+      httpd_resp_set_status(this->req_, "503 Service Unavailable");
+      httpd_resp_set_type(this->req_, "application/json");
+      httpd_resp_set_hdr(this->req_, "Cache-Control", "no-store");
+      httpd_resp_send(this->req_, R"({"ok":false,"error":"serialization_unavailable"})", HTTPD_RESP_USE_STRLEN);
       return false;
     }
-    const size_t length = std::min(static_cast<size_t>(written), sizeof(scratch) - 1U);
-    return httpd_resp_send_chunk(this->req_, scratch, static_cast<ssize_t>(length)) == ESP_OK;
+    httpd_resp_set_status(this->req_, HTTPD_200);
+    httpd_resp_set_type(this->req_, content_type);
+    httpd_resp_set_hdr(this->req_, "Cache-Control", "no-store");
+    if (download) {
+      httpd_resp_set_hdr(this->req_, "Content-Disposition", "attachment; filename=\"openquatt-energy-history.json\"");
+    }
+    return true;
+  }
+
+  bool printf(const char* format, ...) {
+    if (!this->scratch_ || this->failed_) {
+      return false;
+    }
+    va_list args;
+    va_start(args, format);
+    const int written = std::vsnprintf(this->scratch_.data(), this->scratch_.size(), format, args);
+    va_end(args);
+    if (written < 0 || static_cast<size_t>(written) >= this->scratch_.size()) {
+      return this->fail_();
+    }
+    if (httpd_resp_send_chunk(this->req_, this->scratch_.data(), static_cast<ssize_t>(written)) != ESP_OK) {
+      return this->fail_();
+    }
+    return true;
   }
 
  private:
+  bool fail_() {
+    this->failed_ = true;
+    // Abort this active request synchronously; HTTPD retains descriptor ownership.
+    shutdown(httpd_req_to_sockfd(this->req_), SHUT_RDWR);
+    return false;
+  }
+
   httpd_req_t* req_;
+  openquatt_common::PsramBuffer<char> scratch_;
+  bool failed_{false};
 };
 
 class OpenQuattEnergyHistoryRequestHandler : public AsyncWebHandler {
@@ -214,52 +245,56 @@ class OpenQuattEnergyHistoryRequestHandler : public AsyncWebHandler {
     return !csrf_token.empty() && csrf_token == this->parent_->get_csrf_token();
   }
 
-  bool canHandle(AsyncWebServerRequest* request) const override {
-    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-    request->url_to(url_buf);
-    if (url_path_matches(url_buf, "/energy/history/import")) {
-      return request->method() == HTTP_POST;
-    }
-    if (url_path_matches(url_buf, "/energy/history/export")) {
-      return request->method() == HTTP_GET;
-    }
-    return url_path_matches(url_buf, "/energy/history") && request->method() == HTTP_GET;
-  }
+  bool canHandle(AsyncWebServerRequest* request) const override { return route_(request) != Route::NOT_FOUND; }
 
   void handleRequest(AsyncWebServerRequest* request) override {
-    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-    request->url_to(url_buf);
     if (!this->parent_->runtime_storage_ready()) {
       request->send(503, "application/json", R"({"ok":false,"error":"psram_unavailable"})");
       return;
     }
-    if (url_path_matches(url_buf, "/energy/history/import")) {
-      if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        request->send(409, "application/json", R"({"ok":false,"error":"forbidden"})");
+    switch (route_(request)) {
+      case Route::IMPORT:
+        this->handle_import_(request);
         return;
-      }
-      const std::string response = this->parent_->import_history_records(request->arg("records"));
-      request->send(200, "application/json", response.c_str());
-      return;
+      case Route::EXPORT:
+        this->parent_->write_history_export(*request);
+        return;
+      case Route::HISTORY:
+        this->parent_->write_history(*request);
+        return;
+      case Route::NOT_FOUND:
+        request->send(404);
+        return;
     }
-
-    httpd_req_t* req = *request;
-    if (url_path_matches(url_buf, "/energy/history/export")) {
-      httpd_resp_set_status(req, HTTPD_200);
-      httpd_resp_set_type(req, "application/json; charset=utf-8");
-      httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-      httpd_resp_set_hdr(req, "Content-Disposition", "attachment; filename=\"openquatt-energy-history.json\"");
-      this->parent_->write_history_export(req);
-      return;
-    }
-
-    httpd_resp_set_status(req, HTTPD_200);
-    httpd_resp_set_type(req, "text/plain; charset=utf-8");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    this->parent_->write_history(req);
   }
 
  protected:
+  enum class Route : uint8_t { NOT_FOUND, IMPORT, EXPORT, HISTORY };
+
+  __attribute__((noinline)) static Route route_(AsyncWebServerRequest* request) {
+    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
+    request->url_to(url_buf);
+    if (url_path_matches(url_buf, "/energy/history/import") && request->method() == HTTP_POST) {
+      return Route::IMPORT;
+    }
+    if (url_path_matches(url_buf, "/energy/history/export") && request->method() == HTTP_GET) {
+      return Route::EXPORT;
+    }
+    if (url_path_matches(url_buf, "/energy/history") && request->method() == HTTP_GET) {
+      return Route::HISTORY;
+    }
+    return Route::NOT_FOUND;
+  }
+
+  __attribute__((noinline)) void handle_import_(AsyncWebServerRequest* request) {
+    if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+      request->send(409, "application/json", R"({"ok":false,"error":"forbidden"})");
+      return;
+    }
+    const std::string response = this->parent_->import_history_records(request->arg("records"));
+    request->send(200, "application/json", response.c_str());
+  }
+
   OpenQuattEnergyHistory* parent_;
 };
 
@@ -1496,6 +1531,9 @@ void OpenQuattEnergyHistory::write_history_export(httpd_req_t* req) {
   const bool include_days = export_mode_includes_days(mode);
   const bool include_hours = export_mode_includes_hours(mode);
   ChunkedTextWriter writer(req);
+  if (!writer.begin_response("application/json; charset=utf-8", true)) {
+    return;
+  }
 
   if (!writer.printf("{\n") || !writer.printf("  \"schema\":\"openquatt.quatt_insights_daily.v1\",\n") ||
       !writer.printf("  \"source\":\"openquatt.energy_history_export.v1\",\n")) {
@@ -1627,6 +1665,9 @@ void OpenQuattEnergyHistory::write_history(httpd_req_t* req) {
   const bool include_hours = read_query_flag(req, "hours", !has_query);
 
   ChunkedTextWriter writer(req);
+  if (!writer.begin_response("text/plain; charset=utf-8")) {
+    return;
+  }
   const uint32_t hour_count = this->get_hour_record_count_();
   if (!writer.printf("@schema|3\n") || !writer.printf("@enabled|%u\n", this->enabled_() ? 1U : 0U) ||
       !writer.printf("@csrf|%s\n", this->csrf_token_.c_str()) ||
