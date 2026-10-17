@@ -2,6 +2,7 @@
 
 #include "../control/oq_compressor_frequency_runtime.h"
 #include "oq_heating_capacity.h"
+#include "../performance/oq_water_performance_runtime.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_heating_capacity {
@@ -34,9 +35,17 @@ inline float current_estimate(uint32_t minimum_off_ms, uint32_t outlet_stale_ms,
       {id(oq_system_supply_temp).state, hp1_outlet_c, hp2_outlet_c, oq_hp_candidate::may_serve_candidate(hp1),
        OQ_TOPOLOGY_DUO && oq_hp_candidate::may_serve_candidate(hp2)});
   const bool boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
-  return estimate(oq_frequency_runtime::capture(), OQ_TOPOLOGY_DUO, id(outside_temp_selected).state, supply.supply_c,
-                  hp1, hp2, id(oq_power_limit_soft_w), id(oq_power_limit_peak_w), id(hp1_4_way_valve).state,
-                  hp2_valve_defrost, defrost_factor, boundary_estimate);
+  const auto frequency = oq_frequency_runtime::capture();
+  const auto model =
+      oq_water_performance::capture(frequency, supply.supply_c,
+                                    id(hp1_4_way_valve).state || id(hp1_defrost).state || hp2_valve_defrost
+#if OQ_TOPOLOGY_DUO
+                                        || id(hp2_defrost).state
+#endif
+      );
+  return estimate(frequency, OQ_TOPOLOGY_DUO, id(outside_temp_selected).state, supply.supply_c, hp1, hp2,
+                  id(oq_power_limit_soft_w), id(oq_power_limit_peak_w), id(hp1_4_way_valve).state, hp2_valve_defrost,
+                  defrost_factor, boundary_estimate, &model);
 }
 
 }  // namespace oq_heating_capacity

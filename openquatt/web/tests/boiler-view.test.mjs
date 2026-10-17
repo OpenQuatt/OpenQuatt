@@ -590,12 +590,12 @@ test("installation offers only R1 after OpenTherm capability is confirmed absent
 
 test("DHW permission follows a current OT thermostat status and fails open", () => {
   assert.match(boilerOpenThermYaml, /^    dhw_enable: true$/m);
-  assert.match(boilerOpenThermYaml, /dhw_enable:\n\s+id: oq_otb_dhw_enable/);
+  assert.match(boilerOpenThermYaml, /dhw_enable:\r?\n\s+id: oq_otb_dhw_enable/);
   assert.match(boilerOpenThermYaml, /restore_mode: ALWAYS_ON/);
   assert.match(boilerOpenThermRuntime, /inline void apply_dhw_permission\(bool opentherm_selected\)/);
   assert.match(boilerOpenThermRuntime, /compute_otb_dhw_permission/);
   assert.match(boilerOpenThermRuntime, /id\(oq_otb_dhw_enable\)\.turn_off\(\);/);
-  assert.match(otSlaveYaml, /master_dhw_enable:\n\s+id: ot_thermostat_dhw_enable/);
+  assert.match(otSlaveYaml, /master_dhw_enable:\r?\n\s+id: ot_thermostat_dhw_enable/);
   assert.match(otSlaveCpp, /void OpenQuattOTSlave::stop_opentherm_\(\)[\s\S]*?m_lastMasterStatusMs = 0;/);
   assert.match(otSlaveCpp, /if \(this->master_status_valid_binary_sensor != nullptr\)/);
   assert.match(otSlaveCpp, /void OpenQuattOTSlave::stop_opentherm_\(\)[\s\S]*?master_status_valid_binary_sensor->publish_state\(false\);/);

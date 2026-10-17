@@ -33,6 +33,7 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         for name, (marker, expected) in calls.items():
             self.assertEqual(YAMLS[name].count(marker), expected)
         # Measured 1715 lines with the two cached run-extension diagnostic sensors.
+        # Bounded physical-frequency candidates replace the ten-slot dispatch.
         self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1726)
         for implementation_marker in (
             "DispatchState dispatch_state",
@@ -88,7 +89,9 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # Measured 1464 lines after combining the external curve modifier
         # with dev's confirmed-stop transition to CM0.
         # Boot input acquisition adds explicit invalid outputs and a one-shot deadline.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1515)
+        # Include the seven runtime lines wiring Duo Hz movement into the captured context.
+        # The heating-curve duo floor gate adds the single-owner ramp check (logic in its own header).
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1680)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         # The selector now returns source provenance alongside its value; keep it local.
         self.assertLessEqual(len(LOGIC.splitlines()), 75)

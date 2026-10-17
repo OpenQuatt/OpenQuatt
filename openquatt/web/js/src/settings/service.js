@@ -6,6 +6,7 @@ import { formatSettingsNumberValue, getCommissioningStatusValue, getSettingsStat
 import { getHpWaterRawValue } from "./water.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
+import { getInstallationTopology, getRuntimeCounterResetKey } from "../features/device-context.js";
 import { formatNumber, t } from "../i18n/index.js";
 
   export function getManualHpActualValue(levelKey, frequencyKey) {
@@ -299,7 +300,7 @@ import { formatNumber, t } from "../i18n/index.js";
     const normalizedStatus = String(status || "").toUpperCase();
     const failed = normalizedStatus.includes("FAILED") || normalizedStatus.includes("REFUSED") || normalizedStatus.includes("ABORT");
     const applied = normalizedStatus.includes("APPLIED");
-    const hasHp2 = hasEntity("hp2WaterIn") || hasEntity("hp2WaterOut") || hasEntity("hp2WaterInRaw") || hasEntity("hp2WaterOutRaw");
+    const hasHp2 = getInstallationTopology() === "duo";
     const stableProgress = getEntityNumericValue("hpWaterCalibrationStableProgress");
     const stableRequired = getEntityNumericValue("hpWaterCalibrationStableRequired");
     const remaining = getEntityNumericValue("hpWaterCalibrationRemaining");
@@ -364,7 +365,8 @@ import { formatNumber, t } from "../i18n/index.js";
       { label: t("settingsWater.hp2WaterIn"), rawKey: "hp2WaterInRaw", liveKey: "hp2WaterIn", resultRawKey: "hpWaterCalibrationResultHp2InRawAvg", offsetKey: "hp2WaterInOffset", suggestedKey: "hp2WaterInOffsetSuggested" },
       { label: t("settingsWater.hp2WaterOut"), rawKey: "hp2WaterOutRaw", liveKey: "hp2WaterOut", resultRawKey: "hpWaterCalibrationResultHp2OutRawAvg", offsetKey: "hp2WaterOutOffset", suggestedKey: "hp2WaterOutOffsetSuggested" },
       { label: t("settingsWater.supplyTitle", { source: supplySource }), rawKey: "supplyTemp", liveKey: "supplyTemp", resultRawKey: "hpWaterCalibrationResultSupplyRawAvg", offsetKey: "waterSupplyCalibrationOffset", suggestedKey: "waterSupplyCalibrationOffsetSuggested" },
-    ].filter((row) => hasEntity(row.liveKey) || hasEntity(row.rawKey) || hasEntity(row.offsetKey));
+    ].filter((row) => (hasHp2 || !row.liveKey.startsWith("hp2"))
+      && (hasEntity(row.liveKey) || hasEntity(row.rawKey) || hasEntity(row.offsetKey)));
 
     const renderStep = (index, label) => {
       const done = stepIndex > index;
@@ -544,6 +546,7 @@ import { formatNumber, t } from "../i18n/index.js";
   }
 
   export function getSettingsServiceModel() {
+    const hasHp2 = getInstallationTopology() === "duo";
     const hasBoilerAssist = hasEntity("auxHeatSourcePresent")
       ? isEntityActive("auxHeatSourcePresent")
       : hasEntity("boilerCvAssistEnabled") && isEntityActive("boilerCvAssistEnabled");
@@ -789,7 +792,7 @@ import { formatNumber, t } from "../i18n/index.js";
         key: "hp-water-calibration",
         title: t("settingsService.calTitle"),
         label: t("settingsService.calLabel"),
-        summary: t("settingsService.calSummary"),
+        summary: t("settingsService.calSummary", { heatPumps: hasHp2 ? "HP1/HP2" : "HP1" }),
         status: hpWaterCalibrationStatusDisplay,
         available: Boolean(hpWaterCalibrationControls || state.entities.hpWaterCalibrationStatus),
         openDisabled: !cm100Ready,
@@ -898,7 +901,7 @@ import { formatNumber, t } from "../i18n/index.js";
                 ${renderSettingsSelectField("manualHp1Mode", t("settingsService.hp1Mode"), t("settingsService.hpModeCopy"), "oq-settings-field--compact")}
                 ${renderSettingsSliderField("manualHp1Level", t("settingsService.hp1Level"), t("settingsService.hpLevelCopy", { max: formatNumber(hp1ManualMaxLevel, { maximumFractionDigits: 0 }) }), "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
               </div>
-              ${hasEntity("manualHp2Mode") ? `
+              ${hasHp2 && hasEntity("manualHp2Mode") ? `
                 <div class="oq-settings-manual-hp-unit">
                   ${renderSettingsSelectField("manualHp2Mode", t("settingsService.hp2Mode"), t("settingsService.hpModeCopy"), "oq-settings-field--compact")}
                   ${renderSettingsSliderField("manualHp2Level", t("settingsService.hp2Level"), t("settingsService.hpLevelCopy", { max: formatNumber(hp2ManualMaxLevel, { maximumFractionDigits: 0 }) }), "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}
@@ -911,12 +914,12 @@ import { formatNumber, t } from "../i18n/index.js";
             <div class="oq-settings-manual-hp-results">
               ${renderSettingsStaticField("flowSelected", t("settingsService.measuredFlow"), t("settingsService.measuredFlowCopy"), getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
               ${renderSettingsStaticField("hp1Compressor", t("settingsService.hp1Actual"), t("settingsService.hpActualCopy"), getManualHpActualValue("hp1Compressor", "hp1Freq"), "oq-settings-field--compact")}
-              ${hasEntity("hp2Compressor") ? renderSettingsStaticField("hp2Compressor", t("settingsService.hp2Actual"), t("settingsService.hpActualCopy"), getManualHpActualValue("hp2Compressor", "hp2Freq"), "oq-settings-field--compact") : ""}
+              ${hasHp2 && hasEntity("hp2Compressor") ? renderSettingsStaticField("hp2Compressor", t("settingsService.hp2Actual"), t("settingsService.hpActualCopy"), getManualHpActualValue("hp2Compressor", "hp2Freq"), "oq-settings-field--compact") : ""}
             </div>
             ${renderSettingsStaticField("manualHpGuardStatus", t("settingsService.guardTitle"), t("settingsService.guardCopy"), getEntityValue("manualHpGuardStatus") || t("settingsService.guardReleased"), "oq-settings-field--compact oq-settings-field--full")}
             <div class="oq-settings-manual-hp-statuses">
               ${renderSettingsStaticField("hp1Failures", t("settingsService.hp1Failure"), t("settingsService.hpFailureCopy"), formatFailures(getEntityStateText("hp1Failures", "None")), "oq-settings-field--compact")}
-              ${hasEntity("hp2Failures") ? renderSettingsStaticField("hp2Failures", t("settingsService.hp2Failure"), t("settingsService.hpFailureCopy"), formatFailures(getEntityStateText("hp2Failures", "None")), "oq-settings-field--compact") : ""}
+              ${hasHp2 && hasEntity("hp2Failures") ? renderSettingsStaticField("hp2Failures", t("settingsService.hp2Failure"), t("settingsService.hpFailureCopy"), formatFailures(getEntityStateText("hp2Failures", "None")), "oq-settings-field--compact") : ""}
             </div>
           `,
         }),
@@ -1135,14 +1138,12 @@ import { formatNumber, t } from "../i18n/index.js";
   }
 
   export function renderSettingsCounterServiceSection() {
-    const runtimeResetKey = hasEntity("resetRuntimeCountersHp1Hp2")
-      ? "resetRuntimeCountersHp1Hp2"
-      : hasEntity("resetRuntimeCountersHp1") ? "resetRuntimeCountersHp1" : "";
+    const runtimeResetKey = getRuntimeCounterResetKey();
     const hasHp1Runtime = hasEntity("hp1RuntimeHours");
-    const hasHp2Runtime = hasEntity("hp2RuntimeHours");
+    const hasHp2Runtime = getInstallationTopology() === "duo" && hasEntity("hp2RuntimeHours");
     const hp1Hours = getEntityNumericValue("hp1RuntimeHours");
     const hp2Hours = getEntityNumericValue("hp2RuntimeHours");
-    const hasRuntimeDifference = Number.isFinite(hp1Hours) && Number.isFinite(hp2Hours);
+    const hasRuntimeDifference = hasHp2Runtime && Number.isFinite(hp1Hours) && Number.isFinite(hp2Hours);
     const runtimeDifference = hasRuntimeDifference ? Math.abs(hp1Hours - hp2Hours) : Number.NaN;
     const runtimeDifferenceLabel = hasRuntimeDifference
       ? t("settingsService.runtimeDiff", { value: formatNumber(runtimeDifference, { maximumFractionDigits: 1 }) })
@@ -1159,7 +1160,7 @@ import { formatNumber, t } from "../i18n/index.js";
       ? Math.min(28, Math.max(8, (runtimeDifference / Math.max(Math.abs(hp1Hours), Math.abs(hp2Hours))) * 500))
       : 0;
     const runtimeLeadValue = hasEntity("runtimeLeadHp") ? getSettingsTextStatValue("runtimeLeadHp", "") : "";
-    const runtimeLead = ["HP1", "HP2"].includes(runtimeLeadValue) ? runtimeLeadValue : "";
+    const runtimeLead = (runtimeLeadValue === "HP1" || (hasHp2Runtime && runtimeLeadValue === "HP2")) ? runtimeLeadValue : "";
     const runtimeLeadMarkup = runtimeLead
       ? `<span class="oq-settings-runtime-lead"><span aria-hidden="true"></span>${escapeHtml(t("settingsService.runtimeLead", { hp: runtimeLead }))}</span>`
       : "";

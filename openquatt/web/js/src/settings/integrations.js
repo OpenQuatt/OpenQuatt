@@ -10,6 +10,7 @@ import { formatMqttSensorValiditySummary, getMqttStatusDetail, getMqttStatusLabe
 import { formatSettingsOptionLabel, getSelectEntityOptions, getSettingsStatValue, getSettingsTextStatValue, renderSettingsInfoToggle, renderSettingsIntegrationSwitchCard, renderSettingsSection } from "./controls.js";
 import { getWaterSupplyCorrectionView } from "./water.js";
 import { escapeHtml } from "../core/html.js";
+import { getInstallationTopology } from "../features/device-context.js";
 import { formatNumber, optionLabel, t } from "../i18n/index.js";
 
   export function renderSettingsOpenThermCicSection() {
@@ -235,6 +236,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
   }
 
   export function renderSettingsSensorSelectionSection() {
+    const hasHp2 = getInstallationTopology() === "duo";
     const hasSelectors = SENSOR_SELECTION_KEYS.some((key) => hasEntity(key));
     if (!hasSelectors) {
       return "";
@@ -317,10 +319,10 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         return isMqttInputTopicEnabled(getMqttTopicKey(config));
       }
       if (option === "Flowmeter HP2") {
-        return hasEntity("hp2Flow");
+        return hasHp2 && hasEntity("hp2Flow");
       }
       if (option === "Local aggregate HP1/HP2") {
-        return hasEntity("flowLocal") || hasEntity("hp2Flow");
+        return hasHp2 && (hasEntity("flowLocal") || hasEntity("hp2Flow"));
       }
       return true;
     };
@@ -420,9 +422,9 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
           if (qSource === "Local" || (qSource === "Auto" && hpGeneration === "V1")) {
             return qSource === "Auto" ? t("settingsIntegrations.flowLocalAuto") : optionLabel("Local");
           }
-          return firstAvailableSourceLabel(formattedSourceValue("outdoorUnitFlowMode"), qSource === "Auto" ? t("settingsIntegrations.flowOutdoorAuto") : optionLabel("Outdoor unit"));
+          return firstAvailableSourceLabel(hasHp2 ? formattedSourceValue("outdoorUnitFlowMode") : "", qSource === "Auto" ? t("settingsIntegrations.flowOutdoorAuto") : optionLabel("Outdoor unit"));
         }
-        return firstAvailableSourceLabel(formattedSourceValue("outdoorUnitFlowMode"), t("settingsIntegrations.flowQuatt"));
+        return firstAvailableSourceLabel(hasHp2 ? formattedSourceValue("outdoorUnitFlowMode") : "", t("settingsIntegrations.flowQuatt"));
       }
       return formatSettingsOptionLabel(source);
     };
@@ -987,7 +989,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
             label: t("settingsIntegrations.selMeterChoice"),
             infoId: "outdoorUnitFlowMode-info",
             infoCopy: t("settingsIntegrations.selMeterChoiceInfo"),
-            when: currentFlowSource === "Outdoor unit" && hasEntity("outdoorUnitFlowMode") && (!hasEntity("qFlowSource") || currentQFlowSource !== "Local"),
+            when: hasHp2 && currentFlowSource === "Outdoor unit" && hasEntity("outdoorUnitFlowMode") && (!hasEntity("qFlowSource") || currentQFlowSource !== "Local"),
           },
         ],
         secondaryNumbers: [{
@@ -1002,9 +1004,9 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         routeWarning: invalidSourceValueWarning("flowSelected"),
         measurementRows: [
           renderSourceRow({ label: t("settingsIntegrations.measController"), key: "controllerFlow", sourceKind: "local", sourceState: "available", effective: sourcesMatch(flowUsedSource, optionLabel("Local")) }),
-          renderSourceRow({ label: t("settingsIntegrations.measCombined"), key: "flowLocal", sourceKind: "outdoor", sourceState: "available", effective: /gecombineerd|combined/i.test(flowUsedSource) }),
+          renderSourceRow({ label: hasHp2 ? t("settingsIntegrations.measCombined") : optionLabel("Outdoor unit"), key: "flowLocal", sourceKind: "outdoor", sourceState: "available", effective: hasHp2 ? /gecombineerd|combined/i.test(flowUsedSource) : sourcesMatch(flowUsedSource, optionLabel("Outdoor unit")) || sourcesMatch(flowUsedSource, t("settingsIntegrations.flowQuatt")) }),
           renderSourceRow({ label: t("settingsIntegrations.measHp1"), key: "hp1Flow", sourceKind: "hp1", sourceState: "available", effective: sourcesMatch(flowUsedSource, "HP1") && !sourcesMatch(flowUsedSource, "HP2") }),
-          renderSourceRow({ label: t("settingsIntegrations.measHp2"), key: "hp2Flow", sourceKind: "hp2", sourceState: "available", effective: sourcesMatch(flowUsedSource, "HP2") && !sourcesMatch(flowUsedSource, "HP1") }),
+          hasHp2 ? renderSourceRow({ label: t("settingsIntegrations.measHp2"), key: "hp2Flow", sourceKind: "hp2", sourceState: "available", effective: sourcesMatch(flowUsedSource, "HP2") && !sourcesMatch(flowUsedSource, "HP1") }) : "",
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicFlowrate", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(flowUsedSource, "CIC") }) : "",
         ],
       }),

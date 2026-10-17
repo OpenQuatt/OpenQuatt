@@ -213,8 +213,14 @@ globals:
     restore_value: false
     initial_value: '0'
 
-  # Last physical F-level written to register 1999. Control bookkeeping above
-  # deliberately remains in the independent 0..10 model-level domain.
+  # Last physical F-level written to register 1999. Applied/requested levels
+  # use the same physical stand domain; PID demand remains normalized separately.
+  # A retired queued command must be re-issued despite optimistic select state.
+  - id: ${hp_id}_compressor_command_revalidation_required
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+
   - id: ${hp_id}_last_commanded_physical_level
     type: int
     restore_value: false
@@ -654,11 +660,10 @@ select:
       "Cooling": 1
       "Heating": 2
     write_lambda: |-
-      // Final gate also covers supervisory safety's direct select writes.
-      const bool hard_stop = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
-          id(oq_incident_manager).get_outputs(${hp_index}).must_stop ||
-          id(${hp_id}_odu_defrost)->cycle.telemetry_fault(millis());
-      if (!id(${hp_id}_odu_defrost)->normal_write_allowed(value, hard_stop)) return {};
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value)) {
+        id(${hp_id}_compressor_command_revalidation_required) = true;
+        return {};
+      }
       return value;
 
   - platform: modbus_controller
@@ -670,11 +675,10 @@ select:
     value_type: U_WORD
     optimistic: true
     write_lambda: |-
-      // Freeze normal compressor commands during ODU-owned defrost; hard stops retain priority.
-      const bool hard_stop = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
-          id(oq_incident_manager).get_outputs(${hp_index}).must_stop ||
-          id(${hp_id}_odu_defrost)->cycle.telemetry_fault(millis());
-      if (!id(${hp_id}_odu_defrost)->normal_write_allowed(value, hard_stop)) return {};
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value)) {
+        id(${hp_id}_compressor_command_revalidation_required) = true;
+        return {};
+      }
       return value;
     optionsmap:
       "0": 0

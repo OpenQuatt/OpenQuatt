@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "oq_compressor_frequency_policy.h"
+#include "oq_thermal_request_logic.h"
 
 namespace oq_frequency_runtime {
 
@@ -24,6 +25,10 @@ struct Context {
 
   oq_odu::Variant performance_variant(bool is_hp1) const { return is_hp1 ? hp1_variant : hp2_variant; }
 
+  int automatic_level_limit(bool is_hp1, int mode_code) const {
+    return oq_odu::automatic_level_limit(configured_v2, snapshot(is_hp1), mode_code);
+  }
+
   int automatic_frequency_hz(bool is_hp1, int mode_code, int level) const {
     return oq_frequency_policy::automatic_frequency_hz(configured_v2, snapshot(is_hp1), mode_code, level);
   }
@@ -36,6 +41,27 @@ struct Context {
   int pick_allowed_level(bool is_hp1, int mode_code, int requested_level, int min_level, int max_level) const {
     return oq_frequency_policy::pick_allowed_level(configured_v2, snapshot(is_hp1), mode_code, requested_level,
                                                    min_level, max_level, cap_hz, excluded_range(is_hp1));
+  }
+
+  int limit_heating_slew(bool is_hp1, int requested, int previous, uint32_t now_ms, uint32_t last_change_ms,
+                         uint32_t up_hold_ms, uint32_t down_hold_ms) const {
+    const int maximum = this->automatic_level_limit(is_hp1, 2);
+    if (previous > 0 && !this->frequency_allowed(is_hp1, 2, previous))
+      return this->pick_allowed_level(is_hp1, 2, previous, 1, std::min(maximum, previous));
+    // Slew one allowed entry at a time. Excluded intermediate entries must
+    // neither strand a running HP nor bypass an upward/downward wait window.
+    std::array<uint8_t, oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX + 1> entries{};
+    int count = 0, previous_rank = 0, requested_rank = 0;
+    const int target = this->pick_allowed_level(is_hp1, 2, requested, 1, maximum);
+    for (int physical = 1; physical <= maximum; ++physical) {
+      if (!this->frequency_allowed(is_hp1, 2, physical)) continue;
+      entries[++count] = static_cast<uint8_t>(physical);
+      if (physical == previous) previous_rank = count;
+      if (physical == target) requested_rank = count;
+    }
+    const int rank = oq_request::limit_level_slew(requested_rank, previous_rank, false, now_ms, last_change_ms,
+                                                  up_hold_ms, down_hold_ms);
+    return rank >= 0 && rank <= count ? entries[rank] : 0;
   }
 };
 

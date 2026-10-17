@@ -12,8 +12,8 @@ static_assert(sizeof(DispatchState) <= 40);
 HpInput hp(int previous = 0, bool available = true) {
   HpInput result;
   result.candidate = {previous, available, false, false};
-  for (int level = 0; level <= kMaxLevel; ++level)
-    result.levels[level] = {true, true, true, 1000.0f * level, 100.0f * level};
+  for (int level = 0; level <= 10; ++level)
+    result.levels[level] = {true, true, true, 1000.0f * level, 100.0f * level, static_cast<uint8_t>(level * 9)};
   return result;
 }
 DispatchInput input(bool duo = false) { return {60000, 3, 3000.0f, duo, true, true, hp(), hp()}; }
@@ -116,7 +116,7 @@ void test_single_and_failures() {
   in.hp1.candidate.must_stop = true;
   assert(decide_dispatch(in, cfg, {}).reason == Reason::FALLBACK_IDLE);
   in.hp2.candidate = {};
-  for (int previous : {-1, 11, 20}) {
+  for (int previous : {-1, 21, 99}) {
     in.hp1.candidate = {previous, true, false, false};
     assert(decide_dispatch(in, cfg, {}).reason == Reason::FALLBACK_IDLE);
   }
@@ -129,7 +129,7 @@ void test_single_and_failures() {
   in.performance_valid = false;
   assert(!decide_dispatch(in, cfg, {}).output_valid);
   in = input(true);
-  in.hp1.candidate = {11, false, false, true};
+  in.hp1.candidate = {21, false, false, true};
   out = decide_dispatch(in, cfg, {});
   assert(out.hp1_level == 0 && out.hp2_level > 0);
   in = input(true);

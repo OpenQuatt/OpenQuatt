@@ -1180,6 +1180,8 @@ const char* OpenQuattDecisionLog::event_type_to_string_(uint8_t value) {
       return "hp_start_confirmed";
     case EVENT_HP_STOP_CONFIRMED:
       return "hp_stop_confirmed";
+    case EVENT_HEATING_STOP_CONTEXT:
+      return "heating_stop_context";
     default:
       return "unknown";
   }
@@ -1210,6 +1212,39 @@ const char* OpenQuattDecisionLog::subject_to_string_(uint8_t value) {
 
 const char* OpenQuattDecisionLog::reason_to_string_(uint8_t value) {
   switch (value) {
+    case REASON_PH_DEMAND_ZERO:
+      return "ph_demand_zero";
+    case REASON_PH_LOW_LOAD:
+      return "ph_low_load";
+    case REASON_PH_COMFORT_STOP:
+      return "ph_comfort_stop";
+    case REASON_PH_COMFORT_HOLD:
+      return "ph_comfort_hold";
+    case REASON_CURVE_WATER_STOP:
+      return "curve_water_stop";
+    case REASON_CURVE_LOW_LOAD:
+      return "curve_low_load";
+    case REASON_HEATING_INPUT_INVALID:
+      return "heating_input_invalid";
+    case REASON_HEATING_SINGLE_SUFFICIENT:
+      return "heating_single_sufficient";
+    case REASON_HEATING_ELECTRICAL_LIMIT:
+      return "heating_electrical_limit";
+    case REASON_HEATING_NO_CANDIDATE:
+      return "heating_no_candidate";
+    case REASON_HEATING_DISABLED:
+      return "heating_disabled";
+    case REASON_HEATING_WATER_LIMIT:
+      return "heating_water_limit";
+    case REASON_HEATING_FLOW_LIMIT:
+      return "heating_flow_limit";
+    case REASON_HEATING_SOURCE_UNAVAILABLE:
+      return "heating_source_unavailable";
+    case REASON_HEATING_OPTIMIZER:
+      return "heating_optimizer";
+    case REASON_HEATING_CENTRAL_PAUSE:
+      return "heating_central_pause";
+
     case REASON_FREQUENCY_CAP_BELOW_MINIMUM:
       return "frequency_cap_below_minimum";
     case REASON_KEEP_CURRENT:

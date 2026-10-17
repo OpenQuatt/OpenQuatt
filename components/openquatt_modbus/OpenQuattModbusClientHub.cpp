@@ -1,4 +1,5 @@
 #include "OpenQuattModbusClientHub.h"
+#include "OpenQuattModbusCommandGuard.h"
 
 #include "esphome/core/log.h"
 #include "includes/protocol/oq_modbus_recovery.h"
@@ -10,6 +11,44 @@ namespace {
 static const char* const TAG = "openquatt.modbus";
 
 }  // namespace
+
+bool OpenQuattModbusClientHub::tx_blocked() {
+  // The upstream send_frame_ may otherwise delay/yield after our guard. Wait
+  // for a completely idle bus so dispatch has no deliberate delay afterwards.
+  return this->ModbusClientHub::tx_blocked() || this->tx_delay_remaining() > 0;
+}
+
+void OpenQuattModbusClientHub::loop() {
+  // ESPHome 2026.9.0 ModbusClientHub lifecycle. send_next_frame_ is not virtual,
+  // so preserve the upstream RX/watchdog/sweep order and gate its final dispatch.
+  // A granted retry becomes READY in sweep_ and passes the same live guard.
+  this->sweep_();
+  this->Modbus::loop();
+  if (this->waiting_for_response_ &&
+      this->last_receive_check_ - this->last_send_ > this->last_send_tx_offset_ + this->send_wait_time_us_) {
+    this->expire_waiting_();
+  }
+  this->sweep_();
+  if (this->tx_blocked()) {
+    return;
+  }
+  if (this->command_guard_ && !detail::guard_next_command(
+                                  this->tx_buffer_.size(), [this]() { return this->select_next_ready_(); },
+                                  [this](const modbus::ModbusDeviceCommand& command) {
+                                    const auto pdu = command.frame.pdu();
+                                    return this->command_guard_(command.frame.address(), pdu.data(), pdu.size());
+                                  },
+                                  [this](modbus::ModbusDeviceCommand& command) {
+                                    // No timeout/offline transition: normal on_not_sent cleanup retires
+                                    // this one frame and keeps unrelated requests and in-flight RX alive.
+                                    command.retire();
+                                    this->sweep_needed_ = true;
+                                    this->sweep_();
+                                  })) {
+    return;
+  }
+  this->send_next_frame_();
+}
 
 bool OpenQuattModbusClientHub::try_resync_expected_response_() {
   if (!this->waiting_for_response_) {

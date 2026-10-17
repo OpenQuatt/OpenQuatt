@@ -266,6 +266,10 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 - twee warmtepompen tegelijk zijn niet per definitie beter;
 - het systeem probeert een praktische en zuinige keuze te maken.
 
+### Vermogensvoorspelling bij de levelkeuze
+
+Bij beschikbare inlaattemperatuur en flow berekent OpenQuatt het vermogen voor ieder kandidaatpaar met de waterketen HP1 → HP2: de voorspelde uitlaat van HP1 wordt de inlaat van HP2. Dit geldt ook voor Water Temperature Control. Bij ontbrekende watermetingen gebruikt de regeling de eigen verse uitlaattemperatuur van een draaiende ODU, met de bestaande temperatuurreferentie als terugval. Stilstaande ODU's en defrost behouden die bestaande referentie. Alle frequentiegrenzen, stroomlimieten en wachttijden blijven actief; 90 Hz inclusief blijft toegestaan.
+
 ## Langer doorverwarmen (optioneel)
 
 Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard uit.

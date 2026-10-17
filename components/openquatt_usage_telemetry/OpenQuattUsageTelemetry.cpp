@@ -960,7 +960,8 @@ void OpenQuattUsageTelemetry::complete_publish_session_() {
 
 bool OpenQuattUsageTelemetry::build_payload_() {
   const uint64_t uptime_s = static_cast<uint64_t>(esp_timer_get_time()) / 1000000ULL;
-  const std::string hardware_revision = this->read_hardware_revision_();
+  uint16_t hardware_serial = 0;
+  const std::string hardware_revision = this->read_hardware_revision_(hardware_serial);
   if (this->payload_message_id_.empty()) {
     this->payload_message_id_ = random_message_id_();
   }
@@ -1023,6 +1024,12 @@ bool OpenQuattUsageTelemetry::build_payload_() {
     payload += '"';
     payload += hardware_revision;
     payload += '"';
+  }
+  append_json_key_(payload, "hardware_serial");
+  if (hardware_serial == 0U) {
+    payload += "null";
+  } else {
+    payload.append_uint(hardware_serial);
   }
   payload += R"(,"topology":")";
   append_json_escaped(payload, this->topology_);
@@ -1145,7 +1152,8 @@ void OpenQuattUsageTelemetry::clear_payload_() {
   this->payload_size_ = 0U;
 }
 
-std::string OpenQuattUsageTelemetry::read_hardware_revision_() const {
+std::string OpenQuattUsageTelemetry::read_hardware_revision_(uint16_t& serial) const {
+  serial = 0;
   if (this->hardware_profile_ != "heatpump_controller_q") {
     return "";
   }
@@ -1154,6 +1162,7 @@ std::string OpenQuattUsageTelemetry::read_hardware_revision_() const {
   if (revision.error != ESP_OK || !revision.programmed) {
     return "";
   }
+  serial = revision.serial;
   char revision_text[32];
   std::snprintf(revision_text, sizeof(revision_text), "%u.%u (batch %u)", static_cast<unsigned>(revision.major),
                 static_cast<unsigned>(revision.minor), static_cast<unsigned>(revision.batch));

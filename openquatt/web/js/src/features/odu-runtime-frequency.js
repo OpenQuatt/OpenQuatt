@@ -1,4 +1,3 @@
-import { hasEntity } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { fetchWithTimeout } from "../core/browser-utils.js";
 import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
@@ -20,7 +19,7 @@ export function getOduRuntimeFrequencyEndpoint(hp, action) {
 }
 
 export function getOduRuntimeFrequencyHpIndexes() {
-  return getInstallationTopology() === "duo" || hasEntity("hp2ExcludeMinHz") ? [1, 2] : [1];
+  return getInstallationTopology() === "duo" ? [1, 2] : [1];
 }
 
 export function normalizeOduRuntimeFrequencyStatus(payload = {}, hp = 1) {

@@ -1,4 +1,3 @@
-import { hasEntity } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { fetchWithTimeout } from "../core/browser-utils.js";
 import { escapeHtml } from "../core/html.js";
@@ -50,7 +49,7 @@ export function getOduDefrostEndpoint(hp, action) {
 }
 
 export function getOduDefrostHpIndexes() {
-  return getInstallationTopology() === "duo" || hasEntity("hp2ExcludeMinHz") ? [1, 2] : [1];
+  return getInstallationTopology() === "duo" ? [1, 2] : [1];
 }
 
 function integer(value) {

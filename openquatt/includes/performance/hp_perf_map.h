@@ -108,12 +108,18 @@ static inline float interp_3d(const float data[N_AMB][N_SUP][N_LVL], int level, 
   if (ty < 0) ty = 0;
   if (ty > 1) ty = 1;
 
-  float q11 = data[ai][si][li];
-  float q21 = data[ai + 1][si][li];
-  float q12 = data[ai][si + 1][li];
-  float q22 = data[ai + 1][si + 1][li];
+  // Collapse zero-weight neighbours before checking and interpolating: a
+  // missing cell must not invalidate an exact node or edge it does not affect.
+  const int ai_lo = tx == 1.0f ? ai + 1 : ai;
+  const int ai_hi = tx == 0.0f ? ai : ai + 1;
+  const int si_lo = ty == 1.0f ? si + 1 : si;
+  const int si_hi = ty == 0.0f ? si : si + 1;
+  float q11 = data[ai_lo][si_lo][li];
+  float q21 = data[ai_hi][si_lo][li];
+  float q12 = data[ai_lo][si_hi][li];
+  float q22 = data[ai_hi][si_hi][li];
 
-  // If any cell is missing (NaN), return NaN so the caller can fallback/skip.
+  // Any missing contributing cell still requires the caller to fallback/skip.
   if (std::isnan(q11) || std::isnan(q21) || std::isnan(q12) || std::isnan(q22)) return NAN;
 
   return bilerp(q11, q21, q12, q22, tx, ty);

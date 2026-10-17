@@ -105,6 +105,12 @@ Kies eerder stooklijnregeling als:
 
 Twijfel je? Begin dan met de strategie die het meest logisch voelt, en wissel niet te snel heen en weer. Eerst kijken hoe het systeem zich over langere tijd gedraagt is meestal verstandiger dan direct finetunen.
 
+## Hoe kiest OpenQuatt een compressorstand?
+
+Bij automatisch verwarmen bekijkt OpenQuatt de frequenties uit de ingelezen standentabel van iedere warmtepomp. Het performancemodel schat bij die frequenties en de buiten- en watertemperatuur hoeveel warmte de unit levert. De regeling kiest daaruit een passende stand; bij `Duo` beoordeelt zij de combinatie van beide units binnen de bestaande inschakel- en wisselvoorwaarden.
+
+Zo kunnen extra standen tussen de bestaande meetpunten worden gebruikt. Automatisch verwarmen blijft voorlopig begrensd op **90 Hz**. Je ingestelde dag-/stiltegrens en uitgesloten frequenties kunnen die keuze verder beperken. Standen zonder geldige tabel of bruikbare performancegegevens zijn geen nieuwe startkandidaten. Bestaande beveiligingen en wachttijden blijven gelden.
+
 ## `Single` en `Duo`
 
 Bij `Single` is er een warmtepomp. Bij `Duo` zijn het er twee.
@@ -138,3 +144,12 @@ Voor de meeste gebruikers is deze volgorde beter:
 ## Bediening en verder lezen
 
 Zie [Instellingen aanpassen](../web-app/instellingen.md) voor de bediening in de web-app en [Dagelijkse controle](controleren.md) voor normaal gebruik.
+
+
+### Temperatuurbegrenzing en handbediening
+
+De buitenunit voert zijn eigen temperatuurafhankelijke frequentiebegrenzing en beveiligingen uit volgens de ODU-configuratie. De gerealiseerde compressorfrequentie kan daardoor lager zijn dan de gevraagde stand. OpenQuatt kopieert deze ODU-plafonds niet naar een tweede temperatuur-envelop. Het bereik van een prestatietabel is geen zelfstandige bedrijfsgrens: boven 12 °C buitenlucht wordt V1/V1.5 niet door zo'n extra envelop geblokkeerd.
+
+OpenQuatt behoudt zijn bestaande flow-, vorst-, waterovertemperatuur-, incident-, start/stop- en defrostbewaking. Dag-/stiltegrenzen en frequentie-uitsluitingen blijven bij automatisch bedrijf gelden. Prestatietabellen worden gebruikt voor vermogensschatting en standkeuze; ontbrekende modelgegevens kunnen de beschikbare modelkandidaten beperken.
+
+Ook bij handbediening blijft een warmtepomp in Standby zolang de compressorvraag nul is of een startbewaking de vraag tegenhoudt. Het selecteren van Heating of Cooling geeft op zichzelf geen startvrijgave en wist geen verdiende minimale stilstandtijd.

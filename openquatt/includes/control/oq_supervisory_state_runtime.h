@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 
+#include "../boiler/oq_boiler_logic.h"
 #include "../performance/hp_perf_frequency.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
@@ -14,6 +15,8 @@
 #include "oq_control_mode_log_logic.h"
 #include "oq_defrost_logic.h"
 #include "oq_hp_candidate_logic.h"
+#include "oq_hp_supervisory_logic.h"
+#include "oq_power_house_runtime.h"
 #include "oq_supervisory_power_limiter_runtime.h"
 #include "oq_supervisory_safety_runtime.h"
 #include "oq_supervisory_state_logic.h"
@@ -65,6 +68,7 @@ struct TickConfig {
 
 class Runtime {
  public:
+  uint8_t heating_gate_reason() const { return this->heating_gate_reason_; }
   void tick(const TickConfig& tick) {
     const uint32_t now_ms = (uint32_t)millis();
 
@@ -216,13 +220,21 @@ class Runtime {
       const oq_hp_candidate::HpCandidateState hp2_candidate;
 #endif
       const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
+      const auto model = oq_water_performance::capture(frequency, supply_c,
+                                                       id(hp1_4_way_valve).state || id(hp1_defrost).state
+#if OQ_TOPOLOGY_DUO
+                                                           || id(hp2_4_way_valve).state || id(hp2_defrost).state
+#endif
+      );
       const auto include_minimum = [&](bool hp1, const oq_hp_candidate::HpCandidateState& candidate) {
         if (!oq_hp_candidate::may_serve_candidate(candidate)) return;
-        for (int level = 1; level <= 10; ++level) {
+        for (int level = 1; level <= frequency.automatic_level_limit(hp1, 2); ++level) {
           const auto prediction = oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
                                                              outside_c, supply_c, allow_low_supply_boundary_estimate);
-          if (!prediction.usable_for_running_optimization()) continue;
-          const float power_w = prediction.performance.pth_w;
+          if (!prediction.frequency_policy_allowed) continue;
+          const auto power = model.unit(hp1, level);
+          if (!power.valid() || power.thermal_w <= 0) continue;
+          const float power_w = power.thermal_w;
           live_minimum_power_w =
               std::isfinite(live_minimum_power_w) ? std::min(live_minimum_power_w, power_w) : power_w;
         }
@@ -253,6 +265,10 @@ class Runtime {
             id(oq_low_load_dyn_last_valid_ms),
             id(oq_cm2_reentry_block_until_ms),
         });
+    if (power_house_active)
+      oq_power_house_runtime::runtime().record_low_load_stop(now_ms, heating_req_raw, low_load.state.heat_latched,
+                                                             p_req_w, low_load.off_threshold_w,
+                                                             low_load.on_threshold_w);
     id(oq_lowload_heat_latch) = low_load.state.heat_latched;
     id(oq_low_load_pmin_dyn_lkg_w) = low_load.state.cached_minimum_power_w;
     id(oq_low_load_dyn_last_valid_ms) = low_load.state.cached_minimum_power_updated_ms;
@@ -459,6 +475,7 @@ class Runtime {
     bool no_hp_available_confirmed = false;
     bool cm3_fallback_handover_wait = false;
     static oq_hp_supervisory::Cm4ResumeTracker cm4_resume_tracker;
+    bool stop_override_active = false;
     auto resolve_desired_cm = [&]() -> int {
       // Helper: start CM1 window
       auto start_cm1 = [&](int next_after) -> void {
@@ -569,6 +586,7 @@ class Runtime {
 
       int desired_local = 0;
       if (override_mode != 0) {
+        stop_override_active = true;
         // Clear transition timers to avoid surprises when returning to Auto
         id(oq_cm1_until_ms) = 0;
         id(oq_cm1_next_after) = 0;
@@ -882,6 +900,17 @@ class Runtime {
       return desired_local;
     };
     const int desired = resolve_desired_cm();
+    this->heating_gate_reason_ = 0;
+    if (desired != 2 && desired != 3) {
+      if (stop_override_active)
+        this->heating_gate_reason_ = openquatt_decision_log::REASON_SUPERVISORY_OVERRIDE;
+      else if (thermal_req && (id(oq_lowflow_fault_active) || flow_low))
+        this->heating_gate_reason_ = openquatt_decision_log::REASON_HEATING_FLOW_LIMIT;
+      else if (desired == 98)
+        this->heating_gate_reason_ = openquatt_decision_log::REASON_FROST_PROTECTION;
+      else if (cold_start_blocked && heating_req)
+        this->heating_gate_reason_ = openquatt_decision_log::REASON_HEATING_CENTRAL_PAUSE;
+    }
     const char* desired_cm = cm_code_to_id(desired);
     const bool next_mode_owns_boiler = desired == 3 || desired == 4 ||
                                        (desired == 100 && id(oq_commissioning_active) &&
@@ -1159,6 +1188,7 @@ class Runtime {
   }
 
  private:
+  uint8_t heating_gate_reason_{0};
   oq_cold_start::WaterProbe hp1_water_probe_;
 #if OQ_TOPOLOGY_DUO
   oq_cold_start::WaterProbe hp2_water_probe_;

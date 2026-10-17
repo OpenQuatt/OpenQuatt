@@ -80,11 +80,12 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertNotIn("oq_power_limit_peak_w", COOLING + COOLING_RUNTIME)
 
     def test_heating_curve_dispatch_uses_power_capped_continuous_demand(self) -> None:
-        for marker in ("oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), capped, config.demand_max_f)", "phase_target_power_w(heat_phase, demand_u, owner_capacity_w, duo_capacity_w)", "std::lround(demand_u * level_cap)", "const float dispatch_u = config.demand_max_f > 0 ? static_cast<float>(capped) / config.demand_max_f : 0.0f;", "dispatch_u >= 0.95f", "dispatch_u >= duo_enable_min_u", "dispatch_u <= duo_disable_max_u", "const bool demand_active = demand_u > 0.0f;", "hp1_candidate, hp2_candidate, demand_active"):
+        for marker in ("oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), capped, config.demand_max_f)", "phase_target_power_w(heat_phase, demand_u, owner_capacity_w, duo_capacity_w)", "const float target_power_w = demand_u * capacity_w;", "const float dispatch_u = config.demand_max_f > 0 ? static_cast<float>(capped) / config.demand_max_f : 0.0f;", "dispatch_u >= 0.95f", "dispatch_u >= duo_enable_min_u", "dispatch_u <= duo_disable_max_u", "const bool demand_active = demand_u > 0.0f;", "hp1_candidate, hp2_candidate, demand_active"):
             self.assertIn(marker, HEATING_CURVE_RUNTIME)
         self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE_RUNTIME)
-        paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "openquatt/includes/control/oq_heating_curve_runtime.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1900)
+        paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "openquatt/includes/control/oq_heating_curve_runtime.h", "openquatt/includes/control/oq_compressor_movement_logic.h", "tests/host/compressor_movement_dispatch_test.cpp", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
+        # Include shared Duo Hz movement and its regression; retain the existing margin.
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 2170)
 
 if __name__ == "__main__":
     unittest.main()

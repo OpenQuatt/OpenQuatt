@@ -25,9 +25,9 @@ inline bool frequency_in_range(int frequency_hz, const FrequencyRange& range) {
 }
 
 inline int automatic_frequency_hz(bool configured_v2, const oq_odu::RuntimeFrequencySnapshot& snapshot, int mode_code,
-                                  int model_level) {
-  if (model_level <= 0) return 0;
-  const auto command = oq_odu::resolve_automatic_level(configured_v2, snapshot, mode_code, model_level);
+                                  int physical_level) {
+  if (physical_level <= 0) return 0;
+  const auto command = oq_odu::resolve_automatic_level(configured_v2, snapshot, mode_code, physical_level);
   if (command.control_level <= 0 || command.physical_level <= 0) return -1;
   if (!oq_odu::has_valid_frequency_table(snapshot, mode_code)) return -1;
   const auto& table = oq_odu::frequency_table_for_mode(snapshot, mode_code);
@@ -40,7 +40,7 @@ inline int automatic_frequency_hz(bool configured_v2, const oq_odu::RuntimeFrequ
 inline int minimum_automatic_frequency_hz(bool configured_v2, const oq_odu::RuntimeFrequencySnapshot& snapshot,
                                           int mode_code) {
   int minimum = MAX_POLICY_FREQUENCY_HZ + 1;
-  for (int level = 1; level <= oq_odu::MODEL_LEVEL_MAX; ++level) {
+  for (int level = 1; level <= oq_odu::automatic_level_limit(configured_v2, snapshot, mode_code); ++level) {
     const int hz = automatic_frequency_hz(configured_v2, snapshot, mode_code, level);
     if (hz > 0) minimum = std::min(minimum, hz);
   }
@@ -63,7 +63,7 @@ inline int pick_allowed_level(bool configured_v2, const oq_odu::RuntimeFrequency
                               const FrequencyRange& excluded) {
   if (requested_level <= 0) return 0;
   min_level = std::max(1, min_level);
-  max_level = std::min(oq_odu::MODEL_LEVEL_MAX, max_level);
+  max_level = std::min(oq_odu::automatic_level_limit(configured_v2, snapshot, mode_code), max_level);
   if (min_level > max_level) return 0;
   requested_level = std::max(min_level, std::min(max_level, requested_level));
 

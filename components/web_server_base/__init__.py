@@ -50,6 +50,11 @@ CONFIG_SCHEMA = cv.All(
 
 @coroutine_with_priority(CoroPriority.WEB_SERVER_BASE)
 async def to_code(config: ConfigType) -> None:
+    from esphome import writer
+
+    from .core_four_decimals import install_four_decimal_patch
+
+    install_four_decimal_patch(CORE, writer)
     var = cg.new_Pvariable(config[CONF_ID])
     cg.add(cg.RawExpression(f"{web_server_base_ns}::global_web_server_base = {var}"))
 

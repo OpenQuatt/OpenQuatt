@@ -1230,6 +1230,14 @@
       });
     };
 
+    const pushHeatingStop = (age, subject, reason, power, room, water, ageSeconds = 0) => {
+      [power, room, water].forEach((values, index) => {
+        pushEvent(age, "heating_stop_context", subject, reason, "normal", 2, "active", "idle",
+          values[0], values[1], values[2], ageSeconds, index + 1);
+      });
+      pushEvent(age, "source_stop", subject, reason, "normal", 2, "active", "idle", 3, 0, 0, 0, 32);
+    };
+
     if (!isIncidentScenarioActive()) {
     if (state.scenario !== "cooling_limiter_log" && state.scenario !== "cooling_stop_reasons" && state.scenario !== "heating_stop_reasons") {
       pushEvent(6 * 24 * 60 + 9 * 60, "sticky_pump_run", "PUMP", "sticky_protection", "normal", 98, "standby", "active", 60, 0, 0, 60);
@@ -1253,10 +1261,14 @@
       pushEvent(116, "topology_change", "BOTH", "better_heat", "normal", 2, "single", "duo", 2, 1, 15);
       pushEvent(115, "source_start", "HP1", "better_heat", "normal", 2, "idle", "active", 2);
       pushEvent(76, "topology_change", "HP2", "less_power", "normal", 2, "duo", "single", 0, 3);
-      pushEvent(76, "source_stop", "HP1", "less_power", "normal", 2, "active", "idle", 2);
+      pushHeatingStop(76, "HP1", "heating_optimizer", [2400, 2400, 2600], [2010, -32768, -32768], [-32768, -32768, -32768]);
       pushEvent(29, "flow_hold_start", "SYSTEM", "flow_postflow", "normal", 1, "active", "limited");
       pushEvent(27, "topology_change", "SYSTEM", "heating_request_cleared", "normal", 1, "single", "idle");
-      pushEvent(27, "source_stop", "HP2", "heating_request_cleared", "normal", 1, "active", "idle", 3);
+      pushHeatingStop(27, "HP2", "ph_comfort_hold", [900, 0, 2500], [2050, 2030, 2050], [-32768, -32768, -32768], 60);
+      pushHeatingStop(240, "HP1", "ph_low_load", [1550, 1550, 2500], [-32768, -32768, -32768], [-32768, 2200, 1600]);
+      pushHeatingStop(310, "HP1", "curve_water_stop", [-32768, -32768, 2500], [2040, 1995, 2030], [3590, 3420, 3590], 30);
+      pushHeatingStop(370, "HP2", "curve_low_load", [-32768, -32768, 2500], [2000, 1995, 1995], [3525, 3420, 3525], 20);
+      pushHeatingStop(430, "HP1", "heating_input_invalid", [-32768, -32768, -32768], [-32768, -32768, -32768], [-32768, -32768, -32768]);
       pushEvent(25, "flow_hold_clear", "SYSTEM", "flow_postflow", "normal", 1, "limited", "standby", 0, 0, 0, 120);
     } else if (isCandidateBlockedScenario()) {
       pushEvent(18, "source_start", "HP1", "runtime_lead", "normal", 2, "standby", "active", 4);
@@ -1921,6 +1933,9 @@
     syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
     setEntity("text_sensor", "OpenQuatt Hardware Revision", { state: "1.0 (batch 42)", value: "1.0 (batch 42)" });
+    if (state.hardware === "heatpump_controller_q") {
+      setEntity("sensor", "OpenQuatt Hardware Serial", { state: 137, value: 137 });
+    }
     const activeConnection = state.connection === "eth" ? "Ethernet" : "WiFi";
     setEntity("text_sensor", "OpenQuatt Connection", { state: activeConnection, value: activeConnection });
     setEntity("select", "Preferred Connection", {
