@@ -144,6 +144,32 @@ For quick iterations, the standalone checks remain useful:
 
 The checker is intended as a local quality gate. Add new rules only once the current codebase can satisfy them consistently.
 
+## Test Evidence
+
+Record test reports in the relevant pull request description or a PR comment,
+not in committed report files or dated sections of maintenance documentation.
+Include the tested commit and firmware identity, configuration, toolchain,
+procedure, results, skipped checks and remaining limits. Distinguish historical
+evidence from qualification of the current firmware. Keep credentials and other
+sensitive data out of reports.
+
+Reusable test procedures, regression tests, fixtures and current safety or
+compatibility contracts belong in the repository. Link to the PR for historical
+results. Before removing an existing report, preserve its evidence and limits in
+the relevant PR and verify the saved text.
+
+## Working With Codex
+
+- Start in the relevant source directory and name the files, target configuration
+  or component to investigate. Use a fresh chat for an unrelated task.
+- State the required checks explicitly; request a full firmware build when needed.
+  The commands above also support a focused check such as
+  `python3 scripts/dev.py validate --config-only --config configs/heatpump_controller_q/duo.yaml`.
+- Ask for concise results and relevant error lines instead of complete logs.
+  Identify a specific log file or excerpt when investigating a failure.
+- Follow the local `AGENTS.md` instructions and the
+  [web-app development guide](openquatt/web/README.md) for web changes.
+
 ## Generated Web Bundles
 
 Read the [web-app development guide](openquatt/web/README.md) for component reuse,

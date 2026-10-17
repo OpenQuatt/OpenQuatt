@@ -158,7 +158,7 @@ waterzijdige meetopstelling is veranderd. Een gewone bronwissel vereist deze res
 Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van passief
 leren gedeeld (`house_learning_enabled`), niet de leerdata of modelwaarden.
 `Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
-geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../power-house-autotuning-development.md).
+geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../development/power-house-autotuning-development.md).
 
 #### Woninglijn en meetresultaten
 
@@ -249,6 +249,9 @@ flow stoppen de meting. Een resultaat met beperkte validatie is geen garantie
 voor iedere bedrijfsconditie; controleer de flowregeling na toepassen.
 
 #### Buitenunitinstellingen en ontdooien
+
+Zie [Bodemplaatverwarming](../bodemplaatverwarming.md) voor regelmethoden,
+generatieverschillen en het opslaan en opnieuw toepassen van deze instellingen.
 
 Bij `Instellingen buitenunit` staat `Ontdooien` als derde rij. Het paneel toont per buitenunit de actuele status en cyclusduur. Onder `Instellingen` staan de huidige ontdooimethode met uitleg; `Instellingen uitlezen` leest deze uit de buitenunit. Alleen methoden die de herkende buitenunit daadwerkelijk ondersteunt kunnen tijdelijk worden gekozen na bevestiging van oud→nieuw: V1 biedt 0, 1 en 3; V1.5 en de bestaande V2-profielen bieden 0, 1, 3 en 4. De teruggelezen waarde geldt als bewijs. Sensorgegevens staan ingeklapt onder `Technische metingen`. Onbekende waarden blijven leeg; lokale tellers en mogelijke eindredenen zijn geen exacte weergave van de interne ODU-regeling. Zie [defrostdiagnostiek](../defrost.md) voor de beperkingen.
 

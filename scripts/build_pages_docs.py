@@ -72,6 +72,7 @@ PAGES = [
     Page(PurePosixPath("docs/verwarmen-en-koelen.md"), PurePosixPath("verwarmen-en-koelen.html"), "Verwarmen en koelen uitgelegd", "Uitleg", "Heldere uitleg van Power House, stooklijnregeling, koeling, Single en Duo."),
     Page(PurePosixPath("docs/mqtt.md"), PurePosixPath("mqtt.html"), "MQTT inputbronnen", "Docs", "Beperkte MQTT inputbronnen voor externe meetwaarden zoals koelingsdauwpunt."),
     Page(PurePosixPath("docs/crash-telemetry.md"), PurePosixPath("crash-telemetry.html"), "Crashtelemetrie", "Naslag", "Welke begrensde technische crashinformatie OpenQuatt met toestemming via MQTT verstuurt."),
+    Page(PurePosixPath("docs/bodemplaatverwarming.md"), PurePosixPath("bodemplaatverwarming.html"), "Bodemplaatverwarming", "Naslag", "Regelmethoden, generatieverschillen en opgeslagen profielen per buitenunit."),
     Page(PurePosixPath("docs/api-input.md"), PurePosixPath("api-input.html"), "API inputbronnen", "Docs", "Lokale HTTP-endpoints voor externe bronwaarden en toestemmingssignalen."),
     Page(PurePosixPath("docs/problemen-oplossen.md"), PurePosixPath("problemen-oplossen.html"), "Problemen oplossen", "Handleiding", "Rustige diagnosevolgorde bij installatie- en regelproblemen."),
     Page(PurePosixPath("docs/power-house.md"), PurePosixPath("power-house.html"), "Power House", "Docs", "Uitleg van huismodel, comfortlogica en Single/Duo-gedrag."),
@@ -91,7 +92,7 @@ SIDEBAR_GROUPS = [
     ("Home Assistant", "", [PurePosixPath("docs/dashboard/README.md"), PurePosixPath("docs/dashboard/koppelen.md"), PurePosixPath("docs/dashboard/installation.md"), PurePosixPath("docs/dashboard/dashboard.md"), PurePosixPath("docs/dashboard/dynamic-sources.md"), PurePosixPath("docs/dashboard/cooling.md")]),
     ("Homey", "", [PurePosixPath("docs/homey.md")]),
     ("Onderhoud en problemen", "", [PurePosixPath("docs/problemen-oplossen.md"), PurePosixPath("docs/web-app/diagnose.md"), PurePosixPath("docs/web-app/onderhoud.md"), PurePosixPath("docs/web-app/herstel.md")]),
-    ("Technische naslag", "", [PurePosixPath("docs/power-house.md"), PurePosixPath("docs/water-temperature-control.md"), PurePosixPath("docs/regelgedrag-van-openquatt.md"), PurePosixPath("docs/instellingen-en-meetwaarden.md"), PurePosixPath("docs/mqtt.md"), PurePosixPath("docs/api-input.md"), PurePosixPath("docs/crash-telemetry.md"), PurePosixPath("docs/hcq-io-overzicht.md"), PurePosixPath("docs/handmatige-installatie.md"), PurePosixPath("docs/koelen-technisch.md"), PurePosixPath("docs/gegevens-delen-technisch.md")]),
+    ("Technische naslag", "", [PurePosixPath("docs/power-house.md"), PurePosixPath("docs/water-temperature-control.md"), PurePosixPath("docs/regelgedrag-van-openquatt.md"), PurePosixPath("docs/instellingen-en-meetwaarden.md"), PurePosixPath("docs/mqtt.md"), PurePosixPath("docs/api-input.md"), PurePosixPath("docs/crash-telemetry.md"), PurePosixPath("docs/bodemplaatverwarming.md"), PurePosixPath("docs/hcq-io-overzicht.md"), PurePosixPath("docs/handmatige-installatie.md"), PurePosixPath("docs/koelen-technisch.md"), PurePosixPath("docs/gegevens-delen-technisch.md")]),
 ]
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")

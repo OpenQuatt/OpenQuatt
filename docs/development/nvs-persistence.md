@@ -183,47 +183,12 @@ hosttests injecteren ontbrekende keys, verkeerde types/groottes, open-/lees-/
 wis-/commitfouten en retries. Die tests bewijzen de foutafhandeling van de
 productiehelper met NVS-stubs; ze vervangen geen fysieke persistentiemeting.
 
-## HIL-resultaat 6 oktober 2026
+## Historische validatie
 
-De Q Duo-testcontroller is via normale OTA voorzien van de kandidaat met
-ESPHome 2026.9.0, config-hash `0x719eba15`. Binnen dezelfde boot zijn de
-NVS-statistieken vóór en na de gerichte cleanup vergeleken:
-
-| Moment | Used | Free | Available | Namespaces |
-| --- | ---: | ---: | ---: | ---: |
-| Vóór cleanup | 488 | 268 | 142 | 5 |
-| Na cleanup | 461 | 295 | 169 | 5 |
-| Na eerste herstart | 461 | 295 | 169 | 5 |
-| Na tweede herstart | 461 | 295 | 169 | 5 |
-
-Alle negen oude sessiepreferences waren aanwezig en zijn verwijderd: precies
-27 entries winst. De twee legacy-blobs waren al afwezig, dus hier is nul extra
-legacywinst gemeten. De native API-Noise-key bleef aanwezig als 32-byte blob;
-een daadwerkelijke HA-pairinghandshake is in deze run niet getest.
-
-De compressor-startwaarschuwingsgrens is gewijzigd van 6 naar 7 en bleef na
-beide herstarts op 7. De air-purgekeuze is vóór de eerste herstart uitgezet en
-begon daarna weer op aan. Beide flowcaches bleven 153/440; thermische energie
-bleef dagelijks 3.663273 kWh en cumulatief 56.68042 kWh. Cyclingstatus begon
-op false. Na beide herstarts waren de negen keys nog afwezig en traden geen
-verdere retirement-writes op.
-
-De oorspronkelijke firmware met config-hash `0x57f4228d`, waarschuwingsgrens
-6, air-purgekeuze en vastgelegde controllerinstellingen zijn teruggezet en
-geverifieerd. De gedeelde lablock is vrijgegeven. Gedetailleerde metadata en
-het rapport staan lokaal onder
-`.tmp/hil/2026-10-06T19-00-59-011Z-nvs-persistence/`.
-
-De actuele interne vrije heap van de kandidaat was circa 98–99 KiB,
-het minimum-sinds-boot circa 39 KiB en het grootste vrije blok 58 KiB.
-Dit was een rustige CM0-persistentietest: gelijktijdige HA/web/API/MQTT/bus/OTA-
-belasting en stack-watermarks zijn niet gemeten. Hieruit volgt geen bewezen
-runtime-geheugenmarge voor een release.
-
-De gemeten 169 beschikbare entries gelden voor de testcontroller met de
-records en firmware van die eerdere HIL-run. Ze vervangen de huidige
-volledige-bezettingsschatting van 60 vrije entries voor Q Duo niet; de
-budgetgate van 100 blijft FAIL.
+Het [gerichte persistentieverslag van 6 oktober 2026](https://github.com/OpenQuatt/OpenQuatt/pull/797#issuecomment-6232031034)
+staat bij PR #797. Die rustige CM0-run bewijst geen runtime-geheugenmarge voor
+een release. Voor de actuele Q Duo-begroting blijft de volledige-bezettingsschatting
+van 60 vrije entries bepalend; de budgetgate van 100 blijft FAIL.
 
 ## Vervolgontwerp voor gebundelde opslag
 

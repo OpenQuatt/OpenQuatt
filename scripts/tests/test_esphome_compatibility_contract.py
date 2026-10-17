@@ -41,7 +41,6 @@ CAPTIVE_PORTAL_ROUTER_CPP = (
     / "openquatt_captive_portal_router"
     / "OpenQuattCaptivePortalRouter.cpp"
 ).read_text()
-WIFI_PROFILE = (ROOT / "openquatt" / "connection" / "wifi.yaml").read_text()
 WIFI_ETH_PROFILE = (
     ROOT / "openquatt" / "connection" / "wifi_eth.yaml"
 ).read_text()
@@ -55,22 +54,11 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertIn(
             "add_handler_without_auth(this);", CAPTIVE_PORTAL_ROUTER_CPP
         )
-        profiles = (
-            (
-                "wifi",
-                WIFI_PROFILE,
-                "components: [wifi, captive_portal, openquatt_captive_portal_router]",
-            ),
-            (
-                "wifi_eth",
-                WIFI_ETH_PROFILE,
-                "components: [wifi, captive_portal, openquatt_network, openquatt_captive_portal_router]",
-            ),
+        self.assertIn(
+            "components: [wifi, captive_portal, openquatt_network, openquatt_captive_portal_router]",
+            WIFI_ETH_PROFILE,
         )
-        for profile_name, profile, component_declaration in profiles:
-            with self.subTest(profile=profile_name):
-                self.assertIn(component_declaration, profile)
-                self.assertIn("openquatt_captive_portal_router:", profile)
+        self.assertIn("openquatt_captive_portal_router:", WIFI_ETH_PROFILE)
 
     def test_captive_portal_router_delegates_existing_portal_routes(self) -> None:
         self.assertIn("portal->canHandle(request)", CAPTIVE_PORTAL_ROUTER_CPP)

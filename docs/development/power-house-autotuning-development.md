@@ -2,7 +2,7 @@
 
 ## Status en uitgangspunt
 
-Ontwikkelbasis: actuele `dev` op `c5e61b2` van 20 september 2026. De oorspronkelijke passieve learner uit PR #635 is opnieuw op deze basis geïntegreerd; de [centrale webontwikkelafspraken](../openquatt/web/README.md) gelden voor de passieve learnerbediening. Ontwerpinput: *OpenQuatt Power House Autotuning Engineer Plan*, revisie 1.1, *Adaptive Power House* en de aanvullende *1R1C Design Note*. De 24 synthetische checks uit de overdracht zijn gereproduceerd. Ze bewijzen geen meetkwaliteit, firmwaregedrag of energiebesparing.
+Ontwikkelbasis: actuele `dev` op `c5e61b2` van 20 september 2026. De oorspronkelijke passieve learner uit PR #635 is opnieuw op deze basis geïntegreerd; de [centrale webontwikkelafspraken](../../openquatt/web/README.md) gelden voor de passieve learnerbediening. Ontwerpinput: *OpenQuatt Power House Autotuning Engineer Plan*, revisie 1.1, *Adaptive Power House* en de aanvullende *1R1C Design Note*. De 24 synthetische checks uit de overdracht zijn gereproduceerd. Ze bewijzen geen meetkwaliteit, firmwaregedrag of energiebesparing.
 
 De implementatie bevat de scheiding van woninglijn en regelgrenzen, de passieve C++ batch-leerkern, een parallel 1R1C/RLS-model, kruisvalidatie, de meetadapter en CSV-replay. De live collector, geselecteerde-bronmetadata, één runtime-eigenaar, strikte PSRAM-opslag, een dubbel flashjournal en webbediening zijn nu aangesloten. Dit is experimentele testfirmware voor passief leren. De bestaande regeling blijft de handmatige Power House-instellingen gebruiken. Modelactivatie en automatisch toepassen zijn nog niet geïmplementeerd; de productfase met gecontroleerd toepassen is daarmee nog niet voltooid.
 
@@ -293,38 +293,9 @@ Een blijvende runtimeblokkade, bijvoorbeeld na teruglopende UTC, krijgt de reden
 opnieuw in te schakelen. Pauzeren heft deze blokkade niet op; opgeslagen leerdata
 blijft bij herstart behouden.
 
-### Historische smoke-test van 7 september 2026
+### Historische validatie
 
-De onderstaande resultaten horen bij de toenmalige vereenvoudigde build. Zij zijn
-geen kwalificatie van de latere 128-recordcapaciteit, het schema-5-checkpoint of de
-grafiek. Actuele vrijgavechecks en resterende hardwarepoorten moeten afzonderlijk
-voor de uiteindelijke firmware worden vastgelegd.
-
-De Q Duo-build is via OTA geplaatst als `Sep 7 2026 11:37:32 ph-passive-1`. API-kamer en API-setpoint
-zijn tijdens CM2 als geldige geselecteerde learning-bronnen gezien; daarbij is ten minste één dynamische
-learning-sample vastgelegd. Daarna zijn beide thermostaatbronnen teruggezet op `OT thermostat`, de
-simulatorpomp is uitgezet en de controller stond in CM0. De toenmalige HIL-smoke meldde 39828 B minimum
-interne heap, een grootste blok van 57344 B, 4480 B loopstackmarge en 46832 B learner-PSRAM. Dit is een
-functionele smoke-test, geen kwalificatie onder belasting.
-
-Deze vereenvoudiging is gecontroleerd met 83 C++-hosttests, 239 Python-contracttests en 457 webtests.
-C++-format, docschecks, webbuild, smokecheck en controle van de gegenereerde assets slagen. De volledige
-Q Duo Wi-Fi-build slaagt: 205815 bytes statisch RAM en 2261295 bytes applicatie-image. Die build bevat
-ook de nieuwe bodemplaatinstellingen en herstartafhandeling uit `dev`; het verschil met een eerdere
-firmwarebuild is daarom geen zuivere meting van deze vereenvoudiging.
-
-De opslagtests injecteren erase-, partiële write-, verloren acknowledgement- en leesfouten en
-controleren herstel na gesimuleerde reboot. De complete diff is afzonderlijk koud gereviewd; resetbevestiging,
-bronwissels tussen leerticks en de previewreset zijn daarbij gecorrigeerd en getest. De synchrone fit
-wordt pas overwogen na een meting op ESP32-S3; tot die tijd blijft de begrensde fit behouden.
-
-Een schone webbuild van de toenmalige `dev` met dezelfde toolchain gaf 913958 bytes raw / 261411 bytes
-gzip JavaScript. Deze feature geeft 924774 / 264797 bytes: +10816 raw en +3386 gzip (+1,30%), binnen
-de relatieve gzipgrens van 4608 bytes. Het raw-budget houdt dezelfde 6000 bytes extra ruimte als de
-eerdere featureversie, nu bovenop `dev`: 919000 → 925000. CSS blijft raw gelijk (195001 bytes).
-De nieuwe previewreset was geautomatiseerd gecontroleerd; de browsermatrix en Safari/iOS waren
-nog niet afgevinkt. De OTA-smoke-test bevestigt de nieuwe bronketen en één dynamische learning-sample.
-
-De config-only projectwrapper heeft drie bestaande stijlmeldingen in `scripts/hil/configs/input_sources_fast_duo.yaml`
-en `openquatt/oq_common.yaml`. Directe ESPHome-validatie blijft beschikbaar. Echte stroomonderbrekingen,
-herstel op de controller en geheugen-/timingbelasting zijn nog niet op de vereenvoudigde build getest.
+De [smoke-test en regressieresultaten van de eerdere vereenvoudigde build](https://github.com/OpenQuatt/OpenQuatt/pull/728#issuecomment-6232030760)
+staan bij PR #728. Dit historische bewijs kwalificeert de huidige firmware niet;
+leg actuele vrijgavechecks en resterende hardwarepoorten vast bij de PR die de
+betreffende firmware wijzigt.
