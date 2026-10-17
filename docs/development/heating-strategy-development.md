@@ -1,353 +1,145 @@
 # Heating Strategy Development
 
-Deze pagina legt vast hoe het nieuwe heating-strategy principe in OpenQuatt werkt, en hoe je veilig een nieuwe heating strategy toevoegt zonder de rest van de thermal stack te vervuilen.
-
-Het doel van de huidige architectuur is:
-
-- strategies uitwisselbaar maken;
-- strategy-logica los houden van request guards en actuator-logica;
-- nieuwe strategies kunnen toevoegen zonder opnieuw alles in `oq_thermal_request_control` of `oq_thermal_actuator` te moeten verstoppen.
-
-## Architectuur in een zin
-
-De keten is:
-
-`oq_strategy_manager -> strategy module -> oq_thermal_request_control -> oq_thermal_actuator`
-
-Dat betekent:
-
-- `oq_strategy_manager` kiest welke heating strategy actief is en owns de gedeelde strategy interface;
-- een strategy module berekent vraag en strategy-status voor precies een strategy;
-- `oq_thermal_request_control` verwerkt strategy outputs naar geldige compressor requests;
-- `oq_thermal_actuator` schrijft die requests pas echt naar de units.
-
-## Wat hoort waar?
-
-### `oq_strategy_manager`
-
-Dit bestand owns:
-
-- de selector `Heating Control Mode`
-- `oq_heat_mode_code`
-- de gedeelde strategy interface `oq_strategy_*`
-- de algemene reset bij strategy-switches
-
-Dit bestand hoort niet te ownen:
-
-- strategy-specifieke demand-opbouw
-- strategy-specifieke topology-keuze
-- strategy-specifieke compressor-requestlogica
-
-### Een strategy module
-
-Een strategy module owns:
-
-- de eigen berekening van demand of supply target
-- de eigen phase/state/diagnostics
-- de eigen compressor-request output
-- het invullen van de gedeelde `oq_strategy_*` status zolang die strategy actief is
-- de zichtbare YAML-structuur van de strategy: globals, intervals, selectors, tekstsensoren en publicatievolgorde
-
-Voorbeelden in de huidige codebase:
-
-- `openquatt/oq_power_house_strategy.yaml`
-- `openquatt/oq_heating_curve_strategy.yaml`
-- `openquatt/oq_cooling_strategy.yaml`
-
-## YAML en `.h` helpers
-
-De huidige thermal stack gebruikt bewust beide:
-
-- YAML voor strategy-structuur en publicatie
-- `.h` helpers voor pure herbruikbare logica
-
-De vuistregel is:
-
-- YAML owns de module-opbouw
-- `.h` owns pure functies en kleine value objects
-
-Dat betekent in de praktijk:
-
-- YAML bevat de `globals`, `interval` loops, `text_sensor` wiring en de expliciete `publish_state(...)` of shared-status publicatie
-- YAML laat zichtbaar zien welke inputs een strategy leest, welke state ze bijhoudt en welke `..._request_*` outputs eruit komen
-- `.h` files bevatten alleen rekenlogica, keuzehelpers en normalisatie die door meerdere packages gedeeld kan worden
-
-Goede kandidaten voor `.h` helpers:
-
-- herhaalde level- of topology-keuze
-- pure demand- of bias-berekeningen
-- state-machine helpers zonder side effects
-- gedeelde status- of resethelpers
-
-Slechte kandidaten voor `.h` helpers:
-
-- verborgen `publish_state(...)` calls
-- actuator writes
-- strategy-selectie
-- code die de YAML-flow onleesbaar maakt doordat alle hoofdlogica uit beeld verdwijnt
-
-Belangrijk ontwerpprincipe:
-
-- een nieuwe strategy moet nog steeds te begrijpen zijn door alleen het YAML-bestand te lezen
-- de `.h` helper mag de strategy ondersteunen, maar niet verbergen
-
-Kort samengevat:
-
-- YAML owns structure and publication
-- `.h` owns pure reusable logic
-
-### `oq_thermal_request_control`
-
-Dit bestand owns:
-
-- gedeelde request interface `oq_request_*`
-- caps en level restrictions
-- runtime/startup/hard-trip guards
-- actuator input `oq_actuator_hp1_req` / `oq_actuator_hp2_req`
-
-Dit bestand hoort niet te ownen:
-
-- de inhoud van een specifieke strategy
-- strategy-specifieke tuning
-- strategy-specifieke demand-modellen
-
-### `oq_thermal_actuator`
-
-Dit bestand owns:
-
-- mode-writes
-- compressor-level writes
-- mode-transition gedrag
-- min-off en post-apply runtime bookkeeping
-
-## Verplicht strategy contract
-
-Elke heating strategy moet, wanneer actief, de gedeelde strategy interface invullen in `oq_strategy_manager`.
-
-Verplichte gedeelde outputs:
-
-- `oq_demand_raw`
-- `oq_strategy_active_code`
-- `oq_strategy_phase_code`
-- `oq_strategy_requested_power_w`
-- `oq_strategy_supply_target_temp`
-- `oq_strategy_heat_request_active`
-
-Voor heating strategies gelden nu deze codes:
-
-- `2` = heating curve
-- `3` = Power House
-
-`1` is gereserveerd voor cooling tijdens `CM5`, en wordt dus niet door een heating strategy gebruikt.
-
-### Semantiek van de gedeelde outputs
-
-- `oq_demand_raw`
-  - genormaliseerde strategy-output op schaal `0..20`
-  - input voor `oq_thermal_request_control`
-- `oq_strategy_active_code`
-  - welke strategy momenteel eigenaar is van de gedeelde strategy interface
-- `oq_strategy_phase_code`
-  - strategy-lokale phase/status code
-- `oq_strategy_requested_power_w`
-  - alleen invullen als de strategy echt met requested power werkt
-  - anders `NAN`
-- `oq_strategy_supply_target_temp`
-  - alleen invullen als de strategy echt met een supply target werkt
-  - anders `NAN`
-- `oq_strategy_heat_request_active`
-  - generiek boolean signaal dat supervisory gebruikt om te bepalen of er echte heating-vraag is
-
-## Verplichte strategy-local request outputs
-
-Naast de gedeelde strategy interface moet een strategy module ook eigen request outputs publiceren voor `oq_thermal_request_control`.
-
-Gebruik per strategy een eigen namespace, bijvoorbeeld:
-
-- `oq_curve_request_*`
-- `oq_ph_request_*`
-- `oq_my_strategy_request_*`
-
-Minimaal:
-
-- `..._request_hp1_level`
-- `..._request_hp2_level`
-- `..._request_owner_hp`
-- `..._request_reason_code`
-
-Optioneel maar aanbevolen:
-
-- `..._request_last_loop_ms`
-
-Belangrijke regel:
-
-- een strategy publiceert compressor-level intent
-- niet direct actuator writes
-- een strategy mag daarnaast ook een abstracter totaalrequest of topology-hints publiceren, zolang `oq_thermal_request_control` de gedeelde request-interface blijft ownen
-
-Dus:
-
-- goed: `hp1_level = 4`, `hp2_level = 0`
-- ook goed: `total_level = 4` plus voldoende hints zodat `oq_thermal_request_control` de per-HP requestsplit kan afmaken
-- niet goed: zelf `hp1_set_working_mode` of `hp1_compressor_level` schrijven
-
-## Checklist: nieuwe heating strategy toevoegen
-
-### 1. Maak een nieuw strategy-bestand
-
-Voeg een nieuw package-bestand toe in `openquatt/`, bijvoorbeeld:
-
-- `openquatt/oq_my_strategy.yaml`
-
-Gebruik als startpunt:
-
-- `docs/development/heating-strategy-template.yaml`
-
-Optioneel:
-
-- gebruik de bestaande helperheader `openquatt/includes/oq_thermal_request_logic.h` voor gedeelde request-logica
-- maak alleen een extra strategy-helper als de pure logica echt herhaald of te groot wordt
-- hou helpercode side-effectvrij
-
-### 2. Kies een nieuwe strategy code
-
-Reserveer een nieuwe `oq_strategy_active_code` voor de strategy.
-
-Huidige bezetting:
-
-- `0` inactive
-- `1` cooling
-- `2` heating_curve
-- `3` power_house
-
-De eerstvolgende vrije code is dus op dit moment `4`.
-
-### 3. Breid `oq_strategy_manager` uit
-
-Pas in `openquatt/oq_strategy_manager.yaml` aan:
-
-- `Heating Control Mode` opties uitbreiden
-- mapping naar `oq_heat_mode_code`
-- reset logica bij strategy-switch
-
-Belangrijk:
-
-- hou `oq_strategy_manager` dom
-- hij selecteert en reset
-- hij berekent de strategy zelf niet
-
-### 4. Voeg de strategy module toe aan de packages
-
-Neem het nieuwe bestand op in:
-
-- `openquatt/oq_packages.yaml`
-- `openquatt/oq_packages_single.yaml`
-
-Plaats hem bij de andere strategy modules, dus voor `oq_thermal_request_control`.
-
-### 5. Laat `oq_thermal_request_control` de nieuwe requests lezen
-
-Breid in `openquatt/oq_thermal_request_control.yaml` de selectie uit:
-
-- wanneer is deze strategy actief?
-- welke `..._request_hp1_level`
-- welke `..._request_hp2_level`
-- welke `..._request_owner_hp`
-- welke `..._request_reason_code`
-
-Let op:
-
-- `oq_thermal_request_control` verwerkt requests
-- hij hoort de strategy niet opnieuw uit te vinden
-
-### 6. Check supervisory-aannames
-
-Controleer in `openquatt/oq_supervisory_controlmode.yaml` of de nieuwe strategy goed past bij:
-
-- `oq_strategy_heat_request_active`
-- eventuele requested power logica
-- eventuele `CM2 <-> CM3` promotie/demotie
-
-Als de strategy geen requested power gebruikt:
-
-- publiceer `oq_strategy_requested_power_w = NAN`
-- en forceer supervisory niet om met fake power-signalen te werken
-
-### 7. Voeg strategy-specifieke diagnostics toe
-
-Voeg alleen diagnostics toe die echt helpen om de strategy te begrijpen:
-
-- phase
-- eigen debug state
-- eventueel strategy-specifieke targets of requested power
-
-Stop generieke guards of actuator-diagnostiek niet terug in de strategy module.
-
-### 8. Werk docs en dashboards bij
-
-Bij een nieuwe strategy horen minimaal updates in:
-
-- `docs/verwarmen-en-koelen.md`
-- eventueel een eigen detailpagina
-- dashboards als er een nieuwe user-facing selector of status bijkomt
-
-### 9. Trek pure logica pas later uit naar helpers
-
-Begin een nieuwe strategy eerst leesbaar in YAML.
-
-Pas als er echt herhaling of complexe pure logica ontstaat, trek die uit naar:
-
-- `openquatt/includes/oq_thermal_request_logic.h` als het gedeelde request/actuator-logica is
-- eventueel `openquatt/includes/oq_<your_strategy>_logic.h` als het echt strategy-specifieke pure logica is
-
-Hou daarbij vast aan deze grens:
-
-- YAML blijft eigenaar van publication en flow
-- helpercode blijft side-effectvrij
-
-## Ontwerpregels voor nieuwe strategies
-
-Hou een nieuwe strategy aan deze regels:
-
-- produceer compressor requests, geen actuator writes
-- gebruik `oq_strategy_*` als gedeelde interface, niet losse ad-hoc globals
-- publiceer alleen strategy-eigen state in de strategy module
-- laat guards en limits in `oq_thermal_request_control`
-- laat echte mode/level writes in `oq_thermal_actuator`
-- hou de strategy-flow zichtbaar in YAML, ook als je helpers gebruikt
-- gebruik helperheaders alleen voor pure logica, niet voor verborgen control-flow
-
-Goede vraag om steeds te stellen:
-
-- "Is dit echt strategy-logica?"
-
-Zo ja:
-
-- strategy module
-
-Zo nee, en het is een gedeelde begrenzing of runtime-regel:
-
-- `oq_thermal_request_control`
-
-Zo nee, en het is een echte write naar hardware:
-
-- `oq_thermal_actuator`
-
-## Minimale acceptatiecriteria
-
-Een nieuwe strategy is pas merge-klaar als:
-
-1. de strategy selector hem kan kiezen
-2. `oq_strategy_*` consistent gevuld wordt
-3. de strategy compressor requests publiceert
-4. `oq_thermal_request_control` die requests verwerkt
-5. alle 4 configs compilen
-6. `python3 scripts/dev.py validate --jobs 1` groen is
-
-## Template
-
-Gebruik dit bestand als startpunt:
-
-- [Heating strategy template](heating-strategy-template.yaml)
-
-Dit template is expres minimaal en niet direct in de package-load opgenomen. Het is bedoeld als skeleton voor nieuwe strategy-modules.
+Deze pagina beschrijft het uitbreidingscontract van de actieve thermal stack.
+Voor het werkingsprincipe lees je eerst [Verwarmingsregeling](verwarmingsregeling.md)
+en [Koelregeling](koelregeling.md). Het [template](heating-strategy-template.yaml)
+is een niet-ingeladen, standaard geblokkeerd startpunt; er bestaat geen
+algemeen plug-inmechanisme dat een nieuwe strategie vanzelf aansluit.
+
+## Eigenaarschap en bronindeling
+
+De keten bestaat uit strategie/selectie, strategie-dispatch, gedeelde request
+arbitrage en de actuator. Supervisory bepaalt parallel de Control Mode en de
+startvoorwaarden. Een vraag berekenen is iets anders dan een HP vrijgeven.
+
+| Onderdeel | Eigenaar en bron |
+| --- | --- |
+| Strategie kiezen en resetten | `openquatt/oq_strategy_manager.yaml` en `openquatt/includes/control/oq_strategy_runtime.h`. |
+| Power House-vraag en dispatch | `openquatt/oq_power_house_strategy.yaml`, `oq_power_house_runtime.h` en bijbehorende `*_logic.h`. |
+| Stooklijndoel, PID-adapter en dispatch | `openquatt/oq_heating_curve_strategy.yaml`, `oq_heating_curve_runtime.h` en bijbehorende `*_logic.h`. |
+| Koelvraag en dispatch | `openquatt/oq_cooling_strategy.yaml`, `oq_cooling_runtime.h` en bijbehorende `*_logic.h`. |
+| Control Mode, flow- en startvoorwaarden, ketelassistentie | `openquatt/oq_supervisory_controlmode.yaml` en `oq_supervisory_state_runtime.h`. |
+| Requestselectie, gedeelde beperkingen en minimumlooptijd | `openquatt/oq_thermal_request_control.yaml`, `oq_thermal_request_runtime.h` en `oq_thermal_request_logic.h`. |
+| Laatste HP-guards, mode-/levelwrites en bookkeeping | `openquatt/oq_thermal_actuator.yaml` en `oq_thermal_actuator_runtime.h`. |
+
+De genoemde headers staan onder `openquatt/includes/control/`.
+
+YAML declareert entities, globals, configuratie en scheduler-wiring. De huidige
+`*_runtime.h`-adapters zijn stateful: zij lezen `id(...)`, beheren runtime-state,
+publiceren status en verzorgen binnen hun eigen subsysteem side effects.
+`*_logic.h` bevat de afzonderlijk testbare beslislogica met expliciete inputs,
+state en outputs. Pure logica mag state teruggeven of bijwerken, maar doet geen
+hardwarewrites, netwerk-I/O of ESPHome-publicatie. Een runtimeheader is dus
+niet automatisch een pure helper.
+
+Houd eigenaarschap zichtbaar: een strategy-runtime mag eigen berekeningen,
+requests en diagnostiek publiceren. HP-mode-/levelwrites blijven bij de actuator;
+een nieuwe strategie mag die grens niet omzeilen.
+
+## Gedeelde status en geldigheid
+
+`oq_heat_mode_code` kiest de verwarmingsstrategie: `0` Power House en `1`
+Water Temperature Control. `oq_strategy_active_code` gebruikt een andere
+nummering: `1` koelen, `2` stooklijn en `3` Power House. De geselecteerde
+strategie kan ook in stand-by actief zijn om een toekomstige startvraag te
+berekenen; deze code bewijst geen draaiende compressor.
+
+| Output | Contract |
+| --- | --- |
+| `oq_demand_raw` | Genormaliseerde verwarmingsvraag `0..20`, onafhankelijk van fysieke V2-standnummers. |
+| `oq_strategy_phase_code` | Strategie-lokale fase; de betekenis moet per strategie worden vastgelegd. |
+| `oq_strategy_requested_power_w` | Gevraagde watts wanneer deze strategie daarop regelt, anders `NAN`. |
+| `oq_strategy_supply_target_temp` | Aanvoerdoel wanneer deze strategie daarop regelt, anders `NAN`. |
+| `oq_strategy_heat_request_active` | Warmte-intentie die supervisory gebruikt; geen hardwarevrijgave. |
+| `oq_strategy_hp_expected_power_w`, `oq_strategy_hp_max_power_w`, `oq_strategy_hp_saturated` | Capaciteitsdiagnostiek voor consumenten die dit ondersteunen; geen verzonnen meetwaarden. |
+| `oq_strategy_output_valid` | Alleen waar wanneer de relevante inputs en berekening geldig zijn. |
+| `oq_strategy_output_source_code` | Identiteit van de producer, overeenkomstig de strategiecode. |
+| `oq_strategy_output_updated_ms` | Tijdstip van de berekende output; nul betekent nog niet gepubliceerd. |
+
+Publiceer de samenhangende velden in dezelfde loopcontext en zet de geldigheid
+pas na het invullen van de bijbehorende output. Een inactieve strategie wist
+haar lokale requests en mag geen output van de nieuwe eigenaar overschrijven.
+
+Supervisory gebruikt voor ketelassistentie onder meer
+[`strategy_output_is_current()`](../../openquatt/includes/boiler/oq_boiler_logic.h):
+geldig, juiste producer en niet-nul timestamp. Die functie controleert zelf
+geen maximale leeftijd. Een nieuw of gewijzigd pad moet zijn benodigde
+bronversheid en eventuele age-timeout daarom expliciet ontwerpen en testen.
+Gebruik geen nul/default als vervanging voor een ontbrekende proceswaarde.
+
+## Per-strategie requests
+
+De huidige consumers lezen verschillende lokale interfaces:
+
+- Power House: `oq_ph_request_hp1_level`, `oq_ph_request_hp2_level`,
+  `oq_ph_request_owner_hp` en `oq_ph_request_reason_code`.
+- Stooklijn: `oq_curve_dispatch_hp1_level`, `oq_curve_dispatch_hp2_level`,
+  `oq_curve_request_owner_hp` en `oq_curve_capacity_mode_code`.
+- Koelen: `oq_cooling_request_hp1_level`, `oq_cooling_request_hp2_level`,
+  `oq_cooling_request_owner_hp` en `oq_cooling_request_reason_code`.
+
+De allocator kiest een combinatie; request control maakt daarvan de gedeelde
+`oq_request_*`-status en begrensde `oq_actuator_hp1_req` / `oq_actuator_hp2_req`.
+De actuator en teruggelezen HP-toestand bepalen pas de uitvoering. Een
+`..._request_hp1_level` schrijven is geen bevestiging van Modbus-uitvoering.
+
+## Een strategie toevoegen
+
+1. **Definieer het regelprincipe.** Leg inputsignalen, units, vereiste
+   bronversheid, toestanden, resetgedrag, vraag en stop-/herstartcriteria vast.
+   Onderscheid een gewone regelstop van een harde veiligheidsingreep.
+2. **Voeg package en logica toe.** Begin met het template, plaats pure
+   beslislogica onder `openquatt/includes/control/` en gebruik zo nodig een
+   stateful runtime-adapter. Houd buffers/state en hun allocatiebeleid expliciet.
+3. **Sluit de package aan** in `openquatt/packages/20_strategies.yaml`.
+   Die bundel wordt via `openquatt/oq_packages_common.yaml` door Single en Duo
+   geladen. De vroegere `oq_packages.yaml` / `oq_packages_single.yaml` bestaan niet meer.
+4. **Breid selectie en reset uit.** Pas `oq_strategy_manager.yaml` en
+   `oq_strategy_runtime.h` aan, kies een vrije strategiecode en zorg dat
+   omschakelen oude intenties, lokale requests en relevante integratoren intrekt.
+   Alleen een selectoroptie toevoegen maakt een strategie nog niet actief.
+5. **Breid consumers expliciet uit.** Controleer `ModeContext`,
+   `resolve_mode_context()`, `StrategyRequestInput`, `select_strategy_request()`
+   in `oq_thermal_request_logic.h`, de adapter in `oq_thermal_request_runtime.h`
+   en de supervisory-keuzes in `oq_supervisory_state_runtime.h`. De huidige
+   vertakkingen kennen de bestaande strategieën; een onbekende selectorwaarde
+   mag niet stilzwijgend in het Power House-pad terechtkomen.
+6. **Ontwerp ketelgedrag afzonderlijk.** Bepaal of en hoe de strategie CM3 kan
+   aanvragen. Ondersteun benodigde watts-/target-/capaciteitssignalen eerlijk
+   of blokkeer die route; `NAN` vervangen door nepvermogen is geen integratie.
+   CM4-foutfallback houdt zijn eigen beschikbaarheids- en stopbevestigingscontract.
+7. **Behoud de laatste guards.** Controleer CM5, CM98, CM100, OTA/recovery,
+   ontbrekende bronnen, harde watertrip, HP-incidenten, toegestane frequenties,
+   minimum-uit-tijd, minimumlooptijd en de startlimiet. Een actieve strategie
+   mag voorflow voorbereiden vóór CM2 zonder de actuator vroeg vrij te geven.
+8. **Werk diagnostiek en uitleg bij.** Leg reden-/fasecodes vast en controleer
+   beslislog, web-app, de gebruikershandleiding en deze ontwikkelaarsdocs.
+
+Controleer codes in alle consumers: `oq_request::StrategyCode` gebruikt `4`
+al voor `STRATEGY_MANUAL_HP`. Het template gebruikt daarom `5` als illustratie,
+niet als vooraf aangesloten strategie. Een extra code is een keuze in een
+volledig contract; bestaande consumers doen niet automatisch mee. Strategiecodes,
+`oq_heat_mode_code` en Control Modes zijn afzonderlijke nummeringen.
+
+## Validatie bij een wijziging
+
+- Test de pure logica deterministisch: positieve vraag, nulvraag, ongeldige en
+  verouderde inputs, grensovergangen, timerverloop en `millis()`-wraparound.
+- Test bron- en strategieswitches met nog bestaande output, cancelled start,
+  vroege/late busantwoorden, HP-onbeschikbaarheid en minimumlooptijd tegenover
+  harde stop. Neem Single en Duo en boot/herstart afzonderlijk mee.
+- Verifieer dat alleen de bedoelde producer gedeelde output publiceert en dat
+  ongeldige output geen ketelassistentie of nieuwe HP-start kan vrijgeven.
+- Gebruik de passende host-/Python-regressies en `npm run check:cpp-format`
+  bij C/C++-wijzigingen. Voor webwijzigingen geldt de webontwikkelhandleiding.
+- Valideer de twee enabled targets uit `build_targets.yaml` met
+  `python3 scripts/dev.py validate --config-only --config configs/heatpump_controller_q/single.yaml --config configs/heatpump_controller_q/duo.yaml`.
+  Rapporteer een mislukte projectgate als mislukt; configvalidatie is geen
+  firmwarecompile of runtimekwalificatie.
+- Voer noodzakelijke firmwarebuilds sequentieel uit met maximaal twee
+  compilerjobs. Control-, geheugen- of timingwijzigingen vereisen passende HIL
+  en een onafhankelijke koude review volgens `AGENTS.md`.
+
+Bewaar concrete testresultaten in de PR. De repo bewaart herbruikbare
+procedures, contracten en regressies. Zie ook [HIL-testing](hil-testing.md)
+en [de bijdrageafspraken](../../CONTRIBUTING.md).

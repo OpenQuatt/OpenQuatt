@@ -1,51 +1,22 @@
 # ==============================================================================
 # OpenQuatt - Example Heating Strategy Template
 # ==============================================================================
+# Documentation skeleton only; not loaded by any firmware package.
+# Integrate selection/reset, supervisory and request consumers before use.
+# See heating-strategy-development.md for the complete contract.
 #
-# This file is a developer template only.
-# It is not loaded by the package system.
+# Package registry: openquatt/packages/20_strategies.yaml
+# Pure decisions: openquatt/includes/control/oq_<your_strategy>_logic.h
+# Stateful ESPHome adapter: openquatt/includes/control/oq_<your_strategy>_runtime.h
+# Shared request decisions: openquatt/includes/control/oq_thermal_request_logic.h
 #
-# Copy this file to `openquatt/oq_<your_strategy>.yaml` and then wire it into:
-# - `openquatt/oq_packages.yaml`
-# - `openquatt/oq_packages_single.yaml`
-# - `openquatt/oq_strategy_manager.yaml`
-# - `openquatt/oq_thermal_request_control.yaml`
-#
-# Strategy rules:
-# - Own strategy-local demand/state/tuning here
-# - Publish shared `oq_strategy_*` while active
-# - Publish local `..._request_*` outputs for thermal request control
-# - Do not write actuator entities directly
-# - Keep publication and flow visible in YAML
-# - Put only pure reusable logic in optional `.h` helpers
-#
-# Existing shared helper:
-# - `openquatt/includes/oq_thermal_request_logic.h`
-# - Intended for request/control glue that is reused across packages
-#
-# Optional strategy-specific helper:
-# - `openquatt/includes/oq_<your_strategy>_logic.h`
-# - Use only for pure calculations or small helper structs
-# - Do not hide `publish_state(...)`, strategy selection or actuator writes there
+# Example strategy code 5 is not supported by existing consumers automatically.
+# Request strategy code 4 is already reserved for STRATEGY_MANUAL_HP.
+# The manager must select it, including while idle to prepare heating intent.
+# Do not send HP writes here; request control and the actuator retain their guards.
 # ==============================================================================
 
 globals:
-  # Optional strategy-local demand or state.
-  - id: oq_my_strategy_demand_raw
-    type: int
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_my_strategy_phase_code
-    type: int
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_my_strategy_request_last_loop_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
   - id: oq_my_strategy_request_hp1_level
     type: int
     restore_value: false
@@ -61,120 +32,62 @@ globals:
     restore_value: false
     initial_value: '0'
 
-  # Define your own reason-code scheme and document it in comments.
   - id: oq_my_strategy_request_reason_code
     type: int
     restore_value: false
     initial_value: '0'
 
-text_sensor:
-  - platform: template
-    id: oq_my_strategy_debug_state
-    name: "My strategy debug state"
-    icon: mdi:text-box-search-outline
-    update_interval: never
-    entity_category: diagnostic
-    disabled_by_default: true
-    lambda: |-
-      return std::string("init");
-
 interval:
-  - interval: ${oq_strategy_loop_s}s
-    startup_delay: 4000ms
-    then:
-      - lambda: |-
-          // Replace this with your real active-condition.
-          const bool active = false;
-
-          if (!active) {
-            id(oq_demand_raw) = 0;
-            id(oq_strategy_active_code) = 0;
-            id(oq_strategy_phase_code) = 0;
-            id(oq_strategy_requested_power_w) = NAN;
-            id(oq_strategy_supply_target_temp) = NAN;
-            id(oq_strategy_heat_request_active) = false;
-
-            id(oq_my_strategy_demand_raw) = 0;
-            id(oq_my_strategy_phase_code) = 0;
-            id(oq_my_strategy_request_hp1_level) = 0;
-            id(oq_my_strategy_request_hp2_level) = 0;
-            id(oq_my_strategy_request_owner_hp) = 0;
-            id(oq_my_strategy_request_reason_code) = 0;
-            id(oq_my_strategy_debug_state).publish_state("inactive");
-            return;
-          }
-
-          // -------------------------------------------------------------------
-          // 1) Compute strategy-local demand or target
-          // -------------------------------------------------------------------
-          const int demand_max = (int) ${oq_strategy_demand_max_f};
-          int raw = 0;
-
-          // TODO: replace this block with your real strategy logic.
-          raw = std::max(0, std::min(demand_max, raw));
-
-          id(oq_my_strategy_demand_raw) = raw;
-          id(oq_demand_raw) = raw;
-
-          // -------------------------------------------------------------------
-          // 2) Publish shared strategy interface
-          // -------------------------------------------------------------------
-          // Reserve your own strategy code. Example:
-          // 4 = my_strategy
-          id(oq_strategy_active_code) = 4;
-          id(oq_my_strategy_phase_code) = (raw > 0) ? 1 : 0;
-          id(oq_strategy_phase_code) = id(oq_my_strategy_phase_code);
-
-          // If your strategy does not use requested power or supply target,
-          // keep these as NAN.
-          id(oq_strategy_requested_power_w) = NAN;
-          id(oq_strategy_supply_target_temp) = NAN;
-          id(oq_strategy_heat_request_active) = (raw > 0);
-
-          // Keep phase/debug text publication visible in YAML.
-          id(oq_strategy_phase_text).publish_state((raw > 0) ? "active" : "idle");
-          id(oq_strategy_debug_state).publish_state((raw > 0) ? "my_strategy_active" : "my_strategy_idle");
-          id(oq_my_strategy_debug_state).publish_state((raw > 0) ? "active" : "idle");
-
   - interval: ${oq_heat_loop_tick_s}s
     startup_delay: 4000ms
     then:
       - lambda: |-
-          // -------------------------------------------------------------------
-          // 3) Publish compressor-request output
-          // -------------------------------------------------------------------
-          // Thermal request control consumes only the request outputs below.
-          const bool active = (id(oq_strategy_active_code) == 4);
+          // 1) Own local state only when selected by the extended manager.
+          constexpr uint8_t strategy_code = 5;
+          const bool active = id(oq_strategy_active_code) == strategy_code;
           if (!active) {
-            id(oq_my_strategy_request_last_loop_ms) = 0;
             id(oq_my_strategy_request_hp1_level) = 0;
             id(oq_my_strategy_request_hp2_level) = 0;
             id(oq_my_strategy_request_owner_hp) = 0;
             id(oq_my_strategy_request_reason_code) = 0;
+            // Invalidate only our old output; never clear another producer.
+            if (id(oq_strategy_output_source_code) == strategy_code) {
+              id(oq_strategy_output_valid) = false;
+              id(oq_strategy_output_source_code) = 0;
+              id(oq_strategy_output_updated_ms) = 0;
+            }
             return;
           }
 
-          const uint32_t now_ms = (uint32_t) millis();
-          id(oq_my_strategy_request_last_loop_ms) = now_ms;
+          // 2) Replace this blocked skeleton with input validation and decisions.
+          const bool inputs_valid = false;
+          const int raw = 0;
+          const float requested_w = NAN;
+          const float supply_target_c = NAN;
+          const int hp1_request = 0;
+          const int hp2_request = 0;
+          const int owner_hp = 0;
+          const int reason_code = 0;
+          // Keep invalid/default output incapable of creating heating intent.
+          const bool output_valid = inputs_valid;
+          id(oq_strategy_output_valid) = false;
 
-          int hp1_req = 0;
-          int hp2_req = 0;
-          int owner_hp = 0;
-          int reason_code = 0;
-
-          // TODO: replace this with real request logic.
-          if (id(oq_my_strategy_demand_raw) > 0) {
-            hp1_req = 1;
-            owner_hp = 1;
-            reason_code = 1;
-          }
-
-          id(oq_my_strategy_request_hp1_level) = hp1_req;
-          id(oq_my_strategy_request_hp2_level) = hp2_req;
-          id(oq_my_strategy_request_owner_hp) = owner_hp;
+          // 3) Publish local intent; these fields are not hardware writes.
+          id(oq_my_strategy_request_hp1_level) = output_valid ? hp1_request : 0;
+          id(oq_my_strategy_request_hp2_level) = output_valid ? hp2_request : 0;
+          id(oq_my_strategy_request_owner_hp) = output_valid ? owner_hp : 0;
           id(oq_my_strategy_request_reason_code) = reason_code;
 
-          // Tip:
-          // Keep request publication visible here in YAML.
-          // If you later extract helpers, move only pure calculations such as
-          // demand math, candidate scoring or split decisions.
+          // 4) Publish coherent shared metadata; validity becomes true last.
+          id(oq_demand_raw) = output_valid ? std::max(0, std::min((int) ${oq_strategy_demand_max_f}, raw)) : 0;
+          id(oq_strategy_phase_code) = 0;
+          id(oq_strategy_requested_power_w) = output_valid ? requested_w : NAN;
+          id(oq_strategy_supply_target_temp) = output_valid ? supply_target_c : NAN;
+          id(oq_strategy_heat_request_active) = output_valid && raw > 0;
+          id(oq_strategy_hp_expected_power_w) = NAN;
+          id(oq_strategy_hp_max_power_w) = NAN;
+          id(oq_strategy_hp_saturated) = false;
+          id(oq_strategy_output_source_code) = strategy_code;
+          id(oq_strategy_output_updated_ms) = (uint32_t) millis();
+          id(oq_strategy_phase_text).publish_state(output_valid ? "idle" : "invalid_inputs");
+          id(oq_strategy_output_valid) = output_valid;

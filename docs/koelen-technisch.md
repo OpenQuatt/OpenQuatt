@@ -2,6 +2,9 @@
 
 Voor de dagelijkse bediening zie [Koelen](dagelijks/koelen.md). Deze naslag beschrijft voorwaarden, wachttijden en bronbewaking.
 
+Voor ontwikkelaars beschrijft [Koelregeling](development/koelregeling.md) de
+waterregeling, voorspellende begrenzing, HP-keuze en stop-/herstartlogica.
+
 
 ## Wat betekent koeling binnen OpenQuatt?
 
