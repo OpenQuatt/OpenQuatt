@@ -1534,6 +1534,8 @@ export default {
     auxRunOnTimeCopy: "How long R2 stays on after the demand ends.",
     auxRunOnMaxTimeTitle: "Maximum run-on time",
     auxRunOnMaxTimeCopy: "R2 switches off after this time at the latest, even if the supply water has not passed the threshold yet.",
+    auxRunOnHeatThresholdCopy: "After heat demand the run-on ends once the supply water has cooled down to this temperature minus the hysteresis.",
+    auxRunOnCoolThresholdCopy: "After cooling demand the run-on ends once the supply water has warmed up to this temperature plus the hysteresis.",
     auxSectionGroup: "Basic",
     auxSectionTitle: "Auxiliary relay (R2)",
     auxSectionCopy: "Use the second volt-free relay of the controller as an optional auxiliary output, for example for a fan coil, pump or valve. By default this function is off.",

@@ -1534,6 +1534,8 @@ export default {
     auxRunOnTimeCopy: "Hoe lang R2 aan blijft nadat de vraag is gestopt.",
     auxRunOnMaxTimeTitle: "Maximale nadraaitijd",
     auxRunOnMaxTimeCopy: "R2 schakelt uiterlijk na deze tijd uit, ook als het aanvoerwater de drempel nog niet heeft gepasseerd.",
+    auxRunOnHeatThresholdCopy: "Na warmtevraag stopt het nadraaien zodra het aanvoerwater is afgekoeld tot deze temperatuur min de hysterese.",
+    auxRunOnCoolThresholdCopy: "Na koelvraag stopt het nadraaien zodra het aanvoerwater is opgewarmd tot deze temperatuur plus de hysterese.",
     auxSectionGroup: "Basis",
     auxSectionTitle: "Hulprelais (R2)",
     auxSectionCopy: "Gebruik het tweede potentiaalvrije relais van de controller als optionele hulpuitgang, bijvoorbeeld voor een fancoil, pomp of klep. Standaard staat deze functie uit.",

@@ -1014,8 +1014,16 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
         runOnUntilTemp ? t("settingsInstallation.auxRunOnMaxTimeTitle") : t("settingsInstallation.auxRunOnTimeTitle"),
         runOnUntilTemp ? t("settingsInstallation.auxRunOnMaxTimeCopy") : t("settingsInstallation.auxRunOnTimeCopy"),
       ) : "",
-      thresholdsUsed ? renderSettingsNumberField("auxHeatingStartTemp", t("settingsInstallation.auxHeatStartTitle"), t("settingsInstallation.auxHeatStartCopy")) : "",
-      thresholdsUsed ? renderSettingsNumberField("auxCoolingStartTemp", t("settingsInstallation.auxCoolStartTitle"), t("settingsInstallation.auxCoolStartCopy")) : "",
+      thresholdsUsed ? renderSettingsNumberField(
+        "auxHeatingStartTemp",
+        t("settingsInstallation.auxHeatStartTitle"),
+        tempGateEnabled ? t("settingsInstallation.auxHeatStartCopy") : t("settingsInstallation.auxRunOnHeatThresholdCopy"),
+      ) : "",
+      thresholdsUsed ? renderSettingsNumberField(
+        "auxCoolingStartTemp",
+        t("settingsInstallation.auxCoolStartTitle"),
+        tempGateEnabled ? t("settingsInstallation.auxCoolStartCopy") : t("settingsInstallation.auxRunOnCoolThresholdCopy"),
+      ) : "",
       thresholdsUsed ? renderSettingsNumberField("auxTempHysteresis", t("settingsInstallation.auxHysteresisTitle"), t("settingsInstallation.auxHysteresisCopy")) : "",
     ].filter(Boolean);
 

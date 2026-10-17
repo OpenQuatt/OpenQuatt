@@ -239,6 +239,46 @@ void test_run_on_only_extends_a_relay_that_was_on() {
   assert(!update(invalid_time, inputs).relay_on);
 }
 
+void test_returning_demand_keeps_gated_relay_on_during_run_on() {
+  State state;
+  auto inputs = run_on_inputs(Function::HEATING, 2, RunOnMode::UNTIL_SUPPLY_TEMP, 0);
+  inputs.temperature_gate_enabled = true;
+  inputs.supply_c = 35.0f;
+  assert(update(state, inputs).relay_on);
+
+  inputs.control_mode = 0;
+  inputs.supply_c = 29.0f;
+  inputs.now_ms = 1000;
+  assert(update(state, inputs).relay_on);
+
+  // Inside the hysteresis band the returning demand keeps the relay on instead of waiting for warm water again.
+  inputs.control_mode = 2;
+  inputs.now_ms = 2000;
+  auto result = update(state, inputs);
+  assert(result.relay_on);
+  assert(!result.changed);
+  assert(result.status == Status::HEATING_ACTIVE);
+  inputs.supply_c = 28.0f;
+  result = update(state, inputs);
+  assert(!result.relay_on);
+  assert(result.status == Status::WAITING_WARM);
+}
+
+void test_function_change_ends_or_blocks_run_on() {
+  State state;
+  assert(update(state, run_on_inputs(Function::HEATING_OR_COOLING, 2, RunOnMode::FIXED_TIME, 0)).relay_on);
+  assert(update(state, run_on_inputs(Function::HEATING_OR_COOLING, 0, RunOnMode::FIXED_TIME, 1000)).relay_on);
+  const auto result = update(state, run_on_inputs(Function::COOLING, 0, RunOnMode::FIXED_TIME, 2000));
+  assert(!result.relay_on);
+  assert(result.status == Status::NO_COOLING);
+
+  // An externally held relay is not extended when the function and the demand change in the same tick.
+  State external;
+  assert(apply_external_command(external, Function::EXTERNAL, true));
+  assert(update(external, run_on_inputs(Function::EXTERNAL, 2, RunOnMode::FIXED_TIME, 0)).relay_on);
+  assert(!update(external, run_on_inputs(Function::HEATING, 0, RunOnMode::FIXED_TIME, 1000)).relay_on);
+}
+
 void test_run_on_timer_is_rollover_safe() {
   State state;
   const uint32_t start_ms = UINT32_MAX - 1000U;
@@ -261,6 +301,8 @@ int main() {
   test_cooling_run_on_until_supply_warms_up();
   test_run_on_is_cancelled_by_demand_return_and_owner_changes();
   test_run_on_only_extends_a_relay_that_was_on();
+  test_returning_demand_keeps_gated_relay_on_during_run_on();
+  test_function_change_ends_or_blocks_run_on();
   test_run_on_timer_is_rollover_safe();
   return 0;
 }

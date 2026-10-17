@@ -65,6 +65,9 @@ class HydraulicsOutputsRuntimeContractTest(unittest.TestCase):
         self.assertIn("test_heating_gate_hysteresis_and_missing_supply", aux_test)
         self.assertIn("test_external_control_is_explicit_and_retained", aux_test)
         self.assertIn("test_command_outside_external_control_cannot_override_owner", aux_test)
+        self.assertIn("test_run_on_until_supply_temp_is_bounded_by_time", aux_test)
+        self.assertIn("test_run_on_only_extends_a_relay_that_was_on", aux_test)
+        self.assertIn("test_run_on_timer_is_rollover_safe", aux_test)
 
     def test_aux_runtime_is_only_compiled_for_its_hardware_owner(self) -> None:
         self.assertIn("#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q", AUX_RUNTIME)

@@ -29,7 +29,11 @@ struct State {
   bool run_on_active = false;
   ThermalMode run_on_mode = ThermalMode::NONE;
   uint32_t run_on_started_ms = 0;
+  Function last_function = Function::DISABLED;
 };
+
+// Matches the max_value of `oq_aux_run_on_s`; keeps the millisecond conversion bounded.
+constexpr float kRunOnMaxS = 3600.0f;
 
 struct Inputs {
   Function function = Function::DISABLED;
@@ -109,8 +113,10 @@ inline bool apply_run_on(State& state, const Inputs& inputs, ThermalMode previou
                          Decision& result) {
   const bool demand_function = inputs.function == Function::HEATING || inputs.function == Function::COOLING ||
                                inputs.function == Function::HEATING_OR_COOLING;
-  const bool run_on_allowed = !desired && demand_function && result.thermal_mode == ThermalMode::NONE &&
-                              inputs.run_on_mode != RunOnMode::OFF && !isnan(inputs.run_on_s) && inputs.run_on_s > 0.0f;
+  // A function change always ends the run-on, so it only extends what this function's demand switched on.
+  const bool run_on_allowed = !desired && demand_function && inputs.function == state.last_function &&
+                              result.thermal_mode == ThermalMode::NONE && inputs.run_on_mode != RunOnMode::OFF &&
+                              !isnan(inputs.run_on_s) && inputs.run_on_s > 0.0f;
   if (!run_on_allowed) {
     state.run_on_active = false;
     return desired;
@@ -121,7 +127,8 @@ inline bool apply_run_on(State& state, const Inputs& inputs, ThermalMode previou
     state.run_on_mode = previous_mode;
     state.run_on_started_ms = inputs.now_ms;
   }
-  if (state.run_on_active && run_on_finished(state, inputs, static_cast<uint32_t>(inputs.run_on_s * 1000.0f))) {
+  const float run_on_s = inputs.run_on_s > kRunOnMaxS ? kRunOnMaxS : inputs.run_on_s;
+  if (state.run_on_active && run_on_finished(state, inputs, static_cast<uint32_t>(run_on_s * 1000.0f))) {
     state.run_on_active = false;
   }
   if (!state.run_on_active) return desired;
@@ -135,7 +142,9 @@ inline Decision update(State& state, const Inputs& inputs) {
   result.thermal_mode = effective_mode(inputs.control_mode, inputs.cm1_next_mode);
   const ThermalMode previous_mode = state.last_mode;
   if (result.thermal_mode != state.last_mode) {
-    state.temperature_gate_on = false;
+    // Demand returning during its own run-on keeps the relay on; the gate hysteresis can still switch it off.
+    state.temperature_gate_on =
+        state.run_on_active && inputs.function == state.last_function && result.thermal_mode == state.run_on_mode;
     state.last_mode = result.thermal_mode;
   }
 
@@ -187,6 +196,7 @@ inline Decision update(State& state, const Inputs& inputs) {
     result.changed = desired != state.relay_on;
     state.relay_on = desired;
   }
+  state.last_function = inputs.function;
   result.relay_on = state.relay_on;
   return result;
 }

@@ -33,11 +33,11 @@ Tijdens Quick Start kan een gedetecteerde OpenTherm-ketel automatisch als **Open
 
 Bij een nieuwe warmtevraag controleert OpenQuatt na het starten van de circulatie de uitgaande watertemperatuur van iedere aangesloten warmtepomp. Onder `5 °C` blijven de compressoren uit; met `Overnemen wanneer de warmtepomp niet beschikbaar is` kan de aanvullende warmtebron het circuit eerst opwarmen. Vanaf `5 °C` mogen de warmtepompen starten. Met `Hybride verwarmen bij vermogenstekort` helpt de aanvullende warmtebron tot alle uitgaande temperaturen minimaal `12 °C` zijn. Zonder aangesloten of toegestane aanvullende warmtebron start de warmtepomp vanaf `5 °C` zelfstandig. De oude algemene startgrens van `18 °C` wordt niet gebruikt.
 
+Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
+
 #### Hulprelais (R2)
 
-Alleen op de Heatpump Controller Q-edition. Bij `Hulprelais (R2)` kies je wat R2 volgt: warmtevraag, koelvraag, beide of externe bediening. Optioneel wacht R2 op een geschikte aanvoertemperatuur. Met `Nadraaien` blijft R2 na afloop van de vraag nog even aan: een vaste tijd, of tot het aanvoerwater de startdrempel min de hysterese passeert, uiterlijk na de maximale nadraaitijd. Zie [Hulprelais R2](../instellingen-en-meetwaarden.md#6-hulprelais-r2-alleen-heatpump-controller-q-edition) voor de details.
-
-Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
+Alleen op de Heatpump Controller Q-edition. Bij `Hulprelais (R2)` kies je wat R2 volgt: warmtevraag, koelvraag, beide of externe bediening. Optioneel wacht R2 op een geschikte aanvoertemperatuur. Met `Nadraaien` blijft R2 na afloop van de vraag nog even aan: een vaste tijd, of tot het aanvoerwater de uitschakelgrens van de startdrempel en hysterese passeert, uiterlijk na de maximale nadraaitijd. Zie [Hulprelais R2](../instellingen-en-meetwaarden.md#6-hulprelais-r2-alleen-heatpump-controller-q-edition) voor de details.
 
 ### Verwarmen
 

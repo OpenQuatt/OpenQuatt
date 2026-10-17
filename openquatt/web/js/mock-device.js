@@ -38,6 +38,7 @@
     auxTempGateOn: false,
     auxRelayLastMode: 0,
     auxRelayOn: false,
+    auxRelayLastFunction: "Disabled",
     auxRunOnActive: false,
     auxRunOnMode: 0,
     auxRunOnStartedMs: 0,
@@ -1876,8 +1877,10 @@
     const coolingActive = cmLabel.startsWith("CM5");
     const modeCode = coolingActive ? 1 : (heatingActive ? 2 : 0);
     const previousMode = state.auxRelayLastMode;
+    const functionUnchanged = auxFunction === state.auxRelayLastFunction;
+    state.auxRelayLastFunction = auxFunction;
     if (modeCode !== state.auxRelayLastMode) {
-      state.auxTempGateOn = false;
+      state.auxTempGateOn = state.auxRunOnActive && functionUnchanged && modeCode === state.auxRunOnMode;
       state.auxRelayLastMode = modeCode;
     }
 
@@ -1929,7 +1932,7 @@
     const runOnMode = String(getEntity("select", "Aux Relay Run-on")?.value || "Disabled");
     const runOnSeconds = Number(getEntity("number", "Aux Relay Run-on Time")?.value ?? 300);
     const demandFunction = auxFunction !== "Disabled" && auxFunction !== "External control";
-    if (relayOn || !demandFunction || modeCode !== 0 || runOnMode === "Disabled" || !(runOnSeconds > 0)) {
+    if (relayOn || !demandFunction || !functionUnchanged || modeCode !== 0 || runOnMode === "Disabled" || !(runOnSeconds > 0)) {
       state.auxRunOnActive = false;
     } else {
       const now = Date.now();
