@@ -957,6 +957,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
       "Waiting for warm water": t("settingsInstallation.auxWaitWarm"),
       "Waiting for cold water": t("settingsInstallation.auxWaitCold"),
       "Supply temperature unavailable": t("settingsInstallation.auxSupplyUnavailable"),
+      "Run-on active": t("settingsInstallation.auxRunOnActive"),
     };
 
     return labels[value] || value;
@@ -970,6 +971,11 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
     const functionValue = String(getEntityValue("auxRelayFunction") || "Disabled");
     const demandFunctionSelected = functionValue !== "Disabled" && functionValue !== "External control";
     const tempGateEnabled = demandFunctionSelected && hasEntity("auxWaitForSupplyTemp") && isEntityActive("auxWaitForSupplyTemp");
+    const runOnAvailable = demandFunctionSelected && hasEntity("auxRunOnMode");
+    const runOnValue = String(getEntityValue("auxRunOnMode") || "Disabled");
+    const runOnEnabled = runOnAvailable && runOnValue !== "Disabled";
+    const runOnUntilTemp = runOnEnabled && runOnValue === "Until supply temp";
+    const thresholdsUsed = tempGateEnabled || runOnUntilTemp;
     const relayOn = hasEntity("auxRelayActive") && isEntityActive("auxRelayActive");
     const statusText = hasEntity("auxRelayStatus") ? formatAuxRelayStatus(getEntityStateText("auxRelayStatus", "")) : "";
     const statusPanel = hasEntity("auxRelayActive") || statusText ? renderSettingsFieldCard(
@@ -998,9 +1004,19 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
         t("settingsInstallation.auxWaitOffOff"),
         "oq-settings-field--span-2",
       ) : "",
-      tempGateEnabled ? renderSettingsNumberField("auxHeatingStartTemp", t("settingsInstallation.auxHeatStartTitle"), t("settingsInstallation.auxHeatStartCopy")) : "",
-      tempGateEnabled ? renderSettingsNumberField("auxCoolingStartTemp", t("settingsInstallation.auxCoolStartTitle"), t("settingsInstallation.auxCoolStartCopy")) : "",
-      tempGateEnabled ? renderSettingsNumberField("auxTempHysteresis", t("settingsInstallation.auxHysteresisTitle"), t("settingsInstallation.auxHysteresisCopy")) : "",
+      runOnAvailable ? renderSettingsSelectField(
+        "auxRunOnMode",
+        t("settingsInstallation.auxRunOnTitle"),
+        t("settingsInstallation.auxRunOnCopy"),
+      ) : "",
+      runOnEnabled ? renderSettingsNumberField(
+        "auxRunOnTime",
+        runOnUntilTemp ? t("settingsInstallation.auxRunOnMaxTimeTitle") : t("settingsInstallation.auxRunOnTimeTitle"),
+        runOnUntilTemp ? t("settingsInstallation.auxRunOnMaxTimeCopy") : t("settingsInstallation.auxRunOnTimeCopy"),
+      ) : "",
+      thresholdsUsed ? renderSettingsNumberField("auxHeatingStartTemp", t("settingsInstallation.auxHeatStartTitle"), t("settingsInstallation.auxHeatStartCopy")) : "",
+      thresholdsUsed ? renderSettingsNumberField("auxCoolingStartTemp", t("settingsInstallation.auxCoolStartTitle"), t("settingsInstallation.auxCoolStartCopy")) : "",
+      thresholdsUsed ? renderSettingsNumberField("auxTempHysteresis", t("settingsInstallation.auxHysteresisTitle"), t("settingsInstallation.auxHysteresisCopy")) : "",
     ].filter(Boolean);
 
     return renderSettingsSection(

@@ -9,8 +9,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // dev baseline: 1,308,178 B; invitation adds ~7.5 kB raw / ~2.6 kB gzip on Node 24.14.1.
     // Includes topology-aware Single rendering from dev.
     // Historical heating-stop reasons and both locale catalogues add ~10.6 kB raw.
+    // Aux relay (R2) run-on settings and copy in both locales add ~1.6 kB raw / ~0.5 kB gzip.
     // The existing relative gzip growth limit remains unchanged.
-    raw: 1_332_000,
+    raw: 1_334_000,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

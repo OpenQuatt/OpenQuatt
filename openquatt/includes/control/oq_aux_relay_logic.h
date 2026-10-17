@@ -7,6 +7,7 @@ namespace oq_aux_relay {
 
 enum class Function : uint8_t { DISABLED, HEATING, COOLING, HEATING_OR_COOLING, EXTERNAL };
 enum class ThermalMode : uint8_t { NONE, COOLING, HEATING };
+enum class RunOnMode : uint8_t { OFF, FIXED_TIME, UNTIL_SUPPLY_TEMP };
 enum class Status : uint8_t {
   DISABLED,
   EXTERNAL_CONTROL,
@@ -18,12 +19,16 @@ enum class Status : uint8_t {
   SUPPLY_UNAVAILABLE,
   WAITING_WARM,
   WAITING_COLD,
+  RUN_ON,
 };
 
 struct State {
   bool relay_on = false;
   bool temperature_gate_on = false;
   ThermalMode last_mode = ThermalMode::NONE;
+  bool run_on_active = false;
+  ThermalMode run_on_mode = ThermalMode::NONE;
+  uint32_t run_on_started_ms = 0;
 };
 
 struct Inputs {
@@ -35,6 +40,9 @@ struct Inputs {
   float heating_start_c = NAN;
   float cooling_start_c = NAN;
   float hysteresis_c = NAN;
+  RunOnMode run_on_mode = RunOnMode::OFF;
+  float run_on_s = NAN;
+  uint32_t now_ms = 0;
 };
 
 struct Decision {
@@ -65,6 +73,8 @@ inline const char* status_text(Status status) {
       return "Waiting for warm water";
     case Status::WAITING_COLD:
       return "Waiting for cold water";
+    case Status::RUN_ON:
+      return "Run-on active";
     default:
       return "Disabled";
   }
@@ -79,10 +89,51 @@ inline ThermalMode effective_mode(int control_mode, int cm1_next_mode) {
   return ThermalMode::NONE;
 }
 
+inline bool run_on_finished(const State& state, const Inputs& inputs, uint32_t duration_ms) {
+  if (inputs.now_ms - state.run_on_started_ms >= duration_ms) return true;
+  if (inputs.run_on_mode != RunOnMode::UNTIL_SUPPLY_TEMP) return false;
+  // The duration stays the upper bound; the supply temperature can only end the run-on earlier,
+  // at the same threshold where the supply-temperature gate switches off.
+  if (isnan(inputs.supply_c)) return true;
+  const float hysteresis_c = isnan(inputs.hysteresis_c) ? 2.0f : inputs.hysteresis_c;
+  if (state.run_on_mode == ThermalMode::HEATING) {
+    const float start_c = isnan(inputs.heating_start_c) ? 30.0f : inputs.heating_start_c;
+    return inputs.supply_c <= start_c - hysteresis_c;
+  }
+  const float start_c = isnan(inputs.cooling_start_c) ? 18.0f : inputs.cooling_start_c;
+  return inputs.supply_c >= start_c + hysteresis_c;
+}
+
+// Keep the relay on for a bounded run-on after the demand that switched it on has ended.
+inline bool apply_run_on(State& state, const Inputs& inputs, ThermalMode previous_mode, bool desired,
+                         Decision& result) {
+  const bool demand_function = inputs.function == Function::HEATING || inputs.function == Function::COOLING ||
+                               inputs.function == Function::HEATING_OR_COOLING;
+  const bool run_on_allowed = !desired && demand_function && result.thermal_mode == ThermalMode::NONE &&
+                              inputs.run_on_mode != RunOnMode::OFF && !isnan(inputs.run_on_s) && inputs.run_on_s > 0.0f;
+  if (!run_on_allowed) {
+    state.run_on_active = false;
+    return desired;
+  }
+
+  if (!state.run_on_active && state.relay_on && previous_mode != ThermalMode::NONE) {
+    state.run_on_active = true;
+    state.run_on_mode = previous_mode;
+    state.run_on_started_ms = inputs.now_ms;
+  }
+  if (state.run_on_active && run_on_finished(state, inputs, static_cast<uint32_t>(inputs.run_on_s * 1000.0f))) {
+    state.run_on_active = false;
+  }
+  if (!state.run_on_active) return desired;
+  result.status = Status::RUN_ON;
+  return true;
+}
+
 inline Decision update(State& state, const Inputs& inputs) {
   Decision result;
   result.external_control = inputs.function == Function::EXTERNAL;
   result.thermal_mode = effective_mode(inputs.control_mode, inputs.cm1_next_mode);
+  const ThermalMode previous_mode = state.last_mode;
   if (result.thermal_mode != state.last_mode) {
     state.temperature_gate_on = false;
     state.last_mode = result.thermal_mode;
@@ -93,6 +144,7 @@ inline Decision update(State& state, const Inputs& inputs) {
     desired = state.relay_on;
     result.status = Status::EXTERNAL_CONTROL;
     state.temperature_gate_on = false;
+    state.run_on_active = false;
   } else if (inputs.function == Function::HEATING) {
     desired = result.thermal_mode == ThermalMode::HEATING;
     result.status = desired ? Status::HEATING_ACTIVE : Status::NO_HEATING;
@@ -131,6 +183,7 @@ inline Decision update(State& state, const Inputs& inputs) {
       }
     }
     desired = inputs.temperature_gate_enabled && desired ? state.temperature_gate_on : desired;
+    desired = apply_run_on(state, inputs, previous_mode, desired, result);
     result.changed = desired != state.relay_on;
     state.relay_on = desired;
   }

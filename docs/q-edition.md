@@ -55,7 +55,7 @@ Draadkleuren in de schema's en stappenhulp zijn illustratief. De klemmarkeringen
 
 - **M1** is de primaire Modbuspoort voor de Quatt-buitenunit(s). Deze verbinding is nodig voor de normale regeling.
 - **M2** is de optionele Modbuspoort voor Quatt-app via CiC. Verbind M2 alleen met de vrijgekomen Modbuspoort van de CiC als de Quatt-app moet blijven meekijken. M2 is niet nodig voor CiC JSON-feed inlezen.
-- **R2** is een tweede potentiaalvrij wisselrelais met `NC`, `COM` en `NO`. R2 kan optioneel als hulprelais worden ingesteld via **Instellingen → Installatie → Hulprelais (R2)**, bijvoorbeeld om een fancoil, pomp of klep te laten volgen op de warmte- of koelvraag van OpenQuatt. Standaard staat deze functie uit en blijft R2 onbekrachtigd. Sluit apparatuur die moet inschakelen bij een actief relais aan op `COM` + `NO`; heb je geen hulpuitgang nodig, laat deze aansluiting dan vrij.
+- **R2** is een tweede potentiaalvrij wisselrelais met `NC`, `COM` en `NO`. R2 kan optioneel als hulprelais worden ingesteld via **Instellingen → Installatie → Hulprelais (R2)**, bijvoorbeeld om een fancoil, pomp of klep te laten volgen op de warmte- of koelvraag van OpenQuatt, eventueel met nadraaien na afloop van de vraag. Standaard staat deze functie uit en blijft R2 onbekrachtigd. Sluit apparatuur die moet inschakelen bij een actief relais aan op `COM` + `NO`; heb je geen hulpuitgang nodig, laat deze aansluiting dan vrij.
 - **T** is een 1-Wire-aansluiting voor een optionele Dallas/DS18B20-temperatuursensor: `+3.3V`, `GND` en `DATA`.
 
 ### Aansluitingen op de HCQ

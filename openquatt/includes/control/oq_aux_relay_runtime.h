@@ -19,9 +19,10 @@ class Runtime {
 
   void tick() {
     const auto decision = oq_aux_relay::update(
-        state_, {selected_function_(), id(oq_control_mode_code), id(oq_cm1_next_after),
-                 id(oq_aux_wait_for_supply_temp).state, id(oq_system_supply_temp).state, id(oq_aux_heat_start_c).state,
-                 id(oq_aux_cool_start_c).state, id(oq_aux_temp_hysteresis_c).state});
+        state_,
+        {selected_function_(), id(oq_control_mode_code), id(oq_cm1_next_after), id(oq_aux_wait_for_supply_temp).state,
+         id(oq_system_supply_temp).state, id(oq_aux_heat_start_c).state, id(oq_aux_cool_start_c).state,
+         id(oq_aux_temp_hysteresis_c).state, selected_run_on_mode_(), id(oq_aux_run_on_s).state, millis()});
     const char* status = oq_aux_relay::status_text(decision.status);
     if (!decision.external_control && decision.changed) {
       ESP_LOGI("quatt.aux_relay", "Aux relay %s: %s", decision.relay_on ? "ON" : "OFF", status);
@@ -46,6 +47,14 @@ class Runtime {
     if (option == "Heating or cooling demand") return oq_aux_relay::Function::HEATING_OR_COOLING;
     if (option == "External control") return oq_aux_relay::Function::EXTERNAL;
     return oq_aux_relay::Function::DISABLED;
+  }
+
+  static oq_aux_relay::RunOnMode selected_run_on_mode_() {
+    if (!id(oq_aux_run_on_mode).has_state()) return oq_aux_relay::RunOnMode::OFF;
+    const auto& option = id(oq_aux_run_on_mode).current_option();
+    if (option == "Fixed time") return oq_aux_relay::RunOnMode::FIXED_TIME;
+    if (option == "Until supply temp") return oq_aux_relay::RunOnMode::UNTIL_SUPPLY_TEMP;
+    return oq_aux_relay::RunOnMode::OFF;
   }
 
   static void apply_output_(bool relay_on) {

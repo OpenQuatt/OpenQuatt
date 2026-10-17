@@ -17,6 +17,8 @@
 #   - Follow effective heating (CM2/CM3/CM4) and cooling (CM5) decisions,
 #     including the CM1 pre/postflow destination mode
 #   - Optionally wait for a suitable supply-water temperature (switch), with hysteresis
+#   - Optional run-on after the demand ends (default: Disabled): a fixed time,
+#     or until the supply temperature crosses the gate's switch-off threshold
 #   - Allow external control (for example Home Assistant / REST) via the
 #     dedicated "External control" function
 #   - Publish relay state and a short status/reason for diagnostics
@@ -37,7 +39,7 @@
 #   - CM2/CM3/CM4 -> effective heating demand for the relay functions
 #   - CM5 -> effective cooling demand for the relay functions
 #   - CM1 -> follows the pre/postflow destination (CM2/CM4 heating, CM5 cooling)
-#   - CM0/CM98/CM100 -> no thermal demand; relay OFF
+#   - CM0/CM98/CM100 -> no thermal demand; relay OFF (after the optional run-on)
 #
 # Safety / fail-safe:
 #   - Relay restores ALWAYS_OFF and stays OFF until the control loop runs
@@ -45,6 +47,7 @@
 #   - External switch commands are ignored unless "External control" is selected
 #   - Supply-temperature gate fails OFF when supply temperature is unavailable
 #   - Hysteresis latch prevents relay chatter around the thresholds
+#   - Run-on is runtime-only and time-bounded; "Until supply temp" ends on NaN supply
 #
 # ==============================================================================
 
@@ -103,6 +106,18 @@ select:
       - External control
     initial_option: Disabled
 
+  - platform: template
+    id: oq_aux_run_on_mode
+    name: "Aux Relay Run-on"
+    internal: true
+    optimistic: true
+    restore_value: true
+    options:
+      - Disabled
+      - Fixed time
+      - Until supply temp
+    initial_option: Disabled
+
 number:
   - platform: template
     id: oq_aux_heat_start_c
@@ -142,6 +157,20 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 2
+
+  # Exact run-on duration for "Fixed time"; upper bound for "Until supply temp".
+  - platform: template
+    id: oq_aux_run_on_s
+    name: "Aux Relay Run-on Time"
+    internal: true
+    unit_of_measurement: "s"
+    min_value: 10
+    max_value: 3600
+    step: 10
+    mode: slider
+    optimistic: true
+    restore_value: true
+    initial_value: 300
 
 # ----------------------------
 # DIAGNOSTICS
