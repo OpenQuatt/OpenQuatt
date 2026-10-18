@@ -114,6 +114,8 @@ jobs:
         run: |
           baseline_root="${RUNNER_TEMP}/openquatt-web-baseline"
           mkdir -p "${baseline_root}"
+          # The event base may be older than a moving merge ref in a shallow checkout.
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}"
           git archive "${BASE_SHA}" | tar -x -C "${baseline_root}"
           npm ci --ignore-scripts --prefix "${baseline_root}"
           npm run build:web --prefix "${baseline_root}"
