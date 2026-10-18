@@ -55,3 +55,8 @@
 - Write PR titles in Dutch unless the user explicitly requests another language.
 - Use `.github/pull_request_template.md` for PR bodies and fill every relevant section.
 - In PRs, issues and review comments, write canonical project commands without personal shell wrappers.
+
+## Releases
+
+- Follow `docs/development/releaseproces.md` for release preparation, promotion, publication and verification; use `docs/development/release-notes.md` for public notes.
+- The portable agent entrypoint is `.agents/skills/openquatt-release/SKILL.md`. Keep the procedure in the shared docs, not a separate personal skill copy.
