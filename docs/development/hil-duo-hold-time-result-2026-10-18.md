@@ -219,4 +219,3 @@ Workload-SHA256 `f9e5995f2b7f061bb835859f112030cc9e57b576aae31e0428501f2c8e8a8d5
 Dit kwalificeert geen volledige TLS-belasting, echte browserbediening, continue HA/native-/busdekking, worst-case allocatie-/stackmarge of overall acceptatie. Gecachte HTTP-metingen hebben onbekende bronleeftijd en kunnen pieken tussen reads missen.
 Normale reboot/persistentie en hostfoutinjecties bewijzen geen fysieke NVS-foutinjectie of stroomverlies-/flashrollbackkwalificatie.
 Uitgebreide campagnehistorie en bewijsgrenzen staan in het recorderreport bij [PR #863](https://github.com/OpenQuatt/OpenQuatt/pull/863) (`hil-recorder-persistence-result-2026-10-18.md`).
-
