@@ -3942,6 +3942,7 @@ export default {
     headerDisabledTitle: "System recorder disabled — no new system data is being stored",
     headerInactive: "System recorder inactive", headerInactiveTitle: "System recorder inactive — nothing is currently being recorded",
     statusFetchPrefix: "Status could not be fetched.", statusFetchFailed: "Status could not be fetched. {error}",
+    enabledResponseMismatch: "The confirmation does not contain the selected recorder value.",
     enabledNotice: "Continuous recording enabled.",
     disabledNotice: "Continuous recording disabled. The current recording remains available until a new recording starts or the device restarts.",
     enableFailed: "Enabling continuous recording could not be confirmed. Please retry. {error}", disableFailed: "Disabling continuous recording could not be confirmed. Please retry. {error}",

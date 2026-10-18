@@ -14,6 +14,7 @@ import { syncUrlAppView } from "../core/navigation.js";
 import { renderModalShell } from "../core/modal-shell.js";
 
 let debugRecordingMutationGeneration = 0;
+let debugRecordingMutationInFlight = false;
 let debugRecordingStatusFailureCount = 0;
 
 export function getDebugRecordingSampleCount() {
@@ -359,6 +360,8 @@ export function scheduleDebugRecordingDeviceStatusPoll(delayMs = 2000, options =
 }
 
 export async function refreshDebugRecordingDeviceStatus(options = {}) {
+  if (debugRecordingMutationInFlight) return;
+  const requestGeneration = debugRecordingMutationGeneration;
   if (!options.silent) {
     state.debugRecordingBusy = true;
     state.debugRecordingError = "";
@@ -368,6 +371,7 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
   let modalPatched = false;
   try {
     await fetchDebugRecordingDeviceStatus();
+    if (requestGeneration !== debugRecordingMutationGeneration) return;
     debugRecordingStatusFailureCount = 0;
     if (String(state.debugRecordingError || "").startsWith(t("debugRecording.statusFetchPrefix"))) {
       state.debugRecordingError = "";
@@ -378,6 +382,7 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
     }
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
+    if (requestGeneration !== debugRecordingMutationGeneration) return;
     debugRecordingStatusFailureCount += 1;
     const hadStatus = Boolean(state.debugRecordingDeviceStatus);
     if (!hadStatus) {
@@ -394,14 +399,16 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
       );
     }
   } finally {
-    if (!options.silent) {
-      state.debugRecordingBusy = false;
-    }
-    if (!options.silent || (state.systemModal === "debug-recording" && !modalPatched)) {
-      render();
-    } else if (state.systemModal !== "debug-recording") {
-      patchDebugRecordingHeaderStatus();
-      patchDebugRecordingSettingsStatus();
+    if (requestGeneration === debugRecordingMutationGeneration) {
+      if (!options.silent) {
+        state.debugRecordingBusy = false;
+      }
+      if (!options.silent || (state.systemModal === "debug-recording" && !modalPatched)) {
+        render();
+      } else if (state.systemModal !== "debug-recording") {
+        patchDebugRecordingHeaderStatus();
+        patchDebugRecordingSettingsStatus();
+      }
     }
   }
 }
@@ -465,7 +472,16 @@ async function reconcileDebugRecordingMutation(predicate) {
   }
 }
 
+function hasPendingSystemRecorderChange() {
+  return typeof state.debugRecordingPendingEnabled === "boolean";
+}
+
 export async function setSystemRecorderEnabled(enabled) {
+  if (state.debugRecordingBusy || debugRecordingMutationInFlight
+    || (hasPendingSystemRecorderChange() && state.debugRecordingPendingEnabled !== enabled)) return;
+  debugRecordingMutationInFlight = true;
+  // Only the response to this choice can clear it; runtime polls cannot.
+  state.debugRecordingPendingEnabled = enabled;
   debugRecordingMutationGeneration += 1;
   clearDebugRecordingDevicePollTimer();
   state.debugRecordingBusy = true;
@@ -475,7 +491,11 @@ export async function setSystemRecorderEnabled(enabled) {
   render();
   try {
     const payload = await postDebugRecordingDevice("enabled", { enabled: enabled ? "1" : "0" });
+    if (payload?.ok !== true || payload.enabled !== enabled) {
+      throw new Error(t("debugRecording.enabledResponseMismatch"));
+    }
     applyDebugRecordingDeviceStatus(payload);
+    state.debugRecordingPendingEnabled = null;
     debugRecordingStatusFailureCount = 0;
     state.debugRecordingNotice = enabled
       ? t("debugRecording.enabledNotice")
@@ -488,12 +508,21 @@ export async function setSystemRecorderEnabled(enabled) {
     state.debugRecordingError = t(enabled ? "debugRecording.enableFailed" : "debugRecording.disableFailed", { error: error.message || String(error) });
     scheduleDebugRecordingDeviceStatusPoll(4000);
   } finally {
+    debugRecordingMutationGeneration += 1;
+    debugRecordingMutationInFlight = false;
     state.debugRecordingBusy = false;
     render();
   }
 }
 
+export function retrySystemRecorderEnabled() {
+  if (hasPendingSystemRecorderChange()) {
+    return setSystemRecorderEnabled(state.debugRecordingPendingEnabled);
+  }
+}
+
 export function requestSystemRecorderDisable() {
+  if (state.debugRecordingBusy || debugRecordingMutationInFlight || hasPendingSystemRecorderChange()) return;
   if (!isSystemRecorderEnabled()) {
     return setSystemRecorderEnabled(true);
   }
@@ -511,6 +540,7 @@ export function cancelSystemRecorderDisable() {
 }
 
 export function confirmSystemRecorderDisable() {
+  if (state.debugRecordingBusy || debugRecordingMutationInFlight || hasPendingSystemRecorderChange()) return;
   updateDebugRecordingState({ debugRecordingConfirmDisable: false });
   return setSystemRecorderEnabled(false);
 }
@@ -529,10 +559,11 @@ export function toggleRecorderManage(event, button) {
 }
 
 export async function restartRollingDebugRecording() {
-  if (state.debugRecordingBusy) {
+  if (state.debugRecordingBusy || debugRecordingMutationInFlight || hasPendingSystemRecorderChange()) {
     return;
   }
   const previousRecordingId = getDebugRecordingId();
+  debugRecordingMutationInFlight = true;
   debugRecordingMutationGeneration += 1;
   clearDebugRecordingDevicePollTimer();
   state.debugRecordingBusy = true;
@@ -556,6 +587,8 @@ export async function restartRollingDebugRecording() {
       state.debugRecordingError = t("debugRecording.restartFailed", { error: error.message || String(error) });
     }
   } finally {
+    debugRecordingMutationGeneration += 1;
+    debugRecordingMutationInFlight = false;
     state.debugRecordingBusy = false;
     render();
   }
@@ -668,6 +701,7 @@ const debugRecordingActionHandlers = {
   },
   "restart-rolling-debug-recording": () => restartRollingDebugRecording(),
   "request-disable-system-recorder": () => requestSystemRecorderDisable(),
+  "retry-system-recorder-enabled": () => retrySystemRecorderEnabled(),
   "cancel-disable-system-recorder": () => cancelSystemRecorderDisable(),
   "confirm-disable-system-recorder": () => confirmSystemRecorderDisable(),
   "toggle-recorder-manage": (button, event) => toggleRecorderManage(event, button),
@@ -694,6 +728,7 @@ export function renderDebugRecordingModal() {
   const deviceUnavailable = !available;
   const intervalS = Math.max(1, Number(state.debugRecordingDeviceStatus?.interval_s || 10));
   const confirmDisable = state.debugRecordingConfirmDisable === true;
+  const pendingChange = hasPendingSystemRecorderChange();
   const feedback = state.debugRecordingError
     ? { kind: "error", icon: "alert", text: state.debugRecordingError }
     : state.debugRecordingNotice
@@ -728,7 +763,7 @@ export function renderDebugRecordingModal() {
                 aria-checked="${enabled ? "true" : "false"}"
                 aria-label="${escapeHtml(t("debugRecording.cardAria"))}"
                 data-oq-action="request-disable-system-recorder"
-                ${busy || deviceUnavailable ? "disabled" : ""}
+                ${busy || deviceUnavailable || pendingChange ? "disabled" : ""}
               >
                 <span class="oq-settings-toggle-switch-track" aria-hidden="true"><span class="oq-settings-toggle-switch-knob"></span></span>
               </button>
@@ -749,13 +784,19 @@ export function renderDebugRecordingModal() {
               <p class="oq-debug-recording-subtle">${escapeHtml(t("debugRecording.notActive"))}</p>
             ` : ""}
           `}
-          ${confirmDisable && enabled ? `
+          ${confirmDisable && enabled && !pendingChange ? `
             <div class="oq-debug-recording-confirm" role="group" aria-label="${escapeHtml(t("debugRecording.confirmTitle"))}">
               <p><strong>${escapeHtml(t("debugRecording.confirmTitle"))}</strong> ${escapeHtml(t("debugRecording.confirmCopy"))}</p>
               <div class="oq-debug-recording-confirm-actions">
                 <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="cancel-disable-system-recorder" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
                 <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-disable-system-recorder" ${busy ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>
               </div>
+            </div>
+          ` : ""}
+          ${pendingChange && !busy ? `
+            <div class="oq-debug-recording-confirm" role="group">
+              <p>${escapeHtml(t(state.debugRecordingPendingEnabled ? "debugRecording.enableFailed" : "debugRecording.disableFailed", { error: "" }).trim())}</p>
+              <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="retry-system-recorder-enabled" ${busy || deviceUnavailable ? "disabled" : ""}>${escapeHtml(t("common.retry"))}</button>
             </div>
           ` : ""}
         </section>
@@ -796,7 +837,7 @@ export function renderDebugRecordingModal() {
         <details class="oq-debug-recording-manage"${state.debugRecordingManageOpen ? " open" : ""}>
           <summary data-oq-action="toggle-recorder-manage">${escapeHtml(t("debugRecording.manageTitle"))}</summary>
           <p class="oq-debug-recording-subtle">${escapeHtml(t("debugRecording.manageCopy"))}</p>
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="restart-rolling-debug-recording" ${busy || deviceUnavailable || !enabled ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}${escapeHtml(t("debugRecording.manageStart"))}</button>
+          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="restart-rolling-debug-recording" ${busy || deviceUnavailable || !enabled || pendingChange ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}${escapeHtml(t("debugRecording.manageStart"))}</button>
         </details>`,
   });
 }

@@ -3942,6 +3942,7 @@ export default {
     headerDisabledTitle: "Systeemrecorder uitgeschakeld — er worden geen nieuwe systeemgegevens opgeslagen",
     headerInactive: "Systeemrecorder niet actief", headerInactiveTitle: "Systeemrecorder niet actief — er wordt momenteel niets opgenomen",
     statusFetchPrefix: "Status kon niet worden opgehaald.", statusFetchFailed: "Status kon niet worden opgehaald. {error}",
+    enabledResponseMismatch: "De bevestiging bevat niet de gekozen recorderwaarde.",
     enabledNotice: "Doorlopende opname ingeschakeld.",
     disabledNotice: "Doorlopende opname uitgeschakeld. De huidige opname blijft beschikbaar totdat een nieuwe opname wordt gestart of het apparaat opnieuw opstart.",
     enableFailed: "Inschakelen van de doorlopende opname kon niet worden bevestigd. Probeer opnieuw. {error}", disableFailed: "Uitschakelen van de doorlopende opname kon niet worden bevestigd. Probeer opnieuw. {error}",

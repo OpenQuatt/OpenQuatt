@@ -32,6 +32,7 @@ const {
   setSystemRecorderEnabled,
 } = await import("../js/src/features/debug-recording.js");
 const { state } = await import("../js/src/core/state.js");
+const { setLocale } = await import("../js/src/i18n/index.js");
 const { DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS } = await import("../js/src/core/config.js");
 
 // ---------------------------------------------------------------------------
@@ -340,6 +341,7 @@ function seedFeatureStatus(overrides = {}) {
   };
   state.debugRecordingActive = Boolean(state.debugRecordingDeviceStatus.active);
   state.debugRecordingBusy = false;
+  state.debugRecordingPendingEnabled = null;
   state.debugRecordingError = "";
   state.debugRecordingNotice = "";
   state.debugRecordingDownloadRange = 15;
@@ -667,6 +669,176 @@ for (const enabled of [false, true]) {
     });
   }
 }
+
+function clickRecorderButton(action) {
+  const button = renderDebugRecordingModal().match(new RegExp(`<button\\b[^>]*data-oq-action="${action}"[^>]*>`));
+  assert.ok(button, `zichtbare actie ${action}`);
+  assert.doesNotMatch(button[0], /\bdisabled\b/, `actie ${action} is bedienbaar`);
+  assert.equal(handleDebugRecordingAction(action), true);
+}
+
+const settleRecorderAction = () => new Promise((resolve) => setImmediate(resolve));
+
+for (const enabled of [false, true]) {
+  for (const applied of [false, true]) {
+    test(`zichtbare retry bewaart keuze ${enabled} na verloren ACK, server toegepast=${applied}`, async (t) => {
+      const restoreTimers = seedFeatureStatus({ enabled: !enabled, active: !enabled });
+      const originalFetch = window.fetch;
+      const server = { ...state.debugRecordingDeviceStatus };
+      const posted = [];
+      t.after(() => {
+        window.fetch = originalFetch;
+        state.debugRecordingPendingEnabled = null;
+        setLocale("nl", { persist: false, applyDocument: false, notify: false });
+        restoreTimers();
+      });
+      const apply = (desired) => {
+        if (desired && !server.enabled) {
+          server.recording_id += 1;
+          server.sample_count = 1;
+        }
+        server.enabled = desired;
+        server.active = desired;
+      };
+      window.fetch = async (url, options = {}) => {
+        if (options.method === "POST") {
+          assert.match(String(url), /\/enabled$/);
+          const desired = new URLSearchParams(options.body).get("enabled") === "1";
+          posted.push(desired);
+          if (posted.length === 1) {
+            if (applied) apply(desired);
+            throw new Error("antwoord verloren");
+          }
+          if (posted.length === 2) {
+            return { ok: false, status: 500, json: async () => ({ ok: false, error: "persistence_failed" }) };
+          }
+          apply(desired);
+        }
+        return { ok: true, status: 200, json: async () => ({ ...server }) };
+      };
+
+      clickRecorderButton("request-disable-system-recorder");
+      if (!enabled) clickRecorderButton("confirm-disable-system-recorder");
+      assert.doesNotMatch(renderDebugRecordingModal(), /data-oq-action="retry-system-recorder-enabled"/, "geen fout/retrybox tijdens de eerste lopende POST");
+      await settleRecorderAction();
+      assert.deepEqual(posted, [enabled]);
+      assert.equal(state.debugRecordingPendingEnabled, enabled);
+      const historyAfterLostAck = [server.recording_id, server.sample_count];
+      const { refreshDebugRecordingDeviceStatus } = await import("../js/src/features/debug-recording.js");
+      await refreshDebugRecordingDeviceStatus({ silent: true });
+      assert.equal(state.debugRecordingDeviceStatus.enabled, server.enabled);
+      assert.equal(state.debugRecordingPendingEnabled, enabled, "runtimepoll bevestigt de opslagkeuze niet");
+      assert.equal(state.debugRecordingNotice, "");
+      assert.deepEqual(posted, [enabled], "polling herhaalt geen POST");
+      assert.match(renderDebugRecordingModal(), new RegExp(`data-oq-action="request-disable-system-recorder"[^>]*disabled`));
+      for (const action of ["request-disable-system-recorder", "confirm-disable-system-recorder", "restart-rolling-debug-recording"]) {
+        handleDebugRecordingAction(action); // Ook een oude DOM-knop mag geen omgekeerde write/reset starten.
+      }
+      await settleRecorderAction();
+      assert.deepEqual(posted, [enabled]);
+      assert.deepEqual([server.recording_id, server.sample_count], historyAfterLostAck);
+
+      setLocale("en", { persist: false, applyDocument: false, notify: false });
+      assert.match(renderDebugRecordingModal(), /Retry<\/button>/);
+      assert.match(renderDebugRecordingModal(), enabled ? /Enabling continuous recording could not be confirmed/ : /Disabling continuous recording could not be confirmed/);
+      setLocale("nl", { persist: false, applyDocument: false, notify: false });
+      clickRecorderButton("retry-system-recorder-enabled");
+      handleDebugRecordingAction("retry-system-recorder-enabled"); // Dubbele klik tijdens POST.
+      await settleRecorderAction();
+      assert.deepEqual(posted, [enabled, enabled], "retry verstuurt exact de oorspronkelijke boolean");
+      assert.equal(state.debugRecordingPendingEnabled, enabled, "ook een mislukte expliciete retry bewaart de keuze");
+      assert.match(state.debugRecordingError, /kon niet worden bevestigd/);
+      await refreshDebugRecordingDeviceStatus({ silent: true });
+      assert.deepEqual(posted, [enabled, enabled], "ook na herhaald falen geen automatische POST");
+      clickRecorderButton("retry-system-recorder-enabled");
+      await settleRecorderAction();
+      assert.deepEqual(posted, [enabled, enabled, enabled]);
+      assert.equal(state.debugRecordingPendingEnabled, null);
+      assert.equal(state.debugRecordingDeviceStatus.enabled, enabled);
+      assert.doesNotMatch(renderDebugRecordingModal(), /data-oq-action="retry-system-recorder-enabled"/);
+      if (applied || !enabled) {
+        assert.deepEqual([server.recording_id, server.sample_count], historyAfterLostAck, "idempotente retry wist geen historie");
+      } else {
+        assert.equal(server.recording_id, historyAfterLostAck[0] + 1, "alleen de bedoelde enabletransitie begint een nieuwe opname");
+      }
+    });
+  }
+}
+
+for (const enabled of [false, true]) {
+  test(`een HTTP200 met andere recorderwaarde bevestigt keuze ${enabled} niet`, async (t) => {
+    const restoreTimers = seedFeatureStatus({ enabled: !enabled, active: !enabled });
+    const originalFetch = window.fetch;
+    t.after(() => {
+      window.fetch = originalFetch;
+      state.debugRecordingPendingEnabled = null;
+      restoreTimers();
+    });
+    let posts = 0;
+    window.fetch = async () => {
+      posts += 1;
+      return { ok: true, status: 200, json: async () => ({ ...state.debugRecordingDeviceStatus }) };
+    };
+    clickRecorderButton("request-disable-system-recorder");
+    if (!enabled) clickRecorderButton("confirm-disable-system-recorder");
+    await settleRecorderAction();
+    assert.equal(posts, 1);
+    assert.equal(state.debugRecordingPendingEnabled, enabled);
+    assert.equal(state.debugRecordingNotice, "");
+    assert.match(state.debugRecordingError, /bevestiging bevat niet de gekozen recorderwaarde/);
+    assert.match(renderDebugRecordingModal(), /data-oq-action="retry-system-recorder-enabled"/);
+  });
+}
+
+test("lopende keuze overleeft sluiten, heropenen en een verouderde poll zonder dubbele write", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  t.after(() => {
+    window.fetch = originalFetch;
+    state.debugRecordingPendingEnabled = null;
+    restoreTimers();
+  });
+  let releasePoll, rejectPost;
+  let gets = 0;
+  const posted = [];
+  window.fetch = (url, options = {}) => {
+    if (options.method === "POST") {
+      posted.push(new URLSearchParams(options.body).get("enabled"));
+      return new Promise((_resolve, reject) => { rejectPost = reject; });
+    }
+    gets += 1;
+    return new Promise((resolve) => { releasePoll = resolve; });
+  };
+  const { refreshDebugRecordingDeviceStatus } = await import("../js/src/features/debug-recording.js");
+  const oldPoll = refreshDebugRecordingDeviceStatus({ silent: true });
+  clickRecorderButton("request-disable-system-recorder");
+  clickRecorderButton("confirm-disable-system-recorder");
+  state.systemModal = "";
+  handleDebugRecordingAction("open-debug-recording-modal");
+  await settleRecorderAction();
+  assert.equal(gets, 1, "heropenen begint geen concurrerende poll tijdens de write");
+  assert.equal(state.debugRecordingBusy, true);
+  releasePoll({ ok: true, status: 200, json: async () => ({ ...state.debugRecordingDeviceStatus, sample_count: 999 }) });
+  await oldPoll;
+  assert.equal(state.debugRecordingDeviceStatus.sample_count, 500, "oude poll overschrijft geen mutatiecontext");
+  assert.equal(state.debugRecordingBusy, true);
+  handleDebugRecordingAction("retry-system-recorder-enabled");
+  handleDebugRecordingAction("confirm-disable-system-recorder");
+  assert.deepEqual(posted, ["0"]);
+  state.systemModal = "";
+  rejectPost(new Error("antwoord verloren"));
+  await settleRecorderAction();
+  assert.equal(state.systemModal, "", "late response opent de gesloten modal niet");
+  assert.equal(state.debugRecordingPendingEnabled, false);
+  window.fetch = async () => ({ ok: true, status: 200, json: async () => ({
+    ...state.debugRecordingDeviceStatus, enabled: false, active: false,
+  }) });
+  handleDebugRecordingAction("open-debug-recording-modal");
+  await settleRecorderAction();
+  assert.equal(state.debugRecordingPendingEnabled, false);
+  assert.match(renderDebugRecordingModal(), /data-oq-action="retry-system-recorder-enabled"/);
+  assert.deepEqual(posted, ["0"], "heropenen verifieert alleen runtime en herhaalt de keuze niet automatisch");
+});
 
 test("een verloren restartantwoord wordt via status gereconcilieerd", async (t) => {
   const restoreTimers = seedFeatureStatus({ active: true, rolling: true, recording_id: 41, sample_count: 60 });

@@ -100,6 +100,7 @@ export function createDiagnosticsState() {
     debugRecordingBusy: false,
     debugRecordingDownloadRange: 15,
     debugRecordingConfirmDisable: false,
+    debugRecordingPendingEnabled: null,
     debugRecordingManageOpen: false,
     debugRecordingDeviceStatus: null,
     debugRecordingDevicePollTimer: null,
