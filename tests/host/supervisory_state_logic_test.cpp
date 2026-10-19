@@ -5,7 +5,9 @@
 #include <limits>
 #include <string>
 
+#include "../../openquatt/includes/control/oq_hp_restart_guard.h"
 #include "../../openquatt/includes/control/oq_supervisory_state_logic.h"
+#include "../../openquatt/includes/incidents/oq_hp_incident_types.h"
 
 namespace {
 
@@ -91,6 +93,149 @@ void test_low_load_reentry_release_and_invalid_tuning() {
   input.now_ms = 30;
   output = update_low_load(input, output.state);
   assert(output.source_code == 3);
+}
+
+void test_low_load_minimum_off_does_not_restart_preflow() {
+  using namespace oq_supervisory_state;
+  // Issue #871: 1500 W correctly stops below 1600 W, but a 60 s cache used to
+  // expire during the 240 s rest and re-arm preflow at the 1300 W fallback.
+  constexpr uint32_t stopped_ms = 1000000;
+  constexpr uint32_t minimum_off_ms = 240000;
+  oq_hp_restart_guard::Policy rest;
+  assert(rest.configure(minimum_off_ms, 30000));
+  rest.observe_stopped(stopped_ms);
+  oq_incidents::DerivedOutputs stopped;
+  stopped.link_state = oq_incidents::LinkState::HEALTHY;
+  stopped.run_state = oq_incidents::RunState::STOPPED;
+  stopped.stop_confirmed = true;
+  LowLoadInput input;
+  input.now_ms = stopped_ms;
+  input.active = true;
+  input.raw_heating_request = true;
+  input.openquatt_enabled = true;
+  input.requested_power_w = 1500.0f;
+  input.live_minimum_power_w = 2527.63f;
+  input.cache_max_ms = 60000;
+  auto output = update_low_load(input, {true});
+  assert(!output.heating_request && output.off_threshold_w == 1600.0f && output.on_threshold_w == 2200.0f);
+
+  for (uint32_t elapsed_ms = 10000; elapsed_ms <= minimum_off_ms; elapsed_ms += 10000) {
+    input.now_ms = stopped_ms + elapsed_ms;
+    rest.observe_stopped(input.now_ms);
+    const bool resting = low_load_minimum_off_active(stopped, 0, rest.remaining_ms(input.now_ms));
+    assert(resting == (elapsed_ms < minimum_off_ms));
+    assert(rest.can_start(input.now_ms) == !resting);
+    input.live_minimum_power_w = resting ? NAN : 2527.63f;
+    input.cache_max_ms = low_load_cache_duration_ms(60000, minimum_off_ms, resting, false);
+    output = update_low_load(input, output.state);
+    assert(output.source_code == (resting ? 2 : 1));
+    assert(!output.state.heat_latched && !output.heating_request);
+    assert(output.off_threshold_w == 1600.0f && output.on_threshold_w == 2200.0f);
+    assert(output.state.cached_minimum_power_updated_ms == (resting ? stopped_ms : input.now_ms));
+    const auto startup = power_house_start(input.now_ms, output.heating_request, true, false, 30000, {});
+    assert(!startup.preflow_request && !startup.heating_request);
+  }
+
+  // Genuine demand still passes the unchanged latch/confirmation path.
+  input.requested_power_w = 2200.0f;
+  output = update_low_load(input, output.state);
+  assert(output.heating_request);
+  auto startup = power_house_start(input.now_ms, output.heating_request, true, false, 30000, {});
+  assert(startup.preflow_request && !startup.heating_request);
+  startup = power_house_start(input.now_ms + 30000, output.heating_request, true, false, 30000, startup.state);
+  assert(startup.heating_request && !startup.preflow_request);
+}
+
+void test_low_load_cache_only_extends_for_normal_rest() {
+  using namespace oq_supervisory_state;
+  using namespace oq_incidents;
+  DerivedOutputs stopped;
+  stopped.link_state = LinkState::HEALTHY;
+  stopped.run_state = RunState::STOPPED;
+  stopped.stop_confirmed = true;
+  assert(low_load_minimum_off_active(stopped, 0, 240000));
+  assert(!low_load_minimum_off_active(stopped, 1, 240000));
+  assert(!low_load_minimum_off_active(stopped, 0, 0));
+  stopped.protection_state = ProtectionState::LIMITED;
+  assert(low_load_minimum_off_active(stopped, 0, 240000));
+  stopped.protection_state = ProtectionState::CLEAR;
+  for (auto state : {ProtectionState::START_BLOCKED, ProtectionState::FAULT_ACTIVE, ProtectionState::FAULT_RECOVERY}) {
+    auto fault = stopped;
+    fault.protection_state = state;
+    assert(!low_load_minimum_off_active(fault, 0, 240000));
+  }
+  for (auto state : {LinkState::BOOTSTRAP, LinkState::SUSPECT, LinkState::LOST, LinkState::RECOVERING}) {
+    auto offline = stopped;
+    offline.link_state = state;
+    assert(!low_load_minimum_off_active(offline, 0, 240000));
+  }
+  for (auto state : {RunState::UNKNOWN, RunState::RUNNING, RunState::STOPPING, RunState::STOP_UNCONFIRMED}) {
+    auto running = stopped;
+    running.run_state = state;
+    assert(!low_load_minimum_off_active(running, 0, 240000));
+  }
+  auto unknown = stopped;
+  unknown.stop_confirmed = false;
+  assert(!low_load_minimum_off_active(unknown, 0, 240000));
+  for (bool DerivedOutputs::* flag :
+       {&DerivedOutputs::must_stop, &DerivedOutputs::fault_active, &DerivedOutputs::running_confirmed,
+        &DerivedOutputs::stop_confirmation_pending, &DerivedOutputs::stop_unconfirmed}) {
+    auto unsafe = stopped;
+    unsafe.*flag = true;
+    assert(!low_load_minimum_off_active(unsafe, 0, 240000));
+  }
+
+  // A failed Duo peer cannot extend ordinary model dropouts while the other
+  // compressor is running. A healthy stopped peer may finish its real rest.
+  auto failed_peer = stopped;
+  failed_peer.must_stop = true;
+  const bool running_or_fault =
+      low_load_minimum_off_active(stopped, 1, 240000) || low_load_minimum_off_active(failed_peer, 0, 240000);
+  assert(low_load_cache_duration_ms(60000, 240000, running_or_fault, true) == 60000);
+  const bool healthy_rest_or_fault =
+      low_load_minimum_off_active(stopped, 0, 1) || low_load_minimum_off_active(failed_peer, 0, 240000);
+  assert(low_load_cache_duration_ms(60000, 240000, healthy_rest_or_fault, false) == 300000);
+  // A running healthy peer keeps the original dropout deadline too.
+  assert(low_load_cache_duration_ms(60000, 240000, healthy_rest_or_fault, true) == 60000);
+}
+
+void test_low_load_minimum_off_cache_limits() {
+  using namespace oq_supervisory_state;
+  assert(low_load_cache_duration_ms(60000, 240000, false, false) == 60000);
+  assert(low_load_cache_duration_ms(60000, 240000, true, false) == 300000);
+  assert(low_load_cache_duration_ms(60000, 0, true, false) == 60000);
+  assert(low_load_cache_duration_ms(UINT32_MAX - 10, 240000, true, false) == UINT32_MAX);
+
+  LowLoadInput input;
+  input.active = true;
+  input.raw_heating_request = true;
+  input.openquatt_enabled = true;
+  input.requested_power_w = 1500.0f;
+  input.cache_max_ms = low_load_cache_duration_ms(60000, 240000, true, false);
+  input.now_ms = 301000;
+  LowLoadState cached{false, 2527.63f, 1000};
+  auto output = update_low_load(input, cached);
+  assert(output.source_code == 2 && !output.heating_request);
+  input.now_ms++;
+  output = update_low_load(input, output.state);
+  assert(output.source_code == 3 && output.heating_request);
+
+  // No rest or no previous model keeps the existing missing-model fallback.
+  input.now_ms = 62000;
+  input.cache_max_ms = low_load_cache_duration_ms(60000, 240000, false, false);
+  output = update_low_load(input, cached);
+  assert(output.source_code == 3 && output.heating_request);
+  input.cache_max_ms = low_load_cache_duration_ms(60000, 240000, true, false);
+  output = update_low_load(input, {});
+  assert(output.source_code == 3 && output.heating_request);
+
+  cached.cached_minimum_power_updated_ms = UINT32_MAX - 200000;
+  input.now_ms = 99999;
+  output = update_low_load(input, cached);
+  assert(output.source_code == 2 && !output.heating_request);
+  input.now_ms++;
+  output = update_low_load(input, output.state);
+  assert(output.source_code == 3 && output.heating_request);
 }
 
 void test_request_confirmation() {
@@ -279,6 +424,9 @@ int main() {
   assert(!window_active(20, UINT32_MAX - 10));
   test_low_load_hysteresis_and_cache();
   test_low_load_reentry_release_and_invalid_tuning();
+  test_low_load_minimum_off_does_not_restart_preflow();
+  test_low_load_cache_only_extends_for_normal_rest();
+  test_low_load_minimum_off_cache_limits();
   test_request_confirmation();
   test_first_heating_preflow_overlaps_sensor_acquisition();
   test_idle_exit_boundaries();
