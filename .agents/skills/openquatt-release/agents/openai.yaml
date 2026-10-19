@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenQuatt Release"
+  short_description: "OpenQuatt releases en Nederlandstalige release notes"
+  default_prompt: "Gebruik $openquatt-release om een OpenQuatt-release voor te bereiden volgens het proces in deze repository."

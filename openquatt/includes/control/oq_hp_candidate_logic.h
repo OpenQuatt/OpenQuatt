@@ -38,6 +38,16 @@ inline HpCandidateState candidate_state(const IncidentOutputs& outputs, int prev
   };
 }
 
+// Observe an existing physical cycle before the actuator commits software
+// adoption. No idle peer may start from a request calculated during acquisition.
+inline HpCandidateState candidate_during_boot_resume(HpCandidateState candidate, bool pending, int resume_level,
+                                                     bool any_pending, int maximum_level) {
+  if (pending && candidate.previous_applied_level <= 0 && resume_level > 0 && resume_level <= maximum_level)
+    candidate.previous_applied_level = resume_level;
+  if (any_pending) candidate.available_for_start = false;
+  return candidate;
+}
+
 inline bool may_serve_candidate(const HpCandidateState& candidate) {
   return may_serve_candidate(candidate.available_for_start, candidate.must_stop, candidate.previous_applied_level,
                              candidate.minimum_off_ready);

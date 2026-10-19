@@ -18,4 +18,6 @@ bijdragers. Ze zijn bewust geen onderdeel van de gebruikerssite.
 - [Netwerkdiagnostiek](netwerkdiagnostiek.md): DNS-herstel en socketbegroting.
 - [Power House Auto-Tuning](power-house-autotuning-development.md): implementatie en Adaptive-roadmap.
 - [Power House-learningbronnen](power-house-learning-sources.md): meetbroncontract.
-- [Release process](releaseproces.md): branches, builds en releases.
+- [Release process](releaseproces.md): checklist, veilige branchpromotie, vrijgave en uitzonderingen.
+- [Release notes](release-notes.md): gedeelde formats voor GitHub, Tweakers en Discord.
+- [Releasecontrole](release-verification.md): hashes, OTA-manifests, symbolen en de live installer controleren.

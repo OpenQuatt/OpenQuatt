@@ -3,6 +3,16 @@
 This project uses GitHub Actions for automated validation, firmware compilation, and release asset publishing.
 Style and documentation consistency are validated locally via `python3 scripts/dev.py validate`. The current style scope is documented in `CONTRIBUTING.md`.
 
+This document is the shared source of truth, for human maintainers and agents.
+Use [release notes](release-notes.md) for GitHub/Tweakers/Discord formatting and
+[release verification](release-verification.md) for the read-only final check.
+The repository skill lives in
+[`.agents/skills/openquatt-release`](../../.agents/skills/openquatt-release/SKILL.md)
+and links here instead of duplicating the procedure. It travels with a clone;
+no personal filesystem paths or global skill installation are required. Retire
+older personal copies or reduce them to a pointer to these repository sources.
+The layout follows [OpenAI's repo-local skill guidance](https://developers.openai.com/blog/skills-agents-sdk).
+
 ## Branch Model
 
 - `main`: stable branch for tagged releases and the default OTA/update channel. Small docs/ops fixes may be committed directly to `main` when appropriate.
@@ -28,14 +38,14 @@ Firmware should expose its channel explicitly via `release_channel` so Home Assi
     - create the GitHub Release as a draft and publish it only after every expected asset is present
     - attach release firmware binaries and OTA manifests to the release
 - `/.github/workflows/dev-build.yml`
-  - Trigger: push to `dev`, manual dispatch
+  - Trigger: push to `dev` except docs-only changes, manual dispatch
   - Actions:
     - compile every enabled target with `release_channel=dev`
     - override `project_version` to `${base_version}-dev.<run_number>+<shortsha>`
     - move the mutable `dev-latest` tag to the newest `dev` commit
     - publish/update a prerelease that contains binaries + OTA manifests for the dev channel
 - `/.github/workflows/pages-deploy.yml`
-  - Trigger: push to `main` when docs/install assets change, published stable release, successful `Release Build`, manual dispatch
+  - Trigger: matching docs/install pushes to `main`, completion of `Release Build` (jobs run only after success), manual dispatch
   - Actions:
     - check out the `main` branch docs as the Pages site source
     - download the latest stable `*.firmware.factory.bin` assets from GitHub Releases
@@ -105,50 +115,118 @@ The repository now backs that URL with `/.github/workflows/dev-build.yml`, which
 
 ## How To Cut a Release
 
-1. Update `project_version` in `openquatt/oq_substitutions_common.yaml` on `dev`.
-2. Push `dev` and wait for `Dev Build` to go green. `CI` runs on pull requests and `main`, not on direct pushes to `dev`.
-3. Promote the validated `dev` commit to `main`. Recommended path: fast-forward `main` to `origin/dev`:
+### Prepare and freeze
+
+1. Read this process and the candidate's workflows, matrix and ESPHome pin.
+   Confirm the intended version and preceding stable comparison tag. Inspect
+   merged PRs, relevant discussions and changes since preparation; draft all
+   three [notes formats](release-notes.md). Preparation alone never authorizes a
+   promotion, tag or release.
+2. Fetch only the branch refs, preserving mutable and immutable local tags:
 
 ```bash
-git fetch origin
-git checkout main
-git reset --hard origin/main
-git merge --ff-only origin/dev
-git push origin main
+git fetch origin main dev --no-tags
+git status --short --branch
+git worktree list
 ```
 
-You may still use a release PR when you want a reviewed release summary on GitHub, but the ruleset no longer requires that path.
+3. Preserve dirty work and other checkouts. Use a clean task-specific worktree
+   when needed, following `AGENTS.md` and local worktree-location preferences.
+   Update `project_version` on dev if needed; do not change the ESPHome pin as
+   incidental release work. Freeze the full candidate SHA and version in the
+   release report. If main is not an ancestor, merge main into dev normally,
+   resolve conflicts and validate the new combined SHA. Never reset/force-push
+   dev to discard its commits.
+4. Check existing local/remote stable tags and the GitHub Release before changing
+   branches. A mismatched tag is a stop condition, not permission to replace it.
+   If the tag already matches, inspect and resume its existing run instead of
+   starting a duplicate release. Recheck any changed source refs before proceeding.
+5. Wait for **Dev Build on the exact candidate SHA**. CI runs on PRs and main,
+   not direct dev pushes. A docs-only push may need manual Dev Build dispatch;
+   an older green build is not evidence for a new SHA. Check NVS budgets for all
+   enabled profiles with `scripts/check_nvs_budget.py`, using the current
+   threshold. Build web assets before config checks. Inspect independent review
+   and applicable control, upgrade/recovery and runtime-memory evidence. Desktop
+   tests and successful compilation do not prove ESP32 heap/stack margin. Do not
+   start new physical HIL as an automatic release step; report missing evidence.
 
-4. Wait for `CI` on `main` to go green.
-5. Create and push a tag from the merged `main` commit. Do not create the GitHub Release manually; `Release Build` owns publication after its cache-free compile gate:
+### Promote and publish
+
+6. Obtain explicit release authorization and resolve the gates below. Record
+   `TAG=vMAJOR.MINOR.PATCH` and the frozen `RELEASE_SHA`. Refresh refs and confirm
+   dev still points there. Promote only that SHA with fast-forward semantics,
+   without a release PR by default:
 
 ```bash
-git fetch origin
-git tag v0.13.0 origin/main
-git push origin v0.13.0
+git fetch origin main dev --no-tags
+test "$(git rev-parse origin/dev)" = "$RELEASE_SHA"
+git merge-base --is-ancestor origin/main "$RELEASE_SHA"
+git push origin "${RELEASE_SHA}:refs/heads/main"
 ```
 
-6. Wait for `Release Build` to finish. It creates a draft, uploads and verifies all expected assets, and only then publishes the GitHub Release. Add the prepared release notes after successful publication.
-7. Check GitHub Actions:
-   - CI should be green.
-   - Release workflow should publish artifacts.
-   - Pages Deploy should succeed after Release Build.
-8. Verify GitHub Release contains:
-   - one `*-ota.manifest.json` per enabled target
-   - one `*.firmware.ota.bin` per enabled target
-   - one `*.firmware.factory.bin` per enabled target
-9. If `main` and `dev` no longer point to the same release content, realign `dev` with the released `main` commit before bumping to the next development version:
+   Run commands individually and stop on any failure. Never use force to bypass
+   a concurrent main update. A release PR is optional, not the normal promotion.
+7. Wait for green **main CI on that exact SHA**. Recheck remote main, the source
+   `project_version`, and tag/release absence. Create the immutable tag only from
+   that validated main SHA:
 
 ```bash
-git fetch origin
-git checkout dev
-git reset --hard origin/main
-git push --force-with-lease origin dev
-
-# then bump to the next dev version, commit, and push
+git ls-remote origin refs/heads/main "refs/tags/${TAG}" "refs/tags/${TAG}^{}"
+git tag -a "$TAG" "$RELEASE_SHA" -m "OpenQuatt $TAG"
+git push origin "refs/tags/${TAG}"
 ```
 
-If you used the recommended fast-forward promotion and did not add extra `main`-only commits afterwards, `dev` and `main` already align and you can skip this reset.
+8. **Do not create the GitHub Release manually.** Release Build owns the
+   cache-free compilation, draft, upload, expected-asset check and publication.
+   Wait for its success before applying the final GitHub notes. Do not publish
+   its draft early or replace generated text while publication is running.
+9. Run the [generic verifier](release-verification.md) against the exact source,
+   downloads and fresh metadata. It checks matrix-derived assets/aliases and
+   legacy EOL manifests, sizes/SHA256, OTA versions/URLs/MD5, exact Q ELF/map
+   symbols and retention, and the **post-release** Pages version and byte-identical
+   factory binaries. An earlier main-push Pages success is not the final check.
+10. Confirm the published notes match the final text and provide the release,
+    Tweakers and Discord links. Record the SHA, run IDs, verification result and
+    any accepted risks. Do not call an unfinished/failed release complete.
+
+### Gates and explicit exceptions
+
+The release owner decides whether a documented residual risk is acceptable;
+an agent must not silently interpret a merge or a green compile as clearance.
+
+- Missing runtime qualification or an unresolved review finding blocks by
+  default. Explicit owner acceptance may allow release, but must identify the
+  finding, consequences, missing evidence, full candidate SHA and version. A
+  general "continue" is not an exception. If the owner's response is broad,
+  confirm exactly which already reported risks it covers before proceeding.
+- Keep a durable decision in a release-preparation issue/PR discussion or an
+  attached report, including who accepted it and when. `.tmp/releases/` holds
+  working copies, not the only audit record. Acceptance is not a fix or a test
+  pass and does not apply automatically to later SHAs/releases.
+- Do **not** waive technical identity/publication gates: no non-fast-forward
+  promotion, moved stable tag, tag/version/SHA mismatch, failed/missing exact-SHA
+  Dev Build or main CI, failed cache-free Release Build, or failed asset/symbol/
+  installer verification. These require repair/revalidation, not risk acceptance.
+- This is an operational checklist, not a claim that Actions enforces every
+  pre-tag gate. Release Build currently guards the semantic tag/publication
+  state and builds/assets; the operator must check the other preconditions.
+
+### Failure, resumption and next dev version
+
+Stop at a failed gate and report the affected SHA/run. Inspect logs before a
+targeted retry. Preserve recoverable drafts and artifacts; do not delete a public
+release, force refs, fabricate assets or weaken checks to make a retry pass.
+Never move a stable tag. A code fix needs a new candidate and validation; if the
+stable tag already exists, use a new version rather than replacing it. A network
+or Pages propagation error may be retried without changing firmware, but a
+dispatch acknowledgement is not successful publication or verification.
+
+After fast-forward promotion, main and dev already share the release commit.
+Only when requested, change `project_version` on dev to the agreed next version,
+review the one-line diff and push normally. No local firmware compile is normally
+needed for a version-only bump; the usual dev workflow may still run. If main has
+new unique commits, merge main back into dev and validate the combined result;
+never erase new dev work. Cleanup of branches/worktrees is a separate request.
 
 ## Notes
 

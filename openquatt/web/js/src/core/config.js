@@ -1994,7 +1994,7 @@
           tone: "orange",
           groups: [
             { titleKey: "energy.groupHeatpump", rows: [["energy.rowPower", "heatingPowerInput"], ["energy.rowHeatOutput", "totalHeat"], ["energy.rowCop", "totalCop"]] },
-            { titleKey: "energy.groupBoiler", rows: [["energy.rowHeatOutput", "boilerHeatPower"]] },
+            { titleKey: "energy.groupBoiler", requiresAuxHeatSource: true, rows: [["energy.rowHeatOutput", "boilerHeatPower"]] },
             { titleKey: "energy.groupSystem", rows: [["energy.rowHeatOutput", "systemHeatPower"]] },
           ],
         },
@@ -2016,7 +2016,7 @@
           tone: "orange",
           groups: [
             { titleKey: "energy.groupHeatpump", rows: [["energy.rowElectricity", "heatingElectricalEnergyDaily"], ["energy.rowHeat", "heatpumpThermalEnergyDaily"], ["energy.rowCop", "heatpumpCopDaily"]] },
-            { titleKey: "energy.groupBoiler", rows: [["energy.rowHeat", "boilerThermalEnergyDaily"]] },
+            { titleKey: "energy.groupBoiler", requiresAuxHeatSource: true, rows: [["energy.rowHeat", "boilerThermalEnergyDaily"]] },
             { titleKey: "energy.groupSystem", rows: [["energy.rowHeat", "systemThermalEnergyDaily"]] },
           ],
         },
@@ -2039,7 +2039,7 @@
           tone: "orange",
           groups: [
             { titleKey: "energy.groupHeatpump", rows: [["energy.rowElectricity", "heatingElectricalEnergyCumulative"], ["energy.rowHeat", "heatpumpThermalEnergyCumulative"], ["energy.rowCop", "heatpumpCopCumulative"]] },
-            { titleKey: "energy.groupBoiler", rows: [["energy.rowHeat", "boilerThermalEnergyCumulative"]] },
+            { titleKey: "energy.groupBoiler", requiresAuxHeatSource: true, rows: [["energy.rowHeat", "boilerThermalEnergyCumulative"]] },
             { titleKey: "energy.groupSystem", rows: [["energy.rowHeat", "systemThermalEnergyCumulative"]] },
           ],
         },

@@ -2,7 +2,7 @@
 
 De `*_eeprom.h`-bestanden bevatten de hieronder beschreven ODU-referentiedata.
 `ethernet_lifecycle.cpp`, `wifi_recovery.cpp`, `network_dns_recovery.cpp` en
-`web_auth/` leveren periferiestubs voor de runtimeharnassen in `tests/python/`.
+`web_auth/` en [`debug_recorder/`](debug_recorder/README.md) leveren periferiestubs voor de runtimeharnassen in `tests/python/`.
 Die harnassen compileren de betreffende productiecode met de gedeelde
 compilerondersteuning in `tests/support/cpp.py`.
 

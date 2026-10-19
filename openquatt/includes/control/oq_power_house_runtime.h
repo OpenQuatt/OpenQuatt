@@ -179,10 +179,10 @@ class Runtime {
     any_resume_pending |= id(oq_incident_manager).boot_resume_pending(2, now_ms);
 #endif
     const auto capture_candidate = [&](uint8_t hp, int previous) {
-      return oq_power_house_dispatch::candidate_during_boot_resume(
+      return oq_hp_candidate::candidate_during_boot_resume(
           oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(hp), previous),
           id(oq_incident_manager).boot_resume_pending(hp, now_ms), id(oq_incident_manager).boot_resume_level(hp),
-          any_resume_pending);
+          any_resume_pending, oq_power_house_dispatch::kMaxLevel);
     };
     auto hp1_candidate = capture_candidate(1, id(hp1_last_applied_level));
     hp1_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
