@@ -621,6 +621,10 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .oq-helper-hub-switches--theme {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .oq-helper-status-item {
     padding: 8px 10px;
     border-radius: 13px;

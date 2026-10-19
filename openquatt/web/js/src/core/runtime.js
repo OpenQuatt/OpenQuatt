@@ -1,6 +1,7 @@
 import { FAST_POLL_INTERVAL_MS, HIDDEN_POLL_INTERVAL_MS, OFFICIAL_ESPHOME_UI_URL, POLL_JITTER_MAX_MS, POLL_JITTER_MIN_MS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "./config.js";
 import { setEntityPollingControls } from "./entity-polling-controls.js";
-import { getReducedMotionMedia, state } from "./state.js";
+import { syncDocumentTheme } from "./app-shared.js";
+import { getColorSchemeDarkMedia, getReducedMotionMedia, resolveOverviewTheme, state } from "./state.js";
 export { DEFAULT_TREND_WINDOW_HOURS, TREND_WINDOW_HOURS_OPTIONS, state } from "./state.js";
 import { handleChange, handleClick, handleFocusChange, handleInput, handleKeyDown, handlePointerDown, handlePointerMove, handlePointerUp, handleSettingsInteractionEnd, handleSettingsInteractionStart, handleWheel } from "./event-handlers.js";
 import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUrlControlReplayTab, getUrlControlReplayWindow, getUrlSettingsGroup, getUrlSystemModal, SYSTEM_RECORDER_MODAL_ID, setAppView, syncUrlAppView } from "./navigation.js";
@@ -11,10 +12,11 @@ import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "./m
 import { render } from "./render-scheduler.js";
 import { t } from "../i18n/index.js";
 
-  export function setOverviewTheme(theme) {
-    state.overviewTheme = theme === "dark" ? "dark" : "light";
+  export function setOverviewTheme(preference) {
+    state.overviewThemePreference = preference === "light" || preference === "dark" ? preference : "auto";
+    state.overviewTheme = resolveOverviewTheme(state.overviewThemePreference);
     try {
-      window.localStorage.setItem("oq-overview-theme", state.overviewTheme);
+      window.localStorage.setItem("oq-overview-theme", state.overviewThemePreference);
     } catch (_error) {
       // Ignore storage failures in embedded browsers.
     }
@@ -100,6 +102,35 @@ import { t } from "../i18n/index.js";
       media.addListener(state.motionPreferenceListener);
     }
     state.reducedMotion = Boolean(media.matches);
+  }
+
+  export function handleColorSchemePreferenceChange(event) {
+    if (state.overviewThemePreference !== "auto") {
+      return;
+    }
+    const theme = event?.matches ? "dark" : "light";
+    if (theme === state.overviewTheme) {
+      return;
+    }
+    state.overviewTheme = theme;
+    syncDocumentTheme();
+  }
+
+  export function bindColorSchemePreference() {
+    const media = getColorSchemeDarkMedia();
+    if (!media || state.overviewThemeMedia === media) {
+      return;
+    }
+
+    state.overviewThemeMedia = media;
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", handleColorSchemePreferenceChange);
+    } else if (typeof media.addListener === "function") {
+      media.addListener(handleColorSchemePreferenceChange);
+    }
+    if (state.overviewThemePreference === "auto") {
+      state.overviewTheme = media.matches ? "dark" : "light";
+    }
   }
 
   export function hasLoadedEntities() {
@@ -338,6 +369,7 @@ import { t } from "../i18n/index.js";
     root.addEventListener("pointerdown", handlePointerDown);
     state.root = root;
     bindReducedMotionPreference();
+    bindColorSchemePreference();
     const initialUrlSystemModal = getUrlSystemModal();
     const initialUrlView = initialUrlSystemModal === SYSTEM_RECORDER_MODAL_ID
       ? "settings"

@@ -3424,7 +3424,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       coolingCapped: current.coolingCapped,
       decisionLog: state.decisionLogSignature,
       decisionLogError: state.decisionLogError,
-      theme: state.overviewTheme,
     });
   }
 

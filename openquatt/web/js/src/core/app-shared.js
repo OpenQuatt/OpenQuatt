@@ -307,6 +307,17 @@ export { hasEntity } from "./entity-store.js";
     }
 
     const isDark = state.overviewTheme === "dark";
+    // Preserve active controls, native pickers and scroll during automatic theme changes.
+    for (const shell of state.root?.querySelectorAll(".oq-helper-shell") || []) {
+      shell.classList.toggle("oq-helper-shell--dark", isDark);
+    }
+    for (const board of state.root?.querySelectorAll(".oq-overview-board") || []) {
+      board.classList.toggle("oq-overview-board--dark", isDark);
+      board.classList.toggle("oq-overview-board--light", !isDark);
+    }
+    for (const backdrop of state.root?.querySelectorAll(".oq-helper-modal-backdrop") || []) {
+      backdrop.classList.toggle("oq-helper-modal-backdrop--dark", isDark);
+    }
     document.documentElement.classList.toggle("oq-page-dark", isDark);
     document.documentElement.classList.toggle("oq-page-light", !isDark);
     if (document.body) {

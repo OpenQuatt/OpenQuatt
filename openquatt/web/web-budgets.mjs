@@ -12,8 +12,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Aux relay (R2) run-on settings, copy in both locales and legacy-backup migration add ~2.2 kB raw / ~0.7 kB gzip.
     // Explicit recorder retries preserve the pending choice and reject stale responses (+1 KiB raw).
     // Hiding CV energy and decision-log views without an auxiliary heat source adds ~0.8 kB raw / ~0.3 kB gzip.
+    // An automatic theme that follows the device light/dark setting adds ~1.3 kB raw / ~0.3 kB gzip.
     // The existing relative gzip growth limit remains unchanged.
-    raw: 1_336_548,
+    raw: 1_337_852,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

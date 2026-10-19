@@ -196,6 +196,10 @@
   gap: 7px;
 }
 
+.oq-helper-hub-switches--theme {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .oq-helper-hub-chip,
 .oq-helper-hub-action {
   appearance: none;
