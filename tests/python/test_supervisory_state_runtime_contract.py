@@ -55,6 +55,16 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         self.assertIn("oq_hp_candidate::minimum_off_ready", RUNTIME)
         self.assertIn("if (!oq_hp_candidate::may_serve_candidate(candidate)) return;", RUNTIME)
 
+    def test_low_load_cache_covers_minimum_off_for_both_heat_pumps(self) -> None:
+        self.assertIn("hp1_incidents, hp1_lvl, id(oq_incident_manager).minimum_off_remaining_ms(1, now_ms)", RUNTIME)
+        duo_cache = RUNTIME.index("id(oq_incident_manager).minimum_off_remaining_ms(2, now_ms)")
+        self.assertGreater(RUNTIME.rfind("#if OQ_TOPOLOGY_DUO", 0, duo_cache), RUNTIME.rfind("#endif", 0, duo_cache))
+        self.assertIn("hp2_incidents, hp2_lvl,", RUNTIME)
+        self.assertEqual(RUNTIME.count("oq_supervisory_state::low_load_minimum_off_active("), 2)
+        self.assertIn("oq_supervisory_state::low_load_cache_duration_ms(", RUNTIME)
+        self.assertIn("tick.low_load_dyn_cache_max_s), minimum_off_ms, minimum_off_active,", RUNTIME)
+        self.assertIn("any_hp_compressor_active),", RUNTIME)
+
 
     def test_cold_start_follows_available_heat_pumps(self) -> None:
         # Regression for #705: Duo cold start required both ODU outlet samples
