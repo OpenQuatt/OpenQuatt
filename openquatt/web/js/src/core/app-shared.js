@@ -220,6 +220,12 @@ export { hasEntity } from "./entity-store.js";
     return raw === "on" || raw === "true" || raw === "1";
   }
 
+  export function isAuxHeatSourcePresent() {
+    return hasEntity("auxHeatSourcePresent")
+      ? isEntityActive("auxHeatSourcePresent")
+      : isEntityActive("boilerCvAssistEnabled");
+  }
+
   export function isTrendHistoryEnabled() {
     return !hasEntity("trendHistoryEnabled") || isEntityActive("trendHistoryEnabled");
   }

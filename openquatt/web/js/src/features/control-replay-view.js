@@ -1,6 +1,6 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
 import { attachHeatingStopSnapshots, getHeatingStopCopy, getHeatingStopReasonMeta, getHeatingStopSupportValues } from "./control-replay-heating-stops.js";
-import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
+import { getEntityNumericValue, getEntityStateText, hasEntity, isAuxHeatSourcePresent, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
 import { parseLooseNumber } from "../core/entity-store.js";
 import { getCoolingStartBlockModel } from "../settings/cooling.js";
@@ -1006,6 +1006,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       hp2Available: Boolean(hp2Panel),
       hp1Status: hp1Running ? t("controlReplay.curHpActive") : hp1Waiting ? t("controlReplay.curHpWait") : t("controlReplay.curHpAvailable"),
       hp2Status: hp2Panel ? (hp2Running ? t("controlReplay.curHpActive") : hp2Waiting ? t("controlReplay.curHpWait") : t("controlReplay.curHpAvailable")) : t("controlReplay.curHpMissing"),
+      cvAvailable: boilerActive || isAuxHeatSourcePresent(),
       cvStatus: boilerActive ? (currentModeId === "cm4" ? t("controlReplay.curCvFallback") : t("controlReplay.curCvActive")) : t("controlReplay.curCvOff"),
       outsideTemp: formatControlReplayNumber("outsideTempSelected", 1, "°C", "—"),
       supplyTemp: formatControlReplayNumber("supplyTemp", 1, "°C", "—"),
@@ -2786,7 +2787,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           <div class="oq-working-source-strip">
             <span>HP1 · ${escapeHtml(current.hp1Status)}</span>
             ${current.hp2Available ? `<span>HP2 · ${escapeHtml(current.hp2Status)}</span>` : ""}
-            <span>CV · ${escapeHtml(current.cvStatus)}</span>
+            ${current.cvAvailable ? `<span>CV · ${escapeHtml(current.cvStatus)}</span>` : ""}
           </div>
         </div>
       </section>
@@ -3036,6 +3037,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         [t("controlReplay.pillFlowMonitored"), "info", "waves"],
       ];
     const coolingContextActive = current.cooling.requestActive || isCoolingGuard || isCoolingCap || current.strategyLabel === t("overview.strategyCooling");
+    const sourceCardCount = 1 + Number(Boolean(current.hp2Available)) + Number(Boolean(current.cvAvailable));
+    const sourceGridModifier = sourceCardCount === 1 ? " oq-working-source-grid--single" : sourceCardCount === 2 ? " oq-working-source-grid--two" : "";
     const telemetryRows = [
       [t("controlReplay.telSupply"), current.supplyTemp],
       [t("controlReplay.telOutside"), current.outsideTemp],
@@ -3065,10 +3068,10 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
               ${renderControlWorkingOptimizer(optimizer)}
             </section>
           ` : ""}
-          <section class="oq-working-source-grid" aria-label="${t("controlReplay.statusSources")}">
+          <section class="oq-working-source-grid${sourceGridModifier}" aria-label="${t("controlReplay.statusSources")}">
             ${renderControlWorkingSourceCard("HP1", current.hp1Status, current.hp1Starts, current.hp1Hours, current.hp1Running)}
             ${current.hp2Available ? renderControlWorkingSourceCard("HP2", current.hp2Status, current.hp2Starts, current.hp2Hours, current.hp2Running) : ""}
-            ${renderControlWorkingSourceCard("CV", current.cvStatus, "", "", current.cvStatus === t("controlReplay.curCvActive"), coolingContextActive ? t("controlReplay.statusCvNoCooling") : t("controlReplay.statusCvSupport"))}
+            ${current.cvAvailable ? renderControlWorkingSourceCard("CV", current.cvStatus, "", "", current.cvStatus === t("controlReplay.curCvActive"), coolingContextActive ? t("controlReplay.statusCvNoCooling") : t("controlReplay.statusCvSupport")) : ""}
           </section>
           <section class="oq-working-guard-panel">
             <span class="oq-working-eyebrow">${escapeHtml(guardEyebrow)}</span>
@@ -3410,6 +3413,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       hp2Starts: current.hp2Starts,
       hp1Hours: current.hp1Hours,
       hp2Hours: current.hp2Hours,
+      cvAvailable: current.cvAvailable,
       cvStatus: current.cvStatus,
       strategy: current.strategyLabel,
       outside: current.outsideTemp,

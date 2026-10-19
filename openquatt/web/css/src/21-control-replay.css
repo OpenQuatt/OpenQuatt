@@ -1035,6 +1035,14 @@
   grid-column: 1 / -1;
 }
 
+.oq-working-source-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.oq-working-source-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .oq-working-source-card {
   display: grid;
   gap: 14px;

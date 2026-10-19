@@ -1,4 +1,4 @@
-import { formatOverviewStatValue, getDerivedEfficiencyValue, getEntityNumericValue, getEntityStateText, hasEntity, isEfficiencyKey } from "../core/app-shared.js";
+import { formatOverviewStatValue, getDerivedEfficiencyValue, getEntityNumericValue, getEntityStateText, hasEntity, isAuxHeatSourcePresent, isEfficiencyKey } from "../core/app-shared.js";
 import { OVERVIEW_ENERGY_COLUMN_CONFIGS } from "../core/config.js";
 import { setEnergyHistoryRequestQueryProvider } from "../core/energy-history-query.js";
 import { ENERGY_HISTORY_VALUE_KEYS, addEnergyHistoryDays, addEnergyHistoryMonths, formatEnergyHistoryDateLabel, formatEnergyHistoryWeekLabel, getEnergyHistoryDateFromParts, getEnergyHistoryDateInputValue, getEnergyHistoryDateKeyFromDate, getEnergyHistoryDaysInMonth, getEnergyHistoryIsoWeekInfo, getEnergyHistoryMonthKeyFromDate, getEnergyHistoryRecordWh, getEnergyHistoryWeekStart, getEnergyHistoryWeekStartKeyFromDate, parseEnergyHistoryCurrentLine, parseEnergyHistoryDateInputValue, parseEnergyHistoryDateKey, parseEnergyHistoryHourLine, parseEnergyHistoryLine, parseEnergyHistoryMetadata, parseEnergyHistoryMonthInputValue, parseEnergyHistoryMonthKey, parseEnergyHistoryWeekValue } from "../core/energy-history-domain.js";
@@ -29,6 +29,10 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function renderOverviewEnergyGroup(group) {
+    if (group.requiresAuxHeatSource && !isAuxHeatSourcePresent()
+      && !group.rows.some(([, key]) => getEntityNumericValue(key) > 0)) {
+      return "";
+    }
     const filledRows = group.rows.map(renderOverviewEnergyRow).filter(Boolean).join("");
     if (!filledRows) {
       return "";
@@ -858,6 +862,10 @@ import { renderStatCard } from "./stat-card.js";
     };
   }
 
+  export function shouldShowEnergyHistoryBoiler(summary) {
+    return isAuxHeatSourcePresent() || Number(summary?.boilerOutputWh || 0) > 0;
+  }
+
   export function getEnergyHistoryHeatpumpShare(summary) {
     const heatpumpWh = Number(summary.heatOutputWh || 0) + Number(summary.coolingOutputWh || 0);
     const boilerWh = Number(summary.boilerOutputWh || 0);
@@ -1027,7 +1035,7 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
-  export function renderEnergyHistoryBalance(summary) {
+  export function renderEnergyHistoryBalance(summary, showBoiler = true) {
     const inputWh = Number(summary.electricalInputWh || 0);
     const heatWh = Number(summary.heatOutputWh || 0);
     const coolingWh = Number(summary.coolingOutputWh || 0);
@@ -1042,14 +1050,14 @@ import { renderStatCard } from "./stat-card.js";
           <span class="oq-energy-history-balance-part oq-energy-history-balance-part--input" style="width: ${widthOf(inputWh)}"></span>
           <span class="oq-energy-history-balance-part oq-energy-history-balance-part--heat" style="width: ${widthOf(heatWh)}"></span>
           <span class="oq-energy-history-balance-part oq-energy-history-balance-part--cooling" style="width: ${widthOf(coolingWh)}"></span>
-          <span class="oq-energy-history-balance-part oq-energy-history-balance-part--${escapeHtml(boilerTone)}" style="width: ${widthOf(boilerWh)}"></span>
+          ${showBoiler ? `<span class="oq-energy-history-balance-part oq-energy-history-balance-part--${escapeHtml(boilerTone)}" style="width: ${widthOf(boilerWh)}"></span>` : ""}
           <strong>${Number.isFinite(share) ? `${formatNumber(Math.round(share), { maximumFractionDigits: 0 })}%` : t("common.notAvailable")}</strong>
         </div>
         <div class="oq-energy-history-balance-list">
           <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--heat"></i>${escapeHtml(formatEnergyAdaptiveWh(heatWh, 1))} ${escapeHtml(t("energy.balanceHeat"))}</span>
           <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--input"></i>${escapeHtml(formatEnergyAdaptiveWh(inputWh, 1))} ${escapeHtml(t("energy.balanceInput"))}</span>
           <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--cooling"></i>${escapeHtml(formatEnergyAdaptiveWh(coolingWh, 1))} ${escapeHtml(t("energy.balanceCooling"))}</span>
-          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--${escapeHtml(boilerTone)}"></i>${escapeHtml(formatEnergyAdaptiveWh(boilerWh, 1))} ${escapeHtml(t("energy.balanceBoiler"))}</span>
+          ${showBoiler ? `<span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--${escapeHtml(boilerTone)}"></i>${escapeHtml(formatEnergyAdaptiveWh(boilerWh, 1))} ${escapeHtml(t("energy.balanceBoiler"))}</span>` : ""}
         </div>
       </div>
     `;
@@ -1096,7 +1104,7 @@ import { renderStatCard } from "./stat-card.js";
     return { width, height, left, right, top, bottom, plotWidth, plotHeight, axisMax, barSlot, barWidth, yOf };
   }
 
-  export function getEnergyHistoryBucketTooltip(record) {
+  export function getEnergyHistoryBucketTooltip(record, showBoiler = true) {
     const heatCop = formatEnergyRatio(record.heatpumpHeatOutputWh, record.heatingInputWh);
     const coolingEer = formatEnergyRatio(record.heatpumpCoolingOutputWh, record.coolingInputWh);
     return [
@@ -1106,13 +1114,13 @@ import { renderStatCard } from "./stat-card.js";
       `${t("energy.tipCoolingInput")}: ${formatEnergyAdaptiveWh(record.coolingInputWh, 1)}`,
       `${t("energy.tipHeatOutput")}: ${formatEnergyAdaptiveWh(record.heatpumpHeatOutputWh, 1)}`,
       `${t("energy.tipCoolingOutput")}: ${formatEnergyAdaptiveWh(record.heatpumpCoolingOutputWh, 1)}`,
-      `${t("energy.tipBoilerOutput")}: ${formatEnergyAdaptiveWh(record.boilerHeatOutputWh, 1)}`,
+      showBoiler ? `${t("energy.tipBoilerOutput")}: ${formatEnergyAdaptiveWh(record.boilerHeatOutputWh, 1)}` : "",
       `${t("energy.tipCop")}: ${heatCop}`,
       `${t("energy.tipEer")}: ${coolingEer}`,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   }
 
-  export function renderEnergyHistoryChart(records, activeView = "") {
+  export function renderEnergyHistoryChart(records, activeView = "", showBoiler = true) {
     if (!records.length) {
       return `
         <div class="oq-energy-history-empty">
@@ -1157,7 +1165,7 @@ import { renderStatCard } from "./stat-card.js";
       const label = showLabel
         ? `<text x="${center.toFixed(1)}" y="${model.height - 18}" text-anchor="middle" class="oq-energy-history-axis-label">${escapeHtml(record.label || formatEnergyHistoryDateLabel(record.dateKey))}</text>`
         : "";
-      const tooltip = getEnergyHistoryBucketTooltip(record);
+      const tooltip = getEnergyHistoryBucketTooltip(record, showBoiler);
       return `
         <g class="oq-energy-history-bar-group" data-oq-energy-history-tip="${escapeHtml(tooltip)}" tabindex="0">
           <title>${escapeHtml(tooltip)}</title>
@@ -1190,13 +1198,13 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
-  export function renderEnergyHistoryLegend(summary = null) {
+  export function renderEnergyHistoryLegend(summary = null, showBoiler = true) {
     const boilerTone = Number(summary?.boilerOutputWh || 0) > 0 ? "boiler" : "boiler-zero";
     const items = [
       ["input", t("energy.legendInput")],
       ["heat", t("energy.legendHeat")],
       ["cooling", t("energy.legendCooling")],
-      [boilerTone, t("energy.legendBoiler")],
+      ...(showBoiler ? [[boilerTone, t("energy.legendBoiler")]] : []),
     ];
     return `
       <div class="oq-energy-history-legend">
@@ -1228,7 +1236,8 @@ import { renderStatCard } from "./stat-card.js";
       periodControl.selectedValue,
     );
     const summary = getEnergyHistorySummary(summaryRecords);
-    return { records, buckets: viewModel.buckets, viewModel, periodControl, summary, activeView };
+    const showBoiler = shouldShowEnergyHistoryBoiler(summary);
+    return { records, buckets: viewModel.buckets, viewModel, periodControl, summary, showBoiler, activeView };
   }
 
   export function getEnergyHistoryRenderSignature(model = getEnergyHistoryPanelModel()) {
@@ -1244,6 +1253,7 @@ import { renderStatCard } from "./stat-card.js";
       bucketCount: model.buckets.length,
       latestDate: model.records[model.records.length - 1]?.dateKey || 0,
       summary: model.summary,
+      showBoiler: model.showBoiler,
     });
   }
 
@@ -1266,22 +1276,22 @@ import { renderStatCard } from "./stat-card.js";
           ${renderEnergyHistoryPeriodControl(model.periodControl)}
         </div>
         ${state.energyHistoryError ? `<p class="oq-energy-history-error">${escapeHtml(state.energyHistoryError)}</p>` : ""}
-        <div class="oq-energy-history-stats">
+        <div class="oq-energy-history-stats${model.showBoiler ? "" : " oq-energy-history-stats--three"}">
           ${renderEnergyHistoryStat(efficiencyStat.label, efficiencyStat.value, `${escapeHtml(oldest)} - ${escapeHtml(newest)}`)}
           ${renderEnergyHistoryStat(t("energy.statElectric"), formatEnergyAdaptiveWh(summary.electricalInputWh, 1), t("energy.statConsumed"))}
           ${renderEnergyHistoryStat(t("energy.statHeatpump"), formatEnergyAdaptiveWh(summary.heatOutputWh + summary.coolingOutputWh, 1), t("energy.statHeatCooling"))}
-          ${renderEnergyHistoryStat(t("energy.statBoiler"), formatEnergyAdaptiveWh(summary.boilerOutputWh, 1), t("energy.statThermal"))}
+          ${model.showBoiler ? renderEnergyHistoryStat(t("energy.statBoiler"), formatEnergyAdaptiveWh(summary.boilerOutputWh, 1), t("energy.statThermal")) : ""}
         </div>
-        ${renderEnergyHistoryBalance(summary)}
+        ${renderEnergyHistoryBalance(summary, model.showBoiler)}
         <div class="oq-energy-history-chart-head">
           <h4>${escapeHtml(model.viewModel.title)}</h4>
           <span>${escapeHtml(model.viewModel.detail)}</span>
         </div>
         <div class="oq-energy-history-chart-wrap">
-          ${renderEnergyHistoryChart(model.buckets, model.activeView)}
+          ${renderEnergyHistoryChart(model.buckets, model.activeView, model.showBoiler)}
           <div class="oq-energy-history-tooltip" aria-hidden="true"></div>
         </div>
-        ${renderEnergyHistoryLegend(summary)}
+        ${renderEnergyHistoryLegend(summary, model.showBoiler)}
       </section>
     `;
   }
