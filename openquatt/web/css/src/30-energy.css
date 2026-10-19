@@ -70,6 +70,12 @@
   line-height: 1;
 }
 
+.oq-helper-shell--dark .oq-overview-energy-reset {
+  border-color: rgba(249, 115, 22, 0.34);
+  background: rgba(249, 115, 22, 0.12);
+  color: #fb923c;
+}
+
 .oq-overview-energy-reset:focus-visible {
   outline: 3px solid rgba(234, 88, 12, 0.2);
   outline-offset: 2px;

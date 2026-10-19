@@ -179,7 +179,7 @@ export function renderHeatingStrategyAdviceModal() {
                 </tbody>
               </table>
             </div>
-            <p style="margin:10px 0 0;color:#5f6b7d;font-size:12.5px;line-height:1.5">${escapeHtml(t("heatingAdvice.matrixFootPre"))} <a href="https://openquatt.github.io/OpenQuatt/instellingen-en-meetwaarden.html#5-bronselectie" target="_blank" rel="noreferrer">${escapeHtml(t("heatingAdvice.matrixFootLink"))}</a>.</p>
+            <p style="margin:10px 0 0;font-size:12.5px;line-height:1.5">${escapeHtml(t("heatingAdvice.matrixFootPre"))} <a href="https://openquatt.github.io/OpenQuatt/instellingen-en-meetwaarden.html#5-bronselectie" target="_blank" rel="noreferrer">${escapeHtml(t("heatingAdvice.matrixFootLink"))}</a>.</p>
           </div>
         </details>
 

@@ -293,6 +293,18 @@
   color: #c2410c;
 }
 
+.oq-helper-shell--dark .oq-overview-controlpanel-meta-item--blue strong {
+  color: #60a5fa;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-meta-item--green strong {
+  color: #4ade80;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-meta-item--orange strong {
+  color: #fb923c;
+}
+
 .oq-overview-controlpanel--green .oq-overview-controlpanel-head span {
   color: #3f6f55;
 }
@@ -329,6 +341,27 @@
 .oq-overview-controlpanel--violet .oq-overview-controlpanel-head span::before {
   background: #a855f7;
   box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.14);
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-head span {
+  color: var(--oq-overview-muted);
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel--green .oq-overview-controlpanel-head span {
+  color: #86efac;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel--blue .oq-overview-controlpanel-head span,
+.oq-helper-shell--dark .oq-overview-controlpanel--sky .oq-overview-controlpanel-head span {
+  color: #93c5fd;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel--orange .oq-overview-controlpanel-head span {
+  color: #fdba74;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel--violet .oq-overview-controlpanel-head span {
+  color: #c4b5fd;
 }
 
 .oq-overview-controlpanel-state {
@@ -1076,6 +1109,40 @@
   stroke-dasharray: 4 4;
 }
 
+.oq-helper-shell--dark .oq-overview-trend-hover {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: #1e293b;
+  box-shadow: 0 18px 30px rgba(2, 6, 23, 0.36);
+}
+
+.oq-helper-shell--dark .oq-overview-trend-hover-row--orange strong {
+  color: #fb923c;
+}
+
+.oq-helper-shell--dark .oq-overview-trend-hover-row--green strong {
+  color: #4ade80;
+}
+
+.oq-helper-shell--dark .oq-overview-trend-hover-row--blue strong {
+  color: #60a5fa;
+}
+
+.oq-helper-shell--dark .oq-overview-trend-hover-row--violet strong {
+  color: #a78bfa;
+}
+
+.oq-helper-shell--dark .oq-overview-trend-hover-row--sky strong {
+  color: #38bdf8;
+}
+
+.oq-helper-shell--dark .oq-overview-trend-hover-row--slate strong {
+  color: #cbd5e1;
+}
+
+.oq-helper-shell--dark .oq-overview-trend-hover-line {
+  stroke: rgba(203, 213, 225, 0.42);
+}
+
 .oq-overview-trend-hover-dot {
   stroke: #fff;
   stroke-width: 2;
@@ -1114,6 +1181,13 @@
   background: #f6f8fc;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.oq-helper-shell--dark .oq-overview-trends-windowbar .oq-overview-controlpanel-segment.is-disabled,
+.oq-helper-shell--dark .oq-overview-trends-windowbar .oq-overview-controlpanel-segment:disabled {
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.3);
 }
 
 .oq-overview-trends-windowbar .oq-overview-controlpanel-segment.is-disabled:hover,

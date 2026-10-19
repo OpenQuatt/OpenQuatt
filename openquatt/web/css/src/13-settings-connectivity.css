@@ -707,6 +707,16 @@
   background: rgba(15, 23, 42, 0.38);
 }
 
+.oq-helper-modal-backdrop--dark .oq-settings-hp-offset-input .oq-helper-input {
+  border-color: rgba(249, 115, 22, 0.34);
+  background: rgba(66, 32, 14, 0.42);
+}
+
+.oq-helper-modal-backdrop--dark .oq-settings-hp-offset-input .oq-helper-input:focus {
+  border-color: rgba(249, 115, 22, 0.7);
+  background: rgba(66, 32, 14, 0.62);
+}
+
 .oq-settings-access-security-shell {
   display: grid;
   gap: 12px;

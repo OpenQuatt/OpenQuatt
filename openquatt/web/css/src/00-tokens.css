@@ -91,6 +91,8 @@
   --oq-helper-soft: #dbe4ef;
   --oq-helper-faint: #aec0d4;
   --oq-helper-muted: #cbd5e1;
+  --oq-helper-accent-deep: #fb923c;
+  --oq-helper-accent-soft: rgba(66, 32, 14, 0.38);
   --oq-helper-modal-border: rgba(71, 85, 105, 0.5);
   --oq-helper-modal-background:
     radial-gradient(circle at top left, rgba(249, 115, 22, 0.14), transparent 32%),
@@ -162,7 +164,9 @@
   --oq-theme-border-7jb1: rgba(96, 165, 250, 0.22);
   --oq-theme-border-8usd: rgba(34, 211, 238, 0.38);
   --oq-theme-border-btlj: rgba(74, 222, 128, 0.48);
+  --oq-theme-border-h3ux: rgba(249, 115, 22, 0.34);
   --oq-theme-border-rcvh: rgba(147, 197, 253, 0.26);
+  --oq-theme-color-10ti: #93c5fd;
   --oq-theme-color-11rp: #fdba74;
   --oq-theme-color-12vw: #86efac;
   --oq-theme-color-1532: var(--oq-energy-history-tab-ink);
@@ -174,11 +178,13 @@
   --oq-theme-color-1xsj: #94a3b8;
   --oq-theme-color-3q9a: #fed7aa;
   --oq-theme-color-7hmo: #93c5fd;
+  --oq-theme-color-7m2d: #86efac;
   --oq-theme-color-9owj: #fbbf24;
   --oq-theme-color-cfj0: #fca5a5;
   --oq-theme-color-d7d8: #cbd5e1;
   --oq-theme-color-scheme-1pq5: dark;
   --oq-theme-color-vrmj: #bfdbfe;
+  --oq-theme-color-zv8q: #fca5a5;
   --oq-theme-fill-xlqu: var(--oq-energy-history-surface);
   --oq-theme-shadow-16sj: 0 16px 30px rgba(2, 6, 23, 0.26);
   --oq-theme-shadow-1t4x: inset 0 0 0 1px rgba(249, 115, 22, 0.14);

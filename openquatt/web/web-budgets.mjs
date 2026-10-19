@@ -18,5 +18,6 @@ export const WEB_BUNDLE_BUDGETS = [
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
-  { file: "css/openquatt-app.css", raw: 209_000 },
+  // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
+  { file: "css/openquatt-app.css", raw: 213_515 },
 ];

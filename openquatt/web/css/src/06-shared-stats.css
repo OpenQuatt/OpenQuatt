@@ -61,6 +61,22 @@
   --oq-stat-accent: linear-gradient(180deg, #0ea5e9, #67e8f9);
 }
 
+.oq-helper-shell--dark .oq-stat--blue {
+  --oq-stat-tone: #60a5fa;
+}
+
+.oq-helper-shell--dark .oq-stat--orange {
+  --oq-stat-tone: #fb923c;
+}
+
+.oq-helper-shell--dark .oq-stat--green {
+  --oq-stat-tone: #4ade80;
+}
+
+.oq-helper-shell--dark .oq-stat--sky {
+  --oq-stat-tone: #38bdf8;
+}
+
 .oq-stat--accent {
   position: relative;
   overflow: hidden;

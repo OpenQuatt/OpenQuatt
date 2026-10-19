@@ -154,6 +154,14 @@
   background: rgba(254, 242, 242, 0.76);
 }
 
+.oq-helper-modal-backdrop--dark .oq-odu-eeprom-feedback {
+  background: rgba(20, 83, 45, 0.28);
+}
+
+.oq-helper-modal-backdrop--dark .oq-odu-eeprom-feedback.is-error {
+  background: rgba(127, 29, 29, 0.32);
+}
+
 @media (max-width: 640px) {
   .oq-odu-eeprom-device-head,
   .oq-odu-eeprom-meta {
