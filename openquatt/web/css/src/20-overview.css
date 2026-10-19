@@ -787,6 +787,10 @@
   overflow: hidden;
 }
 
+.oq-overview-trendcard[data-oq-trend-card="temperatures"] .oq-overview-trendcard-copy > p:last-child {
+  display: block;
+}
+
 .oq-overview-trendcard-meta {
   grid-area: meta;
   align-self: center;
@@ -812,7 +816,7 @@
   min-width: 0;
   padding: 6px 8px;
   border-radius: 10px;
-  border: 1px solid var(--oq-overview-chip-border);
+  border: 2px solid var(--oq-overview-chip-border);
   background: var(--oq-overview-chip-bg);
   align-content: start;
   text-align: left;
@@ -843,15 +847,27 @@
 }
 
 .oq-overview-trend-pill--orange {
-  border-color: rgba(249, 115, 22, 0.24);
+  border-color: rgba(249, 115, 22, 0.75);
 }
 
 .oq-overview-trend-pill--green {
-  border-color: rgba(34, 197, 94, 0.24);
+  border-color: rgba(22, 163, 74, 0.75);
+}
+
+.oq-overview-trend-pill--blue {
+  border-color: rgba(59, 130, 246, 0.75);
+}
+
+.oq-overview-trend-pill--sky {
+  border-color: rgba(14, 165, 233, 0.75);
+}
+
+.oq-overview-trend-pill--slate {
+  border-color: rgba(100, 116, 139, 0.75);
 }
 
 .oq-overview-trend-pill--violet {
-  border-color: rgba(124, 58, 237, 0.24);
+  border-color: rgba(124, 58, 237, 0.75);
 }
 
 .oq-overview-trend-chart {
