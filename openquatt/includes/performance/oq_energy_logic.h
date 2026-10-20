@@ -100,8 +100,9 @@ inline HpInputPowerEstimate hp_input_power_for_variant(oq_odu::Variant variant, 
     return {};
   }
 
+  // V2 switches the 140 W bottom plate and 140 W drain pan heaters together via R2108 bit 2.
   const float power_w = 5.93f + 1.02579f * in.voltage_v * in.current_a + (in.fan_speed * -0.0133119f) +
-                        (in.pump_relay_running ? in.pump_power_w : 0.0f) + (in.bottom_plate_heater ? 140.0f : 0.0f) +
+                        (in.pump_relay_running ? in.pump_power_w : 0.0f) + (in.bottom_plate_heater ? 280.0f : 0.0f) +
                         (in.crankcase_heater ? 33.62f : 0.0f);
   if (!isfinite(power_w)) return {};
   return {nonnegative(power_w), HpInputPowerStatus::V2_ESTIMATED};
