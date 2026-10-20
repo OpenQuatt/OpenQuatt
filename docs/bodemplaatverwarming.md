@@ -11,6 +11,20 @@ beschikbaar zijn. Bij een Duo worden HP1 en HP2 afzonderlijk beoordeeld.
 | V2, oud en nieuw model | 1, 2 en 3 | 3 |
 | Nog niet herkend | Geen wijziging mogelijk | Geen profiel toepassen |
 
+## Verbruik per buitenunit
+
+Bij V1 en V1.5 rekent OpenQuatt met **150,06 W** voor het enkele warmtelint.
+V2 heeft een **bottom plate heater** en een **drain pan heater** van elk
+**140 W**. Ze staan parallel achter hetzelfde relais en verbruiken samen
+**280 W** wanneer dat relais actief is. Dit geldt voor zowel het oude als het
+nieuwe V2-model.
+
+De aanduiding `Bottom plate heater` omvat bij V2 dus beide elementen. OpenQuatt
+telt de bijdrage mee op basis van het actieve heatersignaal (R2108 bit 2);
+alleen een defrostmelding voegt deze bijdrage niet toe. De carterverwarming en
+circulatiepomp tellen afzonderlijk mee in het
+[elektrische vermogen](web-app/energie.md).
+
 ## Opgeslagen referentieconfiguratie per generatie
 
 De actuele dumps maken het verschil tussen de **opgeslagen configuratie** en een
