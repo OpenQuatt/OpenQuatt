@@ -133,38 +133,6 @@ int main() {
       assert(oq_energy::attributed_input_power(input, cooling, !cooling) == 0.0f);
     }
   }
-  const auto legacy_energy = oq_energy::reconcile_electrical_energy(275.0f, 0.0f, 310.0f);
-  assert(legacy_energy.heating == 310.0f && legacy_energy.total == 310.0f);
-  assert(near(2320.0f / legacy_energy.heating, 7.48387f));
-  const auto cooling_recovery = oq_energy::reconcile_electrical_energy(275.0f, 0.0f, 310.0f, true);
-  assert(cooling_recovery.heating == 275.0f && cooling_recovery.cooling == 35.0f);
-  const auto accounted = oq_energy::reconcile_electrical_energy(310.0f, 100.0f, 400.0f);
-  assert(accounted.heating == 310.0f && accounted.total == 410.0f);
-  const auto fresh = oq_energy::reconcile_electrical_energy(0.0f, 0.0f, NAN);
-  assert(fresh.heating == 0.0f && fresh.total == 0.0f);
-  assert(isnan(oq_energy::reconcile_electrical_energy(NAN, 100.0f, 310.0f).total));
-  assert(isnan(oq_energy::reconcile_electrical_energy(100.0f, -1.0f, 310.0f).total));
-
-  for (const bool cooling_resets_first : {false, true}) {
-    oq_energy::DailyElectricalPublication publication;
-    assert(oq_energy::daily_electrical_total_ready(publication, 20261020, 310.0f, 50.0f));
-    assert(!oq_energy::daily_electrical_total_ready(publication, 20261021, cooling_resets_first ? 310.0f : 0.0f,
-                                                    cooling_resets_first ? 0.0f : 50.0f));
-    assert(oq_energy::daily_electrical_total_ready(publication, 20261021, 0.0f, 0.0f));
-    assert(publication.total == 0.0f);
-    assert(oq_energy::daily_electrical_total_ready(publication, 20261021, 5.0f, 2.0f));
-    assert(!oq_energy::daily_electrical_total_ready(publication, 20261021, 5.0f, 0.0f));
-    assert(oq_energy::daily_electrical_total_ready(publication, 20261021, 6.0f, 2.0f));
-  }
-  // A small prior-day source can exceed yesterday's value before publication.
-  oq_energy::DailyElectricalPublication small_source;
-  assert(oq_energy::daily_electrical_total_ready(small_source, 20261020, 1000.0f, 0.1f));
-  oq_energy::observe_daily_electrical_source(small_source, 20261021, true, 0.0f);
-  oq_energy::observe_daily_electrical_source(small_source, 20261021, true, 1.0f);
-  oq_energy::observe_daily_electrical_source(small_source, 20261021, false, 0.0f);
-  assert(oq_energy::daily_electrical_total_ready(small_source, 20261021, 0.0f, 1.0f));
-  assert(oq_energy::daily_electrical_total_ready(small_source, 20261021, 1.0f, 10.0f));
-
   assert(isnan(oq_energy::instant_ratio_or_nan(NAN, 5.0f, 5.0f)));
   assert(isnan(oq_energy::instant_ratio_or_nan(10.0f, 4.999f, 5.0f)));
   assert(oq_energy::instant_ratio_or_nan(10.0f, 5.0f, 5.0f) == 2.0f);

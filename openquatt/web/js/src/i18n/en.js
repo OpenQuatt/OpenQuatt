@@ -4488,7 +4488,7 @@ export default {
     viewCopy: "View current energy flows, day totals and cumulative counters.",
     resultsKicker: "Results",
     resultsTitle: "Historical results",
-    resultsCopy: "Compare yield, consumption and COP/EER per period. Heating and cooling include pump and standby consumption. Total is their sum.",
+    resultsCopy: "Compare yield, consumption and COP/EER per period. Heating and cooling include pump and standby consumption.",
   },
   incidents: {
     label: {

@@ -942,13 +942,6 @@ script:
             return;
           }
 
-          // Do not archive a mixture of yesterday's total and today's source counters.
-          const auto now = id(oq_time).now();
-          const uint32_t date_key = now.is_valid() ? now.year * 10000U + now.month * 100U + now.day_of_month : 0;
-          if (!oq_energy_accounting_runtime::publish_totals(date_key))
-            ESP_LOGW("quatt", "Electrical energy recovery checkpoint could not be saved.");
-          if (!oq_energy_accounting_runtime::daily_totals_current(date_key)) return;
-
           // Capture the current daily energy totals; the component writes only at day rollover/shutdown.
           const float electrical_input_kwh = id(oq_electrical_energy_daily).has_state() ? id(oq_electrical_energy_daily).state : NAN;
           const float heating_input_kwh = id(oq_heating_electrical_energy_daily).has_state() ? id(oq_heating_electrical_energy_daily).state : NAN;

@@ -139,15 +139,6 @@ def estimate_custom_preferences(config: Any) -> dict[str, int]:
         # Restart handoff lives in its own namespace, separate from the three
         # incident reset records in the ESPHome namespace.
         entries["restart handoff"] = blob_entries(76)
-    # Derived electrical totals retain the two former float preferences as
-    # recovery checkpoints, including for installations upgrading old counters.
-    checkpoint_ids = {"oq_electrical_energy_daily", "oq_electrical_energy_cumulative"}
-    checkpoints = sum(
-        item.get("platform") == "template" and str(item.get("id")) in checkpoint_ids
-        for item in config.get("sensor", [])
-    )
-    if checkpoints:
-        entries["electrical energy checkpoints"] = checkpoints * blob_entries(4)
     return entries
 
 

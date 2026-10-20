@@ -22,11 +22,9 @@ COP is geleverde warmte gedeeld door **elektrisch verwarmen**; EER is geleverde 
 
 Handmatig verwarmen of koelen in CM100 bepaalt hetzelfde energiedoel; service zonder gekozen thermische modus behoudt het vorige doel.
 
-**Elektrisch totaal is de som van verwarmen en koelen**, zonder een derde onafhankelijke integratie. De bestaande totaal-entiteiten blijven beschikbaar voor Home Assistant en historie. In de grafiektooltip staan alleen de twee verbruiksposten.
+De bestaande ESPHome-tellers voor totaal, verwarmen en koelen blijven behouden. De nieuwe toerekening geldt vanaf de update; opgeslagen tellerstanden worden niet aangepast. Dag- en cumulatieve COP/EER kunnen daardoor bij bestaande metingen nog afwijken van de herberekende Resultaten. In de grafiektooltip staan alleen elektrisch verwarmen en elektrisch koelen.
 
-Bestaande tellers en historie hoeven niet te worden gereset. Het oude verschil tussen totaal en verwarmen plus koelen wordt bij herstel aan verwarmen toegevoegd. Opgeslagen historie gebruikt dezelfde reconstructie: achteraf is niet betrouwbaar te bepalen welk deel van de vroeger niet-toegerekende standby bij koelen hoorde.
-
-Door dit herstel kan de bestaande verwarmingsteller bij de eerste update eenmalig stijgen. Home Assistant kan die correctie als verbruik op de updatedag verwerken; controleer daar zo nodig de energiestatistieken. De opgeslagen OpenQuatt-historie wordt per oorspronkelijke periode herberekend.
+Voor COP in Resultaten wordt elektrisch verwarmen berekend als totaal min koelen, ook voor opgeslagen historie. Hiermee telt eerder niet-toegerekende pomp/standby mee zonder de opgeslagen gegevens te wijzigen. Achteraf is niet betrouwbaar te bepalen welk deel daarvan bij koelen hoorde.
 
 ## Energie
 

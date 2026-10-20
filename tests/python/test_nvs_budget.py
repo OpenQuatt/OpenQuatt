@@ -21,19 +21,6 @@ def q_config(hp_count: int = 2) -> dict:
 
 
 class NvsBudgetTest(unittest.TestCase):
-    def test_derived_electrical_totals_keep_the_legacy_recovery_keys_in_budget(self) -> None:
-        sensors = [
-            {"platform": "template", "id": "oq_electrical_energy_daily"},
-            {"platform": "template", "id": "oq_electrical_energy_cumulative"},
-        ]
-        self.assertEqual(
-            budget.estimate_custom_preferences({"sensor": sensors}),
-            {"electrical energy checkpoints": 6},
-        )
-        sensors[0]["platform"] = "total_daily_energy"
-        sensors[1]["platform"] = "integration"
-        self.assertEqual(budget.estimate_custom_preferences({"sensor": sensors}), {})
-
     def test_custom_budget_tracks_configured_components_and_hp_instances(self) -> None:
         self.assertEqual(sum(budget.estimate_custom_preferences({}).values()), 0)
         self.assertEqual(sum(budget.estimate_custom_preferences(q_config(1)).values()), 56)

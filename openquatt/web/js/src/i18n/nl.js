@@ -4488,7 +4488,7 @@ export default {
     viewCopy: "Bekijk actuele energiestromen, dagtotalen en cumulatieve tellers.",
     resultsKicker: "Resultaten",
     resultsTitle: "Historische resultaten",
-    resultsCopy: "Vergelijk opbrengst, verbruik en COP/EER per periode. Verwarmen en koelen bevatten pomp en standby. Totaal is de som van beide.",
+    resultsCopy: "Vergelijk opbrengst, verbruik en COP/EER per periode. Verwarmen en koelen bevatten pomp en standby.",
   },
   incidents: {
     label: {

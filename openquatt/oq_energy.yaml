@@ -6,27 +6,6 @@
 # - Keep control packages focused on control logic.
 # ==============================================================================
 
-esphome:
-  on_boot:
-    - priority: -100
-      then:
-        - lambda: |-
-            if (!oq_energy_accounting_runtime::restore_totals(id(oq_cooling_energy_session_active)))
-              ESP_LOGW("quatt", "Electrical energy recovery checkpoint could not be saved.");
-
-script:
-  # Coalesce both counters before publishing their sum, including resets at
-  # midnight. Publishing between the two resets would create a false HA reset.
-  - id: oq_publish_electrical_energy_totals
-    mode: restart
-    then:
-      - delay: 0ms
-      - lambda: |-
-          const auto now = id(oq_time).now();
-          const uint32_t date_key = now.is_valid() ? now.year * 10000U + now.month * 100U + now.day_of_month : 0;
-          if (!oq_energy_accounting_runtime::publish_totals(date_key))
-            ESP_LOGW("quatt", "Electrical energy recovery checkpoint could not be saved.");
-
 button:
   - platform: template
     id: oq_reset_cumulative_energy_counters
@@ -36,6 +15,7 @@ button:
     disabled_by_default: true
     on_press:
       - lambda: |-
+          id(oq_electrical_energy_cumulative).reset();
           id(oq_heating_electrical_energy_cumulative).reset();
           id(oq_cooling_electrical_energy_cumulative).reset();
           id(oq_heatpump_thermal_energy_cumulative).reset();
@@ -45,19 +25,21 @@ button:
           ESP_LOGI("quatt", "Cumulative energy counters reset by user action.");
 
 sensor:
-  # Derived total; existing entity IDs and recovery preference keys stay stable.
-  - platform: template
+  # Electrical input energy (daily, kWh).
+  - platform: total_daily_energy
     id: oq_electrical_energy_daily
     name: "Electrical Energy Daily"
-    update_interval: never
+    power_id: oq_total_power_input
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
     filters:
       - multiply: 0.001
+    restore: true
 
-  # Heating electricity includes pump, transitions and standby assigned to heating.
+  # Heating electrical input energy (daily, kWh). Keeps COP heating-only when cooling is active.
   - platform: total_daily_energy
     id: oq_heating_electrical_energy_daily
     name: "Heating Electrical Energy Daily"
@@ -70,14 +52,8 @@ sensor:
     filters:
       - multiply: 0.001
     restore: true
-    on_value:
-      - lambda: |-
-          const auto now = id(oq_time).now();
-          const uint32_t date_key = now.is_valid() ? now.year * 10000U + now.month * 100U + now.day_of_month : 0;
-          oq_energy_accounting_runtime::observe_daily_source(date_key, false);
-      - script.execute: oq_publish_electrical_energy_totals
 
-  # Cooling electricity includes pump, transitions and standby assigned to cooling.
+  # Cooling electrical input energy (daily, kWh). Used for cooling-only EER.
   - platform: total_daily_energy
     id: oq_cooling_electrical_energy_daily
     name: "Cooling Electrical Energy Daily"
@@ -90,26 +66,22 @@ sensor:
     filters:
       - multiply: 0.001
     restore: true
-    on_value:
-      - lambda: |-
-          const auto now = id(oq_time).now();
-          const uint32_t date_key = now.is_valid() ? now.year * 10000U + now.month * 100U + now.day_of_month : 0;
-          oq_energy_accounting_runtime::observe_daily_source(date_key, true);
-      - script.execute: oq_publish_electrical_energy_totals
 
-  # Derived cumulative total; no third independent integration.
-  - platform: template
+  # Electrical input energy (cumulative, kWh).
+  - platform: integration
     id: oq_electrical_energy_cumulative
     name: "Electrical Energy Cumulative"
-    update_interval: never
+    sensor: oq_total_power_input
+    time_unit: h
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
     filters:
       - multiply: 0.001
+    restore: true
 
-  # Heating electricity includes all input assigned to heating.
+  # Heating electrical input energy (cumulative, kWh).
   - platform: integration
     id: oq_heating_electrical_energy_cumulative
     name: "Heating Electrical Energy Cumulative"
@@ -122,8 +94,6 @@ sensor:
     filters:
       - multiply: 0.001
     restore: true
-    on_value:
-      - script.execute: oq_publish_electrical_energy_totals
 
   # Cooling electrical input energy (cumulative, kWh).
   - platform: integration
@@ -138,8 +108,6 @@ sensor:
     filters:
       - multiply: 0.001
     restore: true
-    on_value:
-      - script.execute: oq_publish_electrical_energy_totals
 
   # Thermal power including HP + boiler contribution (W).
   - platform: template
@@ -154,7 +122,7 @@ sensor:
     lambda: |-
       return oq_energy::sum_or_zero(id(oq_total_heat_power).state, id(boiler_heat_power).state);
 
-  # Daily COP uses the complete heating electricity counter.
+  # HeatPump COP based on daily thermal/electrical energy (kWh/kWh).
   - platform: template
     id: oq_heatpump_cop_daily
     name: "HeatPump COP Daily"
@@ -221,7 +189,7 @@ sensor:
       - multiply: 0.001
     restore: true
 
-  # Cumulative COP uses the complete heating electricity counter.
+  # HeatPump COP based on cumulative thermal/electrical energy (kWh/kWh).
   - platform: template
     id: oq_heatpump_cop_cumulative
     name: "HeatPump COP Cumulative"
