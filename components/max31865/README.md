@@ -8,4 +8,4 @@ De bestaande foutmaskers, temperatuurconversie en publicatie blijven behouden. E
 
 `diagnostics: true` voegt na de gewone meetsequentie dubbele RTD-/fault-reads en timinglogs onder `oq.max31865_diag` toe. Standaard staat dit uit, zodat de gewone Q-firmware geen extra diagnoseverkeer uitvoert. Het aparte `scripts/diagnostics/max31865_duo.yaml` overschrijft de timing voor vergelijking met de oorspronkelijke v0.55.0-sequentie.
 
-Zie [onderzoek en hardwaretestplan](../../docs/development/max31865-onderzoek-v0550.md). De selector, hold, kalibratie, NVS en actuatorregeling worden niet gewijzigd. De timingoorzaak is een hypothese totdat de fysieke vergelijkingen en foutinjecties zijn uitgevoerd.
+De selector, hold, kalibratie, NVS en actuatorregeling worden niet gewijzigd. Valideer op hardware met bekende weerstanden, koud/warm water en echte sensorfouten, inclusief langdurige uitval zonder ODU-fallback. De gekozen wachttijden en runtime-geheugenmarge vereisen fysieke acceptatie vóór een stabiele release.
