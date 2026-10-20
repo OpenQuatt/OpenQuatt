@@ -1,0 +1,213 @@
+#include <cassert>
+#include <algorithm>
+
+#include "../../../components/max31865/max31865.h"
+
+using esphome::max31865::MAX31865Sensor;
+
+void initialize(MAX31865Sensor& sensor) {
+  chip = {};
+  clock_us = 1000;
+  sensor.set_reference_resistance(1500);
+  sensor.set_nominal_resistance(1000);
+  sensor.set_num_rtd_wires(2);
+  sensor.set_filter(esphome::max31865::FILTER_50HZ);
+  sensor.setup();
+  chip.writes.clear();
+}
+
+void complete(MAX31865Sensor& sensor) {
+  unsigned steps = 0;
+  while (sensor.pending) {
+    assert(++steps <= 4);
+    const auto before = chip.writes.size();
+    sensor.update();
+    assert(chip.writes.size() == before);  // All wait phases reject overlaps.
+    sensor.next();
+  }
+}
+
+int main() {
+  MAX31865Sensor baseline;
+  initialize(baseline);
+  baseline.update();
+  assert(chip.writes.size() == 2);
+  assert(chip.writes[0].second == 0x87);
+  assert(chip.writes[1].second == 0xA1);
+  assert(baseline.due - clock_us == 66000);
+  const auto writes = chip.writes.size();
+  baseline.update();  // A retry while the conversion is pending cannot overlap it.
+  assert(chip.writes.size() == writes);
+  baseline.next();
+  assert(std::isfinite(baseline.state) && !baseline.error);
+  assert(chip.config == 1);                                          // BIAS and test bits always off after the read.
+  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 2);  // No diagnostic SPI traffic by default.
+
+  for (const uint8_t fault : {4, 8, 16, 32, 24}) {
+    MAX31865Sensor faulty;
+    initialize(faulty);
+    chip.injected_faults = fault;
+    faulty.update();
+    faulty.next();
+    assert(std::isnan(faulty.state) && faulty.error);
+    chip.injected_faults = 0;
+    faulty.update();
+    faulty.next();
+    assert(std::isfinite(faulty.state) && !faulty.error);
+  }
+
+  for (const uint8_t warning : {64, 128}) {
+    MAX31865Sensor threshold;
+    initialize(threshold);
+    chip.injected_faults = warning;
+    threshold.update();
+    complete(threshold);
+    assert(std::isfinite(threshold.state) && !threshold.error && threshold.warning);
+  }
+  MAX31865Sensor data_fault_only;
+  initialize(data_fault_only);
+  chip.rtd_fault_only = true;
+  data_fault_only.update();
+  complete(data_fault_only);
+  assert(std::isfinite(data_fault_only.state) && !data_fault_only.error && data_fault_only.warning);
+
+  // A diagnostic second read cannot override the original read's decision.
+  for (const uint8_t first_fault : {0, 8}) {
+    MAX31865Sensor inconsistent;
+    initialize(inconsistent);
+    chip.injected_faults = first_fault;
+    chip.contradict_repeat = true;
+    inconsistent.set_diagnostics(true);
+    inconsistent.update();
+    complete(inconsistent);
+    assert(inconsistent.error == (first_fault != 0));
+    assert(std::isnan(inconsistent.state) == (first_fault != 0));
+    assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 3);
+  }
+
+  // Strict D1 semantics expose the baseline's combined clear/test assumption.
+  MAX31865Sensor strict_baseline;
+  initialize(strict_baseline);
+  chip.strict_clear = true;
+  chip.injected_faults = 8;
+  strict_baseline.update();
+  complete(strict_baseline);
+  chip.injected_faults = 0;
+  strict_baseline.update();
+  complete(strict_baseline);
+  assert(strict_baseline.error);
+
+  for (const uint32_t manual_ms : {0, 10}) {
+    MAX31865Sensor persistent;
+    initialize(persistent);
+    persistent.set_probe_sequence(true, manual_ms, manual_ms, manual_ms);
+    chip.strict_clear = true;
+    chip.injected_faults = 24;
+    for (unsigned cycle = 0; cycle < 3; cycle++) {
+      persistent.update();
+      complete(persistent);
+      assert(persistent.error && std::isnan(persistent.state) && chip.config == 1);
+    }
+    chip.injected_faults = 0;
+    persistent.update();
+    complete(persistent);
+    assert(!persistent.error && std::isfinite(persistent.state) && chip.config == 1);
+  }
+
+  MAX31865Sensor clear_only;
+  initialize(clear_only);
+  clear_only.set_probe_sequence(true, 0, 0, 0);
+  clear_only.update();
+  assert(chip.writes[0].second == 0x83);
+  assert(chip.writes[1].second == 0x85);
+  clear_only.next();
+
+  MAX31865Sensor manual;
+  initialize(manual);
+  manual.set_probe_sequence(true, 10, 10, 10);
+  manual.update();
+  assert(chip.writes.size() == 1 && chip.writes[0].second == 0x83);
+  manual.next();
+  assert(chip.writes[1].second == 0x89);
+  assert(chip.writes[1].first - chip.writes[0].first >= 10000);
+  manual.next();
+  assert(chip.writes[2].second == 0x8D);
+  assert(chip.writes[2].first - chip.writes[1].first >= 10000);
+  manual.next();
+  assert(chip.writes[3].second == 0xA1);
+  assert(chip.writes[3].first - chip.writes[2].first >= 10000);
+  manual.next();
+  assert(std::isfinite(manual.state) && !manual.error && chip.config == 1);
+
+  MAX31865Sensor q_profile;
+  initialize(q_profile);
+  q_profile.set_probe_sequence(true, 10, 10, 10);
+  q_profile.set_conversion_read_margin(1);
+  q_profile.update();
+  q_profile.next();
+  q_profile.next();
+  q_profile.next();
+  assert(q_profile.due - clock_us == 67000);
+  complete(q_profile);
+  assert(std::isfinite(q_profile.state) && !q_profile.error && chip.config == 1);
+
+  MAX31865Sensor sixty_hz;
+  initialize(sixty_hz);
+  sixty_hz.set_filter(esphome::max31865::FILTER_60HZ);
+  sixty_hz.setup();
+  sixty_hz.set_conversion_read_margin(1);
+  sixty_hz.update();
+  assert(sixty_hz.due - clock_us == 56000);
+  complete(sixty_hz);
+  assert(std::isfinite(sixty_hz.state) && !sixty_hz.error && chip.config == 0);
+
+  MAX31865Sensor disconnected;
+  initialize(disconnected);
+  chip.rtd = 0;
+  disconnected.update();
+  disconnected.next();
+  assert(std::isnan(disconnected.state) && disconnected.error && chip.config == 1);
+  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 1);
+
+  MAX31865Sensor all_ones;
+  initialize(all_ones);
+  chip.rtd = 0xFFFF;
+  chip.rtd_fault_only = true;
+  all_ones.update();
+  complete(all_ones);
+  assert(std::isnan(all_ones.state) && all_ones.error && chip.config == 1);
+  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 1);
+
+  MAX31865Sensor invalid_diagnostic;
+  initialize(invalid_diagnostic);
+  invalid_diagnostic.set_diagnostics(true);
+  chip.rtd = 0;
+  invalid_diagnostic.update();
+  complete(invalid_diagnostic);
+  assert(std::isnan(invalid_diagnostic.state) && invalid_diagnostic.error);
+  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 3);
+
+  // A reboot can find the external chip in a manual test left by the old MCU.
+  MAX31865Sensor restarted;
+  initialize(restarted);
+  chip.config = 0x89;
+  chip.faults = 24;
+  chip.strict_clear = true;
+  restarted.setup();
+  assert(chip.config == 3 && chip.faults == 0);
+  restarted.set_probe_sequence(true, 10, 10, 10);
+  restarted.set_conversion_read_margin(1);
+  restarted.update();
+  complete(restarted);
+  assert(std::isfinite(restarted.state) && !restarted.error && chip.config == 1);
+
+  MAX31865Sensor stuck;
+  initialize(stuck);
+  chip.stuck = true;
+  stuck.update();
+  assert(std::isnan(stuck.state) && stuck.error && chip.config == 1 && !stuck.pending);
+  chip.stuck = false;
+  stuck.update();
+  stuck.next();
+  assert(std::isfinite(stuck.state) && !stuck.error);
+}
