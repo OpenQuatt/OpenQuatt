@@ -143,10 +143,15 @@ inline float attributed_input_power(float total, bool cooling_purpose, bool for_
   return isfinite(total) && total >= 0.0f ? total : NAN;
 }
 
-// Only a new thermal purpose changes the owner; postflow, standby and service
-// retain it. An unresolved preflow request must not invent a new owner.
+// Only a new thermal purpose changes the owner; postflow, standby and idle
+// service retain it. An unresolved request must not invent a new owner.
 inline bool cooling_energy_purpose(bool previous, int desired_mode, int next_mode, bool heating_request,
-                                   bool cooling_request) {
+                                   bool cooling_request, int manual_hp1_mode = 0, int manual_hp2_mode = 0) {
+  if (desired_mode == 100) {
+    const bool heating = manual_hp1_mode == 2 || manual_hp2_mode == 2;
+    const bool cooling = manual_hp1_mode == 1 || manual_hp2_mode == 1;
+    return heating != cooling ? cooling : previous;
+  }
   if (desired_mode == 5) return true;
   if (desired_mode == 2 || desired_mode == 3 || desired_mode == 4 || desired_mode == 98) return false;
   if (desired_mode == 1) {
@@ -187,23 +192,39 @@ struct DailyElectricalPublication {
   float cooling{NAN};
   float total{NAN};
   bool waiting_for_reset{false};
+  bool heating_reset{false};
+  bool cooling_reset{false};
 };
+
+// Observe source callbacks synchronously: a reset to zero can be followed by a
+// power sample before the deferred total publication runs.
+inline void observe_daily_electrical_source(DailyElectricalPublication& previous, uint32_t date_key, bool for_cooling,
+                                            float value) {
+  if (date_key != 0 && date_key != previous.date_key) {
+    previous.waiting_for_reset = previous.date_key != 0;
+    previous.date_key = date_key;
+    previous.total = NAN;
+    previous.heating_reset = previous.heating == 0.0f;
+    previous.cooling_reset = previous.cooling == 0.0f;
+  }
+  if (previous.waiting_for_reset && isfinite(value)) {
+    if (for_cooling)
+      previous.cooling_reset = previous.cooling_reset || value == 0.0f || value < previous.cooling;
+    else
+      previous.heating_reset = previous.heating_reset || value == 0.0f || value < previous.heating;
+  }
+}
 
 // Daily source timers can reset on different loop iterations. Wait until each
 // nonzero source has reset; never publish the intermediate leftover as a new day.
 inline bool daily_electrical_total_ready(DailyElectricalPublication& previous, uint32_t date_key, float heating,
                                          float cooling) {
+  observe_daily_electrical_source(previous, date_key, false, heating);
+  observe_daily_electrical_source(previous, date_key, true, cooling);
   const float total = reconcile_electrical_energy(heating, cooling, NAN).total;
   if (!isfinite(total)) return true;  // Publish unavailable without changing the recovery baseline.
-  if (date_key != 0 && date_key != previous.date_key) {
-    previous.waiting_for_reset = previous.date_key != 0;
-    previous.date_key = date_key;
-    previous.total = NAN;
-  }
   if (previous.waiting_for_reset) {
-    if (!(previous.heating == 0.0f || heating < previous.heating) ||
-        !(previous.cooling == 0.0f || cooling < previous.cooling))
-      return false;
+    if (!previous.heating_reset || !previous.cooling_reset) return false;
     previous.waiting_for_reset = false;
   }
   // A zero-valued source may briefly accrue energy before its own reset timer.

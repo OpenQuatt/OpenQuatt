@@ -22,6 +22,12 @@ inline auto& daily_publication() {
   return daily_publication;
 }
 
+inline void observe_daily_source(uint32_t date_key, bool for_cooling) {
+  oq_energy::observe_daily_electrical_source(daily_publication(), date_key, for_cooling,
+                                             for_cooling ? id(oq_cooling_electrical_energy_daily).raw_state
+                                                         : id(oq_heating_electrical_energy_daily).raw_state);
+}
+
 inline bool daily_totals_current(uint32_t date_key) {
   const auto& published = daily_publication();
   return date_key != 0 && published.date_key == date_key && !published.waiting_for_reset && isfinite(published.total) &&

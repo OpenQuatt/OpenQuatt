@@ -20,6 +20,8 @@ Vergelijk dezelfde periode en let op verschillen in buitentemperatuur en gebruik
 
 COP is geleverde warmte gedeeld door **elektrisch verwarmen**; EER is geleverde koeling gedeeld door **elektrisch koelen**. Beide verbruikstellers bevatten ook pomp, voorloop/naloop en standby. Standby volgt de laatst gebruikte verwarmings- of koelmodus, ook na een herstart. Een nieuwe installatie begint bij verwarmen totdat de eerste koelsessie start.
 
+Handmatig verwarmen of koelen in CM100 bepaalt hetzelfde energiedoel; service zonder gekozen thermische modus behoudt het vorige doel.
+
 **Elektrisch totaal is de som van verwarmen en koelen**, zonder een derde onafhankelijke integratie. De bestaande totaal-entiteiten blijven beschikbaar voor Home Assistant en historie. In de grafiektooltip staan alleen de twee verbruiksposten.
 
 Bestaande tellers en historie hoeven niet te worden gereset. Het oude verschil tussen totaal en verwarmen plus koelen wordt bij herstel aan verwarmen toegevoegd. Opgeslagen historie gebruikt dezelfde reconstructie: achteraf is niet betrouwbaar te bepalen welk deel van de vroeger niet-toegerekende standby bij koelen hoorde.

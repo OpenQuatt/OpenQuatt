@@ -114,6 +114,11 @@ int main() {
     assert(oq_energy::cooling_energy_purpose(cooling, 0, 0, false, false) == cooling);
     assert(oq_energy::cooling_energy_purpose(cooling, 1, 0, false, false) == cooling);
     assert(oq_energy::cooling_energy_purpose(cooling, 100, 0, false, false) == cooling);
+    assert(!oq_energy::cooling_energy_purpose(cooling, 100, 0, false, false, 2, 0));
+    assert(!oq_energy::cooling_energy_purpose(cooling, 100, 0, false, false, 0, 2));
+    assert(oq_energy::cooling_energy_purpose(cooling, 100, 0, false, false, 1, 0));
+    assert(oq_energy::cooling_energy_purpose(cooling, 100, 0, false, false, 0, 1));
+    assert(oq_energy::cooling_energy_purpose(cooling, 100, 0, false, false, 1, 2) == cooling);
     assert(oq_energy::cooling_energy_purpose(cooling, 5, 0, false, true));
     assert(oq_energy::cooling_energy_purpose(cooling, 1, 5, false, false));
     assert(oq_energy::cooling_energy_purpose(cooling, 1, 0, false, true));
@@ -151,6 +156,14 @@ int main() {
     assert(!oq_energy::daily_electrical_total_ready(publication, 20261021, 5.0f, 0.0f));
     assert(oq_energy::daily_electrical_total_ready(publication, 20261021, 6.0f, 2.0f));
   }
+  // A small prior-day source can exceed yesterday's value before publication.
+  oq_energy::DailyElectricalPublication small_source;
+  assert(oq_energy::daily_electrical_total_ready(small_source, 20261020, 1000.0f, 0.1f));
+  oq_energy::observe_daily_electrical_source(small_source, 20261021, true, 0.0f);
+  oq_energy::observe_daily_electrical_source(small_source, 20261021, true, 1.0f);
+  oq_energy::observe_daily_electrical_source(small_source, 20261021, false, 0.0f);
+  assert(oq_energy::daily_electrical_total_ready(small_source, 20261021, 0.0f, 1.0f));
+  assert(oq_energy::daily_electrical_total_ready(small_source, 20261021, 1.0f, 10.0f));
 
   assert(isnan(oq_energy::instant_ratio_or_nan(NAN, 5.0f, 5.0f)));
   assert(isnan(oq_energy::instant_ratio_or_nan(10.0f, 4.999f, 5.0f)));

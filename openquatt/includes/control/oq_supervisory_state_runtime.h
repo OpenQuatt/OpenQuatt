@@ -958,8 +958,16 @@ class Runtime {
         .set_fallback_status(fallback_requested, desired == 4,
                              fallback_requested ? static_cast<uint8_t>(fallback_decision.block_reason)
                                                 : static_cast<uint8_t>(oq_hp_fallback::FallbackBlockReason::NONE));
-    id(oq_cooling_energy_session_active) = oq_energy::cooling_energy_purpose(
-        id(oq_cooling_energy_session_active), desired, id(oq_cm1_next_after), heating_req, cooling_req);
+    const bool manual_energy_purpose = desired == 100 && oq_manual_hp::owns_control();
+    const int manual_hp1_energy_mode = manual_energy_purpose ? id(oq_manual_hp1_mode_code) : 0;
+#if OQ_TOPOLOGY_DUO
+    const int manual_hp2_energy_mode = manual_energy_purpose ? id(oq_manual_hp2_mode_code) : 0;
+#else
+    const int manual_hp2_energy_mode = 0;
+#endif
+    id(oq_cooling_energy_session_active) =
+        oq_energy::cooling_energy_purpose(id(oq_cooling_energy_session_active), desired, id(oq_cm1_next_after),
+                                          heating_req, cooling_req, manual_hp1_energy_mode, manual_hp2_energy_mode);
     // -------------------------------------------------
     // 5) Publish CM (writes-only-on-change)
     // -------------------------------------------------

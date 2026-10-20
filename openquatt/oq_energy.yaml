@@ -71,6 +71,10 @@ sensor:
       - multiply: 0.001
     restore: true
     on_value:
+      - lambda: |-
+          const auto now = id(oq_time).now();
+          const uint32_t date_key = now.is_valid() ? now.year * 10000U + now.month * 100U + now.day_of_month : 0;
+          oq_energy_accounting_runtime::observe_daily_source(date_key, false);
       - script.execute: oq_publish_electrical_energy_totals
 
   # Cooling electricity includes pump, transitions and standby assigned to cooling.
@@ -87,6 +91,10 @@ sensor:
       - multiply: 0.001
     restore: true
     on_value:
+      - lambda: |-
+          const auto now = id(oq_time).now();
+          const uint32_t date_key = now.is_valid() ? now.year * 10000U + now.month * 100U + now.day_of_month : 0;
+          oq_energy_accounting_runtime::observe_daily_source(date_key, true);
       - script.execute: oq_publish_electrical_energy_totals
 
   # Derived cumulative total; no third independent integration.

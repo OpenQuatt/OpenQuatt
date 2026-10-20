@@ -95,15 +95,31 @@ int main() {
   assert(test_oq_electrical_energy_cumulative.raw_state == 0.0f);
   assert(daily_checkpoint.value == 0.0f && cumulative_checkpoint.value == 0.0f);
 
+  // Observe the actual reset callback before a larger next-day power sample.
+  test_oq_heating_electrical_energy_daily.publish_state(1000.0f);
+  test_oq_cooling_electrical_energy_daily.publish_state(0.1f);
+  assert(oq_energy_accounting_runtime::publish_totals(20261021));
+  test_oq_cooling_electrical_energy_daily.publish_state(0.0f);
+  oq_energy_accounting_runtime::observe_daily_source(20261022, true);
+  test_oq_cooling_electrical_energy_daily.publish_state(1.0f);
+  oq_energy_accounting_runtime::observe_daily_source(20261022, true);
+  assert(oq_energy_accounting_runtime::publish_totals(20261022));
+  assert(!oq_energy_accounting_runtime::daily_totals_current(20261022));
+  test_oq_heating_electrical_energy_daily.publish_state(0.0f);
+  oq_energy_accounting_runtime::observe_daily_source(20261022, false);
+  assert(oq_energy_accounting_runtime::publish_totals(20261022));
+  assert(oq_energy_accounting_runtime::daily_totals_current(20261022));
+  assert(test_oq_electrical_energy_daily.raw_state == 1.0f);
+
   // Missing source data does not overwrite a valid recovery checkpoint with zero.
   test_oq_cooling_electrical_energy_daily.publish_state(NAN);
   assert(oq_energy_accounting_runtime::publish_totals());
   assert(isnan(test_oq_electrical_energy_daily.raw_state));
-  assert(daily_checkpoint.value == 0.0f);
+  assert(daily_checkpoint.value == 1.0f);
   test_oq_cooling_electrical_energy_daily.publish_state(35.0f);
   daily_checkpoint.writable = false;
   assert(!oq_energy_accounting_runtime::publish_totals());
-  assert(daily_checkpoint.value == 0.0f);
+  assert(daily_checkpoint.value == 1.0f);
   daily_checkpoint.writable = true;
   assert(oq_energy_accounting_runtime::publish_totals());
   assert(daily_checkpoint.value == 35.0f);

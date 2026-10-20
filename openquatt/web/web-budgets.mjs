@@ -14,7 +14,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // Hiding CV energy and decision-log views without an auxiliary heat source adds ~0.8 kB raw / ~0.3 kB gzip.
     // An automatic theme that follows the device light/dark setting adds ~1.3 kB raw / ~0.3 kB gzip.
     // The existing relative gzip growth limit remains unchanged.
-    // Complete heating/cooling inputs: +362 B raw / +170 B gzip versus dev (Node 24.14.1).
+    // Complete heating/cooling inputs: +362 B raw / +73 B gzip versus dev (Node 24.19.0).
     raw: 1_338_352,
     gzipBaselineCeiling: 362_000,
   },
