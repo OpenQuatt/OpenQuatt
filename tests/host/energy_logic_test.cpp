@@ -35,12 +35,29 @@ int main() {
   assert(std::string(oq_energy::hp_input_power_status_name(v2_old.status)) == "v2_estimated");
   assert(v2_old.available() && near(v2_old.watts, 501.13745f, 0.002f));
   assert(v2_old.watts == v2_new.watts);
-  auto v2_heaters = v2_nominal;
-  v2_heaters.bottom_plate_heater = true;
-  v2_heaters.crankcase_heater = true;
-  assert(
-      near(oq_energy::hp_input_power_for_variant(oq_odu::Variant::V2_OLD_MODEL, v2_heaters, true).watts - v2_old.watts,
-           173.62f, 0.002f));
+  const struct {
+    oq_odu::Variant variant;
+    float bottom_plate_w;
+    float crankcase_w;
+  } heater_cases[] = {
+      {oq_odu::Variant::V1, 150.0643f, 40.0f},
+      {oq_odu::Variant::V1_5, 150.0643f, 40.0f},
+      {oq_odu::Variant::V2_OLD_MODEL, 280.0f, 33.62f},
+      {oq_odu::Variant::V2_NEW_MODEL, 280.0f, 33.62f},
+  };
+  for (const auto& test : heater_cases) {
+    const float baseline = oq_energy::hp_input_power_for_variant(test.variant, v2_nominal, true).watts;
+    auto heaters = v2_nominal;
+    heaters.bottom_plate_heater = true;
+    assert(near(oq_energy::hp_input_power_for_variant(test.variant, heaters, true).watts - baseline,
+                test.bottom_plate_w, 0.002f));
+    heaters.crankcase_heater = true;
+    assert(near(oq_energy::hp_input_power_for_variant(test.variant, heaters, true).watts - baseline,
+                test.bottom_plate_w + test.crankcase_w, 0.002f));
+    heaters.bottom_plate_heater = false;
+    assert(near(oq_energy::hp_input_power_for_variant(test.variant, heaters, true).watts - baseline, test.crankcase_w,
+                0.002f));
+  }
   assert(oq_energy::hp_input_power_for_variant(oq_odu::Variant::V2_OLD_MODEL, v2_nominal, false).status ==
          oq_energy::HpInputPowerStatus::INVALID_OR_STALE);
   assert(oq_energy::hp_input_power_for_variant(oq_odu::Variant::UNKNOWN, v2_nominal, true).status ==

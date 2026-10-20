@@ -50,7 +50,7 @@ class EnergyLogicContractTest(unittest.TestCase):
         ):
             self.assertIn(coefficient, LOGIC)
             self.assertNotIn(coefficient, HP_IO)
-        for coefficient in ("5.93f", "1.02579f", "-0.0133119f", "140.0f", "33.62f"):
+        for coefficient in ("5.93f", "1.02579f", "-0.0133119f", "280.0f", "33.62f"):
             self.assertIn(coefficient, LOGIC)
             self.assertNotIn(coefficient, HP_IO)
 
