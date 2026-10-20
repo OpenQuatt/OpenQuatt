@@ -408,7 +408,7 @@ test('issue 667 golden vectors keep auxiliary loads and defrost distinct', () =>
   const fixture = { voltageV: 230, currentA: 1.3, fanSpeed: 200, pumpPowerW: 30 };
   const base = v2PowerInput(fixture);
   assert.ok(Math.abs(base - 309.97883) < 0.0001);
-  assert.ok(Math.abs(v2PowerInput({ ...fixture, status2108: 0x0004 }) - (base + 140)) < 0.0001);
+  assert.ok(Math.abs(v2PowerInput({ ...fixture, status2108: 0x0004 }) - (base + 280)) < 0.0001);
   assert.ok(Math.abs(v2PowerInput({ ...fixture, status2108: 0x0008 }) - (base + 33.62)) < 0.0001);
   assert.ok(Math.abs(v2PowerInput({ ...fixture, status2108: 0x0800 }) - (base + 30)) < 0.0001);
   assert.equal(v2PowerInput({ ...fixture, status2108: 0x0010 }), base);

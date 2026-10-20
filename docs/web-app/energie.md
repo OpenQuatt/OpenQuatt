@@ -38,6 +38,26 @@ Voorbeelden:
 - EER bij koelen, als koeling actief en ondersteund is;
 - dag- en totaalwaarden wanneer die entiteiten beschikbaar zijn.
 
+### Elektrisch vermogen
+
+Het elektrische vermogen is een schatting op basis van spanning, stroom en
+ventilatorsnelheid. De circulatiepomp telt mee via de pompfeedback wanneer het
+pomprelais actief is. Ingeschakelde verwarmingen voegen per buitenunit het
+volgende toe:
+
+| Buitenunit | Bodemplaat-/afvoerverwarming | Carterverwarming |
+| --- | ---: | ---: |
+| V1 / V1.5 | 150,06 W | 40 W |
+| V2, oud en nieuw model | 280 W (2 × 140 W) | 33,62 W |
+
+V2 heeft twee parallel geschakelde heaters achter hetzelfde relais. De
+aanduiding `Bottom plate heater` geldt daar voor beide elementen samen.
+Zie [Bodemplaatverwarming](../bodemplaatverwarming.md) voor de aansturing.
+
+Oudere OpenQuatt-versies telden bij V2 slechts 140 W voor deze heatergroep.
+De correctie verhoogt het geschatte verbruik met 140 W per buitenunit zolang
+de heaters actief zijn; bij dezelfde warmteafgifte wordt de COP daardoor lager.
+De extra 140 W wordt niet achteraf aan opgeslagen energie toegevoegd.
 
 ## Verder
 
