@@ -12,6 +12,8 @@ inline uint32_t clock_us = 0;
 inline uint32_t micros() { return clock_us; }
 inline uint32_t millis() { return clock_us / 1000; }
 inline std::vector<std::string> diagnostic_logs;
+inline std::vector<bool> diagnostic_log_bias_states;
+inline bool diagnostic_bias_on = false;
 template <typename... Args>
 void fake_log(const char* tag, const char* format, Args... args) {
   if (std::string(tag) != "oq.max31865_diag") return;
@@ -22,6 +24,7 @@ void fake_log(const char* tag, const char* format, Args... args) {
     std::snprintf(line, sizeof(line), format, args...);
   }
   diagnostic_logs.emplace_back(line);
+  diagnostic_log_bias_states.push_back(diagnostic_bias_on);
 }
 #define ESP_LOGI(...) fake_log(__VA_ARGS__)
 #define ESP_LOGE(...) fake_log(__VA_ARGS__)
@@ -42,6 +45,8 @@ struct FakeChip {
   uint16_t rtd = 48000;
   bool stuck = false;
   bool strict_clear = false;
+  bool ignore_clear = false;
+  bool drop_manual_start = false;
   bool rtd_fault_only = false;
   bool contradict_repeat = false;
   bool powered_off = false;
@@ -102,12 +107,14 @@ class SPIDevice {
       chip.address = value;
       chip.address_pending = false;
     } else if (chip.address == 0x80) {
-      chip.config = value;
       chip.writes.emplace_back(clock_us, value);
+      if (chip.drop_manual_start && (value & 0x0C) == 8) return;
+      chip.config = value;
       // The permissive mode models observed recovery, not guaranteed silicon behavior.
-      if ((value & 2) && (!chip.strict_clear || !(value & 0x2C))) chip.faults = 0;
+      if ((value & 2) && !chip.ignore_clear && (!chip.strict_clear || !(value & 0x2C))) chip.faults = 0;
       if (!chip.powered_off && !(value & 0x80)) chip.faults |= chip.faults_on_power_off;
       chip.powered_off = !(value & 0x80);
+      diagnostic_bias_on = !chip.powered_off;
       chip.fault_reads_after_off = 0;
       if (value & 0x20) chip.conversion_ready_us = clock_us + ((value & 1) ? 66000 : 55000);
     }
@@ -117,6 +124,7 @@ class SPIDevice {
     chip.reads.push_back(address);
     chip.read_bias_states.push_back(!chip.powered_off);
     if (address == 0) {
+      chip.config &= ~0x02;  // Fault-clear self-clears independently of conversion/detector state.
       if ((chip.config & 0x20) && clock_us >= chip.conversion_ready_us) chip.config &= ~0x20;
       const uint8_t detect = chip.config & 0x0C;
       if (!chip.stuck && (detect == 4 || detect == 12)) {

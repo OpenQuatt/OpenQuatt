@@ -63,10 +63,22 @@ class MAX31865Sensor final : public sensor::Sensor,
     uint8_t faults[2];
     uint8_t config[2];
   };
+  struct FaultSnapshot {
+    uint8_t config = 0;
+    uint8_t faults = 0;
+    uint32_t wait_us = 0;
+  };
+  FaultSnapshot after_clear_{};
+  FaultSnapshot manual_wait_{};
+  FaultSnapshot after_detection_{};
+  uint32_t phase_started_us_ = 0;
+  uint8_t diagnostic_phases_ = 0;
   void start_fault_detection_();
   void finish_fault_detection_();
   void start_conversion_();
   DiagnosticSnapshot read_diagnostic_snapshot_(uint16_t rtd, uint8_t faults);
+  FaultSnapshot read_fault_snapshot_();
+  void diagnose_fault_detection_();
   void diagnose_(uint16_t rtd, uint8_t faults, const DiagnosticSnapshot& before, uint32_t read_started_us,
                  uint32_t bias_off_us);
   float reference_resistance_;

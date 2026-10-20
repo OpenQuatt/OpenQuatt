@@ -15,6 +15,12 @@ void MAX31865Sensor::update() {
   measurement_active_ = true;
   measurement_started_us_ = micros();
   sample_count_++;
+  if (diagnostics_) {
+    diagnostic_phases_ = 0;
+    after_clear_ = {};
+    manual_wait_ = {};
+    after_detection_ = {};
+  }
   // Check new faults since last measurement
   if (!has_fault_) {
     const uint8_t faults = this->read_register_(FAULT_STATUS_REG);
@@ -48,6 +54,13 @@ void MAX31865Sensor::update() {
   } else if (bias_ms_ != 0) {
     this->write_config_(0b11101110, 0b10000000);
   }
+  if (diagnostics_) {
+    phase_started_us_ = micros();
+    if (separate_clear_) {
+      after_clear_ = this->read_fault_snapshot_();
+      diagnostic_phases_ |= 1;
+    }
+  }
   if (bias_ms_ != 0) {
     this->set_timeout("bias", bias_ms_, [this]() { this->start_fault_detection_(); });
   } else {
@@ -56,10 +69,19 @@ void MAX31865Sensor::update() {
 }
 
 void MAX31865Sensor::start_fault_detection_() {
+  if (diagnostics_ && (diagnostic_phases_ & 1)) after_clear_.wait_us = micros() - phase_started_us_;
   if (manual_ms_ != 0) {
     // First manual step checks with FORCE- closed, then opens the switch.
     this->write_config_(0b11101110, 0b10001000);
+    if (diagnostics_) phase_started_us_ = micros();
     this->set_timeout("manual", manual_ms_, [this]() {
+      if (diagnostics_) {
+        // D3:D2 must still be 10 here. A lost first manual command could make
+        // the second command run the short automatic test instead.
+        manual_wait_ = this->read_fault_snapshot_();
+        manual_wait_.wait_us = micros() - phase_started_us_;
+        diagnostic_phases_ |= 2;
+      }
       this->write_config_(0b11101110, 0b10001100);
       this->finish_fault_detection_();
     });
@@ -86,13 +108,20 @@ void MAX31865Sensor::finish_fault_detection_() {
       // A stuck detector must not leave BIAS/FORCE- in a test state.
       this->write_config_(0b11101110, 0);
       measurement_active_ = false;
-      if (diagnostics_)
+      if (diagnostics_) {
         ESP_LOGE("oq.max31865_diag", "sample=%" PRIu32 " detector_timeout cfg=0x%02X", sample_count_, config);
+        this->diagnose_fault_detection_();
+      }
       return;
     }
   } while (config & 0b00001100);
   ESP_LOGV(TAG, "Fault detection completed in %" PRIu32 "μs.", fault_detect_time);
   fault_detect_us_ = fault_detect_time;
+  if (diagnostics_) {
+    phase_started_us_ = micros();
+    after_detection_ = this->read_fault_snapshot_();
+    diagnostic_phases_ |= 4;
+  }
   if (conversion_ms_ != 0) {
     this->set_timeout("settle", conversion_ms_, [this]() { this->start_conversion_(); });
   } else {
@@ -101,6 +130,7 @@ void MAX31865Sensor::finish_fault_detection_() {
 }
 
 void MAX31865Sensor::start_conversion_() {
+  if (diagnostics_) after_detection_.wait_us = micros() - phase_started_us_;
   // Start 1-shot conversion
   this->write_config_(0b11100000, 0b10100000);
   conversion_started_us_ = micros();
@@ -129,6 +159,7 @@ void MAX31865Sensor::dump_config() {
   ESP_LOGCONFIG(TAG, "Timing: clear=%u bias=%" PRIu32 " manual=%" PRIu32 " post=%" PRIu32 " read_margin=%" PRIu32 " ms",
                 separate_clear_, bias_ms_, manual_ms_, conversion_ms_, read_margin_ms_);
   ESP_LOGCONFIG(TAG, "Diagnostics: %s", diagnostics_ ? "on (pre/post BIAS-off)" : "off");
+  if (diagnostics_) ESP_LOGCONFIG(TAG, "Fault-stage diagnostics: on");
   LOG_SENSOR("", "MAX31865", this);
   LOG_PIN("  CS Pin: ", this->cs_);
   LOG_UPDATE_INTERVAL(this);
@@ -226,6 +257,23 @@ MAX31865Sensor::DiagnosticSnapshot MAX31865Sensor::read_diagnostic_snapshot_(uin
   return snapshot;
 }
 
+MAX31865Sensor::FaultSnapshot MAX31865Sensor::read_fault_snapshot_() {
+  FaultSnapshot snapshot{};
+  snapshot.config = this->read_register_(CONFIGURATION_REG);
+  snapshot.faults = this->read_register_(FAULT_STATUS_REG);
+  return snapshot;
+}
+
+void MAX31865Sensor::diagnose_fault_detection_() {
+  ESP_LOGI("oq.max31865_diag",
+           "sample=%" PRIu32
+           " stages=%u clear_cfg=%02X clear_fault=%02X manual_cfg=%02X manual_fault=%02X "
+           "detect_cfg=%02X detect_fault=%02X bias_wait_us=%" PRIu32 " manual_wait_us=%" PRIu32 " settle_us=%" PRIu32,
+           sample_count_, diagnostic_phases_, after_clear_.config, after_clear_.faults, manual_wait_.config,
+           manual_wait_.faults, after_detection_.config, after_detection_.faults, after_clear_.wait_us,
+           manual_wait_.wait_us, after_detection_.wait_us);
+}
+
 void MAX31865Sensor::diagnose_(uint16_t rtd, uint8_t faults, const DiagnosticSnapshot& before, uint32_t read_started_us,
                                uint32_t bias_off_us) {
   // Reads do not clear latched faults. The original pre-off RTD and first
@@ -243,6 +291,7 @@ void MAX31865Sensor::diagnose_(uint16_t rtd, uint8_t faults, const DiagnosticSna
            " post_us=%" PRIu32 " total_us=%" PRIu32 " faults=%" PRIu32,
            sample_count_, after.rtd[0], after.rtd[1], after.faults[0], after.faults[1], after.config[0],
            after.config[1], millis(), fault_detect_us_, post_us, elapsed_us, fault_count_);
+  this->diagnose_fault_detection_();
 }
 
 void MAX31865Sensor::write_config_(uint8_t mask, uint8_t bits, uint8_t start_position) {

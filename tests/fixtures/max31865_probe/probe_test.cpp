@@ -8,6 +8,8 @@ using esphome::max31865::MAX31865Sensor;
 void initialize(MAX31865Sensor& sensor) {
   chip = {};
   diagnostic_logs.clear();
+  diagnostic_log_bias_states.clear();
+  diagnostic_bias_on = false;
   clock_us = 1000;
   sensor.set_reference_resistance(1500);
   sensor.set_nominal_resistance(1000);
@@ -83,8 +85,8 @@ int main() {
     complete(inconsistent);
     assert(inconsistent.error == (first_fault != 0));
     assert(std::isnan(inconsistent.state) == (first_fault != 0));
-    assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 5);
-    assert(diagnostic_logs.size() == 2);
+    assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 6);
+    assert(diagnostic_logs.size() == 3);
     assert(diagnostic_logs[0].find(" pre rtd=BB80/BB80 fault=00/00 cfg=81/81") != std::string::npos || first_fault);
     // Deliberately bad post-off RTD reads cannot replace the original valid RTD.
     assert(diagnostic_logs[1].find(" post rtd=0000/0000") != std::string::npos);
@@ -106,12 +108,74 @@ int main() {
   for (size_t i = 0; i < snapshot_reads.size(); i++) {
     assert(chip.read_bias_states[reads_before_value + i] == (i < 8));
   }
-  assert(diagnostic_logs.size() == 2);
+  assert(diagnostic_logs.size() == 3);
   assert(diagnostic_logs[0].find("pre rtd=BB80/BB80 fault=00/00 cfg=81/81 conv_us=67000 pre_us=120") !=
          std::string::npos);
   assert(diagnostic_logs[1].find("post rtd=BB80/BB80 fault=00/00 cfg=01/01") != std::string::npos);
   assert(diagnostic_logs[1].find("post_us=140") != std::string::npos);
+  assert(diagnostic_logs[2].find(
+             "stages=7 clear_cfg=81 clear_fault=00 manual_cfg=89 manual_fault=00 detect_cfg=81 detect_fault=00") !=
+         std::string::npos);
+  assert(diagnostic_logs[2].find("bias_wait_us=10040 manual_wait_us=10040 settle_us=10040") != std::string::npos);
+  assert(
+      std::none_of(diagnostic_log_bias_states.begin(), diagnostic_log_bias_states.end(), [](bool on) { return on; }));
+  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 8);
   assert(std::isfinite(diagnostic_sequence.state) && !diagnostic_sequence.error && chip.config == 1);
+
+  // The manual wait snapshot exposes a lost first command without repairing or
+  // suppressing the resulting fault. The same write sequence is still attempted.
+  MAX31865Sensor lost_manual;
+  initialize(lost_manual);
+  lost_manual.set_probe_sequence(true, 10, 10, 10);
+  lost_manual.set_diagnostics(true);
+  chip.drop_manual_start = true;
+  chip.injected_faults = 8;
+  lost_manual.update();
+  complete(lost_manual);
+  assert(lost_manual.error && std::isnan(lost_manual.state) && chip.config == 1);
+  assert(chip.writes.size() == 5);
+  assert(diagnostic_logs[2].find("manual_cfg=81 manual_fault=00 detect_cfg=81 detect_fault=08") != std::string::npos);
+
+  MAX31865Sensor uncleared_fault;
+  initialize(uncleared_fault);
+  uncleared_fault.set_probe_sequence(true, 10, 10, 10);
+  uncleared_fault.set_diagnostics(true);
+  chip.ignore_clear = true;
+  chip.faults = 8;
+  uncleared_fault.update();
+  complete(uncleared_fault);
+  assert(uncleared_fault.error && std::isnan(uncleared_fault.state));
+  assert(diagnostic_logs[2].find("clear_cfg=81 clear_fault=08 manual_cfg=89 manual_fault=08") != std::string::npos);
+  chip.ignore_clear = false;
+  uncleared_fault.update();
+  complete(uncleared_fault);
+  assert(!uncleared_fault.error && std::isfinite(uncleared_fault.state));
+  assert(diagnostic_logs[5].find("clear_cfg=81 clear_fault=00 manual_cfg=89 manual_fault=00") != std::string::npos);
+
+  MAX31865Sensor diagnostic_timeout;
+  initialize(diagnostic_timeout);
+  diagnostic_timeout.set_probe_sequence(true, 10, 10, 10);
+  diagnostic_timeout.set_diagnostics(true);
+  chip.stuck = true;
+  diagnostic_timeout.update();
+  complete(diagnostic_timeout);
+  assert(diagnostic_timeout.error && std::isnan(diagnostic_timeout.state) && chip.config == 1);
+  assert(diagnostic_logs.size() == 2 && diagnostic_logs[0].find("detector_timeout") != std::string::npos);
+  assert(diagnostic_logs[1].find("stages=3") != std::string::npos);
+  assert(
+      std::none_of(diagnostic_log_bias_states.begin(), diagnostic_log_bias_states.end(), [](bool on) { return on; }));
+  chip.stuck = false;
+  diagnostic_timeout.update();
+  complete(diagnostic_timeout);
+  assert(!diagnostic_timeout.error && std::isfinite(diagnostic_timeout.state) && chip.config == 1);
+  assert(diagnostic_logs.size() == 5 && diagnostic_logs[4].find("stages=7") != std::string::npos);
+  chip.stuck = true;
+  diagnostic_timeout.update();
+  complete(diagnostic_timeout);
+  assert(diagnostic_timeout.error && std::isnan(diagnostic_timeout.state) && chip.config == 1);
+  assert(diagnostic_logs.size() == 7 && diagnostic_logs[6].find("stages=3") != std::string::npos);
+  assert(diagnostic_logs[6].find("detect_cfg=00 detect_fault=00") != std::string::npos);
+  assert(diagnostic_logs[6].find("settle_us=0") != std::string::npos);
 
   // Faults newly latched during power-off still follow the existing error path.
   MAX31865Sensor power_off_fault;
@@ -142,8 +206,8 @@ int main() {
     diagnostic_fault.update();
     complete(diagnostic_fault);
     assert(!diagnostic_fault.error && std::isfinite(diagnostic_fault.state) && chip.config == 1);
-    assert(diagnostic_logs.size() == 8);
-    assert(diagnostic_logs.back().find("faults=3") != std::string::npos);
+    assert(diagnostic_logs.size() == 12);
+    assert(diagnostic_logs[10].find("faults=3") != std::string::npos);
   }
 
   // Strict D1 semantics expose the baseline's combined clear/test assumption.
@@ -246,7 +310,7 @@ int main() {
   invalid_diagnostic.update();
   complete(invalid_diagnostic);
   assert(std::isnan(invalid_diagnostic.state) && invalid_diagnostic.error);
-  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 5);
+  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 6);
 
   // A reboot can find the external chip in a manual test left by the old MCU.
   MAX31865Sensor restarted;
