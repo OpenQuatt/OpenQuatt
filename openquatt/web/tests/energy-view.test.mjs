@@ -6,11 +6,17 @@ globalThis.localStorage = { getItem: () => null };
 
 const { state } = await import("../js/src/core/state.js");
 const {
+  createEnergyHistoryBucket,
   getEnergyHistoryBucketTooltip,
+  getEnergyHistoryHeatingInputWh,
+  getEnergyHistoryEfficiencyStat,
   getEnergyHistoryPeriodControlModel,
   getEnergyHistoryRecords,
   getEnergyHistoryRenderSignature,
+  getEnergyHistorySummary,
   getEnergyHistorySummaryRecords,
+  mergeEnergyHistoryRecordIntoBucket,
+  parseEnergyHistoryHourLine,
   renderOverviewEnergyColumn,
   renderEnergyHistoryPeriodControl,
 } = await import("../js/src/views/energy.js");
@@ -77,10 +83,74 @@ test("energy history tooltip exposes the inputs used by COP and EER", () => {
     boilerHeatOutputWh: 0,
   });
 
-  assert.match(tooltip, /Elektrisch totaal: 4,9 kWh/);
+  assert.doesNotMatch(tooltip, /Elektrisch totaal|Elektrisch voor COP/);
+  assert.match(tooltip, /Elektrisch verwarmen: 627 Wh/);
   assert.match(tooltip, /Elektrisch koelen: 4,3 kWh/);
   assert.match(tooltip, /EER koelen: 4,94/);
   assert.doesNotMatch(tooltip, /Output \/ elektrisch/);
+});
+
+test("stored heating COP includes pump and standby electricity in both locales", () => {
+  const previousLocale = getLocale();
+  const record = parseEnergyHistoryHourLine("@hour|1|20261019|6|310|275|0|2320|0|0|2320");
+  const original = { ...record };
+  try {
+    for (const locale of ["nl", "en"]) {
+      setLocale(locale, { persist: false, notify: false });
+      const tooltip = getEnergyHistoryBucketTooltip(record);
+      const summary = getEnergyHistorySummary([record]);
+      assert.equal(getEnergyHistoryHeatingInputWh(record), 310);
+      assert.equal(summary.heatingInputWh, 310);
+      assert.equal(getEnergyHistoryEfficiencyStat(summary).value, locale === "nl" ? "7,48" : "7.48");
+      assert.match(tooltip, locale === "nl"
+        ? /Elektrisch verwarmen: 310 Wh/
+        : /Electricity used for heating: 310 Wh/);
+      assert.match(tooltip, locale === "nl" ? /COP verwarmen: 7,48/ : /COP heating: 7.48/);
+    }
+    assert.deepEqual(record, original);
+  } finally {
+    setLocale(previousLocale, { persist: false, notify: false });
+  }
+});
+
+test("mixed periods exclude cooling input and weight COP by all remaining electricity", () => {
+  const records = [
+    { electricalInputWh: 310, heatingInputWh: 275, coolingInputWh: 0, heatpumpHeatOutputWh: 2320 },
+    { electricalInputWh: 1035, heatingInputWh: 0, coolingInputWh: 1000, heatpumpHeatOutputWh: 0, heatpumpCoolingOutputWh: 4000 },
+    { electricalInputWh: 35, heatingInputWh: 0, coolingInputWh: 0, heatpumpHeatOutputWh: 0 },
+  ];
+  const summary = getEnergyHistorySummary(records);
+  assert.equal(summary.heatingInputWh, 380);
+  assert.deepEqual(getEnergyHistoryEfficiencyStat(summary), { label: "COP / EER", value: "6,11 / 4,00" });
+  const bucket = createEnergyHistoryBucket({ dateKey: 20261019 });
+  records.forEach((record) => mergeEnergyHistoryRecordIntoBucket(bucket, record));
+  assert.equal(getEnergyHistoryHeatingInputWh(bucket), 380);
+  assert.match(getEnergyHistoryBucketTooltip(bucket), /COP verwarmen: 6,11/);
+  assert.equal(getEnergyHistorySummary([bucket]).heatingInputWh, 380);
+});
+
+test("missing or inconsistent COP input remains unavailable after aggregation", () => {
+  for (const record of [
+    { electricalInputWh: 310 },
+    { electricalInputWh: null, coolingInputWh: 0 },
+    { electricalInputWh: 310, coolingInputWh: null },
+    { electricalInputWh: 310, coolingInputWh: NaN },
+    { electricalInputWh: Infinity, coolingInputWh: 0 },
+    { electricalInputWh: -1, coolingInputWh: 0 },
+    { electricalInputWh: 310, coolingInputWh: -1 },
+    { electricalInputWh: 310, coolingInputWh: 311 },
+  ]) {
+    assert.ok(Number.isNaN(getEnergyHistoryHeatingInputWh(record)));
+    const bucket = createEnergyHistoryBucket({ dateKey: 20261019 });
+    mergeEnergyHistoryRecordIntoBucket(bucket, { ...record, heatpumpHeatOutputWh: 2320 });
+    // A later valid record must not conceal a missing or negative denominator.
+    mergeEnergyHistoryRecordIntoBucket(bucket, { electricalInputWh: 1000, coolingInputWh: 0 });
+    assert.ok(Number.isNaN(getEnergyHistoryHeatingInputWh(bucket)));
+    assert.equal(getEnergyHistoryEfficiencyStat(getEnergyHistorySummary([bucket])).value, "—");
+  }
+  const coolingOnly = { electricalInputWh: 1000, coolingInputWh: 1000, heatpumpHeatOutputWh: 0 };
+  assert.equal(getEnergyHistoryHeatingInputWh(coolingOnly), 0);
+  assert.equal(getEnergyHistoryEfficiencyStat(getEnergyHistorySummary([coolingOnly])).value, "—");
 });
 
 test("day summary uses the authoritative day record instead of partial hour buckets", () => {
@@ -89,6 +159,19 @@ test("day summary uses the authoritative day record instead of partial hour buck
 
   assert.deepEqual(getEnergyHistorySummaryRecords([dayRecord], hourBuckets, "day", "20260712"), [dayRecord]);
   assert.deepEqual(getEnergyHistorySummaryRecords([dayRecord], hourBuckets, "week", "20260706"), hourBuckets);
+});
+
+test("unknown cooling electricity cannot inflate the EER of a mixed history period", () => {
+  const records = [
+    { electricalInputWh: 1000, coolingInputWh: null, heatpumpCoolingOutputWh: 4000 },
+    { electricalInputWh: 1000, coolingInputWh: 1000, heatpumpCoolingOutputWh: 4000 },
+  ];
+  const bucket = createEnergyHistoryBucket({ dateKey: 20261019 });
+  records.forEach((record) => mergeEnergyHistoryRecordIntoBucket(bucket, record));
+  assert.ok(Number.isNaN(bucket.coolingInputWh));
+  assert.equal(getEnergyHistoryEfficiencyStat(getEnergyHistorySummary(records)).value, "—");
+  assert.equal(getEnergyHistoryEfficiencyStat(getEnergyHistorySummary([bucket])).value, "—");
+  assert.match(getEnergyHistoryBucketTooltip(bucket), /Elektrisch koelen: —/);
 });
 
 test("current history record stays authoritative while live energy entities load", () => {

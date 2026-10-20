@@ -18,6 +18,14 @@ Vergelijk dezelfde periode en let op verschillen in buitentemperatuur en gebruik
 
 `Resultaten` bundelt opgeslagen resultaten en historie. Gebruik dit scherm om prestaties over een langere periode te vergelijken. Voor een snelle diagnose van het actuele regelgedrag is `Diagnose` geschikter.
 
+COP is geleverde warmte gedeeld door **elektrisch verwarmen**; EER is geleverde koeling gedeeld door **elektrisch koelen**. Beide verbruikstellers bevatten ook pomp, voorloop/naloop en standby. Standby volgt de laatst gebruikte verwarmings- of koelmodus, ook na een herstart. Een nieuwe installatie begint bij verwarmen totdat de eerste koelsessie start.
+
+**Elektrisch totaal is de som van verwarmen en koelen**, zonder een derde onafhankelijke integratie. De bestaande totaal-entiteiten blijven beschikbaar voor Home Assistant en historie. In de grafiektooltip staan alleen de twee verbruiksposten.
+
+Bestaande tellers en historie hoeven niet te worden gereset. Het oude verschil tussen totaal en verwarmen plus koelen wordt bij herstel aan verwarmen toegevoegd. Opgeslagen historie gebruikt dezelfde reconstructie: achteraf is niet betrouwbaar te bepalen welk deel van de vroeger niet-toegerekende standby bij koelen hoorde.
+
+Door dit herstel kan de bestaande verwarmingsteller bij de eerste update eenmalig stijgen. Home Assistant kan die correctie als verbruik op de updatedag verwerken; controleer daar zo nodig de energiestatistieken. De opgeslagen OpenQuatt-historie wordt per oorspronkelijke periode herberekend.
+
 ## Energie
 
 `Energie` geeft inzicht in vermogen en rendement. Gebruik dit vooral om richting te krijgen, niet als gecertificeerde energiemeter.

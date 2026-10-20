@@ -41,36 +41,11 @@ inline float total_power_input() {
 }
 
 inline float heating_power_input() {
-#if OQ_TOPOLOGY_DUO
-  if (v2_power_quality_contract_active())
-    return oq_energy::heating_input_power_required(id(oq_cooling_energy_session_active), id(hp1_working_mode).state,
-                                                   id(hp1_power_input).state, true, id(hp2_working_mode).state,
-                                                   id(hp2_power_input).state);
-  return oq_energy::heating_input_power(id(oq_cooling_energy_session_active), id(hp1_working_mode).state,
-                                        id(hp1_power_input).state, id(hp2_working_mode).state,
-                                        id(hp2_power_input).state);
-#else
-  if (v2_power_quality_contract_active())
-    return oq_energy::heating_input_power_required(id(oq_cooling_energy_session_active), id(hp1_working_mode).state,
-                                                   id(hp1_power_input).state);
-  return oq_energy::heating_input_power(id(oq_cooling_energy_session_active), id(hp1_working_mode).state,
-                                        id(hp1_power_input).state);
-#endif
+  return oq_energy::attributed_input_power(total_power_input(), id(oq_cooling_energy_session_active), false);
 }
 
 inline float cooling_power_input() {
-#if OQ_TOPOLOGY_DUO
-  if (v2_power_quality_contract_active())
-    return id(oq_cooling_energy_session_active)
-               ? oq_energy::nonnegative_sum_required(id(hp1_power_input).state, id(hp2_power_input).state, true)
-               : 0.0f;
-  return oq_energy::cooling_input_power(id(oq_cooling_energy_session_active), id(hp1_power_input).state,
-                                        id(hp2_power_input).state);
-#else
-  if (v2_power_quality_contract_active())
-    return id(oq_cooling_energy_session_active) ? oq_energy::nonnegative_sum_required(id(hp1_power_input).state) : 0.0f;
-  return oq_energy::cooling_input_power(id(oq_cooling_energy_session_active), id(hp1_power_input).state);
-#endif
+  return oq_energy::attributed_input_power(total_power_input(), id(oq_cooling_energy_session_active), true);
 }
 
 inline float total_heat_power() {

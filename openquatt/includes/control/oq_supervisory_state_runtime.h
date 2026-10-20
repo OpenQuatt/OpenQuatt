@@ -8,6 +8,7 @@
 
 #include "../boiler/oq_boiler_logic.h"
 #include "../performance/hp_perf_frequency.h"
+#include "../performance/oq_energy_logic.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 #include "oq_cold_start_probe.h"
@@ -957,13 +958,8 @@ class Runtime {
         .set_fallback_status(fallback_requested, desired == 4,
                              fallback_requested ? static_cast<uint8_t>(fallback_decision.block_reason)
                                                 : static_cast<uint8_t>(oq_hp_fallback::FallbackBlockReason::NONE));
-    const bool cooling_preflow = desired == 1 && (cooling_req || id(oq_cm1_next_after) == 5);
-    if (desired == 5 || cooling_preflow) {
-      id(oq_cooling_energy_session_active) = true;
-    } else if (desired != 1 || id(oq_cm1_next_after) != 0) {
-      // Keep the cooling session latched only during CM1 postflow to CM0.
-      id(oq_cooling_energy_session_active) = false;
-    }
+    id(oq_cooling_energy_session_active) = oq_energy::cooling_energy_purpose(
+        id(oq_cooling_energy_session_active), desired, id(oq_cm1_next_after), heating_req, cooling_req);
     // -------------------------------------------------
     // 5) Publish CM (writes-only-on-change)
     // -------------------------------------------------

@@ -104,14 +104,53 @@ int main() {
   assert(isnan(oq_energy::sum_available(NAN, NAN)));
   assert(oq_energy::sum_available(NAN, 200.0f) == 200.0f);
   assert(oq_energy::sum_available(100.0f, 200.0f) == 300.0f);
-  assert(oq_energy::heating_input_power(true, 2.0f, 100.0f, 2.0f, 200.0f) == 0.0f);
-  assert(oq_energy::heating_input_power(false, 2.0f, 100.0f, 1.0f, 200.0f) == 100.0f);
-  assert(oq_energy::heating_input_power(false, 2.0f, NAN, 2.0f, 200.0f) == 200.0f);
-  assert(isnan(oq_energy::heating_input_power_required(false, 2.0f, NAN)));
-  assert(isnan(oq_energy::heating_input_power_required(false, 2.0f, 100.0f, true, 2.0f, NAN)));
-  assert(oq_energy::heating_input_power_required(false, 2.0f, 100.0f, true, 1.0f, NAN) == 100.0f);
-  assert(oq_energy::cooling_input_power(false, 100.0f, 200.0f) == 0.0f);
-  assert(oq_energy::cooling_input_power(true, NAN, 200.0f) == 200.0f);
+  for (const bool cooling : {false, true}) {
+    for (const float input : {0.0f, 5.93f, 35.0f, 500.0f}) {
+      const float heating_w = oq_energy::attributed_input_power(input, cooling, false);
+      const float cooling_w = oq_energy::attributed_input_power(input, cooling, true);
+      assert(heating_w + cooling_w == input);
+      assert(cooling ? heating_w == 0.0f : cooling_w == 0.0f);
+    }
+    assert(oq_energy::cooling_energy_purpose(cooling, 0, 0, false, false) == cooling);
+    assert(oq_energy::cooling_energy_purpose(cooling, 1, 0, false, false) == cooling);
+    assert(oq_energy::cooling_energy_purpose(cooling, 100, 0, false, false) == cooling);
+    assert(oq_energy::cooling_energy_purpose(cooling, 5, 0, false, true));
+    assert(oq_energy::cooling_energy_purpose(cooling, 1, 5, false, false));
+    assert(oq_energy::cooling_energy_purpose(cooling, 1, 0, false, true));
+    assert(!oq_energy::cooling_energy_purpose(cooling, 1, 0, true, false));
+    for (const int heating_mode : {2, 3, 4, 98}) {
+      assert(!oq_energy::cooling_energy_purpose(cooling, heating_mode, 0, false, false));
+      assert(!oq_energy::cooling_energy_purpose(cooling, 1, heating_mode, true, true));
+    }
+    assert(oq_energy::cooling_energy_purpose(cooling, 1, 0, true, true) == cooling);
+    for (const float input : {NAN, INFINITY, -1.0f}) {
+      assert(isnan(oq_energy::attributed_input_power(input, cooling, cooling)));
+      assert(oq_energy::attributed_input_power(input, cooling, !cooling) == 0.0f);
+    }
+  }
+  const auto legacy_energy = oq_energy::reconcile_electrical_energy(275.0f, 0.0f, 310.0f);
+  assert(legacy_energy.heating == 310.0f && legacy_energy.total == 310.0f);
+  assert(near(2320.0f / legacy_energy.heating, 7.48387f));
+  const auto cooling_recovery = oq_energy::reconcile_electrical_energy(275.0f, 0.0f, 310.0f, true);
+  assert(cooling_recovery.heating == 275.0f && cooling_recovery.cooling == 35.0f);
+  const auto accounted = oq_energy::reconcile_electrical_energy(310.0f, 100.0f, 400.0f);
+  assert(accounted.heating == 310.0f && accounted.total == 410.0f);
+  const auto fresh = oq_energy::reconcile_electrical_energy(0.0f, 0.0f, NAN);
+  assert(fresh.heating == 0.0f && fresh.total == 0.0f);
+  assert(isnan(oq_energy::reconcile_electrical_energy(NAN, 100.0f, 310.0f).total));
+  assert(isnan(oq_energy::reconcile_electrical_energy(100.0f, -1.0f, 310.0f).total));
+
+  for (const bool cooling_resets_first : {false, true}) {
+    oq_energy::DailyElectricalPublication publication;
+    assert(oq_energy::daily_electrical_total_ready(publication, 20261020, 310.0f, 50.0f));
+    assert(!oq_energy::daily_electrical_total_ready(publication, 20261021, cooling_resets_first ? 310.0f : 0.0f,
+                                                    cooling_resets_first ? 0.0f : 50.0f));
+    assert(oq_energy::daily_electrical_total_ready(publication, 20261021, 0.0f, 0.0f));
+    assert(publication.total == 0.0f);
+    assert(oq_energy::daily_electrical_total_ready(publication, 20261021, 5.0f, 2.0f));
+    assert(!oq_energy::daily_electrical_total_ready(publication, 20261021, 5.0f, 0.0f));
+    assert(oq_energy::daily_electrical_total_ready(publication, 20261021, 6.0f, 2.0f));
+  }
 
   assert(isnan(oq_energy::instant_ratio_or_nan(NAN, 5.0f, 5.0f)));
   assert(isnan(oq_energy::instant_ratio_or_nan(10.0f, 4.999f, 5.0f)));

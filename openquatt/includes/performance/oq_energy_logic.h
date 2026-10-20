@@ -138,22 +138,81 @@ inline float sum_available(float first, float second = NAN) {
   return isnan(first) && isnan(second) ? NAN : sum_or_zero(first, second);
 }
 
-inline float heating_input_power(bool cooling_session, float hp1_mode, float hp1_power, float hp2_mode = NAN,
-                                 float hp2_power = NAN) {
-  if (cooling_session) return 0.0f;
-  return (hp1_mode == 2.0f ? value_or_zero(hp1_power) : 0.0f) + (hp2_mode == 2.0f ? value_or_zero(hp2_power) : 0.0f);
+inline float attributed_input_power(float total, bool cooling_purpose, bool for_cooling) {
+  if (cooling_purpose != for_cooling) return 0.0f;
+  return isfinite(total) && total >= 0.0f ? total : NAN;
 }
 
-inline float heating_input_power_required(bool cooling_session, float hp1_mode, float hp1_power,
-                                          bool second_required = false, float hp2_mode = NAN, float hp2_power = NAN) {
-  if (cooling_session) return 0.0f;
-  const float hp1_heating_power = hp1_mode == 2.0f ? hp1_power : 0.0f;
-  const float hp2_heating_power = hp2_mode == 2.0f ? hp2_power : 0.0f;
-  return nonnegative_sum_required(hp1_heating_power, hp2_heating_power, second_required);
+// Only a new thermal purpose changes the owner; postflow, standby and service
+// retain it. An unresolved preflow request must not invent a new owner.
+inline bool cooling_energy_purpose(bool previous, int desired_mode, int next_mode, bool heating_request,
+                                   bool cooling_request) {
+  if (desired_mode == 5) return true;
+  if (desired_mode == 2 || desired_mode == 3 || desired_mode == 4 || desired_mode == 98) return false;
+  if (desired_mode == 1) {
+    if (next_mode == 5) return true;
+    if (next_mode == 2 || next_mode == 3 || next_mode == 4 || next_mode == 98) return false;
+    if (next_mode != 0) return previous;
+    if (heating_request != cooling_request) return cooling_request;
+  }
+  return previous;
 }
 
-inline float cooling_input_power(bool cooling_session, float hp1_power, float hp2_power = NAN) {
-  return cooling_session ? sum_or_zero(hp1_power, hp2_power) : 0.0f;
+struct RestoredElectricalEnergy {
+  float heating{NAN};
+  float cooling{NAN};
+  float total{NAN};
+};
+
+// Legacy total checkpoints contain pump/standby energy absent from the old
+// heating counter. Preserve every restored counter without decreasing one.
+inline RestoredElectricalEnergy reconcile_electrical_energy(float heating, float cooling, float checkpoint,
+                                                            bool cooling_purpose = false) {
+  if (!isfinite(heating) || heating < 0.0f || !isfinite(cooling) || cooling < 0.0f) return {};
+  float total = heating + cooling;
+  if (!isfinite(total)) return {};
+  if (isfinite(checkpoint) && checkpoint > total) {
+    if (cooling_purpose)
+      cooling = checkpoint - heating;
+    else
+      heating = checkpoint - cooling;
+    total = heating + cooling;
+  }
+  return {heating, cooling, total};
+}
+
+struct DailyElectricalPublication {
+  uint32_t date_key{0};
+  float heating{NAN};
+  float cooling{NAN};
+  float total{NAN};
+  bool waiting_for_reset{false};
+};
+
+// Daily source timers can reset on different loop iterations. Wait until each
+// nonzero source has reset; never publish the intermediate leftover as a new day.
+inline bool daily_electrical_total_ready(DailyElectricalPublication& previous, uint32_t date_key, float heating,
+                                         float cooling) {
+  const float total = reconcile_electrical_energy(heating, cooling, NAN).total;
+  if (!isfinite(total)) return true;  // Publish unavailable without changing the recovery baseline.
+  if (date_key != 0 && date_key != previous.date_key) {
+    previous.waiting_for_reset = previous.date_key != 0;
+    previous.date_key = date_key;
+    previous.total = NAN;
+  }
+  if (previous.waiting_for_reset) {
+    if (!(previous.heating == 0.0f || heating < previous.heating) ||
+        !(previous.cooling == 0.0f || cooling < previous.cooling))
+      return false;
+    previous.waiting_for_reset = false;
+  }
+  // A zero-valued source may briefly accrue energy before its own reset timer.
+  // Withhold that later lower sample rather than creating another HA reset.
+  if (isfinite(previous.total) && total < previous.total) return false;
+  previous.heating = heating;
+  previous.cooling = cooling;
+  previous.total = total;
+  return true;
 }
 
 inline float ratio_or_nan(float output, float input, float minimum_input) {
