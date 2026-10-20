@@ -848,16 +848,6 @@ inline bool validate_tuning(const Tuning& tuning) {
 
 ---
 
-## 🔎 Verificatie
-
-Commit en push voorafgaand aan verificatie. Doe daarna de verificatie, en commit en push opnieuw.
-
-- Firmware/YAML: `python3 scripts/dev.py validate --config-only --config <target.yaml>`
-- Web: `npm run build:web` (na bronwijzigingen in `openquatt/web/js/src/` en `css/src/`)
-- C/C++ formatting (indien van toepassing): `npm run check:cpp-format`
-
----
-
-*Document versie: 2.0*
+*Document versie: 2.1.0*
 *Laatste update: 2026*
 *Status: Concept*
