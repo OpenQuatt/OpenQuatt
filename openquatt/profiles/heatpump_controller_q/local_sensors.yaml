@@ -126,6 +126,8 @@ sensor:
     manual_fault_settle: 10ms
     conversion_settle: 10ms
     conversion_read_margin: 1ms
+    # Temporary PR #877 instrumentation; retain exactly the same timing.
+    diagnostics: true
     filters:
       - lambda: |-
           if (isnan(x)) return x;

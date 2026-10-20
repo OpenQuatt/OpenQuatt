@@ -1,12 +1,12 @@
-# Opt-in comparison against the original v0.55.0 sequence; production uses settling.
+# Same timing as PR #877 by default; override one substitution per comparison.
 substitutions:
   openquatt_root: "../../openquatt"
   components_root: "../../components"
-  pt1000_separate_clear: "false"
-  pt1000_bias_settle: "0ms"
-  pt1000_manual_settle: "0ms"
-  pt1000_conversion_settle: "0ms"
-  pt1000_read_margin: "0ms"
+  pt1000_separate_clear: "true"
+  pt1000_bias_settle: "10ms"
+  pt1000_manual_settle: "10ms"
+  pt1000_conversion_settle: "10ms"
+  pt1000_read_margin: "1ms"
 
 packages:
   q_duo: !include ../../configs/heatpump_controller_q/duo.yaml

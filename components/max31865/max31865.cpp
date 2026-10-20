@@ -107,7 +107,7 @@ void MAX31865Sensor::start_conversion_() {
 
   // Datasheet max conversion time is 55ms for 60Hz / 66ms for 50Hz
   // The Q profile adds 1 ms so millisecond scheduler quantization cannot shorten
-  // the datasheet's maximum conversion time. The diagnostic baseline adds none.
+  // the datasheet's maximum conversion time.
   this->set_timeout("value", (filter_ == FILTER_60HZ ? 55 : 66) + read_margin_ms_, [this]() { this->read_data_(); });
 }
 
@@ -128,6 +128,7 @@ void MAX31865Sensor::setup() {
 void MAX31865Sensor::dump_config() {
   ESP_LOGCONFIG(TAG, "Timing: clear=%u bias=%" PRIu32 " manual=%" PRIu32 " post=%" PRIu32 " read_margin=%" PRIu32 " ms",
                 separate_clear_, bias_ms_, manual_ms_, conversion_ms_, read_margin_ms_);
+  ESP_LOGCONFIG(TAG, "Diagnostics: %s", diagnostics_ ? "on (pre/post BIAS-off)" : "off");
   LOG_SENSOR("", "MAX31865", this);
   LOG_PIN("  CS Pin: ", this->cs_);
   LOG_UPDATE_INTERVAL(this);
@@ -144,12 +145,22 @@ void MAX31865Sensor::dump_config() {
 void MAX31865Sensor::read_data_() {
   measurement_active_ = false;
   // Read temperature, disable V_BIAS (save power)
+  const uint32_t read_started_us = micros();
   const uint16_t rtd_resistance_register = this->read_register_16_(RTD_RESISTANCE_MSB_REG);
+  DiagnosticSnapshot before{};
+  if (diagnostics_) {
+    // Only reads here: capture the state with BIAS still on. Log after power-off
+    // so logger/network work cannot stretch the BIAS-on diagnostic interval.
+    before = this->read_diagnostic_snapshot_(rtd_resistance_register, this->read_register_(FAULT_STATUS_REG));
+  }
+  const uint32_t bias_off_us = micros();
   this->write_config_(0b11000000, 0b00000000);
 
   // Check for bad connection
   if (rtd_resistance_register == 0b0000000000000000 || rtd_resistance_register == 0b1111111111111111) {
-    if (diagnostics_) this->diagnose_(rtd_resistance_register, this->read_register_(FAULT_STATUS_REG));
+    if (diagnostics_)
+      this->diagnose_(rtd_resistance_register, this->read_register_(FAULT_STATUS_REG), before, read_started_us,
+                      bias_off_us);
     ESP_LOGE(TAG, "SPI bus read all 0 or all 1 (0x%04X), check MAX31865 wiring & power.", rtd_resistance_register);
     this->publish_state(NAN);
     this->status_set_error();
@@ -158,7 +169,7 @@ void MAX31865Sensor::read_data_() {
 
   // Check faults
   const uint8_t faults = this->read_register_(FAULT_STATUS_REG);
-  this->diagnose_(rtd_resistance_register, faults);
+  if (diagnostics_) this->diagnose_(rtd_resistance_register, faults, before, read_started_us, bias_off_us);
   has_fault_ = faults & 0b00111100;
   if (has_fault_) {
     if (faults & (1 << 2)) {
@@ -204,22 +215,34 @@ void MAX31865Sensor::read_data_() {
   this->publish_state(temperature);
 }
 
-void MAX31865Sensor::diagnose_(uint16_t rtd, uint8_t faults) {
-  if (!diagnostics_) return;
-  // Snapshot only after the original conversion/read/power-off sequence.
-  // Reads do not clear latched faults. Keep the first read authoritative.
+MAX31865Sensor::DiagnosticSnapshot MAX31865Sensor::read_diagnostic_snapshot_(uint16_t rtd, uint8_t faults) {
+  DiagnosticSnapshot snapshot{};
+  snapshot.rtd[0] = rtd;
+  snapshot.faults[0] = faults;
+  snapshot.config[0] = this->read_register_(CONFIGURATION_REG);
+  snapshot.rtd[1] = this->read_register_16_(RTD_RESISTANCE_MSB_REG);
+  snapshot.faults[1] = this->read_register_(FAULT_STATUS_REG);
+  snapshot.config[1] = this->read_register_(CONFIGURATION_REG);
+  return snapshot;
+}
+
+void MAX31865Sensor::diagnose_(uint16_t rtd, uint8_t faults, const DiagnosticSnapshot& before, uint32_t read_started_us,
+                               uint32_t bias_off_us) {
+  // Reads do not clear latched faults. The original pre-off RTD and first
+  // post-off fault read remain authoritative, even when snapshots disagree.
+  const auto after = this->read_diagnostic_snapshot_(this->read_register_16_(RTD_RESISTANCE_MSB_REG), faults);
   const uint32_t elapsed_us = micros() - measurement_started_us_;
-  const uint32_t conversion_us = micros() - conversion_started_us_;
-  const uint8_t faults_again = this->read_register_(FAULT_STATUS_REG);
-  const uint16_t rtd_again = this->read_register_16_(RTD_RESISTANCE_MSB_REG);
-  const uint8_t config = this->read_register_(CONFIGURATION_REG);
+  const uint32_t post_us = micros() - bias_off_us;
   if ((faults & 0xFC) || (rtd & 1) || rtd == 0 || rtd == 0xFFFF) fault_count_++;
   ESP_LOGI("oq.max31865_diag",
-           "sample=%" PRIu32 " t_ms=%" PRIu32
-           " rtd=%04X/%04X fault=%02X/%02X cfg=%02X "
-           "detect_us=%" PRIu32 " conv_us=%" PRIu32 " total_us=%" PRIu32 " faults=%" PRIu32,
-           sample_count_, millis(), rtd, rtd_again, faults, faults_again, config, fault_detect_us_, conversion_us,
-           elapsed_us, fault_count_);
+           "sample=%" PRIu32 " pre rtd=%04X/%04X fault=%02X/%02X cfg=%02X/%02X conv_us=%" PRIu32 " pre_us=%" PRIu32,
+           sample_count_, before.rtd[0], before.rtd[1], before.faults[0], before.faults[1], before.config[0],
+           before.config[1], read_started_us - conversion_started_us_, bias_off_us - read_started_us);
+  ESP_LOGI("oq.max31865_diag",
+           "sample=%" PRIu32 " post rtd=%04X/%04X fault=%02X/%02X cfg=%02X/%02X t_ms=%" PRIu32 " detect_us=%" PRIu32
+           " post_us=%" PRIu32 " total_us=%" PRIu32 " faults=%" PRIu32,
+           sample_count_, after.rtd[0], after.rtd[1], after.faults[0], after.faults[1], after.config[0],
+           after.config[1], millis(), fault_detect_us_, post_us, elapsed_us, fault_count_);
 }
 
 void MAX31865Sensor::write_config_(uint8_t mask, uint8_t bits, uint8_t start_position) {

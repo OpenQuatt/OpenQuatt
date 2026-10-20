@@ -7,6 +7,7 @@ using esphome::max31865::MAX31865Sensor;
 
 void initialize(MAX31865Sensor& sensor) {
   chip = {};
+  diagnostic_logs.clear();
   clock_us = 1000;
   sensor.set_reference_resistance(1500);
   sensor.set_nominal_resistance(1000);
@@ -82,7 +83,67 @@ int main() {
     complete(inconsistent);
     assert(inconsistent.error == (first_fault != 0));
     assert(std::isnan(inconsistent.state) == (first_fault != 0));
-    assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 3);
+    assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 5);
+    assert(diagnostic_logs.size() == 2);
+    assert(diagnostic_logs[0].find(" pre rtd=BB80/BB80 fault=00/00 cfg=81/81") != std::string::npos || first_fault);
+    // Deliberately bad post-off RTD reads cannot replace the original valid RTD.
+    assert(diagnostic_logs[1].find(" post rtd=0000/0000") != std::string::npos);
+  }
+
+  MAX31865Sensor diagnostic_sequence;
+  initialize(diagnostic_sequence);
+  diagnostic_sequence.set_probe_sequence(true, 10, 10, 10);
+  diagnostic_sequence.set_conversion_read_margin(1);
+  diagnostic_sequence.set_diagnostics(true);
+  diagnostic_sequence.update();
+  diagnostic_sequence.next();
+  diagnostic_sequence.next();
+  diagnostic_sequence.next();
+  const auto reads_before_value = chip.reads.size();
+  diagnostic_sequence.next();
+  const std::vector<uint8_t> snapshot_reads(chip.reads.begin() + reads_before_value, chip.reads.end());
+  assert((snapshot_reads == std::vector<uint8_t>{1, 2, 7, 0, 1, 2, 7, 0, 7, 1, 2, 0, 1, 2, 7, 0}));
+  for (size_t i = 0; i < snapshot_reads.size(); i++) {
+    assert(chip.read_bias_states[reads_before_value + i] == (i < 8));
+  }
+  assert(diagnostic_logs.size() == 2);
+  assert(diagnostic_logs[0].find("pre rtd=BB80/BB80 fault=00/00 cfg=81/81 conv_us=67000 pre_us=120") !=
+         std::string::npos);
+  assert(diagnostic_logs[1].find("post rtd=BB80/BB80 fault=00/00 cfg=01/01") != std::string::npos);
+  assert(diagnostic_logs[1].find("post_us=140") != std::string::npos);
+  assert(std::isfinite(diagnostic_sequence.state) && !diagnostic_sequence.error && chip.config == 1);
+
+  // Faults newly latched during power-off still follow the existing error path.
+  MAX31865Sensor power_off_fault;
+  initialize(power_off_fault);
+  power_off_fault.set_diagnostics(true);
+  chip.faults_on_power_off = 4;
+  power_off_fault.update();
+  complete(power_off_fault);
+  assert(std::isnan(power_off_fault.state) && power_off_fault.error && chip.config == 1);
+  assert(diagnostic_logs[0].find("fault=00/00") != std::string::npos);
+  assert(diagnostic_logs[1].find("fault=04/04") != std::string::npos);
+
+  // Consecutive real faults and recovery stay visible on the separate log tag.
+  for (const uint8_t fault : {4, 8, 16, 32}) {
+    MAX31865Sensor diagnostic_fault;
+    initialize(diagnostic_fault);
+    diagnostic_fault.set_probe_sequence(true, 10, 10, 10);
+    diagnostic_fault.set_conversion_read_margin(1);
+    diagnostic_fault.set_diagnostics(true);
+    chip.strict_clear = true;
+    chip.injected_faults = fault;
+    for (unsigned cycle = 0; cycle < 3; cycle++) {
+      diagnostic_fault.update();
+      complete(diagnostic_fault);
+      assert(diagnostic_fault.error && std::isnan(diagnostic_fault.state) && chip.config == 1);
+    }
+    chip.injected_faults = 0;
+    diagnostic_fault.update();
+    complete(diagnostic_fault);
+    assert(!diagnostic_fault.error && std::isfinite(diagnostic_fault.state) && chip.config == 1);
+    assert(diagnostic_logs.size() == 8);
+    assert(diagnostic_logs.back().find("faults=3") != std::string::npos);
   }
 
   // Strict D1 semantics expose the baseline's combined clear/test assumption.
@@ -185,7 +246,7 @@ int main() {
   invalid_diagnostic.update();
   complete(invalid_diagnostic);
   assert(std::isnan(invalid_diagnostic.state) && invalid_diagnostic.error);
-  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 3);
+  assert(std::count(chip.reads.begin(), chip.reads.end(), 7) == 5);
 
   // A reboot can find the external chip in a manual test left by the old MCU.
   MAX31865Sensor restarted;
