@@ -334,6 +334,19 @@ import { renderStatCard } from "./stat-card.js";
     return formatNumber(numerator / denominator, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  export function getEnergyHistoryHeatingInputWh(record) {
+    // Reconstruct legacy heating electricity and preserve unknown aggregate inputs.
+    if (Number.isNaN(record.heatingInputWh)) return Number.NaN;
+    const { electricalInputWh: total, coolingInputWh: cooling } = record;
+    if (!Number.isFinite(total) || !Number.isFinite(cooling) || total < 0 || cooling < 0 || cooling > total) return Number.NaN;
+    return total - cooling;
+  }
+
+  export function getEnergyHistoryCoolingInputWh(record) {
+    const value = record.coolingInputWh;
+    return Number.isFinite(value) && value >= 0 ? value : Number.NaN;
+  }
+
   export function formatEnergyAdaptiveWh(wh, decimals = 1) {
     const value = Number(wh);
     if (!Number.isFinite(value)) {
@@ -373,8 +386,10 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function mergeEnergyHistoryRecordIntoBucket(bucket, record) {
+    bucket.heatingInputWh += getEnergyHistoryHeatingInputWh(record);
+    bucket.coolingInputWh += getEnergyHistoryCoolingInputWh(record);
     ENERGY_HISTORY_VALUE_KEYS.forEach((key) => {
-      bucket[key] += getEnergyHistoryRecordWh(record, key);
+      if (key !== "heatingInputWh" && key !== "coolingInputWh") bucket[key] += getEnergyHistoryRecordWh(record, key);
     });
     bucket.partial = bucket.partial || Boolean(record?.partial);
     bucket.sequence = Math.max(Number(bucket.sequence || 0), Number(record?.sequence || 0));
@@ -853,8 +868,8 @@ import { renderStatCard } from "./stat-card.js";
     const boilerOutputWh = sumEnergyHistoryWh(records, "boilerHeatOutputWh");
     return {
       electricalInputWh: sumEnergyHistoryWh(records, "electricalInputWh"),
-      heatingInputWh: sumEnergyHistoryWh(records, "heatingInputWh"),
-      coolingInputWh: sumEnergyHistoryWh(records, "coolingInputWh"),
+      heatingInputWh: records.reduce((sum, record) => sum + getEnergyHistoryHeatingInputWh(record), 0),
+      coolingInputWh: records.reduce((sum, record) => sum + getEnergyHistoryCoolingInputWh(record), 0),
       heatOutputWh,
       coolingOutputWh,
       boilerOutputWh,
@@ -1105,13 +1120,14 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function getEnergyHistoryBucketTooltip(record, showBoiler = true) {
-    const heatCop = formatEnergyRatio(record.heatpumpHeatOutputWh, record.heatingInputWh);
-    const coolingEer = formatEnergyRatio(record.heatpumpCoolingOutputWh, record.coolingInputWh);
+    const heatingInputWh = getEnergyHistoryHeatingInputWh(record);
+    const coolingInputWh = getEnergyHistoryCoolingInputWh(record);
+    const heatCop = formatEnergyRatio(record.heatpumpHeatOutputWh, heatingInputWh);
+    const coolingEer = formatEnergyRatio(record.heatpumpCoolingOutputWh, coolingInputWh);
     return [
       record.tooltipLabel || record.label || formatEnergyHistoryDateLabel(record.dateKey),
-      `${t("energy.tipTotal")}: ${formatEnergyAdaptiveWh(record.electricalInputWh, 1)}`,
-      `${t("energy.tipHeatingInput")}: ${formatEnergyAdaptiveWh(record.heatingInputWh, 1)}`,
-      `${t("energy.tipCoolingInput")}: ${formatEnergyAdaptiveWh(record.coolingInputWh, 1)}`,
+      `${t("energy.tipHeatingInput")}: ${formatEnergyAdaptiveWh(heatingInputWh, 1)}`,
+      `${t("energy.tipCoolingInput")}: ${formatEnergyAdaptiveWh(coolingInputWh, 1)}`,
       `${t("energy.tipHeatOutput")}: ${formatEnergyAdaptiveWh(record.heatpumpHeatOutputWh, 1)}`,
       `${t("energy.tipCoolingOutput")}: ${formatEnergyAdaptiveWh(record.heatpumpCoolingOutputWh, 1)}`,
       showBoiler ? `${t("energy.tipBoilerOutput")}: ${formatEnergyAdaptiveWh(record.boilerHeatOutputWh, 1)}` : "",

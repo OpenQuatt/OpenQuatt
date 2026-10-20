@@ -138,22 +138,29 @@ inline float sum_available(float first, float second = NAN) {
   return isnan(first) && isnan(second) ? NAN : sum_or_zero(first, second);
 }
 
-inline float heating_input_power(bool cooling_session, float hp1_mode, float hp1_power, float hp2_mode = NAN,
-                                 float hp2_power = NAN) {
-  if (cooling_session) return 0.0f;
-  return (hp1_mode == 2.0f ? value_or_zero(hp1_power) : 0.0f) + (hp2_mode == 2.0f ? value_or_zero(hp2_power) : 0.0f);
+inline float attributed_input_power(float total, bool cooling_purpose, bool for_cooling) {
+  if (cooling_purpose != for_cooling) return 0.0f;
+  return isfinite(total) && total >= 0.0f ? total : NAN;
 }
 
-inline float heating_input_power_required(bool cooling_session, float hp1_mode, float hp1_power,
-                                          bool second_required = false, float hp2_mode = NAN, float hp2_power = NAN) {
-  if (cooling_session) return 0.0f;
-  const float hp1_heating_power = hp1_mode == 2.0f ? hp1_power : 0.0f;
-  const float hp2_heating_power = hp2_mode == 2.0f ? hp2_power : 0.0f;
-  return nonnegative_sum_required(hp1_heating_power, hp2_heating_power, second_required);
-}
-
-inline float cooling_input_power(bool cooling_session, float hp1_power, float hp2_power = NAN) {
-  return cooling_session ? sum_or_zero(hp1_power, hp2_power) : 0.0f;
+// Only a new thermal purpose changes the owner; postflow, standby and idle
+// service retain it. An unresolved request must not invent a new owner.
+inline bool cooling_energy_purpose(bool previous, int desired_mode, int next_mode, bool heating_request,
+                                   bool cooling_request, int manual_hp1_mode = 0, int manual_hp2_mode = 0) {
+  if (desired_mode == 100) {
+    const bool heating = manual_hp1_mode == 2 || manual_hp2_mode == 2;
+    const bool cooling = manual_hp1_mode == 1 || manual_hp2_mode == 1;
+    return heating != cooling ? cooling : previous;
+  }
+  if (desired_mode == 5) return true;
+  if (desired_mode == 2 || desired_mode == 3 || desired_mode == 4 || desired_mode == 98) return false;
+  if (desired_mode == 1) {
+    if (next_mode == 5) return true;
+    if (next_mode == 2 || next_mode == 3 || next_mode == 4 || next_mode == 98) return false;
+    if (next_mode != 0) return previous;
+    if (heating_request != cooling_request) return cooling_request;
+  }
+  return previous;
 }
 
 inline float ratio_or_nan(float output, float input, float minimum_input) {

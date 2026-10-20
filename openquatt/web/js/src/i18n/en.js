@@ -4468,7 +4468,6 @@ export default {
     legendHeat: "Heat",
     legendCooling: "Cooling",
     legendBoiler: "Boiler",
-    tipTotal: "Total electricity consumption",
     tipHeatingInput: "Electricity used for heating",
     tipCoolingInput: "Electricity used for cooling",
     tipHeatOutput: "Heat pump heat",
@@ -4489,7 +4488,7 @@ export default {
     viewCopy: "View current energy flows, day totals and cumulative counters.",
     resultsKicker: "Results",
     resultsTitle: "Historical results",
-    resultsCopy: "Compare yield, consumption, efficiency and COP/EER per period.",
+    resultsCopy: "Compare yield, consumption and COP/EER per period. Heating and cooling include pump and standby consumption.",
   },
   incidents: {
     label: {

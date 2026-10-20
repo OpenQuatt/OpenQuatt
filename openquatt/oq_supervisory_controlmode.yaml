@@ -170,10 +170,11 @@ globals:
     restore_value: false
     initial_value: '0'  # 0,1,2,3,4,5,98,100
 
-  # Attribute all electrical input from cooling preflow through postflow to the cooling session.
+  # Electrical accounting purpose, retained through standby and reboot.
+  # A new installation starts with heating until its first cooling session.
   - id: oq_cooling_energy_session_active
     type: bool
-    restore_value: false
+    restore_value: true
     initial_value: 'false'
 
   # ----------------------------

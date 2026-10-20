@@ -61,8 +61,6 @@ class EnergyLogicContractTest(unittest.TestCase):
     def test_system_power_sensors_use_the_runtime_adapter(self) -> None:
         for function in (
             "total_power_input",
-            "heating_power_input",
-            "cooling_power_input",
             "total_heat_power",
             "total_cooling_power",
         ):
@@ -70,6 +68,18 @@ class EnergyLogicContractTest(unittest.TestCase):
             self.assertIn(f"inline float {function}()", RUNTIME)
         self.assertIn("#if OQ_TOPOLOGY_DUO", RUNTIME)
         self.assertIn("id(hp2_power_input).state", RUNTIME)
+
+    def test_electrical_inputs_share_the_total_power_sample(self) -> None:
+        total = REQUEST.split("    id: oq_total_power_input\n", 1)[1].split("\n  - platform:", 1)[0]
+        self.assertEqual(total.count("const bool cooling = id(oq_cooling_energy_session_active);"), 1)
+        for sensor, for_cooling in (("oq_heating_power_input", "false"), ("oq_cooling_power_input", "true")):
+            self.assertEqual(
+                total.count(f"id({sensor}).publish_state(oq_energy::attributed_input_power(x, cooling, {for_cooling}));"),
+                1,
+            )
+            derived = REQUEST.split(f"    id: {sensor}\n", 1)[1].split("\n  - platform:", 1)[0]
+            self.assertIn("update_interval: never", derived)
+            self.assertNotIn("lambda:", derived)
 
     def test_energy_ratios_share_the_tested_guards(self) -> None:
         self.assertEqual(ENERGY.count("oq_energy::ratio_or_nan("), 4)

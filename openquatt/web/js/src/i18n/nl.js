@@ -4468,7 +4468,6 @@ export default {
     legendHeat: "Warmte",
     legendCooling: "Koeling",
     legendBoiler: "Ketel",
-    tipTotal: "Elektrisch totaal",
     tipHeatingInput: "Elektrisch verwarmen",
     tipCoolingInput: "Elektrisch koelen",
     tipHeatOutput: "Warmtepomp warmte",
@@ -4489,7 +4488,7 @@ export default {
     viewCopy: "Bekijk actuele energiestromen, dagtotalen en cumulatieve tellers.",
     resultsKicker: "Resultaten",
     resultsTitle: "Historische resultaten",
-    resultsCopy: "Vergelijk opbrengst, verbruik, rendement en COP/EER per periode.",
+    resultsCopy: "Vergelijk opbrengst, verbruik en COP/EER per periode. Verwarmen en koelen bevatten pomp en standby.",
   },
   incidents: {
     label: {
