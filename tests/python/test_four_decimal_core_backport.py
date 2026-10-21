@@ -145,13 +145,14 @@ class FourDecimalCoreBackportTest(unittest.TestCase):
         self.assertIn("accuracy_decimals <= 4", self.read("helpers.cpp"))
         self.assertEqual((old_build / "esphome/core/helpers.cpp").read_text(encoding="utf-8"), self.originals["helpers.cpp"])
 
-    def test_installed_2026_9_sources_are_supported_and_not_modified(self) -> None:
+    def test_installed_pinned_sources_are_supported_and_not_modified(self) -> None:
         try:
             from esphome.const import __version__
         except ImportError:
-            self.skipTest("ESPHome 2026.9.0 is not installed")
-        if __version__ != "2026.9.0":
-            self.skipTest("Requires the pinned ESPHome 2026.9.0 source")
+            self.skipTest("ESPHome is not installed")
+        pinned_version = (ROOT / ".github/requirements-esphome.txt").read_text().strip().removeprefix("esphome==")
+        if __version__ != pinned_version:
+            self.skipTest(f"Requires the pinned ESPHome {pinned_version} source")
         installed = resources.files("esphome.core")
         self.originals = {name: installed.joinpath(name).read_text(encoding="utf-8") for name in backport._PATCHES}
         self.seed()

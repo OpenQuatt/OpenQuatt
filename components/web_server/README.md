@@ -1,6 +1,6 @@
 # ESPHome web_server compatibility override
 
-Source: ESPHome 2026.9.0, `esphome/components/web_server`. Copyright ESPHome.
+Source: ESPHome 2026.10.0, `esphome/components/web_server`. Copyright ESPHome.
 C++ is GPLv3 (repository LICENSE); Python is MIT (../web_server_base/LICENSE-MIT).
 Copied upstream files retain the existing component and generated index assets;
 C++ is formatted with the OpenQuatt formatter.
@@ -14,31 +14,30 @@ actions already queued for the main loop, even after recovery ends.
 The version gate lives in the accompanying `web_server_base` override. When
 upgrading ESPHome, compare this small functional patch against the new upstream.
 
-## Temporary SSE lifecycle test fix
+Upstream tag: `2026.10.0` (`704551a6c93c29a311802f7ee97d67a9e9bce718`).
+Controller callbacks are registered by codegen; SSE generators fill the caller's
+`JsonBuilder`, including the ESP-IDF stack arena. The OpenQuatt recovery-epoch
+checks and atomic firmware `manifest_revision` remain local patches.
+The 8 KiB loop stack and internal heap margin require baseline/candidate HIL
+validation before this release upgrade is released.
 
-`openquatt/oq_web_access.yaml` selects only `web_server_idf` from ESPHome
-merge commit `9309cf96b9710ad81d3e01a07a6f76637ba117a1`
-([ESPHome #17800](https://github.com/esphome/esphome/pull/17800)).
-Compared with 2026.9.0, the C++ changes cover the SSE close lifecycle and URL
-storage (`std::string` to `StringRef`). The local `/events` string literal has
-the required lifetime and is explicitly wrapped in `StringRef` in `web_server.h`
-because the 2026.9.0 conversion constructor is explicit.
-Its Python configuration is unchanged. Other components and
-the local auth/recovery overrides remain on the existing baseline.
+The upstream component sources are identical between 2026.10.0b1 and
+2026.10.0; the existing local patches are retained.
 
-Stalled streams close after 20 seconds without send progress. HTTPD owns the
-shutdown, verifies session identity, and retains the response while close work
-is queued. Queue failures retry; queued work must never release its lifetime
-pin merely because a timeout elapsed. ESPHome 2026.9.0 recommends ESP-IDF 5.5.5;
-the upstream fix requires separate queue-work validation with older SDKs.
+## SSE lifecycle compatibility
 
-This is a candidate fix for repeated lwIP/heap crashes, not a proven diagnosis.
-Test stalled/non-reading clients, abrupt disconnects, repeated reconnects,
-multiple streams and Wi-Fi reconnects with normal controller/API/MQTT load.
-Compare baseline and candidate internal free/minimum heap, largest block,
-PSRAM and task-stack watermarks; check HTTP/SSE recovery and session headroom.
-Remove the pin after upgrading to and validating an ESPHome release containing
-the fix. Hardware validation is still required before release.
+ESPHome 2026.10 includes the lifecycle fix from
+[ESPHome #17800](https://github.com/esphome/esphome/pull/17800). The temporary
+2026.9.0-only `web_server_idf` pin is removed on this upgrade branch so the backend
+and caller-owned JSON generator API come from the same reviewed release.
+The `/events` URL remains a static literal wrapped in `StringRef::from_lit()`.
+
+Stalled streams close after 20 seconds without send progress. HTTPD owns
+shutdown and session validation; queued close work retains the response until
+its lifetime pin can be released. Queue failures must retry. These guarantees
+still need hardware validation under stalls, disconnect/reconnect and ordinary
+controller/API/MQTT load. Do not treat the upstream change as a proven diagnosis
+of the previously reported lwIP/heap crashes.
 
 ## Temporary four-decimal formatter backport
 
@@ -47,7 +46,7 @@ from [ESPHome #20800](https://github.com/esphome/esphome/pull/20800) after ESPHo
 copies sources into each build. Only generated `esphome/core/helpers.cpp` and
 `helpers.h` are replaced; the installed ESPHome package is not changed. This
 works with direct YAML compilation, the local developer helper and CI, including
-the native ESP-IDF toolchain. The existing ESPHome 2026.9.0 version gate also
+the native ESP-IDF toolchain. The exact ESPHome version gate also
 covers this backport.
 
 The original finite-value/range checks, rounding and fallback are retained;
