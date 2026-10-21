@@ -212,6 +212,7 @@ class OpenQuattMqttConfig : public Component {
   };
 
   StatusSnapshot get_status_snapshot();
+  bool validate_csrf_token(const std::string& token);
   MutationResult set_runtime_config(const std::string& broker, uint16_t port, const std::string& username,
                                     const std::string& password, bool clear_password, bool enabled);
   MutationResult set_input_enabled(const std::string& key, bool enabled);
