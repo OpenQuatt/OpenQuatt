@@ -34,9 +34,8 @@ struct Input {
 };
 
 struct Tuning {
-  float stop_margin_c = 0.5f;
-  float restart_cooldown_c = kRestartHysteresisC;
-  float room_resume_delta_c = 0.1f;
+  float stop_temperature_c = 0.3f;
+  float restart_temperature_c = 0.1f;
 };
 
 struct State {
@@ -48,11 +47,9 @@ struct State {
 struct Decision {
   State next;
   bool force_comfort_stop = false;
-  bool warm_restart_intent = false;
+  bool warm_restart_intent = true;
   bool floor_active = false;
   float floor_w = 0.0f;
-  float comfort_stop_c = NAN;
-  float warm_restart_c = NAN;
 };
 
 inline const char* phase_name(Phase phase) {
@@ -95,20 +92,27 @@ inline bool compute_house_saturated(int base_capped_demand, float house_deficit_
 
 inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   Decision out;
-  const float stop_margin_c = std::isfinite(tuning.stop_margin_c) ? tuning.stop_margin_c : 0.5f;
-  const float hysteresis_c = std::isfinite(tuning.restart_cooldown_c) ? tuning.restart_cooldown_c : kRestartHysteresisC;
-  const float comfort_stop_c = std::isfinite(in.setpoint_c) ? in.setpoint_c + stop_margin_c : NAN;
-  const float cold_edge_c = oq_heat_intent::room_cold_edge_c(in.setpoint_c, tuning.room_resume_delta_c);
-  // Extension may delay a restart inside the comfort zone, never below its cold edge.
-  const float warm_restart_c = std::isfinite(comfort_stop_c) && std::isfinite(cold_edge_c)
-                                   ? std::max(comfort_stop_c - hysteresis_c, cold_edge_c)
-                                   : NAN;
-  out.comfort_stop_c = comfort_stop_c;
-  out.warm_restart_c = warm_restart_c;
+  const float comfort_stop_c = std::isfinite(in.setpoint_c)
+                                 ? in.setpoint_c + tuning.stop_temperature_c
+                                 : NAN;
+  const float warm_restart_c = std::isfinite(comfort_stop_c)
+                                 ? comfort_stop_c - tuning.restart_temperature_c
+                                 : NAN;
 
   const bool room_finite = std::isfinite(in.room_c) && std::isfinite(in.setpoint_c);
   const bool thresholds_finite = std::isfinite(comfort_stop_c) && std::isfinite(warm_restart_c);
   const bool usable = in.enabled && in.inputs_valid && in.heating_allowed && room_finite && thresholds_finite;
+
+  // Validate tuning parameters
+  if (std::isfinite(tuning.stop_temperature_c) && tuning.stop_temperature_c < 0.0f) {
+    // Invalid stop temperature, use defaults
+    return out;
+  }
+  if (std::isfinite(tuning.stop_temperature_c) && std::isfinite(tuning.restart_temperature_c) &&
+      tuning.stop_temperature_c - tuning.restart_temperature_c < 0.1f) {
+    // Invalid restart temperature (must be at least 0.1C below stop)
+    return out;
+  }
 
   // Setpoint tracking: a relevant drop cancels a pending warm restart intent.
   const bool setpoint_drop = std::isfinite(in.setpoint_c) && std::isfinite(state.last_setpoint_c) &&

@@ -273,6 +273,63 @@
   line-height: 1.55;
 }
 
+/* Flow layout styles for Power House */
+.oq-settings-flow {
+  display: grid;
+  gap: 12px;
+}
+
+.oq-settings-prose {
+  margin: 0;
+  color: var(--oq-helper-soft);
+  line-height: 1.55;
+}
+
+.oq-settings-prose--setpoint {
+  color: var(--oq-helper-ink);
+  font-weight: 600;
+}
+
+.oq-settings-flow-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--oq-settings-inset-background);
+}
+
+.oq-settings-flow-label {
+  flex: 1;
+  color: var(--oq-helper-soft);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.oq-settings-flow-unit {
+  flex: 0 0 auto;
+  color: var(--oq-helper-soft);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+/* Flow field styling */
+.oq-settings-field--flow {
+  grid-column: 1 / -1;
+  margin-top: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.oq-settings-field--flow .oq-settings-field-head {
+  display: none;
+}
+
+.oq-settings-field--flow .oq-settings-field-control {
+  padding: 0;
+}
+
 .oq-settings-rule-groups {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
