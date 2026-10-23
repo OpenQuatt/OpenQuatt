@@ -1,0 +1,24 @@
+# Same timing as PR #877 by default; override one substitution per comparison.
+substitutions:
+  openquatt_root: "../../openquatt"
+  components_root: "../../components"
+  pt1000_separate_clear: "true"
+  pt1000_bias_settle: "10ms"
+  pt1000_manual_settle: "10ms"
+  pt1000_conversion_settle: "10ms"
+  pt1000_read_margin: "1ms"
+
+packages:
+  q_duo: !include ../../configs/heatpump_controller_q/duo.yaml
+
+esphome:
+  build_path: ../../../.esphome/build/max31865_probe_duo
+
+sensor:
+  - id: !extend water_supply_temp_pt1000
+    separate_fault_clear: ${pt1000_separate_clear}
+    bias_settle: ${pt1000_bias_settle}
+    manual_fault_settle: ${pt1000_manual_settle}
+    conversion_settle: ${pt1000_conversion_settle}
+    conversion_read_margin: ${pt1000_read_margin}
+    diagnostics: true

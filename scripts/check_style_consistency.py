@@ -142,6 +142,7 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
         "uart",
     ),
     "openquatt/profiles/heatpump_controller_q/local_sensors.yaml": (
+        "external_components",
         "select",
         "number",
         "spi",
