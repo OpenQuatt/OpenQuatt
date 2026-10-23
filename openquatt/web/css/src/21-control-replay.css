@@ -728,6 +728,34 @@
   line-height: 1.05;
 }
 
+.oq-working-entry-range {
+  display: grid;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oq-working-entry-range > time:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.oq-working-entry-time-end {
+  display: flex;
+  justify-content: flex-end;
+  align-items: end;
+  gap: 3px;
+  color: var(--oq-overview-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.oq-working-entry-day {
+  display: block;
+  color: var(--oq-overview-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
 .oq-working-entry-time small,
 .oq-working-entry-body small {
   color: var(--oq-overview-muted);

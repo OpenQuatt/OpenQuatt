@@ -17,7 +17,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // Complete heating/cooling inputs: +314 B raw versus dev (Node 24.19.0).
     // Grouped start sequences, truthful historical evidence and confirmed compressor history:
     // Includes stop sequences, observed operating periods, concise details and recorded restart waits.
-    // +24,401 B raw / +7,135 B gzip versus #882 on Node 24.19.0; relative gzip limits unchanged.
+    // +23,809 B raw / +7,071 B gzip versus #882 on Node 24.19.0; relative gzip limits unchanged.
     raw: 1_363_000,
     gzipBaselineCeiling: 362_000,
   },

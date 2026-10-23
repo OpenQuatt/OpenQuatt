@@ -26,8 +26,9 @@ test("a confirmed stop and its immediate availability edge explain a normal rest
     const item = map(events).find(i => i.realEventType === "hp_availability_change");
     assert.equal(item.title, locale === "nl" ? "HP2 wacht op minimale uit-tijd" : "HP2 waits for minimum off-time");
     assert.equal(item.severity, "normal");
-    assert.match(item.detail, locale === "nl" ? /stop.*bevestigd.*korte cycli/ : /stop.*confirmed.*short cycling/);
-    assert.match(item.next, locale === "nl" ? /als er vraag is.*overige startvoorwaarden.*niet.*opgeslagen/ : /if there is demand.*other start conditions.*not stored/);
+    assert.match(item.detail, locale === "nl" ? /korte cycli.*vraag.*startvoorwaarden/ : /short cycling.*demand.*start conditions/);
+    assert.equal(item.next, "");
+    assert.match(item.summary, locale === "nl" ? /resterende wachttijd niet opgeslagen/ : /remaining wait not recorded/);
     assert.doesNotMatch(replay.renderControlWorkingDetails(item), /technische voorwaarde|Technische statuswijziging|Storing|technical condition|Technical status change|Fault/);
     assert.equal(events[1]._oq_rest_after_stop, undefined);
   }

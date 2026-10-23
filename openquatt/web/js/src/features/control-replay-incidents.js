@@ -160,17 +160,16 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
       return {
         ...result(
           rest ? t("controlReplay.availRestTitle", { subject: resolvedSubject }) : `${resolvedSubject} ${t("controlReplay.availBlocked")}`,
-          rest ? event.reason === "min_rest_active" ? t("controlReplay.availRestRecordedCopy") : t("controlReplay.availRestCopy", { subject: resolvedSubject }) : incident
-            ? t("controlReplay.availBlockedIncident", { subject: resolvedSubject, label }) : t("controlReplay.availBlockedCopy"),
-          { label: rest ? t("controlReplay.availRestLabel") : incident && !nonBlockingStatus ? label : t("controlReplay.availabilityLabel"), summary: "", checks: [] },
           rest ? event.reason === "min_rest_active" && Number.isInteger(event.threshold_a) && event.threshold_a > 0
-            ? t("controlReplay.availRestRecorded", { seconds: event.threshold_a === 32767 ? "≥32767" : event.threshold_a }) : t("controlReplay.availRestNext")
-            : t("controlReplay.availBlockedNext"),
+            ? t("controlReplay.availRestRecorded", { seconds: event.threshold_a === 32767 ? "≥32767" : event.threshold_a }) : t("controlReplay.availRestCopy")
+            : incident ? t("controlReplay.availBlockedIncident", { subject: resolvedSubject, label }) : t("controlReplay.availBlockedCopy"),
+          { label: rest ? t("controlReplay.availRestLabel") : incident && !nonBlockingStatus ? label : t("controlReplay.availabilityLabel"), summary: "", checks: [] },
+          rest ? "" : t("controlReplay.availBlockedNext"),
         ),
-        detail: rest ? t(event.reason === "min_rest_active" ? "controlReplay.availRestRecordedWhy" : "controlReplay.availRestWhy") : nonBlockingStatus
+        detail: rest ? t("controlReplay.availRestWhy") : nonBlockingStatus
           ? t("controlReplay.availBlockedStatusWhy", { label: t(OPERATING_COPY[primaryStatus][0]) })
           : incident ? meta.summary : t("controlReplay.availBlockedWhy"),
-        reasonSummary: rest ? event.reason === "min_rest_active" ? "" : t("controlReplay.availRestNormal") : t("controlReplay.availBlockedNormal"),
+        reasonSummary: rest ? "" : t("controlReplay.availBlockedNormal"),
       };
     }
     if (event.to === "available" || event.to === "preheat") {

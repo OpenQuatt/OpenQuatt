@@ -50,7 +50,8 @@ In de `Beslislog` staat de nieuwste melding bovenaan, met seconden in het tijdst
 Een startverloop bundelt de gelogde voorbereiding, startopdracht en
 compressorbevestiging. Klik erop om de stappen te zien; onder de technische details
 blijven alle meldingen en CM-overgangen beschikbaar. Ontbrekende voorbereiding of
-bevestiging wordt niet ingevuld. Ook een stopverloop bundelt de stopopdracht,
+bevestiging wordt niet ingevuld. Start- en stopverlopen verschijnen beide als
+periode, met begin- en eindtijd op afzonderlijke regels. Ook een stopverloop bundelt de stopopdracht,
 compressorbevestiging, bijbehorende naloop en bewezen herstartpauze. De stappen
 behouden hun werkelijke volgorde: naloop kan al vóór de stopopdracht beginnen.
 Bij onduidelijke Duo-toewijzing blijven meldingen apart staan. Storingen en
@@ -79,6 +80,7 @@ overige startvoorwaarden en eventuele vereiste resets blijven gelden.
 Volgt een startblokkade direct op een bevestigde compressorstop zonder incidenten,
 dan heet deze `wacht op minimale uit-tijd`. De uitleg beschrijft de herstartpauze;
 een niet opgeslagen resterende tijd wordt niet uit actuele instellingen ingevuld.
+De herstartpauze krijgt één korte zin; aanvullende uitleg staat onder technische details.
 Nieuwe firmware registreert de minimale uit-tijd als oorzaak met de op dat moment
 resterende seconden. Dat is een historische waarde, geen afteller.
 Bij andere blokkades toont de beslislog de gelogde melding of vermeldt zij dat de

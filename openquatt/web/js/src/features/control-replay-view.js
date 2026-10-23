@@ -2304,7 +2304,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       return {
         ...command,
         id: `start-${command.id}`,
-        time: latest.time,
+        kind: "span",
+        time: steps[0].time === latest.time ? latest.time : `${steps[0].time} – ${latest.time}`,
         graphStart: latest.graphStart,
         title: t("controlReplay.startSequenceTitle", { subject: attempt.subject }),
         summary: confirmed ? t("controlReplay.startSequenceCopy")
@@ -2348,8 +2349,9 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         summary: group.kind ? t(complete ? "controlReplay.cycleComplete" : group.incompleteReason === "sequence_conflict"
           ? "controlReplay.cycleConflict" : group.startEvent && steps.some(step => step.rawDecisionEvent === group.startEvent)
           ? "controlReplay.cycleMissingEnd" : "controlReplay.cycleMissingStart")
-          : `${command.summary} ${t(confirmed ? "controlReplay.stopConfirmed" : group.failed && byEvent.has(group.failure)
-            ? "controlReplay.stopFailed" : "controlReplay.stopPending")}`,
+          : confirmed && command.reasonLabel ? t("controlReplay.stopConfirmedReason", { reason: command.reasonLabel })
+            : t(confirmed ? "controlReplay.stopConfirmed" : group.failed && byEvent.has(group.failure)
+              ? "controlReplay.stopFailed" : "controlReplay.stopPending"),
         snapshotSummary: "",
         detail: group.kind ? copy : command.detail,
         time: first.time === last.time ? first.time : `${first.time} – ${last.time}`,
@@ -2372,13 +2374,13 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       ${item.cycle ? `<p>${escapeHtml(item.detail)}</p>` : ""}
       <ol class="oq-working-start-steps" aria-label="${t("controlReplay.sequenceSteps")}">
         ${stages.map(step => `<li><time>${escapeHtml(step.time)}</time><div><strong>${escapeHtml(step.title)}</strong><span>${escapeHtml(step.snapshotSummary || step.summary)}</span>
-          ${step.heatingStop ? `<span>${escapeHtml(step.detail)}</span>` : ""}
-          ${step.realEventType === "hp_availability_change" && step.rawDecisionEvent.to === "blocked" ? `<span>${escapeHtml(step.next)}</span>` : ""}</div></li>`).join("")}
+          </div></li>`).join("")}
       </ol>
       <details class="oq-working-support" data-replay-support-item="${escapeHtml(item.id)}"${state.controlReplaySupportDetailsItemId === item.id ? " open" : ""}>
         <summary data-oq-action="toggle-control-replay-support-details">${t("controlReplay.detailSupport")}</summary>
         ${item.periodSteps.map(step => `<p>${escapeHtml(step.time)} · ${escapeHtml(step.rawDecisionEvent.event_type)} · ${escapeHtml(getControlWorkingModeMetaLabel(step) || step.modeLabel)} · ${escapeHtml(step.rawDecisionEvent.reason)}${step.duration ? ` · ${escapeHtml(step.duration)}` : ""}
-          ${step.heatingStop ? getHeatingStopSupportValues(step.rawDecisionEvent).map(value => `<br>${escapeHtml(value)}`).join("") : ""}</p>`).join("")}
+          ${step.heatingStop ? getHeatingStopSupportValues(step.rawDecisionEvent).map(value => `<br>${escapeHtml(value)}`).join("") : ""}
+          ${step.heatingStop || step.rawDecisionEvent._oq_rest_after_stop || isControlReplayRestAfterStop(step.rawDecisionEvent) ? `<br>${escapeHtml(step.detail)}` : ""}</p>`).join("")}
       </details>
     </aside>`;
   }
@@ -2848,6 +2850,17 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     `;
   }
 
+  function renderControlWorkingTimelineTime(item) {
+    const parts = item.kind === "span" ? String(item.time || "").split(/\s*[–-]\s*/) : [String(item.time || "")];
+    const label = value => {
+      const match = value.match(/^(.*?)(\d{2}:\d{2}(?::\d{2})?)$/);
+      return match ? `${match[1].trim() ? `<span class="oq-working-entry-day">${escapeHtml(match[1].trim())}</span>` : ""}<span>${escapeHtml(match[2])}</span>` : escapeHtml(value);
+    };
+    return parts.length === 2 ? `<strong class="oq-working-entry-range"><time>${label(parts[0])}</time>
+      <time class="oq-working-entry-time-end" aria-label="${escapeHtml(t("controlReplay.timeRangeEnd", { time: parts[1] }))}"><span aria-hidden="true">→</span><span>${label(parts[1])}</span></time></strong>`
+      : `<strong>${label(String(item.time || ""))}</strong>`;
+  }
+
   function renderControlWorkingTimelineItem(item, selectedItem) {
     const status = getControlWorkingSeverityMeta(item.severity);
     const selected = selectedItem && selectedItem.id === item.id;
@@ -2860,7 +2873,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         data-replay-episode="${escapeHtml(item.id)}"
       >
         <span class="oq-working-entry-time">
-          <strong>${escapeHtml(item.time)}</strong>
+          ${renderControlWorkingTimelineTime(item)}
           <small>${escapeHtml(kindLabel)}</small>
         </span>
         <span class="oq-working-entry-rail" aria-hidden="true"></span>
@@ -2894,7 +2907,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const optimizer = getControlWorkingOptimizerModel(item);
     const modeMetaLabel = getControlWorkingModeMetaLabel(item);
     const checks = Array.isArray(item.checks) ? item.checks : reason.checks;
-    const supportValues = item.heatingStop ? getHeatingStopSupportValues(item.rawDecisionEvent) : [];
+    const restartPause = item.rawDecisionEvent?._oq_rest_after_stop || isControlReplayRestAfterStop(item.rawDecisionEvent);
+    const supportValues = item.heatingStop ? getHeatingStopSupportValues(item.rawDecisionEvent) : restartPause ? [item.detail] : [];
     return `
       <aside class="oq-working-detail oq-working-detail--${escapeHtml(status.tone)}">
         <div>
@@ -2906,7 +2920,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           <strong>${t("heatingStops.atStop")}</strong>
           <span>${escapeHtml(item.snapshotSummary)}</span>
         </div>` : ""}
-        ${item.detail && item.detail !== item.summary ? `<p>${escapeHtml(item.detail)}</p>` : ""}
+        ${!restartPause && item.detail && item.detail !== item.summary ? `<p>${escapeHtml(item.detail)}</p>` : ""}
         ${item.reasonSummary && item.reasonSummary !== item.detail && (item.severity !== "normal" || Number(item.rawDecisionEvent?.value_a) === 46)
           ? `<p>${escapeHtml(item.reasonSummary)}</p>` : ""}
         ${item.next && (item.heatingStop || item.severity !== "normal" || item.rawDecisionEvent?.to === "blocked") ? `<div class="oq-working-detail-block">

@@ -158,3 +158,51 @@ test("conflicting raw records keep distinct identities through timeline enrichme
   assert.match(period.summary, /Tegenstrijdige meldingen/);
   assert.equal(period.duration, "");
 });
+
+test("start and stop sequences share period labels and actual observed time ranges, NL/EN", () => {
+  const starts = [event(1, 10, "flow_hold_start", "SYSTEM", { reason: "flow_preflow" }),
+    event(2, 40, "flow_hold_clear", "SYSTEM", { reason: "flow_preflow" }),
+    event(3, 41, "source_start", "HP2"), event(4, 54, "hp_start_confirmed", "HP2")];
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale);
+    for (const [events, first, last] of [[starts, "01:00:10", "01:00:54"], [stopEvents(), "01:07:58", "01:17:24"]]) {
+      const item = replay.buildControlWorkingTimelineItems(map(events)).find(i => i.startSteps || i.periodSteps);
+      assert.equal(item.kind, "span");
+      assert.equal(item.time, `${first} – ${last}`);
+      const row = replay.renderControlWorkingTimelineItem(item, null);
+      assert.match(row, locale === "nl" ? /Periode/ : /Period/);
+      assert.ok(row.includes(`<time><span>${first}</span></time>`));
+      assert.ok(row.includes(`aria-label="${locale === "nl" ? "tot" : "until"} ${last}"`));
+      assert.ok(!row.includes(`${first} –`));
+    }
+  }
+});
+
+test("restart pause has one short explanation; safety context remains under technical details, NL/EN", () => {
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale);
+    for (const recorded of [false, true]) {
+      const events = stopEvents();
+      if (recorded) Object.assign(events[6], { reason: "min_rest_active", threshold_a: 240 });
+      const item = replay.buildControlWorkingTimelineItems(map(events)).find(i => i.periodSteps);
+      const [visible, support] = replay.renderControlWorkingDetails(item).split("<details");
+      const phrase = recorded ? /240 s/g : locale === "nl" ? /resterende wachttijd niet opgeslagen/g : /remaining wait not recorded/g;
+      assert.equal((visible.match(phrase) || []).length, 1);
+      assert.doesNotMatch(visible, /Na de minimale uit-tijd|After the minimum off-time|korte cycli|short cycling/);
+      assert.match(support, locale === "nl" ? /korte cycli.*vraag.*startvoorwaarden/s : /short cycling.*demand.*start conditions/s);
+    }
+  }
+});
+
+test("structured range labels retain weekday boundaries and escape text without inventing an end", () => {
+  const row = replay.renderControlWorkingTimelineItem({ kind: "span", time: "do 23:59:50 – vr 00:00:10", severity: "normal" }, null);
+  assert.match(row, /oq-working-entry-day">do/);
+  assert.match(row, /oq-working-entry-day">vr/);
+  assert.match(row, /tot vr 00:00:10/);
+  const incomplete = replay.buildControlWorkingTimelineItems(map([event(1, 10, "source_start", "HP2")]))[0];
+  assert.doesNotMatch(replay.renderControlWorkingTimelineItem(incomplete, null), /oq-working-entry-time-end/);
+  assert.match(incomplete.summary, /geen compressorbevestiging/);
+  const escaped = replay.renderControlWorkingTimelineItem({ kind: "span", time: "<script> – 01:00:00", severity: "normal" }, null);
+  assert.match(escaped, /&lt;script&gt;/);
+  assert.doesNotMatch(escaped, /<script>/);
+});
