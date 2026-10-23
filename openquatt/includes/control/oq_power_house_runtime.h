@@ -104,11 +104,31 @@ class Runtime {
     // Capture the legacy envelope once with the manual inputs for this tick.
     // Future line calibration must not change these control scales.
     const auto envelope = oq_power_house::house_envelope_from_legacy(demand_input.rated_w);
+    // Read new fields with backward compatibility fallback
+    float stop_temperature_c = 0.3f;
+    if (id(ph_stop_temperature_c).has_state() && std::isfinite(id(ph_stop_temperature_c).state)) {
+      stop_temperature_c = id(ph_stop_temperature_c).state;
+    } else if (id(ph_comfort_band_above_c).has_state() && std::isfinite(id(ph_comfort_band_above_c).state)) {
+      stop_temperature_c = id(ph_comfort_band_above_c).state;
+    }
+
+    float restart_temperature_c = 0.1f;
+    if (id(ph_restart_temperature_c).has_state() && std::isfinite(id(ph_restart_temperature_c).state)) {
+      restart_temperature_c = id(ph_restart_temperature_c).state;
+    } else if (id(ph_run_extension_restart_cooldown_c).has_state() &&
+               std::isfinite(id(ph_run_extension_restart_cooldown_c).state)) {
+      restart_temperature_c = id(ph_run_extension_restart_cooldown_c).state;
+    }
+
+    const bool inertia_enabled = id(ph_inertia_enabled).has_state()
+                                 ? static_cast<bool>(id(ph_inertia_enabled).state)
+                                 : true;
+
     const oq_power_house::DemandTuning demand_tuning{
         config.temperature_guard_c,
         id(ph_kp_w_per_k).state,
-        id(ph_comfort_band_below_c).state,
-        id(ph_comfort_band_above_c).state,
+        stop_temperature_c,
+        inertia_enabled,
         id(ph_demand_rise_time_min).state,
         id(ph_demand_fall_time_min).state,
         config.demand_max_f,
@@ -137,7 +157,7 @@ class Runtime {
     float requested_w = demand.requested_w;
     float next_last_w = demand.next.last_w;
     int raw_demand = demand.raw_demand;
-    const float room_resume_delta_c = std::max(0.0f, demand_tuning.comfort_below_c);
+    const float room_resume_delta_c = stop_temperature_c;
     const auto intent = oq_heat_intent_runtime::evaluate(now_ms, applied_total > 0, room_resume_delta_c, 10000UL,
                                                          config.ot_room_temperature_fresh,
                                                          config.ot_room_setpoint_fresh, this->intent_state_);
@@ -315,9 +335,6 @@ class Runtime {
     const float room_c = id(room_temp_selected).state;
     const float setpoint_c = id(room_setpoint_selected).state;
     const bool run_ext_enabled = id(ph_run_extension_enabled).state;
-    float stop_margin_c = 0.5f;
-    if (id(ph_run_extension_stop_margin_c).has_state() && std::isfinite(id(ph_run_extension_stop_margin_c).state))
-      stop_margin_c = std::max(0.1f, std::min(1.0f, id(ph_run_extension_stop_margin_c).state));
     const bool room_inputs_valid = std::isfinite(room_c) && std::isfinite(setpoint_c) &&
                                    oq_heat_intent_runtime::room_temperature_fresh(config.ot_room_temperature_fresh) &&
                                    oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh);
@@ -346,7 +363,7 @@ class Runtime {
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
-        run_ext_input, {stop_margin_c, id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c},
+        run_ext_input, {stop_temperature_c, restart_temperature_c},
         this->run_extension_state_);
     const bool comfort_was_active =
         this->run_extension_state_.phase == oq_power_house_run_extension::Phase::COMFORT_STOP ||

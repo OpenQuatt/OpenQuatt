@@ -143,29 +143,28 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
       input.now_ms, input.outside_c,  input.cold_c,     input.zero_power_c,       input.rated_w,
       input.room_c, input.setpoint_c, input.external_w, input.water_limit_factor, input.external_valid};
   const baseline_0282c2e9::DemandTuning frozen_tuning{
-      tuning.temperature_guard_c, tuning.reaction_w_per_k, tuning.comfort_below_c, tuning.comfort_above_c,
+      tuning.temperature_guard_c, tuning.reaction_w_per_k, 0.0f, tuning.stop_temperature_c,
       tuning.rise_time_min,       tuning.fall_time_min,    tuning.demand_max};
   const baseline_0282c2e9::DemandState frozen_state{state.last_w, state.last_ms, state.comfort_memory_c};
   const auto expected = baseline_0282c2e9::decide_demand(frozen_input, frozen_tuning, frozen_state);
   assert(actual.valid == expected.valid);
   assert(actual.external == expected.external);
   assert(actual.next.last_ms == expected.next.last_ms);
-  assert_close(actual.next.comfort_memory_c, expected.next.comfort_memory_c, "comfort_memory_c");
-  // The warm pullback intentionally moved from setpoint to setpoint + above.
-  // Keep the frozen baseline intact; all other paths still require equivalence.
-  // Numeric warm-edge and recovery-boundary cases live in the demand core test.
-  if (actual.valid && input.room_c > input.setpoint_c) {
-    assert(actual.requested_w >= expected.requested_w - 0.001f);
-    assert(actual.raw_demand >= expected.raw_demand);
+  // The revised control intentionally replaced the comfort band with a direct
+  // setpoint error and inertia switch. With the frozen lower band at zero and
+  // the upper band mapped to the stop temperature, the heating side still
+  // matches; warm-side behavior is covered by the demand core test.
+  if (actual.valid && input.room_c >= input.setpoint_c) {
     assert(actual.requested_w >= 0.0f && actual.requested_w <= input.rated_w);
     return;
   }
+  assert_close(actual.next.comfort_memory_c, expected.next.comfort_memory_c, "comfort_memory_c");
   assert(actual.raw_demand == expected.raw_demand);
   assert_close(actual.requested_w, expected.requested_w, "requested_w");
   assert_close(actual.next.last_w, expected.next.last_w, "next.last_w");
 }
 
-ActualTuning tuning() { return {0.15f, 1800.0f, 0.35f, 0.55f, 8.0f, 5.0f, 10}; }
+ActualTuning tuning() { return {0.15f, 1800.0f, 0.3f, true, 8.0f, 5.0f, 10}; }
 
 ActualInput input() { return {123456u, 2.0f, -10.0f, 16.0f, 7000.0f, 19.5f, 20.0f, NAN, 1.0f, false}; }
 

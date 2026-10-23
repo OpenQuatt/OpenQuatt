@@ -26,7 +26,8 @@ struct DemandInput {
 };
 struct DemandTuning {
   float temperature_guard_c = 0.0f, reaction_w_per_k = NAN;
-  float comfort_below_c = NAN, comfort_above_c = NAN;
+  float stop_temperature_c = NAN;
+  bool inertia_enabled = true;
   float rise_time_min = NAN, fall_time_min = NAN;
   int demand_max = 0;
 };
@@ -112,18 +113,13 @@ inline DemandDecision decide_demand_with_power(const DemandInput& in, const Dema
                      isfinite(in.setpoint_c) && isfinite(in.water_limit_factor) &&
                      isfinite(tuning.temperature_guard_c) && tuning.temperature_guard_c >= 0.0f &&
                      isfinite(tuning.reaction_w_per_k) && tuning.reaction_w_per_k >= 0.0f &&
-                     isfinite(tuning.comfort_below_c) && isfinite(tuning.comfort_above_c) &&
+                     isfinite(tuning.stop_temperature_c) && tuning.stop_temperature_c >= 0.0f &&
                      isfinite(tuning.rise_time_min) && isfinite(tuning.fall_time_min) && tuning.demand_max > 0;
   if (!valid) return out;
   const Feedforward feedforward = select_feedforward(clamp_power(modelled_w, 0.0f, envelope.request_max_w),
                                                      in.external_w, in.external_valid, envelope.request_max_w);
   if (!isfinite(modelled_w) || !isfinite(feedforward.house_power_w)) return out;
-  const float below_c = clamp_power(tuning.comfort_below_c, 0.0f, 2.0f);
-  const float above_c = clamp_power(tuning.comfort_above_c, 0.0f, 2.0f);
-  const float low_base_c = in.setpoint_c - below_c;
-  const float high_base_c = in.setpoint_c + above_c;
-  const float mid_base_c = low_base_c + 0.5f * (high_base_c - low_base_c);
-  const float memory_max_c = clamp_power(0.05f + 0.50f * above_c, 0.08f, 0.20f);
+  const float memory_max_c = 0.20f;
   float memory_c = isfinite(state.comfort_memory_c) ? state.comfort_memory_c : 0.0f;
   memory_c = clamp_power(memory_c, 0.0f, memory_max_c);
   float dt_s = 0.0f;
@@ -132,23 +128,21 @@ inline DemandDecision decide_demand_with_power(const DemandInput& in, const Dema
     dt_s = static_cast<float>(static_cast<uint32_t>(in.now_ms - state.last_ms)) / 1000.0f;
     if (isfinite(state.last_w)) last_w = clamp_power(state.last_w, 0.0f, envelope.request_max_w);
   }
-  if (in.room_c < low_base_c) {
-    const float undershoot = clamp_power((low_base_c - in.room_c) / 0.45f, 0.0f, 1.0f);
-    const float build_per_min = memory_max_c / 90.0f + (memory_max_c / 24.0f - memory_max_c / 90.0f) * undershoot;
-    memory_c += build_per_min * dt_s / 60.0f;
-  } else if (in.room_c > mid_base_c) {
-    const float decay_minutes = in.room_c <= high_base_c ? 40.0f : 12.0f;
-    memory_c -= (memory_max_c / decay_minutes) * dt_s / 60.0f;
+  if (tuning.inertia_enabled) {
+    const float undershoot = clamp_power((in.setpoint_c - in.room_c) / 0.45f, 0.0f, 1.0f);
+    if (in.room_c < in.setpoint_c) {
+      const float build_per_min = memory_max_c / 90.0f + (memory_max_c / 24.0f - memory_max_c / 90.0f) * undershoot;
+      memory_c += build_per_min * dt_s / 60.0f;
+    } else if (in.room_c >= in.setpoint_c) {
+      const float decay_minutes = in.room_c > in.setpoint_c + tuning.stop_temperature_c ? 12.0f : 40.0f;
+      memory_c -= (memory_max_c / decay_minutes) * dt_s / 60.0f;
+    }
+  } else {
+    memory_c -= (memory_max_c / 12.0f) * dt_s / 60.0f;
   }
   memory_c = clamp_power(memory_c, 0.0f, memory_max_c);
   const float effective_setpoint_c = in.setpoint_c + memory_c;
-  // Recovery may raise the cold edge, but never beyond the user's warm edge.
-  const float low_c = fminf(effective_setpoint_c - below_c, high_base_c);
-  float error_c = 0.0f;
-  if (in.room_c < low_c)
-    error_c = low_c - in.room_c;
-  else if (in.room_c > high_base_c)
-    error_c = high_base_c - in.room_c;
+  float error_c = effective_setpoint_c - in.room_c;
   out.contributions = {modelled_w, feedforward.house_power_w, 0.0f, tuning.reaction_w_per_k * error_c};
   // Future adaptive bias belongs at this composition boundary, before the
   // existing envelope, slew, water limit and dispatch. It never rewrites H/T0.

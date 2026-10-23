@@ -47,23 +47,44 @@ Eenvoudig onthouden:
 
 - `Power House` denkt eerst aan het huis, en pas daarna aan de warmtepomp.
 
-Bij **Instellingen → Verwarmen → Power House — comfort** vind je twee herkenbare onderdelen.
+Bij **Instellingen → Verwarmen → Power House** vind je de nieuwe uitlegstroom met verklarende tekstblokken tussen de instellingen.
 
-#### Op temperatuur houden
+### Vereenvoudigde Power House (nieuwe versie)
 
-Power House berekent hoeveel warmte nodig is om je woning op temperatuur te houden. Met **Afkoeling onder gewenste temperatuur** kies je hoeveel graden de kamer mag afkoelen voordat Power House extra warmte vraagt. Voorbeeld: je wilt **21,0 °C** en stelt **0,2 °C afkoeling** in. Dan vraagt Power House extra warmte als de kamer onder **20,8 °C** komt. Met **0,4 °C afkoeling** gebeurt dat onder **20,6 °C**.
+Sinds de herontwerp is Power House eenvoudiger geworden:
 
-Met **Afremmen boven gewenste temperatuur** kies je wanneer Power House warmte gaat terugnemen. Je wilt bijvoorbeeld **20,0 °C** en stelt **0,3 °C** in: boven **20,3 °C** vraagt de regeling minder warmte. Met **1,0 °C** begint dat boven **21,0 °C**. Hoe verder de kamer boven die grens komt, hoe meer warmte wordt teruggenomen. De app toont de berekende temperatuur. Dit is geen gegarandeerde maximumtemperatuur.
+- **⚠️ Geen comfortband meer**: De regeling gebruikt nu direct de afwijking van het setpoint, `phKp` is altijd leidend
+- **Traagheid als schakelaar**: De comfort memory (opbouw tot maximaal 0,2 °C) is nu in- en uitschakelbaar via **Traagheid**
+- **⚠️ één herstarttemperatuur**: Geen onderscheid meer tussen warme en koude herstart
 
-Ook zonder extra opwarming kan de warmtepomp draaien om het warmteverlies van je woning te compenseren. Was de kamer langere tijd te koud, dan kan Power House al eerder extra warmte vragen en daarmee nog een tijdje doorgaan terwijl de kamer opwarmt. Beide comfortinstellingen werken ook als **Langer doorverwarmen** uitstaat. De warmtepomp stopt dan wanneer de regeling geen verwarming meer vraagt, rekening houdend met de minimale looptijd. De verdere afstelling staat onder **Geavanceerd**.
+#### Hoofdinstellingen
 
-#### Langer doorverwarmen
+De nieuwe Power House flow bevat:
 
-Bij weinig warmtebehoefte kan een draaiende warmtepomp op laag vermogen blijven verwarmen. **Langer doorverwarmen** staat standaard uit en hoort alleen bij Power House. Je kiest een aparte stoptemperatuur en hoeveel de kamer daarna moet afkoelen. De lopende run mag ook bij warmte terugnemen door de comfortregeling doorgaan op laag vermogen. Een stilstaande warmtepomp wordt door deze schakelaar niet gestart.
+1. **Woningmodel** (houseColdTemp, houseOutdoorMax, housePower) - Bepaalt het warmteverlies van je woning
+2. **Responsprofiel** - Kies hoe rustig of direct Power House reageert
+3. **Kamercorrectie (phKp)** - Hoe sterk de regeling bijstuurt bij afwijking van het setpoint
+4. **Traagheid (phInertia)** - Integrerende regeling aan/uit, max 0,2 °C
+5. **Stoptemperatuur (phStopTemperature)** - Temperatuur boven setpoint waarbij de warmtepomp stopt
+6. **Herstarttemperatuur (phRestartTemperature)** - Temperatuur waarbij opnieuw verwarmen mogelijk is (moet ≥ 0,1 °C onder stoptemperatuur)
+7. **Langer doorverwarmen (phRunExtension)** - Minimaal vermogen tot aan de stoptemperatuur
 
-Voorbeeld: je wilt **21,0 °C** en stelt bij **Stopgrens boven gewenste temperatuur** **0,7 °C** in. Power House vraagt de warmtepomp dan bij **21,7 °C** om te stoppen. Stel je bij **Afkoeling na stoppen** ook **0,7 °C** in, dan kan de warmtepomp bij **21,0 °C of lager** weer starten als je woning warmte nodig heeft. De app toont de temperaturen die uit jouw keuzes volgen.
+#### Validatie
 
-De warmtepomp stopt later als hij zijn minimale looptijd nog moet afmaken. Daarna moet hij een minimale tijd uit blijven voordat hij weer kan starten. De radiatoren of vloer kunnen na de stop nog warmte afgeven. De instelling **Afkoeling onder gewenste temperatuur** begrenst hoe ver je de kamer laat afkoelen voordat opnieuw verwarmen mogelijk wordt. Zie [Langer doorverwarmen instellen](../web-app/instellingen.md#langer-doorverwarmen) voor voorbeelden en uitleg, en [Power House](../power-house.md) voor de technische werking.
+- **Stoptemperatuur** moet ≥ 0 zijn
+- **Herstarttemperatuur** moet tenminste 0,1 °C lager zijn dan de stoptemperatuur
+- Herstarttemperatuur mag negatief zijn (bv. -0,5 voor herstart onder setpoint)
+
+### Oude Power House instellingen (verouderd)
+
+> ⚠️ **Opgelet**: De volgende instellingen zijn behouden voor backward compatibility maar worden niet meer actief gebruikt in de nieuwe regeling:
+>
+> - **Afkoeling onder gewenste temperatuur** (phComfortBelow) - Vervangen door Traagheid + directe setpoint regeling
+> - **Afremmen boven gewenste temperatuur** (phComfortAbove) - Vervangen door phStopTemperature
+> - **Stopgrens boven gewenste temperatuur** (phRunExtensionStopMargin) - Vervangen door phStopTemperature
+> - **Afkoeling na stoppen** (phRunExtensionRestartCooldown) - Vervangen door phRestartTemperature
+
+Zie [Power House technische documentatie](../power-house.md) voor de complete uitleg van de nieuwe regeling. Zie [Langer doorverwarmen instellen](../web-app/instellingen.md#langer-doorverwarmen) voor voorbeelden en uitleg, en [Power House](../power-house.md) voor de technische werking.
 
 ### 2. Stooklijnregeling (`Water Temperature Control`)
 

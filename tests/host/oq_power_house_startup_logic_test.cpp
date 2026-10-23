@@ -7,7 +7,7 @@
 namespace {
 using namespace oq_power_house;
 DemandInput input(uint32_t now_ms) { return {now_ms, 3, -10, 16, 6000, 20, 20, NAN, 1, false}; }
-DemandTuning tuning() { return {0.5f, 3000, 0.1f, 0.3f, 10, 5, 20}; }
+DemandTuning tuning() { return {0.5f, 3000, 0.3f, true, 10, 5, 20}; }
 bool near(float value, float expected) { return fabsf(value - expected) < 0.01f; }
 
 void test_inputs_arrive_in_any_order() {
