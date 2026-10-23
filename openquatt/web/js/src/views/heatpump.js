@@ -6,6 +6,7 @@ import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/
 import { state } from "../core/state.js";
 import { startMotionLoop } from "../core/motion.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
+import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { formatNumericState } from "../core/formatting.js";
@@ -1583,6 +1584,12 @@ import { renderStatCard } from "./stat-card.js";
     }
 
     if (summaryShell) {
+      const warmupNotice = summaryShell.querySelector("[data-oq-overview-warmup]");
+      if (warmupNotice) {
+        const progress = getWarmupProgressText();
+        if (warmupNotice.textContent !== progress) warmupNotice.textContent = progress;
+        warmupNotice.hidden = !progress;
+      }
       const top = summaryShell.querySelector(".oq-overview-top");
       if (top) {
         setInnerHtmlIfChanged(top, renderOverviewStatCards(getOverviewTopCards()));

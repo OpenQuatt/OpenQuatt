@@ -168,6 +168,7 @@ void OpenQuattServiceStatus::dump_config() {
 }
 
 void OpenQuattServiceStatus::write_status(httpd_req_t* req) const {
+  const uint32_t warmup_progress = this->warmup_progress_.read();
   const bool commissioning_active = bool_value(this->commissioning_active_);
   const int commissioning_task_code = int_value(this->commissioning_task_code_);
   bool first = true;
@@ -230,8 +231,18 @@ void OpenQuattServiceStatus::write_status(httpd_req_t* req) const {
       !write_number_entity(req, &first, "hpWaterCalibrationResultSupplyOffset",
                            float_value(this->hp_water_calibration_result_supply_offset_), "°C", 2) ||
       !write_text_entity(req, &first, "hpWaterCalibrationResultSupplySource",
-                         text_value(this->hp_water_calibration_result_supply_source_, "")) ||
-      !write_raw(req, R"(}})")) {
+                         text_value(this->hp_water_calibration_result_supply_source_, ""))) {
+    httpd_resp_send_chunk(req, nullptr, 0);
+    return;
+  }
+
+  if (warmup_progress != WarmupProgressSnapshot::UNAVAILABLE &&
+      (!write_number_entity(req, &first, "warmupStatus", warmup_progress >> 24U) ||
+       !write_number_entity(req, &first, "warmupElapsed", warmup_progress & 0x00ffffffU, "s"))) {
+    httpd_resp_send_chunk(req, nullptr, 0);
+    return;
+  }
+  if (!write_raw(req, R"(}})")) {
     httpd_resp_send_chunk(req, nullptr, 0);
     return;
   }

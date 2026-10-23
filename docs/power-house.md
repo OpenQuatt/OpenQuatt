@@ -64,6 +64,14 @@ Praktisch merk je dan:
 - sneller terugnemen als de ruimte wegdrijft;
 - minder kans dat het systeem te lang blijft doorduwen.
 
+## Na nachtverlaging
+
+Met [Geleidelijk opwarmen](web-app/instellingen.md#geleidelijk-opwarmen-na-nachtverlaging)
+kan Power House tijdelijk een tussendoel voor de kamertemperatuur gebruiken.
+De thermostaat blijft het einddoel bepalen. De functie staat standaard uit;
+zie [Verwarmen en comfort](dagelijks/verwarmen.md#geleidelijk-opwarmen-na-nachtverlaging)
+voor een voorbeeld van 17 naar 20,5 °C.
+
 ## Na een herstart of firmware-update
 
 Power House wacht maximaal twee minuten vanaf de herstart op geldige inputs voor de warmtevraag, waaronder buitentemperatuur, kamertemperatuur en setpoint. Tijdens het wachten is de warmtevraag onbekend en geeft Power House geen compressor- of ketelhulpvraag door. Ontbrekende inputs worden niet als vorige warmtevraag van 0 W opgeslagen.

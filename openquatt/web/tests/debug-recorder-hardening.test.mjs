@@ -13,17 +13,17 @@ const [header, source, psramBuffer] = await Promise.all([
 
 test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   const widths = { binary_sensor: 1, switch: 1, text_sensor: 2, select: 2, sensor: 4, number: 4 };
-  const rowBytes = 8 + (5 * 4) + 2 + DEBUG_RECORDING_KEYS.reduce(
+  const rowBytes = 8 + (5 * 4) + 2 + (8 * 4) + DEBUG_RECORDING_KEYS.reduce(
     (total, key) => total + widths[ENTITY_DEFS[key].domain],
     0,
   );
   const capacity = Math.floor((2 * 1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 795);
-  assert.equal(capacity, 2637);
-  // Full default schema: 7 h 19 min 20 s. Optional missing fields can only
+  assert.equal(rowBytes, 853);
+  assert.equal(capacity, 2458);
+  // Full default schema: 6 h 49 min 30 s. Optional missing fields can only
   // increase this capacity; custom schemas still report their actual capacity.
-  assert.equal((capacity - 1) * 10, 26360);
+  assert.equal((capacity - 1) * 10, 24570);
   assert.ok((capacity - 1) * 10 > 6 * 60 * 60);
   assert.match(header, /BUFFER_BYTES = 2U \* 1024U \* 1024U/);
   assert.doesNotMatch(header, /MAX_DURATION_S|MIN_DURATION_S|DEFAULT_DURATION_S/);

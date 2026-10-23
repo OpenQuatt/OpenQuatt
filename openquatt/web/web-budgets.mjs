@@ -6,16 +6,12 @@ export const WEB_BUNDLE_BUDGETS = [
     file: "js/openquatt-app.js",
     // Includes passive learning, trend goals, the curve editor and air-purge status.
     // With daily-learning UI and legacy compatibility, plus the performance invitation.
-    // dev baseline: 1,308,178 B; invitation adds ~7.5 kB raw / ~2.6 kB gzip on Node 24.14.1.
-    // Includes topology-aware Single rendering from dev.
-    // Historical heating-stop reasons and both locale catalogues add ~10.6 kB raw.
-    // Aux relay (R2) run-on settings, copy in both locales and legacy-backup migration add ~2.2 kB raw / ~0.7 kB gzip.
-    // Explicit recorder retries preserve the pending choice and reject stale responses (+1 KiB raw).
-    // Hiding CV energy and decision-log views without an auxiliary heat source adds ~0.8 kB raw / ~0.3 kB gzip.
-    // An automatic theme that follows the device light/dark setting adds ~1.3 kB raw / ~0.3 kB gzip.
-    // The existing relative gzip growth limit remains unchanged.
-    // Complete heating/cooling inputs: +314 B raw versus dev (Node 24.19.0).
-    raw: 1_338_200,
+    // Includes upstream recorder, CV visibility, automatic theme and control copy,
+    // plus the warmup controls and diagnostics. Relative gzip limits stay unchanged.
+    // dev 0f217b00 raw budget 1,338,200 B + the unchanged 13,452 B warmup allowance.
+    // Measured raw: dev 1,338,151 B, PR 1,350,413 B (Node 24.14.1).
+    // Warmup gzip growth: +3,664 B (+0.98%), below the existing +7,680 B limit.
+    raw: 1_351_652,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
