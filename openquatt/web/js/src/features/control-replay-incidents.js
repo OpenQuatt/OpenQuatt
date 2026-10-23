@@ -1,5 +1,5 @@
 import { getIncidentDisplayLabel } from "../core/incident-monitoring.js";
-import { getControlReplayOperatingStatus, isControlReplayPowerCycleClear } from "./control-replay-status.js";
+import { getControlReplayOperatingStatus, isControlReplayPowerCycleClear, isControlReplayRestAfterStop } from "./control-replay-status.js";
 import { t } from "../i18n/index.js";
 
 const REASONS = Object.fromEntries([
@@ -153,22 +153,24 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
   }
   if (type === "hp_availability_change") {
     if (event.to === "blocked") {
-      const rest = event._oq_rest_after_stop === true;
+      const rest = event._oq_rest_after_stop === true || isControlReplayRestAfterStop(event);
       const incident = Number.isInteger(event.value_a) && event.value_a > 0;
       const primaryStatus = getControlReplayOperatingStatus({ ...event, event_type: "incident_start" });
       const nonBlockingStatus = primaryStatus && primaryStatus !== "preheat";
       return {
         ...result(
           rest ? t("controlReplay.availRestTitle", { subject: resolvedSubject }) : `${resolvedSubject} ${t("controlReplay.availBlocked")}`,
-          rest ? t("controlReplay.availRestCopy", { subject: resolvedSubject }) : incident
+          rest ? event.reason === "min_rest_active" ? t("controlReplay.availRestRecordedCopy") : t("controlReplay.availRestCopy", { subject: resolvedSubject }) : incident
             ? t("controlReplay.availBlockedIncident", { subject: resolvedSubject, label }) : t("controlReplay.availBlockedCopy"),
           { label: rest ? t("controlReplay.availRestLabel") : incident && !nonBlockingStatus ? label : t("controlReplay.availabilityLabel"), summary: "", checks: [] },
-          rest ? t("controlReplay.availRestNext") : t("controlReplay.availBlockedNext"),
+          rest ? event.reason === "min_rest_active" && Number.isInteger(event.threshold_a) && event.threshold_a > 0
+            ? t("controlReplay.availRestRecorded", { seconds: event.threshold_a === 32767 ? "≥32767" : event.threshold_a }) : t("controlReplay.availRestNext")
+            : t("controlReplay.availBlockedNext"),
         ),
-        detail: rest ? t("controlReplay.availRestWhy") : nonBlockingStatus
+        detail: rest ? t(event.reason === "min_rest_active" ? "controlReplay.availRestRecordedWhy" : "controlReplay.availRestWhy") : nonBlockingStatus
           ? t("controlReplay.availBlockedStatusWhy", { label: t(OPERATING_COPY[primaryStatus][0]) })
           : incident ? meta.summary : t("controlReplay.availBlockedWhy"),
-        reasonSummary: rest ? t("controlReplay.availRestNormal") : t("controlReplay.availBlockedNormal"),
+        reasonSummary: rest ? event.reason === "min_rest_active" ? "" : t("controlReplay.availRestNormal") : t("controlReplay.availBlockedNormal"),
       };
     }
     if (event.to === "available" || event.to === "preheat") {
@@ -188,13 +190,10 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
     return result(`${resolvedSubject} ${item[0]}`, item[1], meta);
   }
   if (type === "control_mode_change") {
-    const from = mode(event.value_a);
     const to = mode(event.value_b) ?? mode(event.cm);
     return result(
-      from !== null && to !== null ? `CM${from} → CM${to}` : t("controlReplay.modeChanged"),
-      to === 4 && from === 3
-        ? t("controlReplay.modeRoleFallback")
-        : t("controlReplay.modeRoleNew"),
+      t(["controlReplay.roleStandby", "controlReplay.roleWater", "controlReplay.roleHeat", "controlReplay.roleAssist", "controlReplay.roleFallback", "controlReplay.roleCool"][to] || "controlReplay.modeChanged"),
+      t(["controlReplay.roleStandbyCopy", "controlReplay.roleWaterCopy", "controlReplay.roleHeatCopy", "controlReplay.roleAssistCopy", "controlReplay.roleFallbackCopy", "controlReplay.roleCoolCopy"][to] || "controlReplay.causeMissing"),
       to === 4 ? { ...meta, label: t("controlReplay.modeRoleLabel") } : meta,
       t("controlReplay.modeOutputNote"),
     );
@@ -219,7 +218,7 @@ export function getControlReplayIncidentDisplaySeverity(event) {
   if (type === "incident_acknowledged" && event.to === "active") return String(event.severity || "fault");
   if (["incident_clear", "incident_acknowledged", "boiler_fallback_stop", "hp_start_confirmed", "hp_stop_confirmed"].includes(type)) return "normal";
   if (type !== "hp_availability_change") return "";
-  if (event.to === "blocked" && event._oq_rest_after_stop === true) return "normal";
+  if (event.to === "blocked" && (event._oq_rest_after_stop === true || isControlReplayRestAfterStop(event))) return "normal";
   if (event.to === "available") return "normal";
   if (["recovering", "preheat", "blocked", "suspect"].includes(event.to)) return "limited";
   return ["faulted", "offline"].includes(event.to) ? "fault" : "";

@@ -378,8 +378,7 @@
 }
 
 .oq-working-tab-icon,
-.oq-working-pill-icon,
-.oq-working-reason-icon {
+.oq-working-pill-icon {
   width: 18px;
   height: 18px;
   stroke: currentColor;
@@ -796,10 +795,6 @@
   line-height: inherit;
 }
 
-.oq-working-entry-meta-mode {
-  font-variant-numeric: tabular-nums;
-}
-
 .oq-working-entry-status {
   justify-self: end;
   padding: 4px 8px;
@@ -849,19 +844,6 @@
 .oq-working-detail-block span {
   color: var(--oq-overview-muted);
   line-height: 1.45;
-}
-
-.oq-working-checks {
-  display: grid;
-  gap: 8px;
-}
-
-.oq-working-checks span {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--oq-overview-title);
-  font-weight: 850;
 }
 
 .oq-working-optimizer {
@@ -1035,19 +1017,6 @@
   padding: 0;
   border: 0;
   background: transparent;
-}
-
-.oq-working-reason-list {
-  display: grid;
-  gap: 10px;
-}
-
-.oq-working-reason-list span {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--oq-overview-title);
-  font-weight: 850;
 }
 
 .oq-working-source-grid {

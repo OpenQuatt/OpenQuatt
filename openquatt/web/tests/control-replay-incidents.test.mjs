@@ -123,11 +123,11 @@ test("CM3 to CM4 remains a role transition and fallback start is explicit", () =
   assert.equal(getControlReplayIncidentModeAfterEvent(modeEvent), 4);
   assert.equal(
     getControlReplayIncidentEventCopy(modeEvent, "Systeem").title,
-    "CM3 → CM4",
+    "CV-ketel als vervanging gekozen",
   );
   assert.match(
     getControlReplayIncidentEventCopy(modeEvent, "Systeem").summary,
-    /regelrol/,
+    /CV-ketel.*niet inzetbaar/,
   );
   assert.equal(
     getControlReplayIncidentEventCopy(fallbackEvent, "CV-ketel").title,

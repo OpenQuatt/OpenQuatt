@@ -22,6 +22,9 @@ export function isOilReturnDecisionEvent(event) {
 // The manager emits this pair in one update when the stop starts its restart
 // guard. Do not guess from a stop command, a different pump or an archive gap.
 export function isControlReplayRestAfterStop(event, previous) {
+  if (event?.event_type === "hp_availability_change" && event.to === "blocked"
+    && event.reason === "min_rest_active" && event.severity === "normal" && (event.flags ?? 0) === 0
+    && ["HP1", "HP2"].includes(event.subject)) return true;
   return event?.event_type === "hp_availability_change" && event.from === "available" && event.to === "blocked"
     && event.reason === "keep_current" && event.severity === "normal" && event.value_a === 0 && event.value_b === 0
     && ["HP1", "HP2"].includes(event.subject) && previous?.event_type === "hp_stop_confirmed"

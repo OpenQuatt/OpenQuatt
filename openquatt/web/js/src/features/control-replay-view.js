@@ -1,5 +1,7 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
 import { groupControlReplayStarts } from "./control-replay-starts.js";
+import { groupControlReplayStops } from "./control-replay-stops.js";
+import { groupControlReplayCycles } from "./control-replay-cycles.js";
 import { getConfirmedCompressorHistory } from "./control-replay-compressor-history.js";
 import { isControlReplayRestAfterStop } from "./control-replay-status.js";
 import { attachHeatingStopSnapshots, getHeatingStopCopy, getHeatingStopReasonMeta, getHeatingStopSupportValues } from "./control-replay-heating-stops.js";
@@ -397,53 +399,53 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   }
 
   function createControlWorkingReasonMetas(definitions) {
-    return Object.freeze(Object.fromEntries(definitions.map(([code, labelKey, summaryKey, ...checkKeys]) => [
+    return Object.freeze(Object.fromEntries(definitions.map(([code, labelKey, summaryKey]) => [
       code,
-      { labelKey, summaryKey, checkKeys },
+      { labelKey, summaryKey },
     ])));
   }
 
   const CONTROL_WORKING_REASON_METAS = createControlWorkingReasonMetas([
-["frequency_cap_below_minimum", "controlReplay.reasonFrequencyCapBelowMinimum", "controlReplay.reasonFrequencyCapBelowMinimumCopy", "controlReplay.reasonFrequencyCapBelowMinimumCheck1", "controlReplay.reasonFrequencyCapBelowMinimumCheck2"],
-["run_extension", "runExtension.extending", "controlReplay.curRunExtensionCopy", "controlReplay.runExtensionCheck1", "controlReplay.runExtensionCheck2"],
-["keep_current", "controlReplay.reasonKeepCurrent", "controlReplay.reasonKeepCurrentCopy", "controlReplay.reasonKeepCurrentCheck1", "controlReplay.reasonKeepCurrentCheck2", "controlReplay.reasonKeepCurrentCheck3"],
-["hold_active", "controlReplay.reasonHoldActive", "controlReplay.reasonHoldActiveCopy", "controlReplay.reasonHoldActiveCheck1", "controlReplay.reasonHoldActiveCheck2", "controlReplay.reasonHoldActiveCheck3"],
-["defrost_hold", "controlReplay.reasonDefrostHold", "controlReplay.reasonDefrostHoldCopy", "controlReplay.reasonDefrostHoldCheck1", "controlReplay.reasonDefrostHoldCheck2", "controlReplay.reasonDefrostHoldCheck3"],
-["better_heat", "controlReplay.reasonBetterHeat", "controlReplay.reasonBetterHeatCopy", "controlReplay.reasonBetterHeatCheck1", "controlReplay.reasonBetterHeatCheck2", "controlReplay.reasonBetterHeatCheck3"],
-["soft_guard", "controlReplay.reasonSoftGuard", "controlReplay.reasonSoftGuardCopy", "controlReplay.reasonSoftGuardCheck1", "controlReplay.reasonSoftGuardCheck2", "controlReplay.reasonSoftGuardCheck3"],
-["less_power", "controlReplay.reasonLessPower", "controlReplay.reasonLessPowerCopy", "controlReplay.reasonLessPowerCheck1", "controlReplay.reasonLessPowerCheck2", "controlReplay.reasonLessPowerCheck3"],
-["cooling_request_cleared", "controlReplay.reasonCoolingCleared", "controlReplay.reasonCoolingClearedCopy", "controlReplay.reasonCoolingClearedCheck1", "controlReplay.reasonCoolingClearedCheck2", "controlReplay.reasonCoolingClearedCheck3"],
-["heating_request_cleared", "controlReplay.reasonHeatingCleared", "controlReplay.reasonHeatingClearedCopy", "controlReplay.reasonHeatingClearedCheck1", "controlReplay.reasonHeatingClearedCheck2", "controlReplay.reasonHeatingClearedCheck3"],
-["no_candidate", "controlReplay.reasonNoCandidate", "controlReplay.reasonNoCandidateCopy", "controlReplay.reasonNoCandidateCheck1", "controlReplay.reasonNoCandidateCheck2", "controlReplay.reasonNoCandidateCheck3"],
-["candidate_in_rest", "controlReplay.reasonCandidateRest", "controlReplay.reasonCandidateRestCopy", "controlReplay.reasonCandidateRestCheck1", "controlReplay.reasonCandidateRestCheck2", "controlReplay.reasonCandidateRestCheck3"],
-["candidate_in_defrost", "controlReplay.reasonCandidateDefrost", "controlReplay.reasonCandidateDefrostCopy", "controlReplay.reasonCandidateDefrostCheck1", "controlReplay.reasonCandidateDefrostCheck2", "controlReplay.reasonCandidateDefrostCheck3"],
-["candidate_unavailable", "controlReplay.reasonCandidateUnavailable", "controlReplay.reasonCandidateUnavailableCopy", "controlReplay.reasonCandidateUnavailableCheck1", "controlReplay.reasonCandidateUnavailableCheck2", "controlReplay.reasonCandidateUnavailableCheck3"],
-["defrost_boost", "controlReplay.reasonDefrostBoost", "controlReplay.reasonDefrostBoostCopy", "controlReplay.reasonDefrostBoostCheck1", "controlReplay.reasonDefrostBoostCheck2", "controlReplay.reasonDefrostBoostCheck3"],
-["boiler_assist", "controlReplay.reasonBoilerAssist", "controlReplay.reasonBoilerAssistCopy", "controlReplay.reasonBoilerAssistCheck1", "controlReplay.reasonBoilerAssistCheck2", "controlReplay.reasonBoilerAssistCheck3"],
-["runtime_lead", "controlReplay.reasonRuntimeLead", "controlReplay.reasonRuntimeLeadCopy", "controlReplay.reasonRuntimeLeadCheck1", "controlReplay.reasonRuntimeLeadCheck2", "controlReplay.reasonRuntimeLeadCheck3"],
-["oil_return_hold", "controlReplay.reasonOilReturnHold", "controlReplay.reasonOilReturnHoldCopy", "controlReplay.reasonOilReturnHoldCheck1", "controlReplay.reasonOilReturnHoldCheck2", "controlReplay.reasonOilReturnHoldCheck3"],
-["single_topology", "controlReplay.reasonSingleTopology", "controlReplay.reasonSingleTopologyCopy", "controlReplay.reasonSingleTopologyCheck1", "controlReplay.reasonSingleTopologyCheck2", "controlReplay.reasonSingleTopologyCheck3"],
-["demand_decreased", "controlReplay.reasonDemandDecreased", "controlReplay.reasonDemandDecreasedCopy", "controlReplay.reasonDemandDecreasedCheck1", "controlReplay.reasonDemandDecreasedCheck2", "controlReplay.reasonDemandDecreasedCheck3"],
-["min_rest_active", "controlReplay.reasonMinRest", "controlReplay.reasonMinRestCopy", "controlReplay.reasonMinRestCheck1", "controlReplay.reasonMinRestCheck2", "controlReplay.reasonMinRestCheck3"],
-["start_stop_rate_high", "controlReplay.reasonStartStopRate", "controlReplay.reasonStartStopRateCopy", "controlReplay.reasonStartStopRateCheck1", "controlReplay.reasonStartStopRateCheck2", "controlReplay.reasonStartStopRateCheck3"],
-["sticky_protection", "controlReplay.reasonSticky", "controlReplay.reasonStickyCopy", "controlReplay.reasonStickyCheck1", "controlReplay.reasonStickyCheck2", "controlReplay.reasonStickyCheck3"],
-["frost_protection", "controlReplay.reasonFrost", "controlReplay.reasonFrostCopy", "controlReplay.reasonFrostCheck1", "controlReplay.reasonFrostCheck2", "controlReplay.reasonFrostCheck3"],
-["flow_preflow", "controlReplay.reasonPreflow", "controlReplay.reasonPreflowCopy", "controlReplay.reasonPreflowCheck1", "controlReplay.reasonPreflowCheck2", "controlReplay.reasonPreflowCheck3"],
-["flow_postflow", "controlReplay.reasonPostflow", "controlReplay.reasonPostflowCopy", "controlReplay.reasonPostflowCheck1", "controlReplay.reasonPostflowCheck2", "controlReplay.reasonPostflowCheck3"],
-["flow_too_low", "controlReplay.reasonFlowLow", "controlReplay.reasonFlowLowCopy", "controlReplay.reasonFlowLowCheck1", "controlReplay.reasonFlowLowCheck2", "controlReplay.reasonFlowLowCheck3"],
-["startup_inhibit", "controlReplay.reasonStartupInhibit", "controlReplay.reasonStartupInhibitCopy", "controlReplay.reasonStartupInhibitCheck1", "controlReplay.reasonStartupInhibitCheck2", "controlReplay.reasonStartupInhibitCheck3"],
-["capacity_cap", "controlReplay.reasonCapacityCap", "controlReplay.reasonCapacityCapCopy", "controlReplay.reasonCapacityCapCheck1", "controlReplay.reasonCapacityCapCheck2", "controlReplay.reasonCapacityCapCheck3"],
-["falling_gap", "controlReplay.reasonFallingGap", "controlReplay.reasonFallingGapCopy", "controlReplay.reasonFallingGapCheck1", "controlReplay.reasonFallingGapCheck2", "controlReplay.reasonFallingGapCheck3"],
-["projected_floor", "controlReplay.reasonProjectedFloor", "controlReplay.reasonProjectedFloorCopy", "controlReplay.reasonProjectedFloorCheck1", "controlReplay.reasonProjectedFloorCheck2", "controlReplay.reasonProjectedFloorCheck3"],
-["simmer", "controlReplay.reasonSimmer", "controlReplay.reasonSimmerCopy", "controlReplay.reasonSimmerCheck1", "controlReplay.reasonSimmerCheck2", "controlReplay.reasonSimmerCheck3"],
-["buffer_stop", "controlReplay.reasonBufferStop", "controlReplay.reasonBufferStopCopy", "controlReplay.reasonBufferStopCheck1", "controlReplay.reasonBufferStopCheck2", "controlReplay.reasonBufferStopCheck3"],
-["dew_stop", "controlReplay.reasonDewStop", "controlReplay.reasonDewStopCopy", "controlReplay.reasonDewStopCheck1", "controlReplay.reasonDewStopCheck2", "controlReplay.reasonDewStopCheck3"],
-["cooling_limiter", "controlReplay.reasonCoolingLimiter", "controlReplay.reasonCoolingLimiterCopy", "controlReplay.reasonCoolingLimiterCheck1", "controlReplay.reasonCoolingLimiterCheck2", "controlReplay.reasonCoolingLimiterCheck3"],
-["sensor_fallback", "controlReplay.reasonSensorFallback", "controlReplay.reasonSensorFallbackCopy", "controlReplay.reasonSensorFallbackCheck1", "controlReplay.reasonSensorFallbackCheck2", "controlReplay.reasonSensorFallbackCheck3"],
-["restart_wait", "controlReplay.reasonRestartWait", "controlReplay.reasonRestartWaitCopy", "controlReplay.reasonRestartWaitCheck1", "controlReplay.reasonRestartWaitCheck2", "controlReplay.reasonRestartWaitCheck3"],
-["level1_hold", "controlReplay.reasonLevel1Hold", "controlReplay.reasonLevel1HoldCopy", "controlReplay.reasonLevel1HoldCheck1", "controlReplay.reasonLevel1HoldCheck2", "controlReplay.reasonLevel1HoldCheck3"],
-["room_cap", "controlReplay.reasonRoomCap", "controlReplay.reasonRoomCapCopy", "controlReplay.reasonRoomCapCheck1", "controlReplay.reasonRoomCapCheck2", "controlReplay.reasonRoomCapCheck3"],
-["oil_return_recovery", "controlReplay.reasonOilRecovery", "controlReplay.reasonOilRecoveryCopy", "controlReplay.reasonOilRecoveryCheck1", "controlReplay.reasonOilRecoveryCheck2", "controlReplay.reasonOilRecoveryCheck3"],
+["frequency_cap_below_minimum", "controlReplay.reasonFrequencyCapBelowMinimum", "controlReplay.reasonFrequencyCapBelowMinimumCopy"],
+["run_extension", "runExtension.extending", "controlReplay.curRunExtensionCopy"],
+["keep_current", "controlReplay.reasonKeepCurrent", "controlReplay.reasonKeepCurrentCopy"],
+["hold_active", "controlReplay.reasonHoldActive", "controlReplay.reasonHoldActiveCopy"],
+["defrost_hold", "controlReplay.reasonDefrostHold", "controlReplay.reasonDefrostHoldCopy"],
+["better_heat", "controlReplay.reasonBetterHeat", "controlReplay.reasonBetterHeatCopy"],
+["soft_guard", "controlReplay.reasonSoftGuard", "controlReplay.reasonSoftGuardCopy"],
+["less_power", "controlReplay.reasonLessPower", "controlReplay.reasonLessPowerCopy"],
+["cooling_request_cleared", "controlReplay.reasonCoolingCleared", "controlReplay.reasonCoolingClearedCopy"],
+["heating_request_cleared", "controlReplay.reasonHeatingCleared", "controlReplay.reasonHeatingClearedCopy"],
+["no_candidate", "controlReplay.reasonNoCandidate", "controlReplay.reasonNoCandidateCopy"],
+["candidate_in_rest", "controlReplay.reasonCandidateRest", "controlReplay.reasonCandidateRestCopy"],
+["candidate_in_defrost", "controlReplay.reasonCandidateDefrost", "controlReplay.reasonCandidateDefrostCopy"],
+["candidate_unavailable", "controlReplay.reasonCandidateUnavailable", "controlReplay.reasonCandidateUnavailableCopy"],
+["defrost_boost", "controlReplay.reasonDefrostBoost", "controlReplay.reasonDefrostBoostCopy"],
+["boiler_assist", "controlReplay.reasonBoilerAssist", "controlReplay.reasonBoilerAssistCopy"],
+["runtime_lead", "controlReplay.reasonRuntimeLead", "controlReplay.reasonRuntimeLeadCopy"],
+["oil_return_hold", "controlReplay.reasonOilReturnHold", "controlReplay.reasonOilReturnHoldCopy"],
+["single_topology", "controlReplay.reasonSingleTopology", "controlReplay.reasonSingleTopologyCopy"],
+["demand_decreased", "controlReplay.reasonDemandDecreased", "controlReplay.reasonDemandDecreasedCopy"],
+["min_rest_active", "controlReplay.reasonMinRest", "controlReplay.reasonMinRestCopy"],
+["start_stop_rate_high", "controlReplay.reasonStartStopRate", "controlReplay.reasonStartStopRateCopy"],
+["sticky_protection", "controlReplay.reasonSticky", "controlReplay.reasonStickyCopy"],
+["frost_protection", "controlReplay.reasonFrost", "controlReplay.reasonFrostCopy"],
+["flow_preflow", "controlReplay.reasonPreflow", "controlReplay.reasonPreflowCopy"],
+["flow_postflow", "controlReplay.reasonPostflow", "controlReplay.reasonPostflowCopy"],
+["flow_too_low", "controlReplay.reasonFlowLow", "controlReplay.reasonFlowLowCopy"],
+["startup_inhibit", "controlReplay.reasonStartupInhibit", "controlReplay.reasonStartupInhibitCopy"],
+["capacity_cap", "controlReplay.reasonCapacityCap", "controlReplay.reasonCapacityCapCopy"],
+["falling_gap", "controlReplay.reasonFallingGap", "controlReplay.reasonFallingGapCopy"],
+["projected_floor", "controlReplay.reasonProjectedFloor", "controlReplay.reasonProjectedFloorCopy"],
+["simmer", "controlReplay.reasonSimmer", "controlReplay.reasonSimmerCopy"],
+["buffer_stop", "controlReplay.reasonBufferStop", "controlReplay.reasonBufferStopCopy"],
+["dew_stop", "controlReplay.reasonDewStop", "controlReplay.reasonDewStopCopy"],
+["cooling_limiter", "controlReplay.reasonCoolingLimiter", "controlReplay.reasonCoolingLimiterCopy"],
+["sensor_fallback", "controlReplay.reasonSensorFallback", "controlReplay.reasonSensorFallbackCopy"],
+["restart_wait", "controlReplay.reasonRestartWait", "controlReplay.reasonRestartWaitCopy"],
+["level1_hold", "controlReplay.reasonLevel1Hold", "controlReplay.reasonLevel1HoldCopy"],
+["room_cap", "controlReplay.reasonRoomCap", "controlReplay.reasonRoomCapCopy"],
+["oil_return_recovery", "controlReplay.reasonOilRecovery", "controlReplay.reasonOilRecoveryCopy"],
   ]);
 
   const CONTROL_WORKING_REASON_FALLBACK = Object.freeze({
@@ -458,7 +460,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       return {
         label: t(meta.labelKey),
         summary: t(meta.summaryKey),
-        checks: (meta.checkKeys || []).map((key) => t(key)),
+        checks: [],
       };
     }
     return meta;
@@ -532,6 +534,10 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const transitionLabel = String(item?.modeTransitionLabel || "").trim();
     if (transitionLabel) {
       return transitionLabel;
+    }
+    const event = item?.rawDecisionEvent;
+    if (event?.event_type === "control_mode_change" && Number.isInteger(event.value_a) && Number.isInteger(event.value_b)) {
+      return `CM${event.value_a} → CM${event.value_b}`;
     }
     const modeLabel = String(item?.modeLabel || "").trim();
     return modeLabel.includes("→") ? modeLabel : "";
@@ -1292,9 +1298,9 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     }
     const fallback = {
       title: t("controlReplay.evFallbackTitle"),
-      summary: t("controlReplay.evFallbackCopy"),
+      summary: ["unknown", "keep_current"].includes(reasonCode) ? t("controlReplay.causeMissing") : reason.summary,
       detail: reason.summary,
-      next: t("controlReplay.evFallbackNext"),
+      next: "",
     };
     switch (eventType) {
       case "source_start":
@@ -1421,9 +1427,9 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         title: reasonCode === "defrost_hold" ? t("controlReplay.evHoldDefrostTitle") : t("controlReplay.evHoldDelayedTitle"),
         summary: reasonCode === "defrost_hold"
           ? t("controlReplay.evHoldDefrostCopy")
-          : t("controlReplay.evHoldWaitCopy"),
+          : reason.summary,
         detail: reason.summary,
-        next: t("controlReplay.evHoldNext"),
+        next: "",
       };
       case "decision_blocked":
         return {
@@ -1791,7 +1797,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       reasonLabel: copy.reasonLabel || "",
       reasonSummary: copy.reasonSummary || "",
       reasonCode,
-      modeLabel: Number(event?.cm) > 0 ? `CM${Number(event.cm)}` : "CM?",
+      modeLabel: Number.isInteger(event?.cm) && event.cm >= 0 ? `CM${event.cm}` : "CM?",
       modeTransitionLabel: event?._oq_mode_transition || "",
       duration,
       graphStart: Math.max(0, Math.min(1440, graphStart)),
@@ -2272,12 +2278,16 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       });
   }
 
+  function decisionRecordKey(event) {
+    return JSON.stringify(event, Object.keys(event).filter(key => !key.startsWith("_oq")).sort());
+  }
+
   function buildControlWorkingStartItems(items) {
     const byEvent = new Map(items.filter(item => item.rawDecisionEvent).map(item => [item.rawDecisionEvent, item]));
     // Preserve hidden context/boot records for sequence-gap detection.
     const logged = getDecisionLogEvents();
-    const mapped = new Map([...byEvent.keys()].map(event => [`${event.seq}/${event.epoch_s}/${event.uptime_s}`, event]));
-    const events = logged.length ? logged.map(event => mapped.get(`${event.seq}/${event.epoch_s}/${event.uptime_s}`) || event)
+    const mapped = new Map([...byEvent.keys()].map(event => [decisionRecordKey(event), event]));
+    const events = logged.length ? logged.map(event => mapped.get(decisionRecordKey(event)) || event)
       : [...byEvent.keys()];
     const consumed = new Set();
     const grouped = groupControlReplayStarts(events, event => getDecisionEventSortValue(event) * 1000).map(attempt => {
@@ -2308,6 +2318,71 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       .sort((a, b) => getControlWorkingItemMinuteRange(b).start - getControlWorkingItemMinuteRange(a).start);
   }
 
+  function buildControlWorkingTimelineItems(items) {
+    const byEvent = new Map(items.filter(item => item.rawDecisionEvent).map(item => [item.rawDecisionEvent, item]));
+    const mapped = new Map([...byEvent.keys()].map(event => [decisionRecordKey(event), event]));
+    const logged = getDecisionLogEvents();
+    const events = logged.length ? logged.map(event => mapped.get(decisionRecordKey(event)) || event)
+      : [...byEvent.keys()];
+    // Uptime alone cannot position an archived record in the current boot.
+    const timeOf = event => Number.isFinite(event.epoch_s) && event.epoch_s > 0 ? event.epoch_s * 1000 : Number.NaN;
+    const consumed = new Set();
+    const groups = [];
+    for (const group of [...groupControlReplayStops(events, timeOf), ...groupControlReplayCycles(events, timeOf)]) {
+      const steps = group.events.map(event => byEvent.get(event)).filter(Boolean);
+      const command = group.command && byEvent.get(group.command);
+      if (!steps.length || (group.command && !command)) continue;
+      const first = steps[0];
+      const last = steps[steps.length - 1];
+      const complete = group.kind ? steps.some(step => step.rawDecisionEvent === group.startEvent)
+        && steps.some(step => step.rawDecisionEvent === group.endEvent) && group.complete : false;
+      const confirmed = steps.some(step => step.realEventType === "hp_stop_confirmed");
+      const copy = group.kind === "oilReturn" ? t("controlReplay.oilReturnWhy") : t("controlReplay.evDefrostSelf");
+      steps.forEach(step => consumed.add(step));
+      groups.push({
+        ...(command || first),
+        id: `period-${(command || first).id}`,
+        kind: "span",
+        title: group.kind ? t(group.kind === "oilReturn" ? "controlReplay.oilReturnPeriod" : "controlReplay.defrostPeriod", { subject: group.subject })
+          : t("controlReplay.stopSequenceTitle", { subject: group.subject }),
+        summary: group.kind ? t(complete ? "controlReplay.cycleComplete" : group.incompleteReason === "sequence_conflict"
+          ? "controlReplay.cycleConflict" : group.startEvent && steps.some(step => step.rawDecisionEvent === group.startEvent)
+          ? "controlReplay.cycleMissingEnd" : "controlReplay.cycleMissingStart")
+          : `${command.summary} ${t(confirmed ? "controlReplay.stopConfirmed" : group.failed && byEvent.has(group.failure)
+            ? "controlReplay.stopFailed" : "controlReplay.stopPending")}`,
+        snapshotSummary: "",
+        detail: group.kind ? copy : command.detail,
+        time: first.time === last.time ? first.time : `${first.time} – ${last.time}`,
+        graphStart: last.graphStart,
+        duration: complete ? formatDecisionDuration(group.durationS) : "",
+        severity: group.failed && byEvent.has(group.failure) ? byEvent.get(group.failure).severity : (command || first).severity,
+        periodSteps: steps,
+        cycle: group.kind || "",
+        timelineHidden: false,
+      });
+    }
+    return buildControlWorkingStartItems([...items.filter(item => !consumed.has(item)), ...groups]);
+  }
+
+  function renderControlWorkingPeriodDetails(item) {
+    const stages = item.periodSteps.filter(step => !["control_mode_change", "topology_change"].includes(step.realEventType));
+    return `<aside class="oq-working-detail">
+      <div><span class="oq-working-eyebrow">${t("controlReplay.detailSelected")}</span>
+        <h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.summary)}</p></div>
+      ${item.cycle ? `<p>${escapeHtml(item.detail)}</p>` : ""}
+      <ol class="oq-working-start-steps" aria-label="${t("controlReplay.sequenceSteps")}">
+        ${stages.map(step => `<li><time>${escapeHtml(step.time)}</time><div><strong>${escapeHtml(step.title)}</strong><span>${escapeHtml(step.snapshotSummary || step.summary)}</span>
+          ${step.heatingStop ? `<span>${escapeHtml(step.detail)}</span>` : ""}
+          ${step.realEventType === "hp_availability_change" && step.rawDecisionEvent.to === "blocked" ? `<span>${escapeHtml(step.next)}</span>` : ""}</div></li>`).join("")}
+      </ol>
+      <details class="oq-working-support" data-replay-support-item="${escapeHtml(item.id)}"${state.controlReplaySupportDetailsItemId === item.id ? " open" : ""}>
+        <summary data-oq-action="toggle-control-replay-support-details">${t("controlReplay.detailSupport")}</summary>
+        ${item.periodSteps.map(step => `<p>${escapeHtml(step.time)} · ${escapeHtml(step.rawDecisionEvent.event_type)} · ${escapeHtml(getControlWorkingModeMetaLabel(step) || step.modeLabel)} · ${escapeHtml(step.rawDecisionEvent.reason)}${step.duration ? ` · ${escapeHtml(step.duration)}` : ""}
+          ${step.heatingStop ? getHeatingStopSupportValues(step.rawDecisionEvent).map(value => `<br>${escapeHtml(value)}`).join("") : ""}</p>`).join("")}
+      </details>
+    </aside>`;
+  }
+
   function renderControlWorkingStartDetails(item) {
     const stages = item.startSteps.filter(step => !["control_mode_change", "topology_change"].includes(step.realEventType));
     return `<aside class="oq-working-detail">
@@ -2331,7 +2406,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   function getControlWorkingSelectedItem(items) {
     const visibleItems = items.filter((item) => !item.timelineHidden);
     const selected = visibleItems.find((item) => item.id === state.controlReplaySelectedEpisode
-      || item.startSteps?.some(step => step.id === state.controlReplaySelectedEpisode));
+      || (item.startSteps || item.periodSteps)?.some(step => step.id === state.controlReplaySelectedEpisode));
     if (selected) {
       return selected;
     }
@@ -2777,7 +2852,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const status = getControlWorkingSeverityMeta(item.severity);
     const selected = selectedItem && selectedItem.id === item.id;
     const kindLabel = getControlWorkingKindLabel(item.kind);
-    const modeMetaLabel = getControlWorkingModeMetaLabel(item);
     return `
       <button
         class="oq-working-entry oq-working-entry--${escapeHtml(item.kind)} oq-working-entry--${escapeHtml(status.tone)}${selected ? " is-active" : ""}"
@@ -2793,14 +2867,14 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         <span class="oq-working-entry-body">
           <span class="oq-working-entry-title">
             <strong>${escapeHtml(item.title)}</strong>
-            ${item.heatingStop ? "" : renderControlWorkingModeBadge(item)}
+
             ${item.count ? `<em>${escapeHtml(item.count)}</em>` : ""}
           </span>
           <span class="oq-working-entry-summary">${escapeHtml(item.snapshotSummary || item.summary)}</span>
           <span class="oq-working-entry-meta">
             <span>${escapeHtml(item.source)}</span>
-            ${!item.heatingStop && modeMetaLabel ? `<span class="oq-working-entry-meta-mode">${escapeHtml(modeMetaLabel)}</span>` : ""}
-            ${item.heatingStop || item.startSteps ? "" : `<span>${escapeHtml(item.reasonLabel || getControlWorkingReasonLabel(item.reasonCode))}</span>`}
+
+            ${item.heatingStop || item.startSteps || item.periodSteps || item.realEventType === "control_mode_change" ? "" : `<span>${escapeHtml(item.reasonLabel || getControlWorkingReasonLabel(item.reasonCode))}</span>`}
             ${!item.heatingStop && item.duration ? `<span>${escapeHtml(t("controlReplay.entryDuration", { value: item.duration }))}</span>` : ""}
           </span>
         </span>
@@ -2814,10 +2888,9 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       return "";
     }
     if (item.startSteps) return renderControlWorkingStartDetails(item);
+    if (item.periodSteps) return renderControlWorkingPeriodDetails(item);
     const status = getControlWorkingSeverityMeta(item.severity);
     const reason = getControlWorkingReasonMeta(item.reasonCode);
-    const reasonLabel = item.reasonLabel || reason.label;
-    const reasonSummary = item.reasonSummary || reason.summary;
     const optimizer = getControlWorkingOptimizerModel(item);
     const modeMetaLabel = getControlWorkingModeMetaLabel(item);
     const checks = Array.isArray(item.checks) ? item.checks : reason.checks;
@@ -2826,39 +2899,23 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       <aside class="oq-working-detail oq-working-detail--${escapeHtml(status.tone)}">
         <div>
           <span class="oq-working-eyebrow">${t("controlReplay.detailSelected")}</span>
-          <h3>${escapeHtml(item.title)}${item.heatingStop ? "" : renderControlWorkingModeBadge(item)}</h3>
+          <h3>${escapeHtml(item.title)}</h3>
           <p>${escapeHtml(item.summary)}</p>
         </div>
         ${item.heatingStop && item.snapshotSummary ? `<div class="oq-working-detail-block">
           <strong>${t("heatingStops.atStop")}</strong>
           <span>${escapeHtml(item.snapshotSummary)}</span>
         </div>` : ""}
-        ${item.heatingStop ? "" : `<div class="oq-working-detail-block">
-          <strong>${t("controlReplay.detailWhy")}</strong>
-          <span>${escapeHtml(item.detail)}</span>
-        </div>
-        <div class="oq-working-detail-block">
-          <strong>${t("controlReplay.detailNormal")}</strong>
-          <span>${escapeHtml(reasonSummary)}</span>
-        </div>`}
-        <div class="oq-working-detail-block">
-          <strong>${t("controlReplay.detailNext")}</strong>
-          <span>${escapeHtml(item.next)}</span>
-        </div>
-        ${item.heatingStop ? `<p>${escapeHtml(item.detail)}</p>` : ""}
-        ${renderControlWorkingOptimizer(optimizer)}
-        ${checks.length ? `
-          <div class="oq-working-checks" aria-label="${t("controlReplay.detailFactors")}">
-            ${checks.map((check) => `<span>${renderOqIcon("shield", "oq-working-reason-icon")} ${escapeHtml(check)}</span>`).join("")}
-          </div>
-        ` : ""}
-        ${item.heatingStop ? "" : `<div class="oq-working-pill-row">
-          ${renderControlWorkingPill(status.label, status.tone, "shield")}
-          ${renderControlWorkingPill(reasonLabel, "info", "target")}
-          ${renderControlWorkingPill(item.source, "context")}
-        </div>`}
+        ${item.detail && item.detail !== item.summary ? `<p>${escapeHtml(item.detail)}</p>` : ""}
+        ${item.reasonSummary && item.reasonSummary !== item.detail && (item.severity !== "normal" || Number(item.rawDecisionEvent?.value_a) === 46)
+          ? `<p>${escapeHtml(item.reasonSummary)}</p>` : ""}
+        ${item.next && (item.heatingStop || item.severity !== "normal" || item.rawDecisionEvent?.to === "blocked") ? `<div class="oq-working-detail-block">
+          <strong>${t("controlReplay.detailNext")}</strong><span>${escapeHtml(item.next)}</span>
+        </div>` : ""}
         <details class="oq-working-support" data-replay-support-item="${escapeHtml(item.id)}"${state.controlReplaySupportDetailsItemId === item.id ? " open" : ""}>
           <summary data-oq-action="toggle-control-replay-support-details">${t("controlReplay.detailSupport")}</summary>
+          ${renderControlWorkingOptimizer(optimizer)}
+          ${checks.length ? `<p>${checks.map(escapeHtml).join(" · ")}</p>` : ""}
           ${supportValues.map((value) => `<p>${escapeHtml(value)}</p>`).join("")}
           <dl>
             <div><dt>${t("controlReplay.detailRecord")}</dt><dd>${escapeHtml(getControlWorkingKindLabel(item.kind))}</dd></div>
@@ -3042,9 +3099,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
             <span class="oq-working-eyebrow">${t("controlReplay.statusWhy")}</span>
             <h3>${escapeHtml(reason.label)}</h3>
             <p>${escapeHtml(reason.summary)}</p>
-            <div class="oq-working-reason-list">
-              ${reason.checks.map((check) => `<span>${renderOqIcon("target", "oq-working-reason-icon")} ${escapeHtml(check)}</span>`).join("")}
-            </div>
           </section>
           ${optimizer ? `
             <section class="oq-working-optimizer-panel">
@@ -3341,7 +3395,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   function renderControlWorkingPanel(current, signature = getControlWorkingSignature(current)) {
     const selectedTab = getControlWorkingSelectedTab();
     const rawItems = selectedTab === "status" ? [] : getControlWorkingDecisionLogItems();
-    const items = selectedTab === "timeline" ? buildControlWorkingStartItems(rawItems) : rawItems;
+    const items = selectedTab === "timeline" ? buildControlWorkingTimelineItems(rawItems) : rawItems;
     const selectedItem = getControlWorkingSelectedItem(items);
     const visibleItem = selectedTab === "graphs"
       ? getControlWorkingItemForMinute(items, getControlWorkingGraphMinute())

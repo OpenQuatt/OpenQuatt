@@ -38,7 +38,7 @@ test("oil-return start and completion are normal operation throughout the NL/EN 
         assert.match(item.detail, locale === "nl" ? /smeerolie.*koudemiddel.*terug naar de compressor/ : /lubricating oil.*refrigerant.*back to the compressor/);
         const html = replay.renderControlWorkingTimelineItem(item, null) + replay.renderControlWorkingDetails(item);
         assert.doesNotMatch(html, locale === "nl" ? /storing|hersteld|oorzaak|actief actief/i : /\bfault\b|recovered|cause|active active/i);
-        assert.match(html, locale === "nl" ? /normaal warmtepompbedrijf/ : /normal heat pump operation/);
+        assert.match(html, locale === "nl" ? /Normaal/ : /Normal/);
         if (type === "incident_clear") assert.ok(item.duration);
       }
     }
