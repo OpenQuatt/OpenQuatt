@@ -131,11 +131,13 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
     next.cycle_armed = true;
   }
 
-  // Fail closed on stale/invalid inputs or when heating is no longer permitted.
-  // This also clears a stale warm-restart intent.
+  // Drop extension rights on input loss, but retain an existing comfort block
+  // so recovered model demand cannot bypass the restart temperature.
   if (!in.inputs_valid || !in.heating_allowed) {
-    next.phase = Phase::INACTIVE;
+    const bool comfort_blocked = state.phase == Phase::COMFORT_STOP || state.phase == Phase::WAIT_WARM_RESTART;
+    next.phase = comfort_blocked ? Phase::WAIT_WARM_RESTART : Phase::INACTIVE;
     next.cycle_armed = false;
+    out.force_comfort_stop = comfort_blocked;
     out.next = next;
     return out;
   }
@@ -148,16 +150,19 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
 
   switch (state.phase) {
     case Phase::INACTIVE: {
+      // Check before admitting a normal model start, not only after the HP runs.
+      if (room_at_stop) {
+        next.phase = in.actual_heating_active ? Phase::COMFORT_STOP : Phase::WAIT_WARM_RESTART;
+        if (setpoint_drop) next.cycle_armed = false;
+        out.force_comfort_stop = true;
+        break;
+      }
       if (!next.cycle_armed || !in.cycle_active) {
         next.phase = Phase::INACTIVE;
         if (!in.cycle_active) next.cycle_armed = false;
         break;
       }
-      if (room_at_stop) {
-        next.phase = Phase::COMFORT_STOP;
-        if (setpoint_drop) next.cycle_armed = false;
-        out.force_comfort_stop = true;
-      } else if (floor_candidate && in.base_requested_w < in.minimum_viable_w && room_below_stop) {
+      if (floor_candidate && in.base_requested_w < in.minimum_viable_w && room_below_stop) {
         next.phase = Phase::EXTENDING;
         out.floor_active = true;
         out.floor_w = in.minimum_viable_w;
@@ -229,8 +234,6 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
       if (setpoint_drop) next.cycle_armed = false;
       if (in.actual_heating_active) {
         next.phase = Phase::COMFORT_STOP;
-      } else if (!next.cycle_armed) {
-        next.phase = Phase::INACTIVE;
       } else {
         next.phase = Phase::WAIT_WARM_RESTART;
       }
@@ -238,9 +241,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
     }
     case Phase::WAIT_WARM_RESTART: {
       if (setpoint_drop) {
-        next.phase = Phase::INACTIVE;
         next.cycle_armed = false;
-        break;
       }
       // Room pushed back above the stop while the compressor runs: re-latch
       // the comfort stop instead of waiting.
@@ -264,6 +265,12 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
         break;
       }
       if (room_ready_restart && in.base_requested_w > 0.0f) {
+        // Setback/input loss cancelled the extra restart right. Release only
+        // normal house demand once the room reaches the new restart threshold.
+        if (!next.cycle_armed) {
+          next.phase = Phase::INACTIVE;
+          break;
+        }
         next.phase = Phase::WARM_RESTART;
         out.warm_restart_intent = true;
         // Temporarily request at least Pmin so the existing low-load logic can
@@ -284,8 +291,9 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
     }
     case Phase::WARM_RESTART: {
       if (setpoint_drop) {
-        next.phase = Phase::INACTIVE;
+        next.phase = Phase::WAIT_WARM_RESTART;
         next.cycle_armed = false;
+        out.force_comfort_stop = !room_ready_restart;
         break;
       }
       // Run confirmed: hand back to normal demand plus optional floor. Once the

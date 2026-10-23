@@ -276,7 +276,8 @@ void test_stale_inputs_fail_closed() {
   State wait;
   wait.phase = Phase::WAIT_WARM_RESTART;
   wait.cycle_armed = true;
-  assert(evaluate(in, tuning(), wait).next.phase == Phase::INACTIVE);
+  const auto held = evaluate(in, tuning(), wait);
+  assert(held.next.phase == Phase::WAIT_WARM_RESTART && held.force_comfort_stop);
 }
 
 void test_setpoint_drop_cancels_restart() {
@@ -294,6 +295,7 @@ void test_setpoint_drop_cancels_restart() {
 }
 
 void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
+  const Tuning settings{0.4f, 0.2f, 0.0f};
   State extending;
   extending.phase = Phase::EXTENDING;
   extending.cycle_armed = true;
@@ -302,16 +304,90 @@ void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
   lowered.setpoint_c = 19.5f;
   lowered.room_c = 20.4f;
   lowered.base_requested_w = 700.0f;
-  const auto stopping = evaluate(lowered, tuning(), extending);
+  const auto stopping = evaluate(lowered, settings, extending);
   assert(stopping.next.phase == Phase::COMFORT_STOP);
   assert(stopping.force_comfort_stop);
   assert(!stopping.next.cycle_armed);
 
   lowered.actual_heating_active = false;
   lowered.cycle_active = false;
-  const auto stopped = evaluate(lowered, tuning(), stopping.next);
-  assert(stopped.next.phase == Phase::INACTIVE);
+  const auto stopped = evaluate(lowered, settings, stopping.next);
+  assert(stopped.next.phase == Phase::WAIT_WARM_RESTART);
   assert(!stopped.warm_restart_intent);
+
+  // Night setback must keep blocking ordinary model demand after the stop,
+  // even when that demand later becomes large enough to start an HP.
+  State state = stopped.next;
+  lowered.base_requested_w = 2171.0f;
+  for (const float room_c : {20.4f, 20.0f, 19.9f, 19.85f, 19.71f}) {
+    lowered.room_c = room_c;
+    const auto held = evaluate(lowered, settings, state);
+    assert(held.next.phase == Phase::WAIT_WARM_RESTART);
+    assert(held.force_comfort_stop);
+    assert(!held.next.cycle_armed && !held.floor_active && !held.warm_restart_intent);
+    state = held.next;
+  }
+  // The normal request may return at the new restart threshold, but setback
+  // must not manufacture a Pmin floor or an extra warm-restart intent.
+  const auto thresholds = evaluate(lowered, settings, state);
+  lowered.room_c = thresholds.warm_restart_c;
+  lowered.base_requested_w = 700.0f;
+  const auto released = evaluate(lowered, settings, state);
+  assert(!released.force_comfort_stop && !released.floor_active && !released.warm_restart_intent);
+  assert(!released.next.cycle_armed);
+  assert(!evaluate(lowered, settings, released.next).force_comfort_stop);
+}
+
+void test_setpoint_drop_during_pending_restart_keeps_comfort_block() {
+  Input in = base_input();
+  in.cycle_active = in.actual_heating_active = false;
+  in.room_c = 20.4f;
+  in.setpoint_c = 19.5f;
+  in.base_requested_w = 2500.0f;
+  for (const auto phase : {Phase::WAIT_WARM_RESTART, Phase::WARM_RESTART}) {
+    const State state{phase, 20.5f, true};
+    const auto lowered = evaluate(in, tuning(), state);
+    assert(lowered.next.phase == Phase::WAIT_WARM_RESTART && lowered.force_comfort_stop);
+    assert(!lowered.next.cycle_armed && !lowered.warm_restart_intent && !lowered.floor_active);
+    const auto held = evaluate(in, tuning(), lowered.next);
+    assert(held.force_comfort_stop && !held.warm_restart_intent && !held.floor_active);
+  }
+}
+
+void test_comfort_block_survives_input_recovery() {
+  Input in = base_input();
+  in.cycle_active = in.actual_heating_active = false;
+  in.room_c = 20.9f;
+  in.base_requested_w = 2500.0f;
+  for (const auto phase : {Phase::COMFORT_STOP, Phase::WAIT_WARM_RESTART}) {
+    for (const bool input_loss : {false, true}) {
+      in.inputs_valid = !input_loss;
+      in.heating_allowed = input_loss;
+      const auto lost = evaluate(in, tuning(), {phase, in.setpoint_c, true});
+      assert(lost.force_comfort_stop && !lost.next.cycle_armed);
+      in.inputs_valid = in.heating_allowed = true;
+      const auto recovered = evaluate(in, tuning(), lost.next);
+      assert(recovered.force_comfort_stop && !recovered.floor_active && !recovered.warm_restart_intent);
+      in.room_c = recovered.warm_restart_c;
+      const auto released = evaluate(in, tuning(), recovered.next);
+      assert(!released.force_comfort_stop && !released.floor_active && !released.warm_restart_intent);
+      in.room_c = 20.9f;
+    }
+  }
+}
+
+void test_idle_model_start_at_comfort_stop_is_blocked() {
+  Input in = base_input();
+  in.cycle_active = in.actual_heating_active = false;
+  in.room_c = 21.0f;
+  in.base_requested_w = 2500.0f;
+  const auto stopped = evaluate(in, tuning(), {});
+  assert(stopped.force_comfort_stop && stopped.next.phase == Phase::WAIT_WARM_RESTART);
+  in.room_c = 20.9f;
+  assert(evaluate(in, tuning(), stopped.next).force_comfort_stop);
+  in.enabled = false;
+  const auto disabled = evaluate(in, tuning(), stopped.next);
+  assert(!disabled.force_comfort_stop && disabled.next.phase == Phase::INACTIVE);
 }
 
 void test_water_limit_blocks_floor() {
@@ -503,6 +579,9 @@ int main() {
   test_stale_inputs_fail_closed();
   test_setpoint_drop_cancels_restart();
   test_setpoint_drop_comfort_stop_does_not_arm_restart();
+  test_setpoint_drop_during_pending_restart_keeps_comfort_block();
+  test_comfort_block_survives_input_recovery();
+  test_idle_model_start_at_comfort_stop_is_blocked();
   test_water_limit_blocks_floor();
   test_missing_pmin_no_floor();
   test_house_deficit_ignores_comfort_floor();
