@@ -8,6 +8,7 @@ export function createHistoryState(trendWindowHours) {
     controlReplayCustomEnd: "",
     controlReplayCustomPeriodError: "",
     controlReplaySelectedEpisode: "",
+    controlReplayTimelineLimit: 80,
     controlReplaySupportDetailsItemId: "",
     controlReplayGraphMinute: 1000,
     controlReplayScrubbing: false,

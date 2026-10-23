@@ -46,11 +46,45 @@ De web-app heeft zes hoofdschermen.
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
 
-In de `Beslislog` staat de nieuwste melding bovenaan. Tijdstippen van gebeurtenissen
-tonen ook seconden: één start kan voorbereiding, een startopdracht en een aparte
-compressorbevestiging bevatten. Een startopdracht betekent nog niet dat de compressor
-draait. De pompkeuze bij een oude gebeurtenis volgt het opgeslagen event, niet de
-actuele draaiurenstand.
+In de `Beslislog` staat de nieuwste melding bovenaan, met seconden in het tijdstip.
+Een startverloop bundelt de gelogde voorbereiding, startopdracht en
+compressorbevestiging. Klik erop om de stappen te zien; onder de technische details
+blijven alle meldingen en CM-overgangen beschikbaar. Ontbrekende voorbereiding of
+bevestiging wordt niet ingevuld. Start- en stopverlopen verschijnen beide als
+periode, met begin- en eindtijd op afzonderlijke regels. Ook een stopverloop bundelt de stopopdracht,
+compressorbevestiging, bijbehorende naloop en bewezen herstartpauze. De stappen
+behouden hun werkelijke volgorde: naloop kan al vóór de stopopdracht beginnen.
+Bij onduidelijke Duo-toewijzing blijven meldingen apart staan. Storingen en
+vereiste resets blijven zelfstandige meldingen met hun oorspronkelijke ernst.
+Routinematige CM-overgangen staan bij de technische details; een aparte rolkeuze
+krijgt gewone taal. Het detailpaneel toont de concrete uitleg en alleen een
+vervolgstap als die iets toevoegt, zonder vaste herhaling van het label `Normaal`.
+
+De pompkeuze en koelwaarden bij een oude gebeurtenis volgen het opgeslagen event,
+niet de actuele draaiuren of live koelwaarden. Niet opgeslagen waarden blijven
+onbekend. De HP-balken in de grafiek gebruiken compressorbevestigingen; opdrachten
+en topologiekeuzes bewijzen geen draaien. Bij oudere of onvolledige logs kunnen
+bevestigde periodes daarom ontbreken. Open periodes lopen tot de logsnapshot.
+Na 80 tijdlijnmeldingen toont `Toon meer` de volgende meldingen uit de geladen periode.
+Olie-retour en ontdooien verschijnen als één periode met de vastgelegde begin-
+en eindtijd. De afzonderlijke stappen blijven zichtbaar in het detailpaneel.
+Ontbreekt een grens of is de geschiedenis onderbroken, dan wordt geen complete
+cyclus of actuele activiteit verondersteld.
+De uitleg bij olie-retour beschrijft hoe meegevoerde smeerolie terugkomt bij de compressor.
+Ook ontdooien krijgt uitleg over het doel van de cyclus. Voorverwarming eindigt met
+`afgerond`; druk- en buitentemperatuurbegrenzingen eindigen met `opgeheven`.
+Zolang voorverwarming of een vermogensbegrenzing actief is, blijft de tijdelijke
+beperking zichtbaar. Een losse waterpompdiagnose bewijst geen pompdefect.
+Een afgelopen melding betekent alleen dat deze melding niet meer actief is:
+overige startvoorwaarden en eventuele vereiste resets blijven gelden.
+Volgt een startblokkade direct op een bevestigde compressorstop zonder incidenten,
+dan heet deze `wacht op minimale uit-tijd`. De uitleg beschrijft de herstartpauze;
+een niet opgeslagen resterende tijd wordt niet uit actuele instellingen ingevuld.
+De herstartpauze krijgt één korte zin; aanvullende uitleg staat onder technische details.
+Nieuwe firmware registreert de minimale uit-tijd als oorzaak met de op dat moment
+resterende seconden. Dat is een historische waarde, geen afteller.
+Bij andere blokkades toont de beslislog de gelogde melding of vermeldt zij dat de
+specifieke oorzaak ontbreekt.
 
 ## Warmtecapaciteit op het overzicht
 

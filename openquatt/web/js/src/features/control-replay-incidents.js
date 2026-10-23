@@ -1,4 +1,5 @@
 import { getIncidentDisplayLabel } from "../core/incident-monitoring.js";
+import { getControlReplayOperatingStatus, isControlReplayPowerCycleClear, isControlReplayRestAfterStop } from "./control-replay-status.js";
 import { t } from "../i18n/index.js";
 
 const REASONS = Object.fromEntries([
@@ -38,6 +39,14 @@ const AVAILABILITY = {
   suspect: ["controlReplay.availSuspect", "controlReplay.availSuspectCopy"],
 };
 const DEFAULT_META = { labelKey: "controlReplay.defaultLabel", summaryKey: "controlReplay.defaultSummary", checks: [] };
+const OPERATING_COPY = {
+  oilReturn: ["controlReplay.oilReturnLabel", "controlReplay.oilReturnWhy", "controlReplay.oilReturnNormalCopy"],
+  preheat: ["controlReplay.reasonHpPreheat", "controlReplay.preheatWhy", "controlReplay.preheatNormal"],
+  highPressureLimit: ["controlReplay.highPressureLimit", "controlReplay.highPressureWhy", "controlReplay.capacityLimitNormal"],
+  lowPressureLimit: ["controlReplay.lowPressureLimit", "controlReplay.lowPressureWhy", "controlReplay.capacityLimitNormal"],
+  ambientLimit: ["controlReplay.ambientLimit", "controlReplay.ambientLimitWhy", "controlReplay.capacityLimitNormal"],
+  pumpDiagnostic: ["controlReplay.pumpDiagnostic", "controlReplay.pumpDiagnosticWhy", "controlReplay.pumpDiagnosticNormal"],
+};
 const NEXT_KEY = "controlReplay.nextAuto";
 const mode = (value) => {
   const number = Number(value);
@@ -75,6 +84,44 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
   const resolvedSubject = subject ?? t("controlReplay.defaultSubject");
   const type = String(event?.event_type || "");
   if (!TYPES.has(type)) return null;
+  const operatingStatus = getControlReplayOperatingStatus(event);
+  if (operatingStatus) {
+    const started = type === "incident_start";
+    const acknowledged = type === "incident_acknowledged";
+    const [labelKey, whyKey, normalKey] = OPERATING_COPY[operatingStatus];
+    const label = t(labelKey);
+    const normal = t(normalKey);
+    const oil = operatingStatus === "oilReturn";
+    const preheat = operatingStatus === "preheat";
+    const diagnostic = operatingStatus === "pumpDiagnostic";
+    const title = acknowledged ? t("controlReplay.operatingAcknowledged", { label })
+      : oil ? started ? t("controlReplay.oilReturnStarted") : t("controlReplay.oilReturnFinished")
+      : preheat ? started ? t("controlReplay.preheatStarted") : t("controlReplay.preheatFinished")
+      : diagnostic ? started ? t("controlReplay.pumpDiagnosticStarted") : t("controlReplay.pumpDiagnosticFinished")
+      : started ? t("controlReplay.capacityLimitStarted", { label }) : t("controlReplay.capacityLimitFinished", { label });
+    let summary = acknowledged ? t("controlReplay.operatingAckCopy", { subject: resolvedSubject })
+      : oil ? started ? t("controlReplay.oilReturnStartCopy", { subject: resolvedSubject })
+        : t("controlReplay.oilReturnFinishedCopy", { subject: resolvedSubject })
+      : preheat ? started ? t("controlReplay.preheatStartCopy", { subject: resolvedSubject })
+        : t("controlReplay.preheatFinishedCopy", { subject: resolvedSubject })
+      : diagnostic ? started ? t("controlReplay.pumpDiagnosticStartCopy", { subject: resolvedSubject })
+        : t("controlReplay.pumpDiagnosticFinishedCopy", { subject: resolvedSubject })
+      : started ? t("controlReplay.capacityLimitStartCopy", { subject: resolvedSubject })
+        : t("controlReplay.capacityLimitFinishedCopy", { subject: resolvedSubject });
+    if (type === "incident_clear" && !oil && !diagnostic && (Number(event.flags) & 1) !== 0) {
+      summary += ` ${t("controlReplay.operatingHistoryLatch")}`;
+    }
+    return {
+      ...result(
+        title, summary, { label, summary: normal, checks: [] },
+        started ? oil ? t("controlReplay.oilReturnNext") : preheat ? t("controlReplay.preheatNext")
+          : diagnostic ? t("controlReplay.pumpDiagnosticNext") : t("controlReplay.capacityLimitNext")
+          : t("controlReplay.operatingEndedNext"),
+      ),
+      detail: t(whyKey),
+      reasonSummary: normal,
+    };
+  }
   const meta = getControlReplayIncidentReasonMeta(event.reason) || resolveMeta(DEFAULT_META);
   const label = getIncidentDisplayLabel({ id: event.value_a, key: SYNTHETIC[event.reason] || "" });
   if (type === "incident_start") {
@@ -86,33 +133,66 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
   }
   if (type === "incident_clear") {
     const latched = (Number(event.flags) & 1) !== 0;
+    const resetRequired = isControlReplayPowerCycleClear(event);
     return result(
-      `${label} ${t("controlReplay.clearRecovered")}`,
-      latched
+      resetRequired ? t("controlReplay.clearResetTitle", { label }) : `${label} ${t("controlReplay.clearRecovered")}`,
+      resetRequired ? t("controlReplay.clearResetRequired", { subject: resolvedSubject }) : latched
         ? t("controlReplay.clearLatched", { subject: resolvedSubject })
         : t("controlReplay.clearStable", { subject: resolvedSubject }),
-      { ...meta, label: t("controlReplay.clearLabel") },
+      { ...meta, label: resetRequired ? t("controlReplay.clearResetLabel") : t("controlReplay.clearLabel") },
+      resetRequired ? t("controlReplay.clearResetNext") : t("controlReplay.nextAuto"),
     );
   }
   if (type === "incident_acknowledged") {
     return result(
       `${label} ${t("controlReplay.ackConfirmed")}`,
-      t("controlReplay.ackSummary", { subject: resolvedSubject }),
+      event.to === "active" ? t("controlReplay.ackActiveSummary", { subject: resolvedSubject })
+        : t("controlReplay.ackSummary", { subject: resolvedSubject }),
       { ...meta, label: t("controlReplay.ackLabel") },
     );
   }
   if (type === "hp_availability_change") {
-    const item = resolveAvailability(AVAILABILITY[event.to] || [t("controlReplay.availChanged"), t("controlReplay.availChangedCopy")]);
+    if (event.to === "blocked") {
+      const rest = event._oq_rest_after_stop === true || isControlReplayRestAfterStop(event);
+      const incident = Number.isInteger(event.value_a) && event.value_a > 0;
+      const primaryStatus = getControlReplayOperatingStatus({ ...event, event_type: "incident_start" });
+      const nonBlockingStatus = primaryStatus && primaryStatus !== "preheat";
+      return {
+        ...result(
+          rest ? t("controlReplay.availRestTitle", { subject: resolvedSubject }) : `${resolvedSubject} ${t("controlReplay.availBlocked")}`,
+          rest ? event.reason === "min_rest_active" && Number.isInteger(event.threshold_a) && event.threshold_a > 0
+            ? t("controlReplay.availRestRecorded", { seconds: event.threshold_a === 32767 ? "≥32767" : event.threshold_a }) : t("controlReplay.availRestCopy")
+            : incident ? t("controlReplay.availBlockedIncident", { subject: resolvedSubject, label }) : t("controlReplay.availBlockedCopy"),
+          { label: rest ? t("controlReplay.availRestLabel") : incident && !nonBlockingStatus ? label : t("controlReplay.availabilityLabel"), summary: "", checks: [] },
+          rest ? "" : t("controlReplay.availBlockedNext"),
+        ),
+        detail: rest ? t("controlReplay.availRestWhy") : nonBlockingStatus
+          ? t("controlReplay.availBlockedStatusWhy", { label: t(OPERATING_COPY[primaryStatus][0]) })
+          : incident ? meta.summary : t("controlReplay.availBlockedWhy"),
+        reasonSummary: rest ? "" : t("controlReplay.availBlockedNormal"),
+      };
+    }
+    if (event.to === "available" || event.to === "preheat") {
+      const available = event.to === "available";
+      return {
+        ...result(
+          `${resolvedSubject} ${available ? t("controlReplay.availAvailable") : t("controlReplay.availPreheat")}`,
+          available ? t("controlReplay.availAvailableCopy") : t("controlReplay.availPreheatCopy"),
+          { label: available ? t("controlReplay.availabilityLabel") : t("controlReplay.reasonHpPreheat"), summary: "", checks: [] },
+          available ? t("controlReplay.operatingEndedNext") : t("controlReplay.preheatNext"),
+        ),
+        detail: available ? t("controlReplay.availAvailableWhy") : t("controlReplay.preheatWhy"),
+        reasonSummary: available ? t("controlReplay.availAvailableNormal") : t("controlReplay.preheatNormal"),
+      };
+    }
+    const item = resolveAvailability(AVAILABILITY[event.to] || ["controlReplay.availChanged", "controlReplay.availChangedCopy"]);
     return result(`${resolvedSubject} ${item[0]}`, item[1], meta);
   }
   if (type === "control_mode_change") {
-    const from = mode(event.value_a);
     const to = mode(event.value_b) ?? mode(event.cm);
     return result(
-      from !== null && to !== null ? `CM${from} → CM${to}` : t("controlReplay.modeChanged"),
-      to === 4 && from === 3
-        ? t("controlReplay.modeRoleFallback")
-        : t("controlReplay.modeRoleNew"),
+      t(["controlReplay.roleStandby", "controlReplay.roleWater", "controlReplay.roleHeat", "controlReplay.roleAssist", "controlReplay.roleFallback", "controlReplay.roleCool"][to] || "controlReplay.modeChanged"),
+      t(["controlReplay.roleStandbyCopy", "controlReplay.roleWaterCopy", "controlReplay.roleHeatCopy", "controlReplay.roleAssistCopy", "controlReplay.roleFallbackCopy", "controlReplay.roleCoolCopy"][to] || "controlReplay.causeMissing"),
       to === 4 ? { ...meta, label: t("controlReplay.modeRoleLabel") } : meta,
       t("controlReplay.modeOutputNote"),
     );
@@ -128,8 +208,16 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
 
 export function getControlReplayIncidentDisplaySeverity(event) {
   const type = String(event?.event_type || "");
+  const operatingStatus = getControlReplayOperatingStatus(event);
+  if (operatingStatus) {
+    if (["oilReturn", "pumpDiagnostic"].includes(operatingStatus)) return "normal";
+    return type === "incident_start" || (type === "incident_acknowledged" && event.to === "active") ? "limited" : "normal";
+  }
+  if (isControlReplayPowerCycleClear(event) || (type === "incident_clear" && event.to === "blocked")) return "limited";
+  if (type === "incident_acknowledged" && event.to === "active") return String(event.severity || "fault");
   if (["incident_clear", "incident_acknowledged", "boiler_fallback_stop", "hp_start_confirmed", "hp_stop_confirmed"].includes(type)) return "normal";
   if (type !== "hp_availability_change") return "";
+  if (event.to === "blocked" && (event._oq_rest_after_stop === true || isControlReplayRestAfterStop(event))) return "normal";
   if (event.to === "available") return "normal";
   if (["recovering", "preheat", "blocked", "suspect"].includes(event.to)) return "limited";
   return ["faulted", "offline"].includes(event.to) ? "fault" : "";

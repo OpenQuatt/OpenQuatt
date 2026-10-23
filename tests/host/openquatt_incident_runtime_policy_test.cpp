@@ -607,9 +607,42 @@ void test_manual_reset_brownout_and_missing_slot_never_restore_empty() {
   assert(missing_marker.persistence_target_mask() == oq_incidents::kManualResetAllHpMask);
 }
 
+void test_restart_wait_logging_does_not_mask_safety_gates() {
+  using esphome::openquatt_incident_manager::restart_wait_log_seconds;
+  oq_incidents::DerivedOutputs engine{};
+  engine.available_for_start = true;
+  engine.link_state = oq_incidents::LinkState::HEALTHY;
+  engine.run_state = oq_incidents::RunState::STOPPED;
+  auto published = engine;
+  published.available_for_start = false;
+  assert(restart_wait_log_seconds(engine, published, 240000U) == 240);
+  assert(restart_wait_log_seconds(engine, published, 1U) == 1);
+  assert(restart_wait_log_seconds(engine, published, UINT32_MAX) == 0);
+  assert(restart_wait_log_seconds(engine, published, 32768000U) == 32767);
+  assert(restart_wait_log_seconds(engine, published, 0U) == 0);
+  // A benign primary status must not obscure the actual guard.
+  published.primary_incident_id = 4U;
+  assert(restart_wait_log_seconds(engine, published, 120001U) == 121);
+  auto blocked_engine = engine;
+  blocked_engine.available_for_start = false;
+  assert(restart_wait_log_seconds(blocked_engine, published, 240000U) == 0);
+  auto unsafe = published;
+  unsafe.must_stop = true;
+  assert(restart_wait_log_seconds(engine, unsafe, 240000U) == 0);
+  assert(restart_wait_log_seconds(engine, apply_persistence_initialization_gate(published, true), 240000U) == 0);
+  unsafe = published;
+  unsafe.link_state = oq_incidents::LinkState::LOST;
+  assert(restart_wait_log_seconds(engine, unsafe, 240000U) == 0);
+  unsafe = published;
+  unsafe.run_state = oq_incidents::RunState::RUNNING;
+  assert(restart_wait_log_seconds(engine, unsafe, 240000U) == 0);
+  assert(restart_wait_log_seconds(engine, engine, 240000U) == 0);
+}
+
 }  // namespace
 
 int main() {
+  test_restart_wait_logging_does_not_mask_safety_gates();
   test_confirmation_audit_policy();
   test_start_failure_retry_production_policy();
   test_link_round_timeout_tolerates_scan_jitter();

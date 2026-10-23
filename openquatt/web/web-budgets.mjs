@@ -15,7 +15,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // An automatic theme that follows the device light/dark setting adds ~1.3 kB raw / ~0.3 kB gzip.
     // The existing relative gzip growth limit remains unchanged.
     // Complete heating/cooling inputs: +314 B raw versus dev (Node 24.19.0).
-    raw: 1_338_200,
+    // Grouped start sequences, truthful historical evidence and confirmed compressor history:
+    // Includes stop sequences, observed operating periods, concise details and recorded restart waits.
+    // +23,809 B raw / +7,071 B gzip versus #882 on Node 24.19.0; relative gzip limits unchanged.
+    raw: 1_363_000,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
