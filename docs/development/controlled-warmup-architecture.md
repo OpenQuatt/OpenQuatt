@@ -65,43 +65,57 @@ De sessie eindigt bij bereiken van het volledige thermostaatdoel of na acht uur;
 de comfortband is geen sessie-eindgrens meer. Verlagen annuleert direct.
 
 Een boost kan binnen de Power House-comfortband nog nul room feedback geven.
-Daarna verhoogt deze de ruimtecorrectie via de bestaande W/K-reactie; slew,
-minimumvermogen, waterlimieten en dispatch blijven leidend. Een boost garandeert
-geen specifieke frequentiestap of extra vermogen op ieder werkpunt. De hosttest
-controleert de deadband en vervolgens een hogere warmtevraag; fysieke respons
-vraagt nieuwe HIL-kwalificatie.
+Daarbuiten wordt de extra ruimtecorrectie boven op de onboosted vraag inclusief
+het minimumvermogen gevraagd: `max(basisvraag, Pmin) + extra ruimtecorrectie`.
+De basisvraag gebruikt het vaste tussendoel; de extra correctie is het verschil
+met de feedback op het geclampte effectieve doel. Boost wordt zo niet opnieuw
+opgeslokt door de Pmin-vloer en wordt niet dubbel opgeteld. De samenstelling
+gebeurt vóór de bestaande enveloppe, slew en waterlimiet. Een hogere vraag
+betekent door compressorstanden en optimalisatietoleranties niet bij ieder
+klein booststapje een hogere frequentie.
 
-De volledige route is `tussendoel + boost` → comfortband/room feedback →
-huismodel + room feedback → slew → `max(vraag, Pmin)` tijdens recovery →
-run extension, caps en dispatch. De recovery-floor is geen extra boostvermogen:
-`max(1.071, 2.528)` en `max(1.911, 2.528)` leveren dezelfde effectieve vraag op.
-Dispatch kiest vervolgens een toegestane compressorstand met bestaande
-bewegingskosten/toleranties; een kleine overschrijding van Pmin forceert dus
-niet direct de volgende stand. Ontbrekende modeldata behoudt alleen een reeds
-draaiende HP; bij een veiligheidsstop of minimum-off blokkade mag boost niet starten.
+Deze extra Pmin-compositie geldt alleen tijdens een actieve sessie met geldige
+warmte-intent/recovery, modeldata en niet-begrenzende waterfactor (>= 0,999).
+Bij een gedeeltelijke waterbegrenzing geldt de normale vraagberekening; er
+wordt geen extra Pmin-lift aangebracht. Warmtetoestemming, versheid,
+minimum-off, elektrische limieten en frequentie-/actuatorgrenzen blijven leidend.
 
-`tests/host/warmup_boost_dispatch_test.cpp` rekent dit door met de echte
-warmup-runtime, vraagberekening, waterzijdige V1-vermogenskaart en dispatcher,
-voor Single en Duo met één beschikbare HP. De Pmin-`max()` uit de runtime wordt
-expliciet in de fixture toegepast. Voorbeeldinstellingen: kamer 19,10 °C,
+Eén extra runtime-float (`warmup_request_w_`, 4 B veldopslag, niet persistent)
+bewaart alleen de HP-slew. De oorspronkelijke vraaghistorie en `fast_floor_w_`
+blijven vrij van de nieuwe lift, zodat deze ook via volgende ticks niet als
+extra huistekort/ketelvraag terugkomt. De bestaande huisvraag en recoveryvloer
+blijven behouden. De nieuwe scalar wordt gewist bij cancel/reset, wegvallen van
+intent/modeldata of waterbegrenzing; herstart/OTA herstelt hem niet. Er komen
+geen buffers, allocaties, taken of NVS-velden bij. De totale object-/firmware-RAM
+en fysieke marge moeten nog met de nieuwe firmware worden gekwalificeerd.
+
+Bij bereiken van een stap vervalt de extra boost direct voor de consumer,
+ook als deze vóór de 1s-owner draait. De HP-vraag bouwt met de bestaande
+fall-slew af naar de normale recoveryvraag; het runrecht blijft behouden.
+Bestaande run-extension- en caplogica volgen daarna ongewijzigd.
+
+`tests/host/warmup_boost_dispatch_test.cpp` rekent met de echte warmup-runtime,
+heat intent, vraagberekening, waterzijdige V1-vermogenskaart en dispatcher.
+De fixture verbindt deze functies zoals de runtime en test Single en Duo met
+één beschikbare HP, plus een geblokkeerde tweede HP. Voorbeeld: kamer 19,10 °C,
 tussendoel 19,18 °C, thermostaatdoel 20 °C, reactie 3.000 W/K, comfortband onder
-0,1 °C, nominaal huisvermogen 5.000 W bij −10 °C, nulvermogen bij 18 °C,
-waterinlaat 30 °C en flow 800 L/h. Bij 12 °C buiten geeft de kaart ongeveer
-2.528 W op 30 Hz en 3.161 W op 39 Hz:
+0,1 °C, huisvermogen 5.000 W bij −10 °C, nulvermogen bij 18 °C,
+waterinlaat 30 °C en flow 800 L/h. Bij 12 °C buiten is Pmin circa 2.528 W:
 
-| Boost | Room feedback | Vraag vóór recovery-floor | Vraag na recovery-floor | Gekozen frequentie |
-|---|---:|---:|---:|---:|
-| 0,0 °C | 0 W | 1.071 W | 2.528 W | 30 Hz |
-| 0,3 °C | 840 W | 1.911 W | 2.528 W | 30 Hz |
-| 0,5 °C | 1.440 W | 2.511 W | 2.528 W | 30 Hz |
+| Boost | Extra ruimtecorrectie | HP-vraag na instellen | Gekozen frequentie |
+|---|---:|---:|---:|
+| 0,0 °C | 0 W | 2.528 W | 30 Hz |
+| 0,1 °C | 240 W | 2.768 W | 30 Hz |
+| 0,2 °C | 540 W | 3.068 W | 39 Hz |
+| 0,3 °C | 840 W | 3.368 W | 39 Hz |
+| 0,5 °C | 1.440 W | 3.968 W | 49 Hz |
 
-Bij hetzelfde voorbeeld met 8 °C buiten en boost 0,5 °C vraagt de dispatcher
-wel meer dan 30 Hz. De test controleert ook een vraag boven Pmin die nog op
-30 Hz blijft, reset bij het tussendoel, een veiligheidsstop, minimum-off en
-ontbrekende modeldata. Dit is een verklaarbaar werkpunt, geen replay van de
-testerinstallatie: daarvoor ontbreken gelijktijdige opwarminstellingen,
-modelinputs en vraag vóór/na de floor. Een korte frequentiepiek bij het bereiken
-van een stap is hiermee niet verklaard; de stapovergang alleen vraagt geen piek.
+De simulatie controleert ook 8 °C buiten, herhaalde ticks zonder opstapeling,
+beide owner/consumer-volgordes, geleidelijke afbouw na een stap, identieke
+huisvraag/keteltekort ten opzichte van het oude pad, annulering en nieuwe sessie,
+water-/vermogens-/frequentiegrenzen, veiligheidsstop, minimum-off en ontbrekend
+model. Het is geen replay van de testerinstallatie, volledige ESPHome-runtime,
+gekoppeld Duo-watermodel of fysieke HIL; die kwalificatie volgt afzonderlijk.
 
 Het bestaande zes-float opslagblok blijft compatibel om een NVS-migratie te
 vermijden. Validatie van het volledige blok blijft fail-closed; slots 4/5 worden

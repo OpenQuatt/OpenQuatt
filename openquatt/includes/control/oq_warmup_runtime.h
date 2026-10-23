@@ -7,6 +7,7 @@ namespace oq_warmup_runtime {
 struct ControlTarget {
   float effective_c;
   bool limited;
+  float boost_baseline_c = NAN;
 };
 
 class Runtime {
@@ -66,10 +67,15 @@ class Runtime {
                                std::isfinite(trigger_c) && trigger_c >= 0.5f && trigger_c <= 5.0f &&
                                std::isfinite(room_c) && requested_c - this->state_.last_requested_c > 0.0001f &&
                                requested_c - room_c > trigger_c + 0.0001f;
+    // A consumer can observe a reached step before the 1s owner resets boost.
+    // Suppress the old correction immediately; keep the session's run right.
+    const bool reached = active && std::isfinite(room_c) && room_c >= this->state_.target_c - 0.0001f;
+    const float baseline_c = active ? std::min(this->state_.target_c, requested_c) : NAN;
     return {pending_raise ? this->state_.last_requested_c
+            : reached     ? baseline_c
             : active      ? oq_warmup::effective_target(this->state_, requested_c)
                           : requested_c,
-            active || pending_raise};
+            active || pending_raise, active && !reached ? baseline_c : NAN};
   }
   float intermediate_target() const { return this->active() ? this->state_.target_c : NAN; }
   float offset() const { return this->active() ? this->state_.offset_c : 0.0f; }

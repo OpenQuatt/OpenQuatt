@@ -51,7 +51,7 @@ export default {
     boost: "Boost",
     boostActive: "Boost actief",
     details: "Opwarmdetails",
-    detailsCopy: "Wordt een stap niet op tijd bereikt, dan verhoogt OpenQuatt de boost. De regeling gebruikt de volgende stap ({target}) plus de boost ({boost}), begrensd op de gewenste temperatuur. Zodra de kamer de volgende stap bereikt, volgt een nieuwe stap en vervalt de boost.",
+    detailsCopy: "Wordt een stap niet op tijd bereikt, dan verhoogt OpenQuatt de boost. De regeling gebruikt de volgende stap ({target}) plus de boost ({boost}), begrensd op de gewenste temperatuur. De extra vraag door boost komt boven op de normale vraag inclusief het minimumvermogen, binnen de geldende grenzen. Zodra de kamer de volgende stap bereikt, vervalt de boost en bouwt de vermogensvraag geleidelijk af.",
     effectiveTarget: "OpenQuatt regelt op",
     target: "Volgende stap",
     limits: "De maximale boost is 0,5 °C. Het regeldoel komt nooit boven het thermostaatdoel. Bij bereiken van dat doel of na 8 uur neemt de normale regeling over. Wachttijden, warmtetoestemming en beveiligingen blijven gelden.",

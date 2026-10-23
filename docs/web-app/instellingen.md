@@ -77,14 +77,16 @@ Bij afkoelen blijft het tussendoel staan. De boost is maximaal 0,5 °C; na maxim
 8 uur neemt de normale regeling over. Na een onderbreking is een nieuwe
 thermostaatverhoging nodig om weer te starten.
 
-**Een hogere boost betekent niet automatisch meer Hz.** Power House trekt eerst
-de comfortband van het regeldoel af en zet het resterende temperatuurverschil om
-in warmtevraag. Stel: de berekende vraag stijgt door boost van 1.071 naar 1.911 W,
-maar de warmtepomp levert op 30 Hz al minimaal 2.528 W. Dan blijft 30 Hz voldoende.
-Ook iets boven dat minimum kan dezelfde stand de beste keuze blijven; de volgende
-stand moet beter bij de vraag passen. Dit zijn rekenvoorbeelden, geen gemeten
-waarden van jouw installatie. Vergelijk voor diagnose de boost én de warmtevraag
-in W, de aangevraagde stand en de gemeten frequentie.
+**Boost vraagt extra vermogen boven op de normale vraag inclusief het minimumvermogen.**
+Voorbeeld: zonder boost zou de regeling 1.071 W vragen, maar de warmtepomp kan
+minimaal 2.528 W leveren op 30 Hz. Een boost van 0,3 °C geeft in dit voorbeeld
+840 W extra vraag. De warmtepomp krijgt dan 2.528 + 840 = **3.368 W** gevraagd;
+in het rekenvoorbeeld past daar 39 Hz bij. Dit zijn voorbeeldwaarden, geen
+metingen van jouw installatie. De comfortband, reactiesterkte en begrenzingen
+bepalen hoeveel extra vermogen mogelijk is. Een kleine boost kan nog binnen
+dezelfde compressorstand passen. Bij bereiken van de stap vervalt de boost en
+bouwt de vermogensvraag volgens de normale regeling af. Vergelijk voor diagnose
+boost, warmtevraag in W, aangevraagde stand en gemeten frequentie.
 
 De functie stopt zodra de gemeten kamertemperatuur het echte thermostaatdoel
 bereikt, ook als de kamer eerder al binnen de comfortband ligt. Tijdens het

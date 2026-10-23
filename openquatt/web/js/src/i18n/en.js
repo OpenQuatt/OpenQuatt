@@ -50,7 +50,7 @@ export default {
     boost: "Boost",
     boostActive: "Boost active",
     details: "Warmup details",
-    detailsCopy: "If a step is not reached in time, OpenQuatt increases boost. Control uses the next step ({target}) plus boost ({boost}), capped at the desired temperature. Once the room reaches the next step, a new step follows and boost resets to zero.",
+    detailsCopy: "If a step is not reached in time, OpenQuatt increases boost. Control uses the next step ({target}) plus boost ({boost}), capped at the desired temperature. Boost adds its extra demand above the normal demand including minimum output, within the applicable limits. Once the room reaches the next step, boost resets and the power request decreases gradually.",
     effectiveTarget: "OpenQuatt regulates towards",
     target: "Next step",
     limits: "The maximum boost is 0.5 °C. The effective target never exceeds the thermostat target. Normal control resumes when that target is reached or after 8 hours. Waiting periods, heating permission and safety protections still apply.",
