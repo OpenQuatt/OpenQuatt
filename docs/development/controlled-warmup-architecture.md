@@ -71,6 +71,38 @@ geen specifieke frequentiestap of extra vermogen op ieder werkpunt. De hosttest
 controleert de deadband en vervolgens een hogere warmtevraag; fysieke respons
 vraagt nieuwe HIL-kwalificatie.
 
+De volledige route is `tussendoel + boost` → comfortband/room feedback →
+huismodel + room feedback → slew → `max(vraag, Pmin)` tijdens recovery →
+run extension, caps en dispatch. De recovery-floor is geen extra boostvermogen:
+`max(1.071, 2.528)` en `max(1.911, 2.528)` leveren dezelfde effectieve vraag op.
+Dispatch kiest vervolgens een toegestane compressorstand met bestaande
+bewegingskosten/toleranties; een kleine overschrijding van Pmin forceert dus
+niet direct de volgende stand. Ontbrekende modeldata behoudt alleen een reeds
+draaiende HP; bij een veiligheidsstop of minimum-off blokkade mag boost niet starten.
+
+`tests/host/warmup_boost_dispatch_test.cpp` rekent dit door met de echte
+warmup-runtime, vraagberekening, waterzijdige V1-vermogenskaart en dispatcher,
+voor Single en Duo met één beschikbare HP. De Pmin-`max()` uit de runtime wordt
+expliciet in de fixture toegepast. Voorbeeldinstellingen: kamer 19,10 °C,
+tussendoel 19,18 °C, thermostaatdoel 20 °C, reactie 3.000 W/K, comfortband onder
+0,1 °C, nominaal huisvermogen 5.000 W bij −10 °C, nulvermogen bij 18 °C,
+waterinlaat 30 °C en flow 800 L/h. Bij 12 °C buiten geeft de kaart ongeveer
+2.528 W op 30 Hz en 3.161 W op 39 Hz:
+
+| Boost | Room feedback | Vraag vóór recovery-floor | Vraag na recovery-floor | Gekozen frequentie |
+|---|---:|---:|---:|---:|
+| 0,0 °C | 0 W | 1.071 W | 2.528 W | 30 Hz |
+| 0,3 °C | 840 W | 1.911 W | 2.528 W | 30 Hz |
+| 0,5 °C | 1.440 W | 2.511 W | 2.528 W | 30 Hz |
+
+Bij hetzelfde voorbeeld met 8 °C buiten en boost 0,5 °C vraagt de dispatcher
+wel meer dan 30 Hz. De test controleert ook een vraag boven Pmin die nog op
+30 Hz blijft, reset bij het tussendoel, een veiligheidsstop, minimum-off en
+ontbrekende modeldata. Dit is een verklaarbaar werkpunt, geen replay van de
+testerinstallatie: daarvoor ontbreken gelijktijdige opwarminstellingen,
+modelinputs en vraag vóór/na de floor. Een korte frequentiepiek bij het bereiken
+van een stap is hiermee niet verklaard; de stapovergang alleen vraagt geen piek.
+
 Het bestaande zes-float opslagblok blijft compatibel om een NVS-migratie te
 vermijden. Validatie van het volledige blok blijft fail-closed; slots 4/5 worden
 na geldige restore genormaliseerd naar de vaste limieten.
