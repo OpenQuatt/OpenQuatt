@@ -1,4 +1,6 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
+import { groupControlReplayStarts } from "./control-replay-starts.js";
+import { getConfirmedCompressorHistory } from "./control-replay-compressor-history.js";
 import { attachHeatingStopSnapshots, getHeatingStopCopy, getHeatingStopReasonMeta, getHeatingStopSupportValues } from "./control-replay-heating-stops.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isAuxHeatSourcePresent, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
@@ -578,6 +580,9 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
 
   function getControlWorkingOptimizerModel(target) {
     const reasonCode = target?.reasonCode || target?.primaryReason || "keep_current";
+    const event = target?.rawDecisionEvent;
+    const eventType = event?.event_type || target?.realEventType || "";
+    const historical = Boolean(event || eventType || target?.kind || target?.derivedFromDecisionLog);
     const hasHp2 = target?.hp2Available ?? (getInstallationTopology() === "duo" || String(target?.source || "").includes("HP2"));
     const source = target?.source || (hasHp2 ? "HP1 + HP2" : "HP1");
     if (hasHp2 && reasonCode === "better_heat") {
@@ -593,10 +598,18 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       };
     }
     if (reasonCode === "demand_decreased" || reasonCode === "less_power") {
+      if (eventType === "source_stop") {
+        return {
+          title: t("controlReplay.optSystemChoice"),
+          verdict: t("controlReplay.evHpStoppedTitle", { subject: source }),
+          summary: t(reasonCode === "less_power" ? "controlReplay.evDemandLowerSummary" : "controlReplay.optStopDemandCopy"),
+          rows: [{ option: source, result: t("controlReplay.optStopCommand"), code: reasonCode, detail: t("controlReplay.evHpStopAwaitConfirmation"), tone: "selected" }],
+        };
+      }
       return {
         title: t("controlReplay.optSystemChoice"),
         verdict: t("controlReplay.optOneHpEnough"),
-        summary: t("controlReplay.optOneHpEnoughCopy"),
+        summary: t(reasonCode === "less_power" ? "controlReplay.evDemandLowerSummary" : "controlReplay.optOneHpEnoughCopy"),
         rows: [
           ...(hasHp2 ? [{ option: t("controlReplay.optTwoHp"), result: t("controlReplay.optNoLongerNeeded"), code: "less_power", detail: t("controlReplay.optTogetherTooMuch"), tone: "muted" }] : []),
           { option: source, result: t("controlReplay.optStaysActive"), code: "less_power", detail: t("controlReplay.optOneHpCovers"), tone: "selected" },
@@ -695,6 +708,22 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           { option: t("controlReplay.optHeating"), result: t("controlReplay.optNotNeeded"), code: "keep_current", detail: t("controlReplay.optNoHeatDemand"), tone: "muted" },
           { option: t("controlReplay.optCooling"), result: t("controlReplay.optNotNeeded"), code: "keep_current", detail: t("controlReplay.optNoCoolDemand"), tone: "muted" },
           { option: t("controlReplay.optPump"), result: t("controlReplay.optBriefOn"), code: "sticky_protection", detail: t("controlReplay.optDailyPump"), tone: "selected" },
+        ],
+      };
+    }
+    if (historical && ["capacity_cap", "room_cap", "cooling_limiter", "falling_gap", "projected_floor", "dew_stop", "restart_wait", "level1_hold", "oil_return_recovery", "sensor_fallback"].includes(reasonCode)) {
+      // Only cooling_limited records encode demand levels. Source commands use
+      // value_a/value_b for other data; the allowed maximum is never recorded.
+      const recordedLevel = (value) => eventType === "cooling_limited" && Number.isInteger(value) && value >= 0 && value <= 10
+        ? formatNumber(value, { maximumFractionDigits: 0 }) : t("controlReplay.optNotRecorded");
+      return {
+        title: t("controlReplay.optCoolMonitor"),
+        verdict: eventType === "cooling_limited" ? t("controlReplay.optCoolPaused") : t("controlReplay.optCoolMonitor"),
+        summary: t("controlReplay.optHistoricalCooling"),
+        rows: [
+          { option: t("controlReplay.optAskedLevel"), result: recordedLevel(event?.value_b), code: "coolingDemandRaw", detail: t("controlReplay.optRecordedValue"), tone: "muted" },
+          { option: t("controlReplay.optMaxSafe"), result: t("controlReplay.optNotRecorded"), code: reasonCode, detail: t("controlReplay.optNotRecorded"), tone: "muted" },
+          { option: t("controlReplay.optSentLevel"), result: recordedLevel(event?.value_a), code: "coolingLimitedDemand", detail: t("controlReplay.optRecordedValue"), tone: "limited" },
         ],
       };
     }
@@ -1233,7 +1262,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const activeCoolingSource = event?._oq_active_cooling_source || t("controlReplay.subjHp");
     const activeHeatingSource = event?._oq_active_heating_source || t("controlReplay.subjHp");
     const coolingStopReason = String(event?._oq_cooling_stop_reason || (reasonCode === "dew_stop" ? "dew_stop" : ""));
-    const coolingDemandEnded = ["less_power", "demand_decreased", "cooling_request_cleared"].includes(reasonCode);
+    const coolingDemandEnded = reasonCode === "cooling_request_cleared";
     const heatingDemandEnded = reasonCode === "heating_request_cleared";
     const coolingRuntimeHold = Boolean(event?._oq_cooling_runtime_hold);
     const heatingRuntimeHold = Boolean(event?._oq_heating_runtime_hold);
@@ -1277,23 +1306,11 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         detail: isCoolingModeEvent
           ? t("controlReplay.evCoolReleasedCopy")
           : t("controlReplay.evHpEqualCopy"),
-        next: isCoolingModeEvent
-          ? t("controlReplay.evCoolStaysActive")
-          : t("controlReplay.evHpAwaitConfirmation"),
+        next: t("controlReplay.evHpAwaitConfirmation"),
       };
       case "source_stop":
         return {
-        title: isCoolingModeEvent
-          ? coolingStopReason === "dew_stop"
-            ? t("controlReplay.evCoolDewTitle", { subject })
-            : coolingDemandEnded
-            ? t("controlReplay.evCoolNoDemandTitle")
-            : t("controlReplay.evCoolDoneTitle", { subject })
-          : heatingDemandEnded
-          ? t("controlReplay.evHeatStoppedTitle")
-          : reasonCode === "less_power"
-          ? t("controlReplay.evOneHpStops")
-          : t("controlReplay.evHpStoppedTitle", { subject }),
+        title: t("controlReplay.evHpStoppedTitle", { subject }),
         reasonLabel: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
             ? t("controlReplay.evDewStopLabel")
@@ -1334,13 +1351,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           : heatingDemandEnded
           ? t("controlReplay.evNoHeatControl")
           : t("controlReplay.evNoIdleRun"),
-        next: isCoolingModeEvent
-          ? coolingStopReason === "dew_stop"
-            ? t("controlReplay.evDewRestart")
-            : t("controlReplay.evStandbyRerun")
-          : heatingDemandEnded
-          ? t("controlReplay.evStandbyHeat")
-          : t("controlReplay.evRisingRestart"),
+        next: t("controlReplay.evHpStopAwaitConfirmation"),
       };
       case "topology_change":
         return {
@@ -1839,17 +1850,31 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     };
   }
 
+  function getControlWorkingConfirmedHistory(events, selectedWindow = getControlWorkingSelectedWindow(), nowMs = Date.now()) {
+    const bounds = getControlWorkingWindowBounds(selectedWindow, nowMs);
+    const meta = state.decisionLog?.meta;
+    const snapshot = Number(meta?.boot_epoch_s) > 0 && Number.isFinite(Number(meta?.uptime_s))
+      ? (Number(meta.boot_epoch_s) + Number(meta.uptime_s)) * 1000
+      : Number(state.decisionLogLastFetchAt) || nowMs;
+    return getConfirmedCompressorHistory(events, {
+      // A current boot's uptime must never relocate an older archived record.
+      timeOf: event => Number(event.epoch_s) > 0 ? Number(event.epoch_s) * 1000 : Number.NaN,
+      start: bounds.start, end: Math.min(bounds.end, snapshot, nowMs),
+    });
+  }
+
+  function getControlWorkingConfirmedRanges(items) {
+    const events = getDecisionLogEvents().length ? getDecisionLogEvents() : items.map(item => item.rawDecisionEvent).filter(Boolean);
+    return getControlWorkingConfirmedHistory(enrichControlWorkingDecisionLogEvents(events)).intervals.map(interval => ({
+      ...interval,
+      ...getControlWorkingVisibleEpochRange(interval.start, interval.end, getControlWorkingSelectedWindow(), Date.now()),
+    }));
+  }
+
   function buildControlWorkingDerivedItems(events, selectedWindow, nowMs) {
     const windowBounds = getControlWorkingWindowBounds(selectedWindow, nowMs);
     const intervals = { HP1: [], HP2: [], cooling: [], boiler: [], frost: [], startupInhibit: [] };
     const open = { HP1: null, HP2: null, cooling: null, boiler: null, frost: null, startupInhibit: null };
-    const sourceKeys = (subject) => {
-      const normalized = String(subject || "").toUpperCase();
-      if (normalized === "BOTH") {
-        return ["HP1", "HP2"];
-      }
-      return normalized === "HP1" || normalized === "HP2" ? [normalized] : [];
-    };
     const eventEpoch = (event) => getDecisionEventEpochMs(event);
     const openInterval = (key, event) => {
       const startEpochMs = eventEpoch(event);
@@ -1869,12 +1894,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       }
       open[key] = null;
     };
-    const closeCoolingIfNoActiveCoolingSource = (event) => {
-      const hpCoolingActive = ["HP1", "HP2"].some((key) => open[key] && Number(open[key].startEvent?._oq_context_cm ?? open[key].startEvent?.cm) === 5);
-      if (!hpCoolingActive) {
-        closeInterval("cooling", event);
-      }
-    };
 
     events
       .filter((event) => event && !event._oq_hidden)
@@ -1884,34 +1903,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         const contextCm = Number(event?._oq_context_cm ?? event?.cm);
         if (eventType === "boot_marker") {
           Object.keys(open).forEach((key) => closeInterval(key, event));
-        } else if (eventType === "source_start") {
-          sourceKeys(event.subject).forEach((key) => openInterval(key, event));
-          if (contextCm === 5) {
-            openInterval("cooling", event);
-          }
-        } else if (eventType === "source_stop") {
-          sourceKeys(event.subject).forEach((key) => closeInterval(key, event));
-          if (contextCm === 5 || open.cooling) {
-            closeCoolingIfNoActiveCoolingSource(event);
-          }
-        } else if (eventType === "topology_change") {
-          if (event.to === "duo") {
-            openInterval("HP1", event);
-            openInterval("HP2", event);
-          } else if (event.to === "single") {
-            const activeSource = getControlWorkingSingleTopologySource(event);
-            if (activeSource) {
-              openInterval(activeSource, event);
-              closeInterval(activeSource === "HP1" ? "HP2" : "HP1", event);
-            } else {
-              closeInterval("HP2", event);
-            }
-            closeCoolingIfNoActiveCoolingSource(event);
-          } else if (event.to === "idle") {
-            closeInterval("HP1", event);
-            closeInterval("HP2", event);
-            closeInterval("cooling", event);
-          }
         } else if (eventType === "boiler_assist_start"
           || eventType === "boiler_fallback_start") {
           openInterval("boiler", event);
@@ -1929,8 +1920,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           openInterval("startupInhibit", event);
         } else if (eventType === "startup_inhibit_clear") {
           closeInterval("startupInhibit", event);
-        } else if (eventType === "flow_hold_clear" && event.reason === "flow_postflow") {
-          closeInterval("cooling", event);
         }
       });
 
@@ -1941,6 +1930,12 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           : windowBounds.end;
         intervals[key].push({ ...open[key], endEvent: null, endEpochMs: openEndEpochMs, isOpen: true });
       }
+    });
+
+    getControlWorkingConfirmedHistory(events, selectedWindow, nowMs).intervals.forEach(interval => {
+      const value = { ...interval, startEpochMs: interval.start, endEpochMs: interval.end };
+      intervals[interval.source].push(value);
+      if (interval.mode === 5) intervals.cooling.push(value);
     });
 
     const items = [];
@@ -2270,10 +2265,68 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       });
   }
 
+  function buildControlWorkingStartItems(items) {
+    const byEvent = new Map(items.filter(item => item.rawDecisionEvent).map(item => [item.rawDecisionEvent, item]));
+    // Preserve hidden context/boot records for sequence-gap detection.
+    const logged = getDecisionLogEvents();
+    const mapped = new Map([...byEvent.keys()].map(event => [`${event.seq}/${event.epoch_s}/${event.uptime_s}`, event]));
+    const events = logged.length ? logged.map(event => mapped.get(`${event.seq}/${event.epoch_s}/${event.uptime_s}`) || event)
+      : [...byEvent.keys()];
+    const consumed = new Set();
+    const grouped = groupControlReplayStarts(events, event => getDecisionEventSortValue(event) * 1000).map(attempt => {
+      const steps = attempt.events.map(event => byEvent.get(event)).filter(Boolean);
+      const command = byEvent.get(attempt.command);
+      if (!command) return null;
+      steps.forEach(step => consumed.add(step));
+      const confirmed = steps.some(step => step.realEventType === "hp_start_confirmed");
+      const failed = steps.some(step => step.realEventType === "incident_start" && step.reasonCode === "hp_start_failed");
+      const latest = steps[steps.length - 1];
+      const severity = steps.some(step => step.severity === "fault") ? "fault"
+        : steps.some(step => step.severity === "attention") ? "attention"
+        : steps.some(step => step.severity === "limited") ? "limited" : command.severity;
+      return {
+        ...command,
+        id: `start-${command.id}`,
+        time: latest.time,
+        graphStart: latest.graphStart,
+        title: t("controlReplay.startSequenceTitle", { subject: attempt.subject }),
+        summary: confirmed ? t("controlReplay.startSequenceCopy")
+          : failed ? t("controlReplay.startSequenceFailed") : t("controlReplay.startSequencePending"),
+        startSteps: steps,
+        timelineHidden: false,
+        severity,
+      };
+    }).filter(Boolean);
+    return [...items.filter(item => !consumed.has(item)), ...grouped]
+      .sort((a, b) => getControlWorkingItemMinuteRange(b).start - getControlWorkingItemMinuteRange(a).start);
+  }
+
+  function renderControlWorkingStartDetails(item) {
+    const stages = item.startSteps.filter(step => !["control_mode_change", "topology_change"].includes(step.realEventType));
+    return `<aside class="oq-working-detail">
+      <div><span class="oq-working-eyebrow">${t("controlReplay.detailSelected")}</span>
+        <h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.summary)}</p></div>
+      <ol class="oq-working-start-steps" aria-label="${t("controlReplay.startSequenceSteps")}">
+        ${stages.map(step => `<li><time>${escapeHtml(step.time)}</time><div><strong>${escapeHtml(step.title)}</strong><span>${escapeHtml(step.summary)}</span></div></li>`).join("")}
+      </ol>
+      ${!stages.some(step => step.realEventType === "flow_hold_start") ? `<p>${t("controlReplay.startPreparationMissing")}</p>` : ""}
+      ${renderControlWorkingOptimizer(getControlWorkingOptimizerModel(item))}
+      <details class="oq-working-support" data-replay-support-item="${escapeHtml(item.id)}"${state.controlReplaySupportDetailsItemId === item.id ? " open" : ""}>
+        <summary data-oq-action="toggle-control-replay-support-details">${escapeHtml(t("controlReplay.startSequenceRaw", { count: item.startSteps.length }))}</summary>
+        ${item.startSteps.map(step => `<p><strong>${escapeHtml(step.time)} · ${escapeHtml(step.title)}</strong><br>
+          ${escapeHtml(step.summary)}<br>${escapeHtml(step.source)} · ${escapeHtml(step.modeLabel)}
+          ${escapeHtml(getControlWorkingModeMetaLabel(step))} · ${escapeHtml(step.rawDecisionEvent?.reason || "")}
+          ${step.duration ? ` · ${escapeHtml(t("controlReplay.entryDuration", { value: step.duration }))}` : ""}</p>`).join("")}
+      </details>
+    </aside>`;
+  }
+
   function getControlWorkingSelectedItem(items) {
     const visibleItems = items.filter((item) => !item.timelineHidden);
-    if (visibleItems.some((item) => item.id === state.controlReplaySelectedEpisode)) {
-      return visibleItems.find((item) => item.id === state.controlReplaySelectedEpisode);
+    const selected = visibleItems.find((item) => item.id === state.controlReplaySelectedEpisode
+      || item.startSteps?.some(step => step.id === state.controlReplaySelectedEpisode));
+    if (selected) {
+      return selected;
     }
     return visibleItems.find((item) => item.kind === "span" && item.reasonCode === "better_heat")
       || visibleItems.find((item) => item.kind === "span")
@@ -2431,112 +2484,23 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   }
 
   function getControlWorkingActiveGraphContextForMinute(items, minute) {
-    const intervals = [];
-    const open = new Map();
-    const sortedItems = [...items]
-      .filter((item) => item.rawDecisionEvent)
-      .sort((left, right) => getControlWorkingItemMinuteRange(left).start - getControlWorkingItemMinuteRange(right).start);
-    const openInterval = (label, item, startMinute) => {
-      if (!open.has(label)) {
-        open.set(label, { label, item, start: startMinute });
-      }
-    };
-    const closeInterval = (label, endMinute) => {
-      const active = open.get(label);
-      if (!active) {
-        return;
-      }
-      intervals.push({ ...active, end: Math.max(active.start, endMinute) });
-      open.delete(label);
-    };
-    const closeCoolingIfNoHeatPumpSource = (endMinute) => {
-      if (open.has("Koeling") && !open.has("HP1") && !open.has("HP2")) {
-        closeInterval("Koeling", endMinute);
-      }
-    };
-    const sourceLabels = (subject) => {
-      const normalized = String(subject || "").toUpperCase();
-      const labels = [];
-      if (normalized === "HP1" || normalized === "BOTH") {
-        labels.push("HP1");
-      }
-      if (normalized === "HP2" || normalized === "BOTH") {
-        labels.push("HP2");
-      }
-      return labels;
-    };
-
-    const activeAtWindowStart = getControlWorkingChartSourceStateAtWindowStart();
-    const windowStartItem = {
-      reasonCode: "keep_current",
-      severity: "normal",
-      modeLabel: activeAtWindowStart.sourceModes.HP1 || activeAtWindowStart.sourceModes.HP2
-        ? `CM${activeAtWindowStart.sourceModes.HP1 || activeAtWindowStart.sourceModes.HP2}`
-        : "CM?",
-    };
-    if (activeAtWindowStart.HP1) {
-      openInterval("HP1", windowStartItem, 0);
-    }
-    if (activeAtWindowStart.HP2) {
-      openInterval("HP2", windowStartItem, 0);
-    }
-    if (activeAtWindowStart.boiler) {
-      openInterval("CV-ketel", windowStartItem, 0);
-    }
-    if (activeAtWindowStart.cooling) {
-      openInterval("Koeling", windowStartItem, 0);
-    }
-
-    sortedItems.forEach((item) => {
-      const range = getControlWorkingItemMinuteRange(item);
-      const eventType = String(item.realEventType || "");
-      const event = item.rawDecisionEvent || {};
-      const contextCm = Number(event._oq_context_cm ?? event.cm);
-      const labels = sourceLabels(event.subject);
-      if (eventType === "source_start") {
-        labels.forEach((label) => openInterval(label, item, range.start));
-        if (contextCm === 5) {
-          openInterval("Koeling", item, range.start);
-        }
-      } else if (eventType === "source_stop") {
-        labels.forEach((label) => closeInterval(label, range.start));
-        if (contextCm === 5 || open.has("Koeling")) {
-          closeCoolingIfNoHeatPumpSource(range.start);
-        }
-      } else if (eventType === "topology_change") {
-        if (event.to === "duo") {
-          openInterval("HP1", item, range.start);
-          openInterval("HP2", item, range.start);
-        } else if (event.to === "single") {
-          const activeSource = getControlWorkingSingleTopologySource(event);
-          if (activeSource) {
-            openInterval(activeSource, item, range.start);
-            closeInterval(activeSource === "HP1" ? "HP2" : "HP1", range.start);
-          } else {
-            closeInterval("HP2", range.start);
-          }
-          closeCoolingIfNoHeatPumpSource(range.start);
-        } else if (event.to === "idle") {
-          closeInterval("HP1", range.start);
-          closeInterval("HP2", range.start);
-          closeInterval("Koeling", range.start);
-        }
-      } else if (eventType === "boiler_assist_start"
-        || eventType === "boiler_fallback_start") {
-        openInterval("CV-ketel", item, range.start);
-      } else if (eventType === "boiler_assist_stop"
-        || eventType === "boiler_fallback_stop") {
-        closeInterval("CV-ketel", range.start);
-      } else if (eventType === "flow_hold_clear" && event.reason === "flow_postflow") {
-        closeInterval("Koeling", range.start);
+    const intervals = getControlWorkingConfirmedRanges(items).flatMap(interval => {
+      const value = { start: interval.start, end: interval.end,
+        item: { reasonCode: interval.startEvent.reason, severity: "normal" }, label: interval.source };
+      return interval.mode === 5 ? [value, { ...value, label: "Koeling" }] : [value];
+    });
+    let boiler = null;
+    const before = getControlWorkingChartSourceStateAtWindowStart();
+    if (before.boiler) boiler = { start: 0, label: "CV-ketel", item: { reasonCode: "boiler_assist" } };
+    [...items].filter(item => item.rawDecisionEvent).sort((a, b) => a.graphStart - b.graphStart).forEach(item => {
+      if (["boiler_assist_start", "boiler_fallback_start"].includes(item.realEventType) && !boiler) {
+        boiler = { start: item.graphStart, label: "CV-ketel", item };
+      } else if (["boiler_assist_stop", "boiler_fallback_stop"].includes(item.realEventType) && boiler) {
+        intervals.push({ ...boiler, end: item.graphStart });
+        boiler = null;
       }
     });
-    const openEndMinute = getControlWorkingOpenEndMinute();
-    open.forEach((active) => {
-      if (active.start <= openEndMinute) {
-        intervals.push({ ...active, end: openEndMinute });
-      }
-    });
+    if (boiler) intervals.push({ ...boiler, end: getControlWorkingOpenEndMinute() });
 
     const activeIntervals = intervals.filter((interval) => minute >= interval.start && minute <= interval.end);
     if (!activeIntervals.length) {
@@ -2842,6 +2806,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     if (!item) {
       return "";
     }
+    if (item.startSteps) return renderControlWorkingStartDetails(item);
     const status = getControlWorkingSeverityMeta(item.severity);
     const reason = getControlWorkingReasonMeta(item.reasonCode);
     const reasonLabel = item.reasonLabel || reason.label;
@@ -2928,7 +2893,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   function renderControlWorkingTimelineTab(items, selectedItem) {
     const windowModel = getControlWorkingWindowModel();
     const visibleItems = items.filter((item) => !item.timelineHidden);
-    const timelineItems = visibleItems.slice(0, 80);
+    const limit = Math.max(80, Number(state.controlReplayTimelineLimit) || 80);
+    const timelineItems = visibleItems.slice(0, limit);
     const decisionLogError = String(state.decisionLogError || "").trim();
     const waitingForDecisionLog = !timelineItems.length && !state.decisionLog && !decisionLogError;
     return `
@@ -2950,6 +2916,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
             : waitingForDecisionLog
             ? renderControlWorkingEmptyState(t("controlReplay.emptyLogLoading"), t("controlReplay.emptyLogLoadingCopy"))
             : renderControlWorkingEmptyState(t("controlReplay.emptyLogEmpty"), t("controlReplay.emptyLogEmptyCopy"))}
+          ${visibleItems.length > limit ? `<p>${escapeHtml(t("controlReplay.timelineCount", { shown: timelineItems.length, total: visibleItems.length }))}</p>
+            <button class="oq-ghost-button" type="button" data-oq-action="more-control-replay-events">${t("controlReplay.timelineMore")}</button>` : ""}
         </section>
         ${selectedItem ? renderControlWorkingDetails(selectedItem) : ""}
       </div>
@@ -3125,13 +3093,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const windowBounds = getControlWorkingWindowBounds();
     const active = { HP1: false, HP2: false, boiler: false, cooling: false };
     const sourceModes = { HP1: 0, HP2: 0 };
-    const sourceKeys = (subject) => {
-      const normalized = String(subject || "").toUpperCase();
-      if (normalized === "BOTH") {
-        return ["HP1", "HP2"];
-      }
-      return normalized === "HP1" || normalized === "HP2" ? [normalized] : [];
-    };
     const events = enrichControlWorkingDecisionLogEvents(getDecisionLogEvents())
       .filter((event) => event && !event._oq_hidden)
       .sort((left, right) => {
@@ -3148,17 +3109,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       }
       const eventType = String(event.event_type || "");
       const contextCm = Number(event._oq_context_cm ?? event.cm);
-      if (eventType === "source_start") {
-        sourceKeys(event.subject).forEach((key) => {
-          active[key] = true;
-          sourceModes[key] = contextCm;
-        });
-      } else if (eventType === "source_stop") {
-        sourceKeys(event.subject).forEach((key) => {
-          active[key] = false;
-          sourceModes[key] = 0;
-        });
-      } else if (eventType === "boiler_assist_start"
+      if (eventType === "boiler_assist_start"
         || eventType === "boiler_fallback_start") {
         active.boiler = true;
       } else if (eventType === "boiler_assist_stop"
@@ -3171,9 +3122,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   }
 
   function getControlWorkingDecisionLogChartLanes(items) {
-    if (!items.some((item) => item.rawDecisionEvent)) {
-      return null;
-    }
     const lanes = [
       { label: "HP1", tone: "running", segments: [] },
       { label: "HP2", tone: "running", segments: [] },
@@ -3201,39 +3149,21 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const sortedItems = [...items]
       .filter((item) => item.rawDecisionEvent)
       .sort((left, right) => getControlWorkingItemMinuteRange(left).start - getControlWorkingItemMinuteRange(right).start);
-    const openSource = { HP1: null, HP2: null, "CV-ketel": null, Koeling: null };
-    const openLane = (label, startMinute) => {
-      if (openSource[label] == null) {
-        openSource[label] = startMinute;
-      }
-    };
-    const closeLane = (label, endMinute, tone = "running", minWidth = 0.8) => {
-      if (openSource[label] == null) {
-        return false;
-      }
-      addMinuteSegment(label, openSource[label], endMinute, tone, minWidth);
+    getControlWorkingConfirmedRanges(items).forEach(interval => {
+      addMinuteSegment(interval.source, interval.start, interval.end, "running", 0);
+      if (interval.mode === 5) addMinuteSegment("Koeling", interval.start, interval.end, "cooling", 0);
+    });
+    const openSource = { "CV-ketel": null };
+    const openLane = (label, start) => { if (openSource[label] == null) openSource[label] = start; };
+    const closeLane = (label, end, tone = "assist", minWidth = 0.65) => {
+      if (openSource[label] == null) return false;
+      addMinuteSegment(label, openSource[label], end, tone, minWidth);
       openSource[label] = null;
       return true;
     };
-    const closeCoolingLaneIfNoHeatPumpSource = (endMinute) => {
-      if (openSource.Koeling != null && openSource.HP1 == null && openSource.HP2 == null) {
-        closeLane("Koeling", endMinute, "cooling", 0.8);
-      }
-    };
     const openDefrost = {};
     const activeAtWindowStart = getControlWorkingChartSourceStateAtWindowStart();
-    if (activeAtWindowStart.HP1) {
-      openLane("HP1", 0);
-    }
-    if (activeAtWindowStart.HP2) {
-      openLane("HP2", 0);
-    }
-    if (activeAtWindowStart.boiler) {
-      openLane("CV-ketel", 0);
-    }
-    if (activeAtWindowStart.cooling) {
-      openLane("Koeling", 0);
-    }
+    if (activeAtWindowStart.boiler) openLane("CV-ketel", 0);
 
     sortedItems.forEach((item) => {
       const range = getControlWorkingItemMinuteRange(item);
@@ -3248,39 +3178,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         targetSources.push("HP2");
       }
 
-      if (eventType === "source_start") {
-        targetSources.forEach((label) => openLane(label, range.start));
-        if (contextCm === 5) {
-          openLane("Koeling", range.start);
-        }
-      } else if (eventType === "source_stop") {
-        targetSources.forEach((label) => {
-          if (!closeLane(label, range.start, "running")) {
-            addEventSegment(label, item, "standby", 0.55);
-          }
-        });
-        if (contextCm === 5 || openSource.Koeling != null) {
-          closeCoolingLaneIfNoHeatPumpSource(range.start);
-        }
-      } else if (eventType === "topology_change") {
-        if (item.rawDecisionEvent?.to === "duo") {
-          openLane("HP1", range.start);
-          openLane("HP2", range.start);
-        } else if (item.rawDecisionEvent?.to === "single") {
-          const activeSource = getControlWorkingSingleTopologySource(item.rawDecisionEvent);
-          if (activeSource) {
-            openLane(activeSource, range.start);
-            closeLane(activeSource === "HP1" ? "HP2" : "HP1", range.start, "running", 0.8);
-          } else {
-            closeLane("HP2", range.start, "running", 0.8);
-          }
-          closeCoolingLaneIfNoHeatPumpSource(range.start);
-        } else if (item.rawDecisionEvent?.to === "idle") {
-          closeLane("HP1", range.start, "running", 0.8);
-          closeLane("HP2", range.start, "running", 0.8);
-          closeLane("Koeling", range.start, "cooling", 0.8);
-        }
-      } else if (eventType === "boiler_assist_start"
+      if (eventType === "boiler_assist_start"
         || eventType === "boiler_fallback_start") {
         openLane("CV-ketel", range.start);
       } else if (eventType === "boiler_assist_stop"
@@ -3293,9 +3191,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       } else if (eventType === "flow_hold_clear") {
         const durationMinutes = Math.max(1, getControlWorkingEventDurationChartMinutes(item.rawDecisionEvent));
         addMinuteSegment("Bescherming", Math.max(0, range.start - durationMinutes), range.start, "limited", 0.7);
-        if (item.rawDecisionEvent?.reason === "flow_postflow") {
-          closeLane("Koeling", range.start, "cooling", 0.8);
-        }
       }
 
       if (eventType === "defrost_seen_start") {
@@ -3366,7 +3261,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
               <span class="oq-working-eyebrow">${escapeHtml(windowModel.eyebrow)}</span>
               <h3>${t("controlReplay.graphsTitle")}</h3>
             </div>
-            <p>${escapeHtml(windowModel.graphCopy)}</p>
+            <p>${escapeHtml(windowModel.graphCopy)} ${t("controlReplay.graphConfirmedOnly")}</p>
           </div>
           <div class="oq-working-chart-axis" aria-hidden="true">
             ${windowModel.axis.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
@@ -3406,6 +3301,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       customPeriodError: state.controlReplayCustomPeriodError,
       selected: state.controlReplaySelectedEpisode,
       supportDetailsItem: state.controlReplaySupportDetailsItemId,
+      timelineLimit: state.controlReplayTimelineLimit,
       graphMinute: getControlWorkingGraphMinute(),
       mode: current.modeLabel,
       title: current.title,
@@ -3437,7 +3333,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
 
   function renderControlWorkingPanel(current, signature = getControlWorkingSignature(current)) {
     const selectedTab = getControlWorkingSelectedTab();
-    const items = selectedTab === "status" ? [] : getControlWorkingDecisionLogItems();
+    const rawItems = selectedTab === "status" ? [] : getControlWorkingDecisionLogItems();
+    const items = selectedTab === "timeline" ? buildControlWorkingStartItems(rawItems) : rawItems;
     const selectedItem = getControlWorkingSelectedItem(items);
     const visibleItem = selectedTab === "graphs"
       ? getControlWorkingItemForMinute(items, getControlWorkingGraphMinute())

@@ -31,6 +31,7 @@ const controlReplayActionHandlers = {
   "select-control-replay-window": ({ button }) => {
     const windowId = normalizeControlReplayWindow(button.dataset.replayWindow || "") || "last24";
     if (windowId !== "custom") {
+      state.controlReplayTimelineLimit = 80;
       state.controlReplayWindow = windowId;
       state.controlReplayPeriodMenuOpen = false;
       state.controlReplayCustomPeriodOpen = false;
@@ -83,6 +84,7 @@ const controlReplayActionHandlers = {
     state.controlReplayCustomEnd = end;
     state.controlReplayCustomPeriodError = "";
     state.controlReplayWindow = "custom";
+    state.controlReplayTimelineLimit = 80;
     state.controlReplayPeriodMenuOpen = false;
     state.controlReplayCustomPeriodOpen = false;
     setControlReplayGraphMinute("custom");
@@ -93,6 +95,10 @@ const controlReplayActionHandlers = {
   },
   "select-control-replay-episode": ({ button }) => {
     state.controlReplaySelectedEpisode = button.dataset.replayEpisode || "";
+    render();
+  },
+  "more-control-replay-events": () => {
+    state.controlReplayTimelineLimit = (Number(state.controlReplayTimelineLimit) || 80) + 80;
     render();
   },
   "toggle-control-replay-support-details": ({ button, event }) => {

@@ -697,6 +697,29 @@
   min-width: 0;
 }
 
+.oq-working-start-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.oq-working-start-steps li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.oq-working-start-steps time {
+  font-variant-numeric: tabular-nums;
+  color: var(--oq-overview-muted);
+}
+
+.oq-working-start-steps strong,
+.oq-working-start-steps span {
+  display: block;
+}
+
 .oq-working-entry-time {
   text-align: right;
 }

@@ -46,11 +46,18 @@ De web-app heeft zes hoofdschermen.
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
 
-In de `Beslislog` staat de nieuwste melding bovenaan. Tijdstippen van gebeurtenissen
-tonen ook seconden: één start kan voorbereiding, een startopdracht en een aparte
-compressorbevestiging bevatten. Een startopdracht betekent nog niet dat de compressor
-draait. De pompkeuze bij een oude gebeurtenis volgt het opgeslagen event, niet de
-actuele draaiurenstand.
+In de `Beslislog` staat de nieuwste melding bovenaan, met seconden in het tijdstip.
+Een startverloop bundelt de gelogde voorbereiding, startopdracht en
+compressorbevestiging. Klik erop om de stappen te zien; onder de technische details
+blijven alle meldingen en CM-overgangen beschikbaar. Ontbrekende voorbereiding of
+bevestiging wordt niet ingevuld. Ook een stopopdracht is apart van de stopbevestiging.
+
+De pompkeuze en koelwaarden bij een oude gebeurtenis volgen het opgeslagen event,
+niet de actuele draaiuren of live koelwaarden. Niet opgeslagen waarden blijven
+onbekend. De HP-balken in de grafiek gebruiken compressorbevestigingen; opdrachten
+en topologiekeuzes bewijzen geen draaien. Bij oudere of onvolledige logs kunnen
+bevestigde periodes daarom ontbreken. Open periodes lopen tot de logsnapshot.
+Na 80 tijdlijnmeldingen toont `Toon meer` de volgende meldingen uit de geladen periode.
 
 ## Warmtecapaciteit op het overzicht
 
