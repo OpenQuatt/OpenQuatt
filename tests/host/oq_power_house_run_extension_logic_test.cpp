@@ -276,7 +276,35 @@ void test_stale_inputs_fail_closed() {
   State wait;
   wait.phase = Phase::WAIT_WARM_RESTART;
   wait.cycle_armed = true;
-  assert(evaluate(in, tuning(), wait).next.phase == Phase::INACTIVE);
+  const auto held = evaluate(in, tuning(), wait);
+  assert(held.next.phase == Phase::WAIT_WARM_RESTART && !held.next.cycle_armed);
+  assert(held.force_comfort_stop);
+  in.inputs_valid = true;
+  in.cycle_active = in.actual_heating_active = false;
+  in.room_c = 20.9f;
+  assert(evaluate(in, tuning(), held.next).force_comfort_stop);
+}
+
+void test_input_outage_cannot_abort_pending_comfort_stop() {
+  for (bool input_loss : {false, true}) {
+    Input in = base_input();
+    in.room_c = 21.0f;
+    in.inputs_valid = !input_loss;
+    in.heating_allowed = input_loss;
+    const State stopping{Phase::COMFORT_STOP, in.setpoint_c, true};
+    const auto interrupted = evaluate(in, tuning(), stopping);
+    assert(interrupted.next.phase == Phase::COMFORT_STOP && interrupted.force_comfort_stop);
+    assert(!interrupted.next.cycle_armed);
+    in.inputs_valid = in.heating_allowed = true;
+    in.room_c = 20.7f;
+    const auto still_running = evaluate(in, tuning(), interrupted.next);
+    assert(still_running.next.phase == Phase::COMFORT_STOP && still_running.force_comfort_stop);
+    in.cycle_active = in.actual_heating_active = false;
+    const auto stopped = evaluate(in, tuning(), still_running.next);
+    assert(stopped.next.phase == Phase::WAIT_WARM_RESTART && stopped.force_comfort_stop);
+    const auto cooled = evaluate(in, tuning(), stopped.next);
+    assert(!cooled.force_comfort_stop && !cooled.floor_active && !cooled.warm_restart_intent);
+  }
 }
 
 void test_setpoint_drop_cancels_restart() {
@@ -294,24 +322,79 @@ void test_setpoint_drop_cancels_restart() {
 }
 
 void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
+  const Tuning night{0.4f, 0.2f, 0.0f};
   State extending;
   extending.phase = Phase::EXTENDING;
   extending.cycle_armed = true;
-  extending.last_setpoint_c = 20.5f;
+  extending.last_setpoint_c = 20.0f;
   Input lowered = base_input();
   lowered.setpoint_c = 19.5f;
-  lowered.room_c = 20.4f;
+  lowered.room_c = 20.27f;
   lowered.base_requested_w = 700.0f;
-  const auto stopping = evaluate(lowered, tuning(), extending);
+  const auto stopping = evaluate(lowered, night, extending);
   assert(stopping.next.phase == Phase::COMFORT_STOP);
   assert(stopping.force_comfort_stop);
   assert(!stopping.next.cycle_armed);
 
   lowered.actual_heating_active = false;
   lowered.cycle_active = false;
-  const auto stopped = evaluate(lowered, tuning(), stopping.next);
-  assert(stopped.next.phase == Phase::INACTIVE);
+  const auto stopped = evaluate(lowered, night, stopping.next);
+  assert(stopped.next.phase == Phase::WAIT_WARM_RESTART);
   assert(!stopped.warm_restart_intent);
+
+  // Night setback 20.0 -> 19.5: ordinary model demand must not restart a
+  // stopped HP at 19.9 while the new restart threshold is still 19.7.
+  State current = stopped.next;
+  for (float room_c : {20.27f, 19.90f, 19.80f, 19.71f}) {
+    lowered.room_c = room_c;
+    lowered.base_requested_w = 2171.0f;
+    for (int tick = 0; tick < 3; ++tick) {
+      const auto held = evaluate(lowered, night, current);
+      assert(held.next.phase == Phase::WAIT_WARM_RESTART);
+      assert(held.force_comfort_stop && !held.floor_active && !held.warm_restart_intent);
+      assert(!held.next.cycle_armed);
+      const float effective_w = held.force_comfort_stop ? 0.0f : std::max(lowered.base_requested_w, held.floor_w);
+      assert(effective_w == 0.0f);
+      current = held.next;
+    }
+  }
+  lowered.room_c = evaluate(lowered, night, current).warm_restart_c;
+  const auto cooled = evaluate(lowered, night, current);
+  assert(cooled.next.phase == Phase::INACTIVE);
+  assert(!cooled.force_comfort_stop && !cooled.floor_active && !cooled.warm_restart_intent);
+  // Cooling below the threshold releases normal house demand, without a
+  // minimum-power floor or extra restart intent from the cancelled old cycle.
+  lowered.base_requested_w = 0.0f;
+  const auto no_demand = evaluate(lowered, night, current);
+  assert(!no_demand.force_comfort_stop && !no_demand.floor_active && !no_demand.warm_restart_intent);
+}
+
+void test_setpoint_drop_while_waiting_keeps_temperature_gate() {
+  Input idle = base_input();
+  idle.cycle_active = idle.actual_heating_active = false;
+  idle.setpoint_c = 19.5f;
+  idle.room_c = 19.8f;
+  idle.base_requested_w = 2500.0f;
+  for (const auto phase :
+       {Phase::INACTIVE, Phase::RUNNING, Phase::EXTENDING, Phase::WAIT_WARM_RESTART, Phase::WARM_RESTART}) {
+    const State previous{phase, 20.0f, true};
+    const auto held = evaluate(idle, {0.4f, 0.2f, 0.0f}, previous);
+    assert((held.next.phase == Phase::WAIT_WARM_RESTART || held.next.phase == Phase::COMFORT_STOP) &&
+           !held.next.cycle_armed);
+    assert(held.force_comfort_stop && !held.floor_active && !held.warm_restart_intent);
+    assert(evaluate(idle, {0.4f, 0.2f, 0.0f}, held.next).force_comfort_stop);
+    // The selected room value can still be finite during a source outage.
+    // Consuming the setback on that invalid tick must not release a start.
+    for (bool input_loss : {false, true}) {
+      Input unavailable = idle;
+      unavailable.inputs_valid = !input_loss;
+      unavailable.heating_allowed = input_loss;
+      const auto interrupted = evaluate(unavailable, {0.4f, 0.2f, 0.0f}, previous);
+      assert(interrupted.force_comfort_stop && !interrupted.next.cycle_armed);
+      const auto recovered = evaluate(idle, {0.4f, 0.2f, 0.0f}, interrupted.next);
+      assert(recovered.force_comfort_stop && !recovered.floor_active && !recovered.warm_restart_intent);
+    }
+  }
 }
 
 void test_water_limit_blocks_floor() {
@@ -501,8 +584,10 @@ int main() {
   test_warm_restart_hands_back_to_run();
   test_disable_clears_extending();
   test_stale_inputs_fail_closed();
+  test_input_outage_cannot_abort_pending_comfort_stop();
   test_setpoint_drop_cancels_restart();
   test_setpoint_drop_comfort_stop_does_not_arm_restart();
+  test_setpoint_drop_while_waiting_keeps_temperature_gate();
   test_water_limit_blocks_floor();
   test_missing_pmin_no_floor();
   test_house_deficit_ignores_comfort_floor();
