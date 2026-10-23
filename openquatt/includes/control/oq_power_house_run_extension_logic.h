@@ -118,6 +118,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   if (!in.enabled) {
     next.phase = Phase::INACTIVE;
     next.cycle_armed = false;
+    if (std::isfinite(in.setpoint_c)) next.last_setpoint_c = in.setpoint_c;
     out.next = next;
     return out;
   }
@@ -150,9 +151,9 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   const bool room_ready_restart = room_finite && thresholds_finite && (in.room_c <= warm_restart_c);
   if (std::isfinite(in.setpoint_c)) next.last_setpoint_c = in.setpoint_c;
 
-  // Guard new starts before phase-specific idle exits. A setback may coincide
-  // with the previous run stopping, or arrive during an input outage.
-  if (!in.actual_heating_active && (room_at_stop || (setpoint_drop && !room_ready_restart))) {
+  // A fresh cycle has no comfort stop to resume. Still process a real setback
+  // after input loss, even if the old run's arming was already cancelled.
+  if (!in.actual_heating_active && ((next.cycle_armed && room_at_stop) || (setpoint_drop && !room_ready_restart))) {
     next.phase = Phase::WAIT_WARM_RESTART;
     if (setpoint_drop) next.cycle_armed = false;
     out.force_comfort_stop = true;
@@ -162,7 +163,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
 
   switch (state.phase) {
     case Phase::INACTIVE: {
-      if (room_at_stop) {
+      if (next.cycle_armed && room_at_stop) {
         next.phase = Phase::COMFORT_STOP;
         if (setpoint_drop) next.cycle_armed = false;
         out.force_comfort_stop = true;
