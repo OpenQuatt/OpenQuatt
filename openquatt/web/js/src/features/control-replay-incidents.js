@@ -1,4 +1,5 @@
 import { getIncidentDisplayLabel } from "../core/incident-monitoring.js";
+import { isOilReturnDecisionEvent } from "./control-replay-status.js";
 import { t } from "../i18n/index.js";
 
 const REASONS = Object.fromEntries([
@@ -75,6 +76,21 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
   const resolvedSubject = subject ?? t("controlReplay.defaultSubject");
   const type = String(event?.event_type || "");
   if (!TYPES.has(type)) return null;
+  if (isOilReturnDecisionEvent(event)) {
+    const started = type === "incident_start";
+    const normal = t("controlReplay.oilReturnNormalCopy");
+    return {
+      ...result(
+        started ? t("controlReplay.oilReturnStarted") : t("controlReplay.oilReturnFinished"),
+        started ? t("controlReplay.oilReturnStartCopy", { subject: resolvedSubject })
+          : t("controlReplay.oilReturnFinishedCopy", { subject: resolvedSubject }),
+        { label: t("controlReplay.oilReturnLabel"), summary: normal, checks: [] },
+        t("controlReplay.oilReturnNext"),
+      ),
+      detail: t("controlReplay.oilReturnWhy"),
+      reasonSummary: normal,
+    };
+  }
   const meta = getControlReplayIncidentReasonMeta(event.reason) || resolveMeta(DEFAULT_META);
   const label = getIncidentDisplayLabel({ id: event.value_a, key: SYNTHETIC[event.reason] || "" });
   if (type === "incident_start") {
@@ -128,6 +144,7 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
 
 export function getControlReplayIncidentDisplaySeverity(event) {
   const type = String(event?.event_type || "");
+  if (isOilReturnDecisionEvent(event)) return "normal";
   if (["incident_clear", "incident_acknowledged", "boiler_fallback_stop", "hp_start_confirmed", "hp_stop_confirmed"].includes(type)) return "normal";
   if (type !== "hp_availability_change") return "";
   if (event.to === "available") return "normal";

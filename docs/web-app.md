@@ -58,6 +58,8 @@ onbekend. De HP-balken in de grafiek gebruiken compressorbevestigingen; opdracht
 en topologiekeuzes bewijzen geen draaien. Bij oudere of onvolledige logs kunnen
 bevestigde periodes daarom ontbreken. Open periodes lopen tot de logsnapshot.
 Na 80 tijdlijnmeldingen toont `Toon meer` de volgende meldingen uit de geladen periode.
+Olie-retour verschijnt als normale bedrijfscyclus met `gestart` en `afgerond`.
+De uitleg beschrijft dat deze cyclus meegevoerde smeerolie terugbrengt naar de compressor.
 
 ## Warmtecapaciteit op het overzicht
 

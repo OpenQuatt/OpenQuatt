@@ -16,8 +16,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // The existing relative gzip growth limit remains unchanged.
     // Complete heating/cooling inputs: +314 B raw versus dev (Node 24.19.0).
     // Grouped start sequences, truthful historical evidence and confirmed compressor history:
-    // +6,210 B raw / +2,029 B gzip versus #884 on Node 24.19.0; relative limits unchanged.
-    raw: 1_345_000,
+    // Including normal oil-return lifecycle copy: +7,394 B raw / +2,387 B gzip versus #884
+    // on Node 24.19.0; relative limits unchanged.
+    raw: 1_346_000,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
