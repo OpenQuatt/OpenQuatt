@@ -303,6 +303,8 @@ void test_composition_envelope_slew_and_no_boost_compatibility() {
   const WarmupBoost boost{19.18f, 2527.63f};
   auto out = decide_demand(input, tuning, {2527.63f, 1000, 0}, boost);
   assert(near(out.requested_w, 2527.63f + 5000.0f * 5 / 300));
+  assert(near(out.contributions.warmup_base_w, 1071.43f));
+  assert(near(out.contributions.warmup_extra_w, 840));
   out = decide_demand(input, tuning, {}, {19.18f, 9000});
   assert(out.requested_w == 5000 && out.raw_demand == 20);
   for (float water : {0.0f, 0.5f, 0.998f}) {

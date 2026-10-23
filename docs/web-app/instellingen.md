@@ -88,6 +88,13 @@ dezelfde compressorstand passen. Bij bereiken van de stap vervalt de boost en
 bouwt de vermogensvraag volgens de normale regeling af. Vergelijk voor diagnose
 boost, warmtevraag in W, aangevraagde stand en gemeten frequentie.
 
+Voor een testmelding volstaat normaal één **Systeemrecorder-opname** van vóór
+een boostverhoging tot na het bereiken van de volgende stap. De opname bevat
+ook de opwarminstellingen, tussendoel, boost, status, looptijd en extra
+vermogensvraag. Losse HA-grafieken of overgeschreven instellingen zijn dan
+meestal niet nodig. Vermeld wel het tijdstip als iets anders loopt dan verwacht.
+
+
 De functie stopt zodra de gemeten kamertemperatuur het echte thermostaatdoel
 bereikt, ook als de kamer eerder al binnen de comfortband ligt. Tijdens het
 opwarmen zie je de status, **Kamertemperatuur** en **Gewenste temperatuur**.

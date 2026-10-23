@@ -190,3 +190,45 @@ runtime-offsetveld; de grootte van de runtime verandert niet en de NVS-layout
 blijft behouden. Twee extra ESPHome-sensorobjecten en hun API-/webregistratie
 hebben wel geheugenimpact; die is nog niet op representatieve hardware gemeten.
 De bestaande heap/P1- en NVS-kwalificatiepunten blijven open.
+
+## Diagnose in de Systeemrecorder
+
+De standaardopname bevat de vier opwarminstellingen en de bestaande meetwaarden
+voor actief, tussendoel, boost en effectief temperatuurdoel. `warmupStatus` en
+`warmupElapsed` lezen per sample eenmaal hetzelfde gepackte controllerwoord;
+ontbrekende progress blijft onbekend. Er komen geen extra HA-entiteiten bij.
+De statuscodes volgen de bestaande sessiestatus (0 idle, 1 disabled, 2 warming,
+3 comfort reached, 4 setpoint lowered, 5 time limit, 6 input unavailable,
+7 source changed, 8 mode changed, 9 settings changed).
+
+De recorder bewaart daarnaast numerieke Wattdiagnostiek uit dezelfde PH-tick:
+
+| Kolom | Betekenis |
+|---|---|
+| `warmupBasePower` | Onboosted feedforward + ruimtecorrectie, vóór Pmin/enveloppe/slew/water |
+| `warmupMinimumPower` | Beschikbaar Pmin uit het watermodel, onbekend bij ontbrekend model |
+| `warmupExtraPower` | Extra ruimtecorrectie door de geclampte boost, vóór enveloppe/slew/water; geen gemeten levering |
+| `warmupBeforeCapsPower` | HP-vraag na compositie, slew, water/recovery en run extension, vóór de vraagcap |
+| `warmupAfterCapsPower` | Vraag na die cap, vóór discrete/electrisch begrensde dispatch en actuatorguards |
+| `warmupPowerPath` | 0 inactive, 1 no boost, 2 applied, 3 falling, 4 no recovery, 5 no model, 6 water limit, 7 external, 8 unavailable |
+
+Ontbrekende/ongeldige waarden blijven `null`. Bij een owner-overgang worden
+de Wattwaarden onbekend tot de volgende PH-berekening; de bestaande
+opwarmentiteiten worden bij die overgang meteen bijgewerkt. Bij afbouw is de extra correctie
+nul; een hogere resterende HP-vraag kan uit de normale fall-slew komen.
+Bestaande kolommen bevatten kamer/einddoel, gevraagde standen, gemeten Hz,
+waterfactor en overige limieten; `debugStaticSnapshot` bevat Kp/comfortband en
+stijg-/daaltijden, en wijzigt wanneer deze instellingen wijzigen.
+
+Het logtag `quatt.warmup` schrijft op INFO alleen bij sessie-, stap-, boost- en
+padwijzigingen. Het vermogensbericht bevat ook basis, Pmin, extra W en de vraag
+vóór/na caps. Gewijzigde Wattwaarden of verstreken seconden alleen veroorzaken
+geen extra logregel. `NaN` wordt voor de logsignature genormaliseerd.
+
+Het samplebuffer blijft 2 MiB; twee veldtabellen groeien van 272 naar 288 slots
+in PSRAM, zonder interne fallback. De volledige set heeft 274 velden inclusief
+systeemkolommen en 14 reserves. De maximale row is 853 B: 2.458 samples, circa
+6 uur 49 minuten bij 10 seconden. Dit verlaagt retentie, geen testgrens wordt
+verlaagd. Live numerieke diagnostiek gebruikt ongeveer 32 B vaste veldopslag
+in de recorder; de werkelijke firmwaredelta en exportpiek worden apart gemeten.
+HTTP export leest alleen een vastgelegde opname, nooit mutable regelstate.

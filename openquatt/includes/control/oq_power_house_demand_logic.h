@@ -51,6 +51,8 @@ struct DemandContributions {
   float selected_feedforward_w = NAN;
   float adaptive_w = 0.0f;
   float room_feedback_w = NAN;
+  // Read-only warmup diagnostics, before envelope/slew/water. Not control state.
+  float warmup_base_w = NAN, warmup_extra_w = NAN;
 };
 struct DemandDecision {
   DemandState next;
@@ -175,6 +177,8 @@ inline DemandDecision decide_demand_with_power(const DemandInput& in, const Dema
     const float baseline_feedback_w = tuning.reaction_w_per_k * baseline_error_c;
     const float extra_w = fmaxf(0.0f, out.contributions.room_feedback_w - baseline_feedback_w);
     const float baseline_w = feedforward.house_power_w + baseline_feedback_w;
+    out.contributions.warmup_base_w = baseline_w;
+    out.contributions.warmup_extra_w = extra_w;
     composed_w = fmaxf(baseline_w, boost.minimum_w) + extra_w;
   }
   // Apply the normal envelope, slew and water limiter AFTER composing boost.

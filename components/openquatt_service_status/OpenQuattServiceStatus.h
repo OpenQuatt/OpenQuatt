@@ -22,6 +22,7 @@ class OpenQuattServiceStatus : public Component {
 
   void set_web_server(web_server::WebServer* web_server) { this->web_server_ = web_server; }
   void set_warmup_progress(uint8_t status, uint32_t elapsed_s) { this->warmup_progress_.publish(status, elapsed_s); }
+  uint32_t warmup_progress() const { return this->warmup_progress_.read(); }
 
   void set_control_mode_code(IntGlobal* value) { this->control_mode_code_ = value; }
   void set_commissioning_active(BoolGlobal* value) { this->commissioning_active_ = value; }

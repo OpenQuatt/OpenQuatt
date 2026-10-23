@@ -1714,6 +1714,14 @@
     "phRunExtensionWarmRestart",
     "roomTempEffectiveSource",
     "roomSetpointEffectiveSource",
+    "warmupEnabled",
+    "warmupTrigger",
+    "warmupStep",
+    "warmupStepTime",
+    "warmupActive",
+    "warmupIntermediateTarget",
+    "warmupBoost",
+    "warmupEffectiveTarget",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];

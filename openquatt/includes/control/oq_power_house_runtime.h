@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include "esphome/components/openquatt_decision_log/OpenQuattHeatingStop.h"
+#include "esphome/components/openquatt_debug_recorder/warmup_diagnostics.h"
 
 #include "../performance/hp_perf_frequency.h"
 #include "../performance/oq_water_performance_runtime.h"
@@ -297,6 +298,21 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     include_minimum(dispatch_input.hp2);
 #endif
+    namespace diagnostics = esphome::openquatt_debug_recorder;
+    diagnostics::WarmupPowerSnapshot warmup_power;
+    if (warming) {
+      warmup_power.minimum_w = dispatch_input.performance_valid ? minimum_viable_w : NAN;
+      if (demand.valid && !(std::isfinite(warmup.boost_baseline_c) && effective_target_c > warmup.boost_baseline_c)) {
+        warmup_power.base_w = demand.contributions.selected_feedforward_w + demand.contributions.room_feedback_w;
+        warmup_power.extra_w = 0.0f;
+      }
+      warmup_power.path = demand.external                                       ? diagnostics::WarmupPath::EXTERNAL
+                          : !(intent.fast_start || intent.room_recovery_active) ? diagnostics::WarmupPath::NO_RECOVERY
+                          : !dispatch_input.performance_valid || !std::isfinite(minimum_viable_w)
+                              ? diagnostics::WarmupPath::NO_MODEL
+                          : !(id(oq_water_temp_limit_factor) >= 0.999f) ? diagnostics::WarmupPath::WATER_LIMIT
+                                                                        : diagnostics::WarmupPath::NO_BOOST;
+    }
     if (warming && !demand.external && dispatch_input.performance_valid &&
         (intent.fast_start || intent.room_recovery_active) &&
         ((std::isfinite(warmup.boost_baseline_c) && effective_target_c > warmup.boost_baseline_c) ||
@@ -311,6 +327,13 @@ class Runtime {
       requested_w = hp_demand.requested_w;
       raw_demand = hp_demand.raw_demand;
       this->warmup_request_w_ = requested_w;
+      if (std::isfinite(hp_demand.contributions.warmup_base_w)) {
+        warmup_power.base_w = hp_demand.contributions.warmup_base_w;
+        warmup_power.extra_w = hp_demand.contributions.warmup_extra_w;
+      }
+      warmup_power.path = std::isfinite(warmup.boost_baseline_c) && effective_target_c > warmup.boost_baseline_c
+                              ? diagnostics::WarmupPath::APPLIED
+                              : diagnostics::WarmupPath::FALLING;
     } else
       this->warmup_request_w_ = NAN;
     if (warming) demand.next.comfort_memory_c = 0.0f;
@@ -440,6 +463,7 @@ class Runtime {
     id(oq_demand_filtered_prev) = id(oq_demand_filtered);
     id(oq_demand_filtered) = raw_demand;
     id(oq_heating_demand_filtered) = raw_demand;
+    if (warming) warmup_power.before_caps_w = requested_w;
     const int capped_demand =
         std::min(raw_demand, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
     const float demand_scale_w = envelope.demand_scale_w;
@@ -447,6 +471,13 @@ class Runtime {
       requested_w = std::min(requested_w, demand_scale_w * static_cast<float>(capped_demand) / config.demand_max_f);
     dispatch_input.demand_level = capped_demand;
     dispatch_input.requested_w = requested_w;
+    if (warming) warmup_power.after_caps_w = requested_w;
+    const auto& warmup_runtime = oq_warmup_runtime::runtime();
+    const bool log_warmup_power =
+        id(oq_debug_recorder)
+            .set_warmup_power(diagnostics::warmup_log_key(warming, warmup_runtime.intermediate_target(),
+                                                          warmup_runtime.offset(), warmup_power.path),
+                              warmup_power);
     const oq_power_house_dispatch::DispatchTuning dispatch_tuning{
         id(oq_power_limit_soft_w),       id(oq_power_limit_peak_w),        config.optimizer_penalty_per_w,
         config.topology_power_margin_w,  config.topology_heat_advantage_w, config.defrost_comp_min_f,
@@ -454,6 +485,16 @@ class Runtime {
     };
     const auto dispatch =
         oq_power_house_dispatch::decide_dispatch(dispatch_input, dispatch_tuning, this->dispatch_state_);
+    if (log_warmup_power) {
+      ESP_LOGI("quatt.warmup",
+               "power path=%s room=%.2f final=%.2f step=%.2f boost=%.2f effective=%.2f kp=%.0f below=%.2f base=%.0f "
+               "pmin=%.0f extra=%.0f pre_cap=%.0f post_cap=%.0f hp1=%d hp2=%d",
+               diagnostics::warmup_path_name(warmup_power.path), room_c, setpoint_c,
+               warmup_runtime.intermediate_target(), warmup_runtime.offset(), effective_target_c,
+               demand_tuning.reaction_w_per_k, demand_tuning.comfort_below_c, warmup_power.base_w,
+               warmup_power.minimum_w, warmup_power.extra_w, warmup_power.before_caps_w, warmup_power.after_caps_w,
+               dispatch.hp1_level, dispatch.hp2_level);
+    }
     id(oq_ph_request_hp1_level) = dispatch.hp1_level;
     id(oq_ph_request_hp2_level) = dispatch.hp2_level;
     id(oq_ph_request_owner_hp) = dispatch.owner_hp;
@@ -532,6 +573,7 @@ class Runtime {
   }
 
   void reset() {
+    id(oq_debug_recorder).set_warmup_power(0, {});
     this->stop_snapshot_ = {};
     this->dispatch_state_ = {};
     this->last_optimizer_reason_.clear();

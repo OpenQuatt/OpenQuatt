@@ -19,8 +19,11 @@ class Runtime {
     this->reset_reason_ = reason;
   }
 
-  void update(const oq_warmup::Input& input, const oq_warmup::Settings& settings) {
+  bool update(const oq_warmup::Input& input, const oq_warmup::Settings& settings) {
     const bool was_active = this->state_.active;
+    const auto previous_status = this->state_.status;
+    const float previous_target = this->state_.target_c;
+    const float previous_offset = this->state_.offset_c;
     const uint32_t started_ms = this->state_.started_ms;
     if (this->reset_pending_) {
       this->state_ = oq_warmup::cancel(this->reset_reason_);
@@ -35,6 +38,11 @@ class Runtime {
       this->last_session_status_ = this->state_.status;
       this->last_duration_ms_ = std::min(static_cast<uint32_t>(input.now_ms - started_ms), oq_warmup::MAX_DURATION_MS);
     }
+    const auto changed = [](float before, float after) {
+      return !(std::isnan(before) && std::isnan(after)) && before != after;
+    };
+    return was_active != this->state_.active || previous_status != this->state_.status ||
+           changed(previous_target, this->state_.target_c) || changed(previous_offset, this->state_.offset_c);
   }
 
   // Read-only diagnostics: keep the last result until the next session or boot.

@@ -20,6 +20,9 @@ esphome:
           id(oq_warmup_enabled).publish_state(saved[0] == 1.0f);
           id(oq_warmup_settings_ready) = true;
           oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::IDLE);
+          id(oq_debug_recorder).set_warmup_progress_provider([]() -> uint32_t {
+            return id(oq_service_status_endpoint).warmup_progress();
+          });
 
 globals:
   - id: oq_warmup_settings
@@ -230,12 +233,28 @@ interval:
           const auto &room = inputs.room;
           const auto &setpoint = inputs.setpoint;
           const bool fresh = room.valid && setpoint.valid && room.fresh && setpoint.fresh && !room.held && !setpoint.held;
-          oq_warmup_runtime::runtime().update(
+          const bool changed = oq_warmup_runtime::runtime().update(
               {static_cast<uint32_t>(millis()), id(oq_warmup_enabled).state, automatic, fresh,
                room.configuration_generation, setpoint.configuration_generation, room.value,
                setpoint.value, id(ph_comfort_band_below_c).state},
               {id(oq_warmup_trigger_c).state, id(oq_warmup_step_c).state,
                oq_warmup::duration_ms(id(oq_warmup_step_minutes).state, 60000.0f, 5.0f, 120.0f)});
+          if (changed) {
+            // Never pair a new step/status with Watts from the old PH tick.
+            id(oq_debug_recorder).invalidate_warmup_power();
+            const auto &warmup = oq_warmup_runtime::runtime();
+            id(oq_warmup_active).publish_state(warmup.active());
+            id(oq_warmup_intermediate_target).publish_state(warmup.intermediate_target());
+            id(oq_warmup_boost).publish_state(warmup.offset());
+            id(oq_warmup_effective_target).publish_state(warmup.effective_target(setpoint.value));
+          }
           id(oq_service_status_endpoint).set_warmup_progress(
               static_cast<uint8_t>(oq_warmup_runtime::runtime().session_status()),
               oq_warmup_runtime::runtime().session_elapsed_s(static_cast<uint32_t>(millis())));
+          if (changed) {
+            const auto &warmup = oq_warmup_runtime::runtime();
+            ESP_LOGI("quatt.warmup", "state=%u active=%d room=%.2f final=%.2f step=%.2f boost=%.2f effective=%.2f elapsed=%us",
+                static_cast<unsigned>(warmup.status()), warmup.active(), room.value, setpoint.value,
+                warmup.intermediate_target(), warmup.offset(), warmup.effective_target(setpoint.value),
+                static_cast<unsigned>(warmup.session_elapsed_s(static_cast<uint32_t>(millis()))));
+          }
