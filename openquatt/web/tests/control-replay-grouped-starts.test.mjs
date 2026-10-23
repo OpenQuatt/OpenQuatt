@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { groupControlReplayStarts } from "../js/src/features/control-replay-starts.js";
-import { setLocale } from "../js/src/i18n/index.js";
+import { setLocale, t } from "../js/src/i18n/index.js";
 import { loadReplayHarness } from "./helpers/replay-render-harness.mjs";
 
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.window = { location: { pathname: "/" }, localStorage: { getItem: () => null } };
 const { state } = await import("../js/src/core/state.js");
 const source = await readFile(new URL("../js/src/features/control-replay-view.js", import.meta.url), "utf8");
-const replay = await loadReplayHarness(source + "\nexport { buildControlWorkingStartItems, mapDecisionEventToControlWorkingItem, renderControlWorkingDetails, renderControlWorkingTimelineTab, getControlWorkingSelectedItem, getControlWorkingDecisionLogChartLanes, getControlWorkingActiveGraphContextForMinute, buildControlWorkingDerivedItems };\n");
+const replay = await loadReplayHarness(source + "\nexport { buildControlWorkingStartItems, mapDecisionEventToControlWorkingItem, renderControlWorkingDetails, renderControlWorkingTimelineTab, renderControlWorkingTimelineItem, getControlWorkingSelectedItem, getControlWorkingDecisionLogChartLanes, getControlWorkingActiveGraphContextForMinute, buildControlWorkingDerivedItems };\n");
 const now = new Date(2026, 9, 23, 1, 20).getTime();
 const realNow = Date.now;
 test.after(() => { Date.now = realNow; });
@@ -54,6 +54,11 @@ test("seven start records become one sequence with actual stages and technical d
     assert.equal((details.match(/<li>/g) || []).length, 4);
     assert.match(details, /CM0 → CM1/);
     assert.match(details, /30s/);
+    // Runtime balance explains the pump choice, not the entire start sequence.
+    const reason = t("controlReplay.reasonRuntimeLead");
+    assert.ok(!replay.renderControlWorkingTimelineItem(items[0], null).includes(reason));
+    assert.ok(details.includes(t("controlReplay.optFitsBalance")));
+    assert.ok(replay.renderControlWorkingTimelineItem(rawItems[5], null).includes(reason));
     state.controlReplaySelectedEpisode = rawItems[5].id;
     assert.equal(replay.getControlWorkingSelectedItem(items).id, items[0].id);
   }

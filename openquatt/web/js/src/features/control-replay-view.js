@@ -2793,7 +2793,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           <span class="oq-working-entry-meta">
             <span>${escapeHtml(item.source)}</span>
             ${!item.heatingStop && modeMetaLabel ? `<span class="oq-working-entry-meta-mode">${escapeHtml(modeMetaLabel)}</span>` : ""}
-            ${item.heatingStop ? "" : `<span>${escapeHtml(item.reasonLabel || getControlWorkingReasonLabel(item.reasonCode))}</span>`}
+            ${item.heatingStop || item.startSteps ? "" : `<span>${escapeHtml(item.reasonLabel || getControlWorkingReasonLabel(item.reasonCode))}</span>`}
             ${!item.heatingStop && item.duration ? `<span>${escapeHtml(t("controlReplay.entryDuration", { value: item.duration }))}</span>` : ""}
           </span>
         </span>
