@@ -582,6 +582,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const reasonCode = target?.reasonCode || target?.primaryReason || "keep_current";
     const event = target?.rawDecisionEvent;
     const eventType = event?.event_type || target?.realEventType || "";
+    if (eventType === "defrost_seen_clear") return null;
     const historical = Boolean(event || eventType || target?.kind || target?.derivedFromDecisionLog);
     const hasHp2 = target?.hp2Available ?? (getInstallationTopology() === "duo" || String(target?.source || "").includes("HP2"));
     const source = target?.source || (hasHp2 ? "HP1 + HP2" : "HP1");
@@ -1584,6 +1585,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       case "defrost_seen_start":
         return {
         title: t("controlReplay.evDefrostStarted", { subject }),
+        reasonLabel: t("controlReplay.defrostLabel"),
+        reasonSummary: t("controlReplay.defrostNormal"),
         summary: t("controlReplay.evDefrostBrief", { subject }),
         detail: t("controlReplay.evDefrostSelf"),
         next: t("controlReplay.evDefrostAutoResume"),
@@ -1591,6 +1594,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       case "defrost_seen_clear":
         return {
         title: t("controlReplay.evDefrostDone", { subject }),
+        reasonLabel: t("controlReplay.defrostLabel"),
+        reasonSummary: t("controlReplay.defrostNormal"),
         summary: t("controlReplay.evDefrostDoneCopy", { subject }),
         detail: t("controlReplay.evDefrostSeesEnd"),
         next: t("controlReplay.evDefrostDuoNext"),

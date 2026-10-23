@@ -60,7 +60,7 @@ test("failed HTML generation leaves the previous DOM available for a retry", () 
 });
 
 test("decision copy preserves the pre-refactor output for 21,504 combinations", async () => {
-  // Golden digests from 26ea56d; start/stop copy distinguishes commands from feedback.
+  // Golden digests from 26ea56d; reviewed updates distinguish commands, feedback and operating lifecycles.
   // 28 types × 32 reasons × 3 subjects × 8 contexts.
   const expected = JSON.parse(await readFile(new URL("./fixtures/decision-copy-digests.json", import.meta.url), "utf8"));
   assert.deepEqual(decisionCopyDigests(replay.getDecisionEventCopy), expected);

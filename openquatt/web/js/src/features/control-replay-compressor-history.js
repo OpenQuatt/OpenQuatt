@@ -1,4 +1,4 @@
-import { isOilReturnDecisionEvent } from "./control-replay-status.js";
+import { getControlReplayOperatingStatus } from "./control-replay-status.js";
 
 const sources = ["HP1", "HP2"];
 const confirmationTypes = new Set(["hp_start_confirmed", "hp_stop_confirmed"]);
@@ -50,7 +50,11 @@ export function getConfirmedCompressorHistory(events, { timeOf, start, end }) {
       && event.uptime_s < previous.event.uptime_s;
     if (sequenceGap || uptimeReset || event.event_type === "boot_marker") invalidate(time);
     const targets = event.subject === "BOTH" ? sources : sources.filter((source) => source === event.subject);
-    const uncertain = (event.event_type === "incident_start" && !isOilReturnDecisionEvent(event)
+    const operatingStatus = getControlReplayOperatingStatus(event);
+    // Informational statuses and capacity limits do not stop a compressor.
+    // Preheat blocks a start; an inconsistent legacy fault reason stays conservative.
+    const keepsRunning = operatingStatus && operatingStatus !== "preheat";
+    const uncertain = (event.event_type === "incident_start" && !keepsRunning
       && ["hp_link_loss", "hp_stop_unconfirmed", "hp_start_failed", "hp_fault", "hp_protection"].includes(event.reason))
       || (event.event_type === "hp_availability_change" && ["offline", "suspect", "faulted"].includes(event.to));
     if (uncertain) {

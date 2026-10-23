@@ -60,6 +60,12 @@ bevestigde periodes daarom ontbreken. Open periodes lopen tot de logsnapshot.
 Na 80 tijdlijnmeldingen toont `Toon meer` de volgende meldingen uit de geladen periode.
 Olie-retour verschijnt als normale bedrijfscyclus met `gestart` en `afgerond`.
 De uitleg beschrijft dat deze cyclus meegevoerde smeerolie terugbrengt naar de compressor.
+Ook ontdooien krijgt uitleg over het doel van de cyclus. Voorverwarming eindigt met
+`afgerond`; druk- en buitentemperatuurbegrenzingen eindigen met `opgeheven`.
+Zolang voorverwarming of een vermogensbegrenzing actief is, blijft de tijdelijke
+beperking zichtbaar. Een losse waterpompdiagnose bewijst geen pompdefect.
+Een afgelopen melding betekent alleen dat deze melding niet meer actief is:
+overige startvoorwaarden en eventuele vereiste resets blijven gelden.
 
 ## Warmtecapaciteit op het overzicht
 

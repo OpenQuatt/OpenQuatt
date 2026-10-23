@@ -26,7 +26,7 @@ test("incident start and clear receive specific labels and recovered severity", 
   assert.equal(startCopy.title, "Condensordruksensor actief");
   assert.equal(startCopy.reasonLabel, "Warmtepompstoring");
   assert.equal(clearCopy.title, "Condensordruksensor hersteld");
-  assert.match(clearCopy.summary, /blijft vastgehouden/);
+  assert.match(clearCopy.summary, /blijft als historie bewaard/);
   assert.equal(getControlReplayIncidentDisplaySeverity(cleared), "normal");
 });
 
@@ -85,7 +85,7 @@ test("availability transitions distinguish brief confirmation, outage and recove
   assert.equal(getControlReplayIncidentDisplaySeverity(availableEvent), "normal");
   assert.equal(
     getControlReplayIncidentEventCopy(availableEvent, "Warmtepomp 1").title,
-    "Warmtepomp 1 weer beschikbaar",
+    "Warmtepomp 1 beschikbaar",
   );
   assert.match(
     getControlReplayIncidentReasonMeta("hp_recovered").summary,
