@@ -66,6 +66,11 @@ Zolang voorverwarming of een vermogensbegrenzing actief is, blijft de tijdelijke
 beperking zichtbaar. Een losse waterpompdiagnose bewijst geen pompdefect.
 Een afgelopen melding betekent alleen dat deze melding niet meer actief is:
 overige startvoorwaarden en eventuele vereiste resets blijven gelden.
+Volgt een startblokkade direct op een bevestigde compressorstop zonder incidenten,
+dan heet deze `wacht op minimale uit-tijd`. De uitleg beschrijft de herstartpauze;
+een niet opgeslagen resterende tijd wordt niet uit actuele instellingen ingevuld.
+Bij andere blokkades toont de beslislog de gelogde melding of vermeldt zij dat de
+specifieke oorzaak ontbreekt.
 
 ## Warmtecapaciteit op het overzicht
 

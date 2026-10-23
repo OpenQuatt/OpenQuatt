@@ -1,6 +1,7 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
 import { groupControlReplayStarts } from "./control-replay-starts.js";
 import { getConfirmedCompressorHistory } from "./control-replay-compressor-history.js";
+import { isControlReplayRestAfterStop } from "./control-replay-status.js";
 import { attachHeatingStopSnapshots, getHeatingStopCopy, getHeatingStopReasonMeta, getHeatingStopSupportValues } from "./control-replay-heating-stops.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isAuxHeatSourcePresent, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
@@ -2139,6 +2140,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
 
     return sorted.map((event, index) => {
       const enriched = { ...event };
+      enriched._oq_rest_after_stop = isControlReplayRestAfterStop(event, sorted[index - 1]);
       const eventType = String(event?.event_type || "");
       const subject = String(event?.subject || "").toUpperCase();
       const reason = String(event?.reason || "");

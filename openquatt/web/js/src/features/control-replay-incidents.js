@@ -1,5 +1,5 @@
 import { getIncidentDisplayLabel } from "../core/incident-monitoring.js";
-import { getControlReplayOperatingStatus } from "./control-replay-status.js";
+import { getControlReplayOperatingStatus, isControlReplayPowerCycleClear } from "./control-replay-status.js";
 import { t } from "../i18n/index.js";
 
 const REASONS = Object.fromEntries([
@@ -133,7 +133,7 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
   }
   if (type === "incident_clear") {
     const latched = (Number(event.flags) & 1) !== 0;
-    const resetRequired = latched && (Number(event.flags) & 4) !== 0;
+    const resetRequired = isControlReplayPowerCycleClear(event);
     return result(
       resetRequired ? t("controlReplay.clearResetTitle", { label }) : `${label} ${t("controlReplay.clearRecovered")}`,
       resetRequired ? t("controlReplay.clearResetRequired", { subject: resolvedSubject }) : latched
@@ -152,6 +152,25 @@ export function getControlReplayIncidentEventCopy(event, subject = null) {
     );
   }
   if (type === "hp_availability_change") {
+    if (event.to === "blocked") {
+      const rest = event._oq_rest_after_stop === true;
+      const incident = Number.isInteger(event.value_a) && event.value_a > 0;
+      const primaryStatus = getControlReplayOperatingStatus({ ...event, event_type: "incident_start" });
+      const nonBlockingStatus = primaryStatus && primaryStatus !== "preheat";
+      return {
+        ...result(
+          rest ? t("controlReplay.availRestTitle", { subject: resolvedSubject }) : `${resolvedSubject} ${t("controlReplay.availBlocked")}`,
+          rest ? t("controlReplay.availRestCopy", { subject: resolvedSubject }) : incident
+            ? t("controlReplay.availBlockedIncident", { subject: resolvedSubject, label }) : t("controlReplay.availBlockedCopy"),
+          { label: rest ? t("controlReplay.availRestLabel") : incident && !nonBlockingStatus ? label : t("controlReplay.availabilityLabel"), summary: "", checks: [] },
+          rest ? t("controlReplay.availRestNext") : t("controlReplay.availBlockedNext"),
+        ),
+        detail: rest ? t("controlReplay.availRestWhy") : nonBlockingStatus
+          ? t("controlReplay.availBlockedStatusWhy", { label: t(OPERATING_COPY[primaryStatus][0]) })
+          : incident ? meta.summary : t("controlReplay.availBlockedWhy"),
+        reasonSummary: rest ? t("controlReplay.availRestNormal") : t("controlReplay.availBlockedNormal"),
+      };
+    }
     if (event.to === "available" || event.to === "preheat") {
       const available = event.to === "available";
       return {
@@ -196,10 +215,11 @@ export function getControlReplayIncidentDisplaySeverity(event) {
     if (["oilReturn", "pumpDiagnostic"].includes(operatingStatus)) return "normal";
     return type === "incident_start" || (type === "incident_acknowledged" && event.to === "active") ? "limited" : "normal";
   }
-  if (type === "incident_clear" && (Number(event.flags) & 5) === 5) return "limited";
+  if (isControlReplayPowerCycleClear(event) || (type === "incident_clear" && event.to === "blocked")) return "limited";
   if (type === "incident_acknowledged" && event.to === "active") return String(event.severity || "fault");
   if (["incident_clear", "incident_acknowledged", "boiler_fallback_stop", "hp_start_confirmed", "hp_stop_confirmed"].includes(type)) return "normal";
   if (type !== "hp_availability_change") return "";
+  if (event.to === "blocked" && event._oq_rest_after_stop === true) return "normal";
   if (event.to === "available") return "normal";
   if (["recovering", "preheat", "blocked", "suspect"].includes(event.to)) return "limited";
   return ["faulted", "offline"].includes(event.to) ? "fault" : "";

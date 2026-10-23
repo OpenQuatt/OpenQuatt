@@ -151,7 +151,7 @@ test("capacity limits and diagnostics preserve both confirmed runs; real and unk
 test("a cleared fault requiring power cycle remains limited and explains that acknowledgement cannot release it", () => {
   for (const locale of ["nl", "en"]) {
     setLocale(locale);
-    const e = event(21, "incident_clear", { flags: 37, to: "blocked" });
+    const e = event(21, "incident_clear", { flags: 97, to: "blocked" });
     const copy = getControlReplayIncidentEventCopy(e, "HP2");
     assert.equal(getControlReplayIncidentDisplaySeverity(e), "limited");
     assert.doesNotMatch(copy.title + copy.reasonLabel, /hersteld|recovered/);
