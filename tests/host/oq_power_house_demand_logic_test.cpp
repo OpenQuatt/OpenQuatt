@@ -8,7 +8,7 @@ namespace {
 using namespace oq_power_house;
 bool near(float actual, float expected) { return fabsf(actual - expected) < 0.01f; }
 DemandInput input() { return {60001U, 3.0f, -10.0f, 16.0f, 6000.0f, 20.0f, 20.0f, NAN, 1.0f, false}; }
-DemandTuning tuning() { return {0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20}; }
+DemandTuning tuning() { return {0.5f, 3000.0f, 0.3f, true, 10.0f, 5.0f, 20}; }
 void test_model_and_feedforward() {
   struct ModelCase {
     float outside_c, expected_w;
@@ -78,8 +78,8 @@ void test_demand_finite_contract() {
       &DemandInput::outside_c, &DemandInput::cold_c,     &DemandInput::zero_power_c,      &DemandInput::rated_w,
       &DemandInput::room_c,    &DemandInput::setpoint_c, &DemandInput::water_limit_factor};
   float DemandTuning::* tuning_fields[] = {&DemandTuning::temperature_guard_c, &DemandTuning::reaction_w_per_k,
-                                           &DemandTuning::comfort_below_c,     &DemandTuning::comfort_above_c,
-                                           &DemandTuning::rise_time_min,       &DemandTuning::fall_time_min};
+                                           &DemandTuning::stop_temperature_c,  &DemandTuning::rise_time_min,
+                                           &DemandTuning::fall_time_min};
   for (float value : bad) {
     for (auto field : input_fields) {
       auto in = input();
@@ -108,9 +108,9 @@ void test_demand_finite_contract() {
   auto recovered = input();
   recovered.now_ms = stopped.next.last_ms + 60000U;
   assert(near(decide_demand(recovered, tuning(), stopped.next).requested_w, 600.0f));
-  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.1f, 0.3f, 10, 5, 20}, {}).valid);
+  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.3f, true, 10, 5, 20}, {}).valid);
   assert(!decide_demand({60001U, 3, -10, 16, 6000, -0x1.fffffep+127f, 0x1.fffffep+127f, NAN, 1, false},
-                        {0.5f, 0, 0.1f, 0.3f, 10, 5, 20}, {})
+                        {0.5f, 0, 0.3f, true, 10, 5, 20}, {})
               .valid);
 }
 void test_demand_slew_and_limits() {
@@ -132,50 +132,52 @@ void test_demand_slew_and_limits() {
   warm.room_c = 22.0f;
   assert(decide_demand(warm, tuning(), {3000, 1U, 0.1f}).next.comfort_memory_c < 0.1f);
 }
-void test_comfort_warm_edge_and_recovery_boundary() {
+void test_direct_room_error() {
   // No prior tick: inspect the requested watts before slew delays the change.
   // At 20 C desired, 3000 W house need and 3000 W/K room reaction.
   struct Case {
-    float above_c, room_c, memory_c, expected_w;
+    float room_c, memory_c, expected_w;
   };
   const Case cases[] = {
-      {0.3f, 19.8f, 0.0f, 3300.0f},  {0.3f, 20.0f, 0.0f, 3000.0f},   {0.3f, 20.3f, 0.0f, 3000.0f},
-      {0.3f, 20.4f, 0.0f, 2700.0f},  {0.3f, 21.3f, 0.0f, 0.0f},      {1.0f, 20.3f, 0.0f, 3000.0f},
-      {1.0f, 21.0f, 0.0f, 3000.0f},  {1.0f, 21.1f, 0.0f, 2700.0f},   {0.0f, 20.0f, 0.2f, 3000.0f},
-      {0.0f, 20.05f, 0.2f, 2850.0f}, {0.05f, 20.05f, 0.2f, 3000.0f}, {0.05f, 20.1f, 0.2f, 2850.0f},
-      {0.3f, 20.05f, 0.2f, 3150.0f}, {0.3f, 20.4f, 0.2f, 2700.0f},
+      {19.8f, 0.0f, 3600.0f},  {20.0f, 0.0f, 3000.0f},  {20.3f, 0.0f, 2100.0f},
+      {20.4f, 0.0f, 1800.0f},  {21.3f, 0.0f, 0.0f},     {19.8f, 0.2f, 4200.0f},
+      {20.0f, 0.2f, 3600.0f},  {20.05f, 0.2f, 3450.0f}, {20.1f, 0.2f, 3300.0f},
+      {20.4f, 0.2f, 2400.0f},
   };
   for (const auto& test : cases) {
     auto in = input();
     in.room_c = test.room_c;
-    auto cfg = tuning();
-    cfg.comfort_above_c = test.above_c;
-    const auto out = decide_demand(in, cfg, {3000, 0, test.memory_c});
+    const auto out = decide_demand(in, tuning(), {3000, 0, test.memory_c});
     assert(out.valid && near(out.requested_w, test.expected_w));
   }
-  // Zero below-margin lets recovery reach past the warm edge unless bounded.
-  const float narrow_above[] = {0.0f, 0.05f};
-  for (float above : narrow_above) {
-    auto in = input();
-    auto cfg = tuning();
-    cfg.comfort_below_c = 0.0f;
-    cfg.comfort_above_c = above;
-    in.room_c = in.setpoint_c + above;
-    const auto out = decide_demand(in, cfg, {3000, 0, 0.08f});
-    assert(out.valid && near(out.contributions.room_feedback_w, 0.0f));
-    assert(near(out.requested_w, 3000.0f));
-  }
-  // A live change moves the braking edge without rewriting the room setpoint.
+  // The memory offset never rewrites the user's room setpoint.
   auto in = input();
   in.room_c = 20.6f;
-  auto cfg = tuning();
-  const auto braking = decide_demand(in, cfg, {});
-  assert(near(braking.requested_w, 2100.0f));
-  cfg.comfort_above_c = 1.0f;
-  assert(near(decide_demand(in, cfg, {}).requested_w, 3000.0f));
+  const auto braking = decide_demand(in, tuning(), {});
+  assert(near(braking.requested_w, 1200.0f));
   assert(in.setpoint_c == 20.0f);
   in.water_limit_factor = 0.5f;
-  assert(near(decide_demand(in, cfg, {}).requested_w, 1500.0f));
+  assert(near(decide_demand(in, tuning(), {}).requested_w, 600.0f));
+}
+void test_inertia_memory_and_stop_temperature() {
+  auto in = input();
+  in.room_c = 19.55f;
+  auto cfg = tuning();
+  const auto build = decide_demand(in, cfg, {3000, 1U, 0.0f});
+  assert(build.valid && fabsf(build.next.comfort_memory_c - 0.2f / 24.0f) < 1.0e-5f);
+  // Slow decay below the stop temperature, fast decay above it.
+  in.room_c = 20.2f;
+  const auto slow_decay = decide_demand(in, cfg, {3000, 1U, 0.2f});
+  assert(slow_decay.valid && fabsf(slow_decay.next.comfort_memory_c - (0.2f - 0.2f / 40.0f)) < 1.0e-5f);
+  in.room_c = 20.4f;
+  const auto fast_decay = decide_demand(in, cfg, {3000, 1U, 0.2f});
+  assert(fast_decay.valid && fabsf(fast_decay.next.comfort_memory_c - (0.2f - 0.2f / 12.0f)) < 1.0e-5f);
+  // Disabling inertia stops accumulation and drains existing memory.
+  cfg.inertia_enabled = false;
+  in.room_c = 19.55f;
+  const auto disabled = decide_demand(in, cfg, {3000, 1U, 0.2f});
+  assert(disabled.valid && fabsf(disabled.next.comfort_memory_c - (0.2f - 0.2f / 12.0f)) < 1.0e-5f);
+  assert(disabled.next.comfort_memory_c < 0.2f);
 }
 }  // namespace
 int main() {
@@ -183,6 +185,7 @@ int main() {
   test_cache_and_cadence_rollover();
   test_demand_finite_contract();
   test_demand_slew_and_limits();
-  test_comfort_warm_edge_and_recovery_boundary();
+  test_direct_room_error();
+  test_inertia_memory_and_stop_temperature();
   return 0;
 }
