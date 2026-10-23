@@ -46,6 +46,12 @@ De web-app heeft zes hoofdschermen.
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
 
+In de `Beslislog` staat de nieuwste melding bovenaan. Tijdstippen van gebeurtenissen
+tonen ook seconden: één start kan voorbereiding, een startopdracht en een aparte
+compressorbevestiging bevatten. Een startopdracht betekent nog niet dat de compressor
+draait. De pompkeuze bij een oude gebeurtenis volgt het opgeslagen event, niet de
+actuele draaiurenstand.
+
 ## Warmtecapaciteit op het overzicht
 
 **Geschatte beschikbare warmtecapaciteit** toont bij Power House én

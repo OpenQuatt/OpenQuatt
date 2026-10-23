@@ -604,14 +604,22 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       };
     }
     if (reasonCode === "runtime_lead") {
+      // Historical identity is a wire value, never a translated source label
+      // or today's runtime leader. Omit a comparison the log cannot establish.
+      const selectedHp = String(target?.rawDecisionEvent?.subject ?? source).toUpperCase();
+      if (selectedHp !== "HP1" && selectedHp !== "HP2") return null;
+      const options = hasHp2 || selectedHp === "HP2" ? ["HP1", "HP2"] : ["HP1"];
       return {
         title: t("controlReplay.optSystemChoice"),
         verdict: t("controlReplay.optStarted", { source }),
         summary: t(hasHp2 ? "controlReplay.optHpEqual" : "controlReplay.evHpEqualCopy"),
-        rows: [
-          { option: "HP1", result: source === "HP1" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t(hasHp2 ? "controlReplay.optFitsBalance" : "controlReplay.evHpEqualCopy"), tone: source === "HP1" ? "selected" : "muted" },
-          ...(hasHp2 ? [{ option: "HP2", result: source === "HP2" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t("controlReplay.optEqualLessGood"), tone: source === "HP2" ? "selected" : "muted" }] : []),
-        ],
+        rows: options.map((option) => ({
+          option,
+          result: t(option === selectedHp ? "controlReplay.optChosen" : "controlReplay.optNotNow"),
+          code: "runtime_lead",
+          detail: t(option === selectedHp ? "controlReplay.optFitsBalance" : "controlReplay.optEqualLessGood"),
+          tone: option === selectedHp ? "selected" : "muted",
+        })),
       };
     }
     if (["min_rest_active", "no_candidate", "candidate_in_rest", "candidate_in_defrost", "candidate_unavailable"].includes(reasonCode)) {
@@ -1079,12 +1087,12 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       && left.getDate() === right.getDate();
   }
 
-  function formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs = Date.now(), mode = "auto") {
+  function formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs = Date.now(), mode = "auto", includeSeconds = false) {
     if (!Number.isFinite(epochMs)) {
       return t("overview.statusUnknown");
     }
     const date = new Date(epochMs);
-    const time = formatTime(date, { hour: "2-digit", minute: "2-digit" });
+    const time = formatTime(date, { hour: "2-digit", minute: "2-digit", ...(includeSeconds ? { second: "2-digit" } : {}) });
     if (mode === "time") {
       return time;
     }
@@ -1146,12 +1154,12 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       return Number.isFinite(ageMinutes) ? formatControlWorkingRelativeOffset(ageMinutes) : t("controlReplay.timeUnknown");
     }
     if (selectedWindow === "week" || selectedWindow === "last48" || selectedWindow === "last3d" || selectedWindow === "custom") {
-      return formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs, "weekday");
+      return formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs, "weekday", true);
     }
     if (selectedWindow.startsWith("last")) {
-      return formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs, "auto");
+      return formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs, "auto", true);
     }
-    return formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs, "time");
+    return formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs, "time", true);
   }
 
   function formatDecisionDuration(seconds) {
@@ -1271,7 +1279,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           : t("controlReplay.evHpEqualCopy"),
         next: isCoolingModeEvent
           ? t("controlReplay.evCoolStaysActive")
-          : t("controlReplay.evHighDemand"),
+          : t("controlReplay.evHpAwaitConfirmation"),
       };
       case "source_stop":
         return {
@@ -2931,7 +2939,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
               <span class="oq-working-eyebrow">${escapeHtml(windowModel.eyebrow)}</span>
               <h3>${escapeHtml(windowModel.title)}</h3>
             </div>
-            <p>${escapeHtml(windowModel.copy)}</p>
+            <p>${escapeHtml(windowModel.copy)} ${t("controlReplay.timelineOrderCopy")}</p>
           </div>
           ${timelineItems.length
             ? `<div class="oq-working-timeline">
