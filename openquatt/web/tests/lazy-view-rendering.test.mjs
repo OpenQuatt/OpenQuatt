@@ -60,7 +60,8 @@ test("failed HTML generation leaves the previous DOM available for a retry", () 
 });
 
 test("decision copy preserves the pre-refactor output for 21,504 combinations", async () => {
-  // Golden digests captured from commit 26ea56d: 28 types × 32 reasons × 3 subjects × 8 contexts.
+  // Golden digests from 26ea56d; start/selection copy now distinguishes commands from running.
+  // 28 types × 32 reasons × 3 subjects × 8 contexts.
   const expected = JSON.parse(await readFile(new URL("./fixtures/decision-copy-digests.json", import.meta.url), "utf8"));
   assert.deepEqual(decisionCopyDigests(replay.getDecisionEventCopy), expected);
 });
@@ -70,7 +71,7 @@ test("source-start copy does not evaluate unrelated topology or startup fields",
   for (const field of ["to", "value_a"]) {
     Object.defineProperty(event, field, { get() { throw new Error(`unused field ${field}`); } });
   }
-  assert.match(replay.getDecisionEventCopy(event).title, /gestart/);
+  assert.match(replay.getDecisionEventCopy(event).title, /Startopdracht/);
 });
 
 for (const tab of ["status", "timeline", "graphs"]) {

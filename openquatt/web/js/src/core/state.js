@@ -71,6 +71,7 @@ export function clearQuickStartSetupInstall() {
 
 const initialQuickStartSetupInstall = getStoredQuickStartSetupInstall();
 const initialQuickStartSetupComplete = initialQuickStartSetupInstall?.status === "complete" || initialQuickStartSetupInstall?.status === "skipped";
+const initialOverviewThemePreference = getStoredOverviewThemePreference();
 
 export const state = {
   mounted: false,
@@ -99,7 +100,9 @@ export const state = {
   quickStartModalMode: "wizard",
   settingsGroup: getStoredSettingsGroup(),
   appView: "",
-  overviewTheme: getStoredOverviewTheme(),
+  overviewThemePreference: initialOverviewThemePreference,
+  overviewTheme: resolveOverviewTheme(initialOverviewThemePreference),
+  overviewThemeMedia: null,
   hpVisualMode: getStoredHpVisualMode(),
   hpLayoutMode: getStoredHpLayoutMode(),
   ...createHistoryState(getStoredTrendWindowHours()),
@@ -152,12 +155,31 @@ export function restoreStoredQuickStartSetupInstall() {
 
 restoreStoredQuickStartSetupInstall();
 
-export function getStoredOverviewTheme() {
+export function getStoredOverviewThemePreference() {
   try {
-    return window.localStorage.getItem("oq-overview-theme") === "dark" ? "dark" : "light";
+    const stored = window.localStorage.getItem("oq-overview-theme");
+    return stored === "light" || stored === "dark" ? stored : "auto";
   } catch (_error) {
-    return "light";
+    return "auto";
   }
+}
+
+export function getColorSchemeDarkMedia() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return null;
+  }
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)");
+  } catch (_error) {
+    return null;
+  }
+}
+
+export function resolveOverviewTheme(preference) {
+  if (preference === "light" || preference === "dark") {
+    return preference;
+  }
+  return getColorSchemeDarkMedia()?.matches ? "dark" : "light";
 }
 
 export function getStoredInterfacePanelOpen() {

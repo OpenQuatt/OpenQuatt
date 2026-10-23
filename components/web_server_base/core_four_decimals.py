@@ -1,4 +1,4 @@
-"""Temporary, build-local backport of ESPHome PR 20800 for the 2026.9.0 override."""
+"""Temporary, build-local backport of ESPHome PR 20800 for the reviewed ESPHome override."""
 
 from __future__ import annotations
 

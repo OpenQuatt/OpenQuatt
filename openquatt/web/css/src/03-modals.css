@@ -767,6 +767,14 @@
 .oq-advice-warn-icon rect, .oq-advice-warn-icon circle { fill: #78350f; }
 .oq-settings-subpanel.is-warning { border-color: rgba(234,88,12,.26); background: rgba(255,247,237,.55); }
 .oq-settings-field.is-warning { border-color: rgba(234,88,12,.26); box-shadow: inset 0 0 0 1px rgba(234,88,12,.08); }
+.oq-helper-modal-backdrop--dark .oq-advice-matrix-wrap { border-color: rgba(71,85,105,.48); background: rgba(15,23,42,.38); }
+.oq-helper-modal-backdrop--dark .oq-advice-matrix th { background: rgba(30,41,59,.9); border-bottom-color: rgba(71,85,105,.48); }
+.oq-helper-modal-backdrop--dark .oq-advice-matrix td { border-top-color: rgba(71,85,105,.36); }
+.oq-helper-modal-backdrop--dark .oq-advice-pill--recommended { background: rgba(8,51,68,.6); color: #67e8f9; border-color: rgba(34,211,238,.3); }
+.oq-helper-modal-backdrop--dark .oq-advice-pill--muted { background: rgba(51,65,85,.6); color: #cbd5e1; border-color: rgba(148,163,184,.24); }
+:is(.oq-helper-shell--dark, .oq-helper-modal-backdrop--dark) .oq-helper-button--warning-soft { background: rgba(120,53,15,.36); border-color: rgba(245,158,11,.36); color: #fcd34d; }
+:is(.oq-helper-shell--dark, .oq-helper-modal-backdrop--dark) .oq-helper-button--warning-soft:hover { background: rgba(120,53,15,.5); border-color: rgba(245,158,11,.46); color: #fcd34d; }
+.oq-helper-shell--dark .oq-settings-subpanel.is-warning { border-color: rgba(249,115,22,.34); background: rgba(66,32,14,.28); }
 
 /* --- Redesign: Warmtetoestemming controleren (from openquatt-heating-permission-modal-redesign.html) --- */
 .oq-advice-redesign .decision { overflow: hidden; border: 1px solid #ffc89f; border-radius: 17px; background: linear-gradient(180deg, #fffaf6 0%, #fff 100%); }
@@ -842,6 +850,33 @@
   .oq-advice-redesign .change-note { width: 100%; }
   .oq-advice-redesign .button { flex: 1 1 auto; }
 }
+
+/* Dark theme for the heating-permission advice */
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .decision { border-color: rgba(249,115,22,.4); background: linear-gradient(180deg, rgba(66,32,14,.5) 0%, rgba(22,33,49,.96) 100%); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .decision--ok { border-color: rgba(74,222,128,.34); background: linear-gradient(180deg, rgba(20,83,45,.36) 0%, rgba(22,33,49,.96) 100%); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .strategy-row { border-bottom-color: rgba(249,115,22,.24); background: rgba(66,32,14,.3); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .decision--ok .strategy-row { border-bottom-color: rgba(74,222,128,.22); background: rgba(20,83,45,.24); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .strategy-icon { color: #fdba74; background: rgba(249,115,22,.18); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .decision--ok .strategy-icon { color: #86efac; background: rgba(34,197,94,.18); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.eyebrow, .choice-label, .chevron, .change-note) { color: #94a3b8; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.strategy-title, .choice strong, .panel h2, .example b, .other-copy strong, .details-content strong) { color: #f8fafc; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.strategy-sub, .choice p, .meaning p, .panel p, .reason-list li, .other-copy small, .details-content) { color: #cbd5e1; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .status-badge { border-color: rgba(249,115,22,.4); color: #fdba74; background: rgba(66,32,14,.5); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .status-badge--ok { border-color: rgba(74,222,128,.32); color: #bbf7d0; background: rgba(20,83,45,.4); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.choice, .panel, details.strategy-details) { border-color: rgba(71,85,105,.48); background: rgba(24,35,49,.78); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .choice.current { border-color: rgba(249,115,22,.36); background: rgba(66,32,14,.34); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .decision--ok .choice.current { border-color: rgba(74,222,128,.32); background: rgba(20,83,45,.28); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.choice.recommended, .meaning, .other-badge) { border-color: rgba(34,211,238,.3); background: rgba(8,51,68,.42); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .current .mini { color: #fdba74; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .decision--ok .current .mini { color: #86efac; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.recommended .mini, .info-icon, .check, .other-badge) { color: #67e8f9; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.info-icon, .check) { background: rgba(34,211,238,.16); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .meaning strong { color: #a5f3fc; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.arrow-circle, .section-icon, .example, .other-icon, .button.secondary) { border-color: rgba(71,85,105,.52); background: rgba(15,23,42,.5); }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .arrow-circle { color: #fb923c; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.section-icon, .button.secondary) { color: #f8fafc; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign :is(.example, .other-icon) { color: #cbd5e1; }
+.oq-helper-modal-backdrop--dark .oq-advice-redesign .modal-footer { border-top-color: rgba(71,85,105,.48); }
 
 .oq-performance-prompt {
   width: min(100%, 680px);

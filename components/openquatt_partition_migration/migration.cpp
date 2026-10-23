@@ -1,6 +1,5 @@
-// ESPHome limits SDK logs to ERROR. Compile early migration evidence in this unit;
-// restore the SDK runtime threshold before starting the full application.
-#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+// This runs before app_main constructs the ESPHome logger. Use the ROM console
+// directly: ESP_LOG_* may already be remapped by the ESPHome precompiled header.
 
 #include "migration_engine.h"
 #include "partition_tables.h"
@@ -10,7 +9,7 @@
 #include "esp_flash_encrypt.h"
 #include "esp_heap_caps.h"
 #include "esp_image_format.h"
-#include "esp_log.h"
+#include "esp_rom_sys.h"
 #include "esp_chip_info.h"
 #include "esp_ota_ops.h"
 #include "esp_secure_boot.h"
@@ -21,7 +20,6 @@
 #include "nvs_flash.h"
 
 namespace esphome::openquatt_partition_migration {
-static constexpr const char* TAG = "oq.migration";
 
 class DeviceFlash : public Flash {
  public:
@@ -54,8 +52,8 @@ class DeviceFlash : public Flash {
     return ok;
   }
   bool erase(uint32_t address, uint32_t size) override {
-    ESP_LOGI(TAG, "erase address=0x%lx size=0x%lx", static_cast<unsigned long>(address),
-             static_cast<unsigned long>(size));
+    ::esp_rom_printf("oq.migration: erase address=0x%lx size=0x%lx\n", static_cast<unsigned long>(address),
+                     static_cast<unsigned long>(size));
     if (address % 4096 != 0 || size % 4096 != 0 ||
         !writable_region(address, size, this->running_->address, this->image_size_, true))
       return false;
@@ -84,18 +82,14 @@ class DeviceFlash : public Flash {
 };
 
 [[noreturn]] static void stop(const char* why) {
-  ESP_LOGE(TAG, "HALT before ESPHome/NVS init: %s; USB recovery required", why);
+  ::esp_rom_printf("oq.migration: HALT before ESPHome/NVS init: %s; USB recovery required\n", why);
   // Do not hand a damaged NVS/partial transaction to ESPHome's erase-on-open-error
   // preference backend. No WiFi, OTA receiver or control callback has started.
   while (true) vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
 static void early_boot() {
-  const esp_log_level_t previous_log_level = esp_log_level_get(TAG);
-  // With IDF tag filtering disabled, this temporarily changes the global SDK
-  // threshold. No ESPHome tasks have started; restore it on the READY path.
-  esp_log_level_set(TAG, ESP_LOG_INFO);
-  ESP_LOGI(TAG, "EARLY before ESPHome app_main / preferences init");
+  ::esp_rom_printf("oq.migration: EARLY before ESPHome app_main / preferences init\n");
   uint32_t size = 0;
   esp_chip_info_t chip{};
   esp_chip_info(&chip);
@@ -123,25 +117,24 @@ static void early_boot() {
       crc = crc_update(crc, buffer, count);
       offset += count;
     }
-    ESP_LOGI(TAG, "verified running=0x%lx image_size=%lu; checking Q NVS migration",
-             static_cast<unsigned long>(running->address), static_cast<unsigned long>(image.image_len));
+    ::esp_rom_printf("oq.migration: verified running=0x%lx image_size=%lu; checking Q NVS migration\n",
+                     static_cast<unsigned long>(running->address), static_cast<unsigned long>(image.image_len));
     Engine engine(flash, OLD_TABLE.data(), NEW_TABLE.data(), running->address, image.image_len, crc);
     result = engine.run();
-    ESP_LOGI(TAG, "migration flash writes=%lu erased_sectors=%lu", static_cast<unsigned long>(flash.writes()),
-             static_cast<unsigned long>(flash.erased_sectors()));
+    ::esp_rom_printf("oq.migration: migration flash writes=%lu erased_sectors=%lu\n",
+                     static_cast<unsigned long>(flash.writes()), static_cast<unsigned long>(flash.erased_sectors()));
   }
   if (result == Result::FAILED) stop("preflight, journal or flash verification failed");
   if (result == Result::REBOOT || result == Result::INJECTED_RESET) {
-    ESP_LOGW(TAG, "%s; restarting before ESPHome starts",
-             result == Result::INJECTED_RESET ? "injected checkpoint reset" : "migration committed");
+    ::esp_rom_printf("oq.migration: %s; restarting before ESPHome starts\n",
+                     result == Result::INJECTED_RESET ? "injected checkpoint reset" : "migration committed");
     esp_restart();
   }
   // Fail closed before ESPHome's preference backend can erase on open errors.
   nvs_handle_t handle;
   if (nvs_flash_init() != ESP_OK || nvs_open("esphome", NVS_READWRITE, &handle) != ESP_OK) stop("NVS preflight failed");
   nvs_close(handle);
-  ESP_LOGI(TAG, "READY actual table is 64 KiB; entering ESPHome application");
-  esp_log_level_set(TAG, previous_log_level);
+  ::esp_rom_printf("oq.migration: READY actual table is 64 KiB; entering ESPHome application\n");
 }
 }  // namespace esphome::openquatt_partition_migration
 

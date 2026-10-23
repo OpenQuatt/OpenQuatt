@@ -180,12 +180,16 @@ class OpenQuattTrendsRequestHandler : public AsyncWebHandler {
     return url_path_matches(url_buf, "/trends/history") && request->method() == HTTP_GET;
   }
 
-  void handleRequest(AsyncWebServerRequest* request) override {
+  // Keep URL parsing's temporary buffer out of the streaming call chain.
+  __attribute__((noinline)) static uint32_t request_window_hours_(AsyncWebServerRequest* request) {
     char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
     request->url_to(url_buf);
     const std::string hours_arg = request->arg("hours");
-    const uint32_t window_hours =
-        hours_arg.empty() ? parse_window_hours_from_url(url_buf) : parse_window_hours_value(hours_arg.c_str());
+    return hours_arg.empty() ? parse_window_hours_from_url(url_buf) : parse_window_hours_value(hours_arg.c_str());
+  }
+
+  void handleRequest(AsyncWebServerRequest* request) override {
+    const uint32_t window_hours = request_window_hours_(request);
     const std::string meta_arg = request->arg("meta");
     httpd_req_t* req = *request;
     httpd_resp_set_status(req, HTTPD_200);

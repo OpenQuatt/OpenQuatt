@@ -146,8 +146,8 @@ const viewActionHandlers = {
       signal?.scrollIntoView({ block: "nearest", behavior: "auto" });
     });
   },
-  "toggle-overview-theme": () => {
-    setOverviewTheme(state.overviewTheme === "light" ? "dark" : "light");
+  "select-overview-theme": (button) => {
+    setOverviewTheme(button.dataset.overviewTheme);
     render();
   },
   "select-hp-visual": (button) => {

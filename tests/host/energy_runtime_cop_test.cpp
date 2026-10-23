@@ -117,5 +117,22 @@ int main() {
   // A compressor stop suppresses a previously positive thermal sample immediately.
   observe(oq_sources::hp1, 2.0f, 0.0f, 0.0f, now);
   assert(isnan(oq_energy_runtime::total_cop(now, age, 10.0f)));
+  test_hp1_working_mode.state = 0.0f;
+  test_hp1_power_input.state = 35.0f;
+#if OQ_TOPOLOGY_DUO
+  test_hp2_working_mode.state = 0.0f;
+  test_hp2_power_input.state = 6.0f;
+#endif
+  const float standby = oq_energy_runtime::total_power_input();
+  for (const bool cooling : {false, true}) {
+    test_oq_cooling_energy_session_active = cooling;
+    assert(oq_energy_runtime::heating_power_input() == (cooling ? 0.0f : standby));
+    assert(oq_energy_runtime::cooling_power_input() == (cooling ? standby : 0.0f));
+    test_hp1_generation_variant_code = 3;
+    test_hp1_power_input.state = NAN;
+    assert(isnan(cooling ? oq_energy_runtime::cooling_power_input() : oq_energy_runtime::heating_power_input()));
+    test_hp1_power_input.state = 35.0f;
+    test_hp1_generation_variant_code = 1;
+  }
   return 0;
 }

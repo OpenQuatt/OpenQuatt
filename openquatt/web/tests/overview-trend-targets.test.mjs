@@ -11,6 +11,7 @@ const { state } = await import("../js/src/core/state.js");
 const { getOverviewLikeHydrationKeys } = await import("../js/src/core/entity-sync.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
 const { handleViewAction } = await import("../js/src/features/view-actions.js");
+const { setLocale } = await import("../js/src/i18n/index.js");
 const {
   getOverviewTrendCardsModel,
   getOverviewTrendSeriesCurrentValue,
@@ -19,6 +20,7 @@ const {
   patchOverviewTrendCurrentValues,
   parseOverviewTrendRow,
   renderOverviewTrendCard,
+  renderOverviewTrendLatestPill,
 } = await import("../js/src/views/overview.js");
 
 function entity(value) {
@@ -91,16 +93,71 @@ test("legend buttons hide a series from the chart while keeping it selectable", 
     samples: [],
     series: [
       { id: "outside", sampleKey: "outside", label: "Buiten", tone: "orange", decimals: 1, unit: " °C" },
-      { id: "supplyTarget", sampleKey: "supplyTarget", label: "Stooklijn doel", pillLabel: "Doel", tone: "violet", decimals: 1, unit: " °C" },
+      { id: "supplyTarget", sampleKey: "supplyTarget", label: "Stooklijndoel", pillLabel: "Stooklijndoel", tone: "violet", decimals: 1, unit: " °C" },
     ],
   };
   state.trendHiddenSeries["temperatures:supplyTarget"] = true;
   assert.deepEqual(getVisibleOverviewTrendSeries(card).map((series) => series.id), ["outside"]);
   const markup = renderOverviewTrendCard(card);
   assert.match(markup, /data-trend-series="supplyTarget"[^>]*aria-pressed="false"/);
-  assert.match(markup, /aria-label="Stooklijn doel: —"[^>]*>\s*<span>Doel<\/span>/);
+  assert.match(markup, /aria-label="Stooklijndoel: —"[^>]*>\s*<span>Stooklijndoel<\/span>/);
   assert.doesNotMatch(markup, /data-oq-trend-hover-dot="supplyTarget"/);
   state.trendHiddenSeries = {};
+});
+
+test("heating curve target distinguishes inactive and missing values in both languages without hiding history", () => {
+  const previousEntities = state.entities;
+  try {
+    for (const [locale, label, inactive] of [["nl", "Stooklijndoel", "n.v.t."], ["en", "Heating curve target", "N/A"]]) {
+      setLocale(locale);
+      const card = getOverviewTrendCardsModel().find((item) => item.id === "temperatures");
+      const target = card.series.find((series) => series.id === "supplyTarget");
+      const sample = { t: 1000, supplyTarget: 34 };
+      assert.equal(target.pillLabel, label);
+      assert.match(card.copy, /Power House/);
+      for (const strategy of [0, 1, 3, 4]) {
+        state.entities = { strategyActiveCode: entity(strategy), strategySupplyTarget: entity(35.2) };
+        assert.ok(renderOverviewTrendLatestPill(target, sample).includes(`aria-label="${label}: ${inactive}"`));
+        assert.ok(getVisibleOverviewTrendSeries(card).includes(target));
+        assert.equal(getOverviewTrendSeriesValue(target, sample), 34);
+      }
+      for (const strategy of [undefined, "", "nan", 2]) {
+        state.entities = strategy === undefined ? {} : { strategyActiveCode: entity(strategy) };
+        assert.ok(renderOverviewTrendLatestPill(target, sample).includes(`aria-label="${label}: —"`));
+      }
+      state.entities = { strategyActiveCode: entity(2), strategySupplyTarget: entity(35.2) };
+      assert.match(renderOverviewTrendLatestPill(target, sample), /35\.2\s+°C/);
+    }
+  } finally {
+    state.entities = previousEntities;
+    setLocale("nl");
+  }
+});
+
+test("live strategy switches patch the target value and accessible label", () => {
+  const previousEntities = state.entities;
+  const valueElement = { textContent: "" };
+  const attributes = new Map();
+  const pill = {
+    querySelector: () => valueElement,
+    getAttribute: (name) => attributes.get(name),
+    setAttribute: (name, value) => attributes.set(name, value),
+  };
+  const root = {
+    querySelector: (selector) => selector === '[data-oq-trend-card="temperatures"]'
+      ? { querySelector: (child) => child === '[data-oq-trend-current="supplyTarget"]' ? pill : null }
+      : null,
+  };
+  try {
+    for (const [strategy, target, expected] of [[2, 35.2, "35.2  °C"], [3, 35.2, "n.v.t."], [2, "nan", "—"], [2, 36, "36.0  °C"], ["", 36, "—"]]) {
+      state.entities = { strategyActiveCode: entity(strategy), strategySupplyTarget: entity(target) };
+      patchOverviewTrendCurrentValues(root);
+      assert.equal(valueElement.textContent, expected);
+      assert.equal(attributes.get("aria-label"), `Stooklijndoel: ${expected}`);
+    }
+  } finally {
+    state.entities = previousEntities;
+  }
 });
 
 test("legend toggle restores keyboard focus to the replacement button", () => {

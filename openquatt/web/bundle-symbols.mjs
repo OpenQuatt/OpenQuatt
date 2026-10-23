@@ -46,7 +46,7 @@ export const DYNAMIC_CSS_CLASS_FAMILIES = Object.freeze([
   ["oq-overview-trend-hover-dot--", ["blue", "green", "orange", "sky", "violet"]],
   ["oq-overview-trend-hover-row--", ["blue", "green", "orange", "sky", "slate", "violet"]],
   ["oq-overview-trend-line--", ["blue", "green", "orange", "sky", "slate", "violet"]],
-  ["oq-overview-trend-pill--", ["green", "orange", "violet"]],
+  ["oq-overview-trend-pill--", ["blue", "green", "orange", "sky", "slate", "violet"]],
   ["oq-ph-concept-tooltip--", ["above", "below", "setpoint"]],
   ["oq-settings-backup-compare--", ["current-missing", "different", "missing", "optional-missing", "optional-unavailable", "same"]],
   ["oq-settings-backup-result-item--", ["error", "warning"]],

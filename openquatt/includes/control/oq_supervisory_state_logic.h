@@ -26,6 +26,27 @@ inline float finite_clamp(float value, float fallback, float minimum, float maxi
   return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
 }
 
+// A normal compressor rest must not expire the last valid low-load estimate.
+// Keep the extension bounded and restore the normal deadline when the rest ends.
+inline uint32_t low_load_cache_duration_ms(uint32_t cache_ms, uint32_t minimum_off_ms, bool minimum_off_active,
+                                           bool any_compressor_active) {
+  if (!minimum_off_active || any_compressor_active) return cache_ms;
+  return cache_ms + std::min(minimum_off_ms, std::numeric_limits<uint32_t>::max() - cache_ms);
+}
+
+template <typename IncidentOutputs>
+inline bool low_load_minimum_off_active(const IncidentOutputs& outputs, int applied_level, uint32_t remaining_ms) {
+  using LinkState = decltype(outputs.link_state);
+  using ProtectionState = decltype(outputs.protection_state);
+  using RunState = decltype(outputs.run_state);
+  // An invalidated restart guard also reports a full wait while running or
+  // offline. Only a healthy, confirmed stop may extend the low-load cache.
+  return applied_level <= 0 && remaining_ms > 0 && outputs.run_state == RunState::STOPPED && outputs.stop_confirmed &&
+         !outputs.running_confirmed && !outputs.stop_confirmation_pending && !outputs.stop_unconfirmed &&
+         !outputs.must_stop && !outputs.fault_active && outputs.link_state == LinkState::HEALTHY &&
+         (outputs.protection_state == ProtectionState::CLEAR || outputs.protection_state == ProtectionState::LIMITED);
+}
+
 struct LowLoadState {
   bool heat_latched = false;
   float cached_minimum_power_w = NAN;

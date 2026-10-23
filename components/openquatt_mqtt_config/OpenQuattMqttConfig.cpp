@@ -328,201 +328,217 @@ class MqttConfigHandler : public AsyncWebHandler {
  public:
   explicit MqttConfigHandler(OpenQuattMqttConfig* parent) : parent_(parent) {}
 
-  bool canHandle(AsyncWebServerRequest* request) const override {
-    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-    StringRef url = request->url_to(url_buf);
-    if (url == "/mqtt/status" && request->method() == HTTP_GET) {
-      return true;
-    }
-    if (url == "/mqtt/save" && request->method() == HTTP_POST) {
-      return true;
-    }
-    if (url == "/mqtt/input/save" && request->method() == HTTP_POST) {
-      return true;
-    }
-    if (url == "/mqtt/input/retained/save" && request->method() == HTTP_POST) {
-      return true;
-    }
-    return false;
-  }
+  bool canHandle(AsyncWebServerRequest* request) const override { return route_(request) != Route::NOT_FOUND; }
 
   void handleRequest(AsyncWebServerRequest* request) override {
-    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-    StringRef url = request->url_to(url_buf);
-    if (url == "/mqtt/status" && request->method() == HTTP_GET) {
-      const auto status = this->parent_->get_status_snapshot();
-      const std::string broker = json_escape_(status.broker);
-      const std::string username = json_escape_(status.username);
-      const auto outside_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::OUTSIDE_TEMPERATURE);
-      const auto room_temp_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_TEMPERATURE);
-      const auto room_setpoint_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_SETPOINT);
-      const auto supply_target_index =
-          static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::HEATING_SUPPLY_TARGET);
-      const auto modifier_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::HEATING_CURVE_MODIFIER);
-      const auto heating_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::HEATING_ENABLE);
-      const auto cooling_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::COOLING_ENABLE);
-      const std::string topic = json_escape_(status.dew_point_topic);
-      const std::string outside_topic = json_escape_(status.input_topics[outside_index]);
-      const std::string room_temp_topic = json_escape_(status.input_topics[room_temp_index]);
-      const std::string room_setpoint_topic = json_escape_(status.input_topics[room_setpoint_index]);
-      const std::string supply_target_topic = json_escape_(status.input_topics[supply_target_index]);
-      const std::string modifier_topic = json_escape_(status.input_topics[modifier_index]);
-      const std::string heating_enable_topic = json_escape_(status.binary_input_topics[heating_enable_index]);
-      const std::string cooling_enable_topic = json_escape_(status.binary_input_topics[cooling_enable_index]);
-      const std::string source = json_escape_(status.config_source);
-      const std::string csrf_token = json_escape_(status.csrf_token);
-      auto* stream = request->beginResponseStream("application/json");
-      stream->printf(
-          R"({"enabled":%s,"connected":%s,"runtime_pending":%s,"broker":"%s","port":%u,"username":"%s","password_set":%s,"dew_point_topic":"%s","input_topics":{"cooling_dew_point":"%s","outside_temperature":"%s","room_temperature":"%s","room_setpoint":"%s","heating_supply_target":"%s","heating_curve_modifier":"%s","heating_enable":"%s","cooling_enable":"%s"},"input_enabled":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_curve_modifier":%s,"heating_enable":%s,"cooling_enable":%s},"input_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_curve_modifier":%s,"heating_enable":%s,"cooling_enable":%s},"input_accept_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_curve_modifier":%s,"heating_enable":%s,"cooling_enable":%s},"non_retained_stateful_timeout_s":%u,"source":"%s","csrf_token":"%s"})",
-          status.enabled ? "true" : "false", status.connected ? "true" : "false",
-          status.runtime_pending ? "true" : "false", broker.c_str(), status.port, username.c_str(),
-          status.password_set ? "true" : "false", topic.c_str(), topic.c_str(), outside_topic.c_str(),
-          room_temp_topic.c_str(), room_setpoint_topic.c_str(), supply_target_topic.c_str(), modifier_topic.c_str(),
-          heating_enable_topic.c_str(), cooling_enable_topic.c_str(),
-          status.input_enabled[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)] ? "true"
-                                                                                                              : "false",
-          status.input_enabled[outside_index] ? "true" : "false",
-          status.input_enabled[room_temp_index] ? "true" : "false",
-          status.input_enabled[room_setpoint_index] ? "true" : "false",
-          status.input_enabled[supply_target_index] ? "true" : "false",
-          status.input_enabled[modifier_index] ? "true" : "false",
-          status.binary_input_enabled[heating_enable_index] ? "true" : "false",
-          status.binary_input_enabled[cooling_enable_index] ? "true" : "false",
-          status.input_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)]
-              ? "true"
-              : "false",
-          status.input_retained[outside_index] ? "true" : "false",
-          status.input_retained[room_temp_index] ? "true" : "false",
-          status.input_retained[room_setpoint_index] ? "true" : "false",
-          status.input_retained[supply_target_index] ? "true" : "false",
-          status.input_retained[modifier_index] ? "true" : "false",
-          status.binary_input_retained[heating_enable_index] ? "true" : "false",
-          status.binary_input_retained[cooling_enable_index] ? "true" : "false",
-          status.input_accept_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)]
-              ? "true"
-              : "false",
-          status.input_accept_retained[outside_index] ? "true" : "false",
-          status.input_accept_retained[room_temp_index] ? "true" : "false",
-          status.input_accept_retained[room_setpoint_index] ? "true" : "false",
-          status.input_accept_retained[supply_target_index] ? "true" : "false",
-          status.input_accept_retained[modifier_index] ? "true" : "false",
-          status.binary_input_accept_retained[heating_enable_index] ? "true" : "false",
-          status.binary_input_accept_retained[cooling_enable_index] ? "true" : "false",
-          static_cast<unsigned>(30U * 60U), source.c_str(), csrf_token.c_str());
-      request->send(stream);
-      return;
+    switch (route_(request)) {
+      case Route::STATUS:
+        // The stream owns its formatted bytes; retire the snapshot and strings before sending.
+        request->send(this->build_status_response_(request));
+        return;
+      case Route::SAVE:
+        this->handle_save_(request);
+        return;
+      case Route::INPUT_SAVE:
+        this->handle_input_save_(request);
+        return;
+      case Route::RETAINED_SAVE:
+        this->handle_retained_save_(request);
+        return;
+      case Route::NOT_FOUND:
+        request->send(404, "application/json", R"({"ok":false,"error":"not_found"})");
+        return;
     }
-
-    if (url == "/mqtt/save" && request->method() == HTTP_POST) {
-      if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
-                                           R"({"ok":false,"error":"forbidden"})");
-        return;
-      }
-
-      const std::string broker = request->arg("broker");
-      const std::string port_arg = request->arg("port");
-      std::string username = request->arg("username");
-      std::string password = request->arg("password");
-      const std::string clear_password_arg = request->arg("clear_password");
-      const std::string enabled_arg = request->arg("enabled");
-      bool clear_password = clear_password_arg == "true" || clear_password_arg == "1" || clear_password_arg == "on";
-      const bool enabled = enabled_arg == "true" || enabled_arg == "1" || enabled_arg == "on";
-      const bool remove_config = !enabled && broker.empty();
-
-      char* end = nullptr;
-      unsigned long parsed_port = 1883;
-      if (!port_arg.empty()) {
-        parsed_port = strtoul(port_arg.c_str(), &end, 10);
-      }
-      if ((enabled || !port_arg.empty()) &&
-          (end == nullptr || *end != '\0' || parsed_port == 0 || parsed_port > 65535)) {
-        request->send(409, "application/json", R"({"ok":false,"error":"invalid_port"})");
-        return;
-      }
-      if (remove_config) {
-        username.clear();
-        password.clear();
-        clear_password = true;
-      }
-      if (broker.size() > 64U) {
-        request->send(409, "application/json", R"({"ok":false,"error":"invalid_broker"})");
-        return;
-      }
-      if (username.size() > 64U || password.size() > 128U) {
-        request->send(409, "application/json", R"({"ok":false,"error":"invalid_credentials"})");
-        return;
-      }
-      if (enabled && broker.empty()) {
-        request->send(409, "application/json", R"({"ok":false,"error":"missing_broker"})");
-        return;
-      }
-
-      const auto result = this->parent_->set_runtime_config(broker, static_cast<uint16_t>(parsed_port), username,
-                                                            password, clear_password, enabled);
-      if (send_mutation_error_(request, result)) {
-        return;
-      }
-
-      const auto status = this->parent_->get_status_snapshot();
-      auto* stream = request->beginResponseStream("application/json");
-      stream->printf(R"({"ok":true,"enabled":%s,"connected":%s})", status.enabled ? "true" : "false",
-                     status.connected ? "true" : "false");
-      request->send(stream);
-      return;
-    }
-
-    if (url == "/mqtt/input/save" && request->method() == HTTP_POST) {
-      if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
-                                           R"({"ok":false,"error":"forbidden"})");
-        return;
-      }
-
-      const std::string input = request->arg("input");
-      const std::string enabled_arg = request->arg("enabled");
-      const bool enabled = enabled_arg == "true" || enabled_arg == "1" || enabled_arg == "on";
-      const auto result = this->parent_->set_input_enabled(input, enabled);
-      if (send_mutation_error_(request, result)) {
-        return;
-      }
-
-      const auto status = this->parent_->get_status_snapshot();
-      auto* stream = request->beginResponseStream("application/json");
-      stream->printf(R"({"ok":true,"enabled":%s,"connected":%s})", enabled ? "true" : "false",
-                     status.connected ? "true" : "false");
-      request->send(stream);
-      return;
-    }
-
-    if (url == "/mqtt/input/retained/save" && request->method() == HTTP_POST) {
-      if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
-                                           R"({"ok":false,"error":"forbidden"})");
-        return;
-      }
-
-      const std::string input = request->arg("input");
-      const std::string accept_retained_arg = request->arg("accept_retained");
-      const bool accept_retained =
-          accept_retained_arg == "true" || accept_retained_arg == "1" || accept_retained_arg == "on";
-      const auto result = this->parent_->set_input_accept_retained(input, accept_retained);
-      if (send_mutation_error_(request, result)) {
-        return;
-      }
-
-      const auto status = this->parent_->get_status_snapshot();
-      auto* stream = request->beginResponseStream("application/json");
-      stream->printf(R"({"ok":true,"accept_retained":%s,"connected":%s})", accept_retained ? "true" : "false",
-                     status.connected ? "true" : "false");
-      request->send(stream);
-      return;
-    }
-
-    request->send(404, "application/json", R"({"ok":false,"error":"not_found"})");
   }
 
  protected:
+  enum class Route : uint8_t { NOT_FOUND, STATUS, SAVE, INPUT_SAVE, RETAINED_SAVE };
+
+  // Keep decoded URL scratch out of response generation and mutation call chains.
+  __attribute__((noinline)) static Route route_(AsyncWebServerRequest* request) {
+    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
+    StringRef url = request->url_to(url_buf);
+    if (url == "/mqtt/status" && request->method() == HTTP_GET) {
+      return Route::STATUS;
+    }
+    if (url == "/mqtt/save" && request->method() == HTTP_POST) {
+      return Route::SAVE;
+    }
+    if (url == "/mqtt/input/save" && request->method() == HTTP_POST) {
+      return Route::INPUT_SAVE;
+    }
+    if (url == "/mqtt/input/retained/save" && request->method() == HTTP_POST) {
+      return Route::RETAINED_SAVE;
+    }
+    return Route::NOT_FOUND;
+  }
+
+  __attribute__((noinline)) AsyncResponseStream* build_status_response_(AsyncWebServerRequest* request) {
+    const auto status = this->parent_->get_status_snapshot();
+    const std::string broker = json_escape_(status.broker);
+    const std::string username = json_escape_(status.username);
+    const auto outside_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::OUTSIDE_TEMPERATURE);
+    const auto room_temp_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_TEMPERATURE);
+    const auto room_setpoint_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_SETPOINT);
+    const auto supply_target_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::HEATING_SUPPLY_TARGET);
+    const auto modifier_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::HEATING_CURVE_MODIFIER);
+    const auto heating_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::HEATING_ENABLE);
+    const auto cooling_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::COOLING_ENABLE);
+    const std::string topic = json_escape_(status.dew_point_topic);
+    const std::string outside_topic = json_escape_(status.input_topics[outside_index]);
+    const std::string room_temp_topic = json_escape_(status.input_topics[room_temp_index]);
+    const std::string room_setpoint_topic = json_escape_(status.input_topics[room_setpoint_index]);
+    const std::string supply_target_topic = json_escape_(status.input_topics[supply_target_index]);
+    const std::string modifier_topic = json_escape_(status.input_topics[modifier_index]);
+    const std::string heating_enable_topic = json_escape_(status.binary_input_topics[heating_enable_index]);
+    const std::string cooling_enable_topic = json_escape_(status.binary_input_topics[cooling_enable_index]);
+    const std::string source = json_escape_(status.config_source);
+    const std::string csrf_token = json_escape_(status.csrf_token);
+    auto* stream = request->beginResponseStream("application/json");
+    stream->printf(
+        R"({"enabled":%s,"connected":%s,"runtime_pending":%s,"broker":"%s","port":%u,"username":"%s","password_set":%s,"dew_point_topic":"%s","input_topics":{"cooling_dew_point":"%s","outside_temperature":"%s","room_temperature":"%s","room_setpoint":"%s","heating_supply_target":"%s","heating_curve_modifier":"%s","heating_enable":"%s","cooling_enable":"%s"},"input_enabled":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_curve_modifier":%s,"heating_enable":%s,"cooling_enable":%s},"input_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_curve_modifier":%s,"heating_enable":%s,"cooling_enable":%s},"input_accept_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_curve_modifier":%s,"heating_enable":%s,"cooling_enable":%s},"non_retained_stateful_timeout_s":%u,"source":"%s","csrf_token":"%s"})",
+        status.enabled ? "true" : "false", status.connected ? "true" : "false",
+        status.runtime_pending ? "true" : "false", broker.c_str(), status.port, username.c_str(),
+        status.password_set ? "true" : "false", topic.c_str(), topic.c_str(), outside_topic.c_str(),
+        room_temp_topic.c_str(), room_setpoint_topic.c_str(), supply_target_topic.c_str(), modifier_topic.c_str(),
+        heating_enable_topic.c_str(), cooling_enable_topic.c_str(),
+        status.input_enabled[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)] ? "true"
+                                                                                                            : "false",
+        status.input_enabled[outside_index] ? "true" : "false",
+        status.input_enabled[room_temp_index] ? "true" : "false",
+        status.input_enabled[room_setpoint_index] ? "true" : "false",
+        status.input_enabled[supply_target_index] ? "true" : "false",
+        status.input_enabled[modifier_index] ? "true" : "false",
+        status.binary_input_enabled[heating_enable_index] ? "true" : "false",
+        status.binary_input_enabled[cooling_enable_index] ? "true" : "false",
+        status.input_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)] ? "true"
+                                                                                                             : "false",
+        status.input_retained[outside_index] ? "true" : "false",
+        status.input_retained[room_temp_index] ? "true" : "false",
+        status.input_retained[room_setpoint_index] ? "true" : "false",
+        status.input_retained[supply_target_index] ? "true" : "false",
+        status.input_retained[modifier_index] ? "true" : "false",
+        status.binary_input_retained[heating_enable_index] ? "true" : "false",
+        status.binary_input_retained[cooling_enable_index] ? "true" : "false",
+        status.input_accept_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)]
+            ? "true"
+            : "false",
+        status.input_accept_retained[outside_index] ? "true" : "false",
+        status.input_accept_retained[room_temp_index] ? "true" : "false",
+        status.input_accept_retained[room_setpoint_index] ? "true" : "false",
+        status.input_accept_retained[supply_target_index] ? "true" : "false",
+        status.input_accept_retained[modifier_index] ? "true" : "false",
+        status.binary_input_accept_retained[heating_enable_index] ? "true" : "false",
+        status.binary_input_accept_retained[cooling_enable_index] ? "true" : "false", static_cast<unsigned>(30U * 60U),
+        source.c_str(), csrf_token.c_str());
+    return stream;
+  }
+
+  __attribute__((noinline)) void handle_save_(AsyncWebServerRequest* request) {
+    if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                         R"({"ok":false,"error":"forbidden"})");
+      return;
+    }
+
+    const std::string broker = request->arg("broker");
+    const std::string port_arg = request->arg("port");
+    std::string username = request->arg("username");
+    std::string password = request->arg("password");
+    const std::string clear_password_arg = request->arg("clear_password");
+    const std::string enabled_arg = request->arg("enabled");
+    bool clear_password = clear_password_arg == "true" || clear_password_arg == "1" || clear_password_arg == "on";
+    const bool enabled = enabled_arg == "true" || enabled_arg == "1" || enabled_arg == "on";
+    const bool remove_config = !enabled && broker.empty();
+
+    char* end = nullptr;
+    unsigned long parsed_port = 1883;
+    if (!port_arg.empty()) {
+      parsed_port = strtoul(port_arg.c_str(), &end, 10);
+    }
+    if ((enabled || !port_arg.empty()) && (end == nullptr || *end != '\0' || parsed_port == 0 || parsed_port > 65535)) {
+      request->send(409, "application/json", R"({"ok":false,"error":"invalid_port"})");
+      return;
+    }
+    if (remove_config) {
+      username.clear();
+      password.clear();
+      clear_password = true;
+    }
+    if (broker.size() > 64U) {
+      request->send(409, "application/json", R"({"ok":false,"error":"invalid_broker"})");
+      return;
+    }
+    if (username.size() > 64U || password.size() > 128U) {
+      request->send(409, "application/json", R"({"ok":false,"error":"invalid_credentials"})");
+      return;
+    }
+    if (enabled && broker.empty()) {
+      request->send(409, "application/json", R"({"ok":false,"error":"missing_broker"})");
+      return;
+    }
+
+    const auto result = this->parent_->set_runtime_config(broker, static_cast<uint16_t>(parsed_port), username,
+                                                          password, clear_password, enabled);
+    if (send_mutation_error_(request, result)) {
+      return;
+    }
+
+    const auto status = this->parent_->get_status_snapshot();
+    auto* stream = request->beginResponseStream("application/json");
+    stream->printf(R"({"ok":true,"enabled":%s,"connected":%s})", status.enabled ? "true" : "false",
+                   status.connected ? "true" : "false");
+    request->send(stream);
+    return;
+  }
+
+  __attribute__((noinline)) void handle_input_save_(AsyncWebServerRequest* request) {
+    if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                         R"({"ok":false,"error":"forbidden"})");
+      return;
+    }
+
+    const std::string input = request->arg("input");
+    const std::string enabled_arg = request->arg("enabled");
+    const bool enabled = enabled_arg == "true" || enabled_arg == "1" || enabled_arg == "on";
+    const auto result = this->parent_->set_input_enabled(input, enabled);
+    if (send_mutation_error_(request, result)) {
+      return;
+    }
+
+    const auto status = this->parent_->get_status_snapshot();
+    auto* stream = request->beginResponseStream("application/json");
+    stream->printf(R"({"ok":true,"enabled":%s,"connected":%s})", enabled ? "true" : "false",
+                   status.connected ? "true" : "false");
+    request->send(stream);
+    return;
+  }
+
+  __attribute__((noinline)) void handle_retained_save_(AsyncWebServerRequest* request) {
+    if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                         R"({"ok":false,"error":"forbidden"})");
+      return;
+    }
+
+    const std::string input = request->arg("input");
+    const std::string accept_retained_arg = request->arg("accept_retained");
+    const bool accept_retained =
+        accept_retained_arg == "true" || accept_retained_arg == "1" || accept_retained_arg == "on";
+    const auto result = this->parent_->set_input_accept_retained(input, accept_retained);
+    if (send_mutation_error_(request, result)) {
+      return;
+    }
+
+    const auto status = this->parent_->get_status_snapshot();
+    auto* stream = request->beginResponseStream("application/json");
+    stream->printf(R"({"ok":true,"accept_retained":%s,"connected":%s})", accept_retained ? "true" : "false",
+                   status.connected ? "true" : "false");
+    request->send(stream);
+    return;
+  }
+
   bool passes_same_origin_(AsyncWebServerRequest* request) const {
     const auto host = request->get_header("Host");
     if (!host.has_value() || host->empty()) {
@@ -544,8 +560,7 @@ class MqttConfigHandler : public AsyncWebHandler {
 
   bool passes_csrf_(AsyncWebServerRequest* request) const {
     const std::string csrf_token = request->arg("csrf_token");
-    const auto status = this->parent_->get_status_snapshot();
-    return !csrf_token.empty() && csrf_token == status.csrf_token;
+    return this->parent_->validate_csrf_token(csrf_token);
   }
 
   OpenQuattMqttConfig* parent_;
@@ -601,6 +616,16 @@ void OpenQuattMqttConfig::setup() {
   if (loaded && this->apply_storage_(storage, "stored") == StorageApplyResult::FAILED) {
     ESP_LOGE(TAG, "Stored MQTT configuration could not be applied");
   }
+}
+
+bool OpenQuattMqttConfig::validate_csrf_token(const std::string& token) {
+  if (token.empty() || this->config_lock_ == nullptr) {
+    return false;
+  }
+  this->lock_config_();
+  const bool matches = token == this->csrf_token_;
+  this->unlock_config_();
+  return matches;
 }
 
 OpenQuattMqttConfig::StatusSnapshot OpenQuattMqttConfig::get_status_snapshot() {

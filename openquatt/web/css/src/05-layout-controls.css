@@ -71,6 +71,11 @@
   box-shadow: var(--oq-helper-tab-active-shadow);
 }
 
+.oq-helper-shell--dark .oq-helper-app-tab.is-active,
+.oq-helper-shell--dark .oq-helper-app-tab.is-active .oq-helper-app-tab-badge {
+  color: #c2410c;
+}
+
 .oq-helper-panel {
   border: 1px solid var(--oq-helper-line);
   border-radius: var(--oq-helper-radius-lg);
@@ -511,6 +516,11 @@
   margin: 12px 0 0;
   color: var(--oq-helper-sky);
   font-weight: 600;
+}
+
+.oq-helper-shell--dark .oq-helper-notice,
+.oq-helper-modal-backdrop--dark .oq-helper-notice {
+  color: #93c5fd;
 }
 
 .oq-helper-error {

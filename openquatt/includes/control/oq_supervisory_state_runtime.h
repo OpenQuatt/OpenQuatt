@@ -8,6 +8,7 @@
 
 #include "../boiler/oq_boiler_logic.h"
 #include "../performance/hp_perf_frequency.h"
+#include "../performance/oq_energy_logic.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 #include "oq_cold_start_probe.h"
@@ -205,15 +206,24 @@ class Runtime {
 
     const float p_req_w = power_house_active ? id(oq_strategy_requested_power_w) : NAN;
     const float outside_c = id(outside_temp_selected).state, supply_c = id(oq_system_supply_temp).state;
+    const uint32_t minimum_off_ms = oq_supervisory_state::seconds_to_ms(tick.hp_min_off_s);
+    const auto hp1_incidents = id(oq_incident_manager).get_outputs(1);
+    bool minimum_off_active = oq_supervisory_state::low_load_minimum_off_active(
+        hp1_incidents, hp1_lvl, id(oq_incident_manager).minimum_off_remaining_ms(1, now_ms));
+#if OQ_TOPOLOGY_DUO
+    const auto hp2_incidents = id(oq_incident_manager).get_outputs(2);
+    minimum_off_active =
+        minimum_off_active || oq_supervisory_state::low_load_minimum_off_active(
+                                  hp2_incidents, hp2_lvl, id(oq_incident_manager).minimum_off_remaining_ms(2, now_ms));
+#endif
     float live_minimum_power_w = NAN;
     if (power_house_active && std::isfinite(outside_c) && std::isfinite(supply_c)) {
       const auto frequency = oq_frequency_runtime::capture();
-      const uint32_t minimum_off_ms = oq_supervisory_state::seconds_to_ms(tick.hp_min_off_s);
-      auto hp1_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), hp1_lvl);
+      auto hp1_candidate = oq_hp_candidate::candidate_state(hp1_incidents, hp1_lvl);
       hp1_candidate.minimum_off_ready =
           oq_hp_candidate::minimum_off_ready(now_ms, id(hp1_last_stop_ms), minimum_off_ms, hp1_lvl);
 #if OQ_TOPOLOGY_DUO
-      auto hp2_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), hp2_lvl);
+      auto hp2_candidate = oq_hp_candidate::candidate_state(hp2_incidents, hp2_lvl);
       hp2_candidate.minimum_off_ready =
           oq_hp_candidate::minimum_off_ready(now_ms, id(hp2_last_stop_ms), minimum_off_ms, hp2_lvl);
 #else
@@ -257,7 +267,9 @@ class Runtime {
             id(oq_low_load_min_hysteresis_w).state,
             tick.low_load_fallback_off_w,
             tick.low_load_fallback_on_w,
-            oq_supervisory_state::seconds_to_ms(tick.low_load_dyn_cache_max_s),
+            oq_supervisory_state::low_load_cache_duration_ms(
+                oq_supervisory_state::seconds_to_ms(tick.low_load_dyn_cache_max_s), minimum_off_ms, minimum_off_active,
+                any_hp_compressor_active),
         },
         {
             id(oq_lowload_heat_latch),
@@ -946,13 +958,16 @@ class Runtime {
         .set_fallback_status(fallback_requested, desired == 4,
                              fallback_requested ? static_cast<uint8_t>(fallback_decision.block_reason)
                                                 : static_cast<uint8_t>(oq_hp_fallback::FallbackBlockReason::NONE));
-    const bool cooling_preflow = desired == 1 && (cooling_req || id(oq_cm1_next_after) == 5);
-    if (desired == 5 || cooling_preflow) {
-      id(oq_cooling_energy_session_active) = true;
-    } else if (desired != 1 || id(oq_cm1_next_after) != 0) {
-      // Keep the cooling session latched only during CM1 postflow to CM0.
-      id(oq_cooling_energy_session_active) = false;
-    }
+    const bool manual_energy_purpose = desired == 100 && oq_manual_hp::owns_control();
+    const int manual_hp1_energy_mode = manual_energy_purpose ? id(oq_manual_hp1_mode_code) : 0;
+#if OQ_TOPOLOGY_DUO
+    const int manual_hp2_energy_mode = manual_energy_purpose ? id(oq_manual_hp2_mode_code) : 0;
+#else
+    const int manual_hp2_energy_mode = 0;
+#endif
+    id(oq_cooling_energy_session_active) =
+        oq_energy::cooling_energy_purpose(id(oq_cooling_energy_session_active), desired, id(oq_cm1_next_after),
+                                          heating_req, cooling_req, manual_hp1_energy_mode, manual_hp2_energy_mode);
     // -------------------------------------------------
     // 5) Publish CM (writes-only-on-change)
     // -------------------------------------------------

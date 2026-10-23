@@ -27,6 +27,10 @@ De web-app is volledig beschikbaar in het Nederlands en Engels. Open rechtsboven
 
 De taalkeuze vertaalt de interface, meldingen, statussen en datum-/getalopmaak. Technische firmwarewaarden, entitynamen en API-/MQTT-waarden blijven ongewijzigd zodat koppelingen en backupbestanden compatibel blijven.
 
+## Thema kiezen
+
+In hetzelfde paneel kies je onder **Uiterlijk en overzicht** voor `Automatisch`, `Licht` of `Donker`. `Automatisch` volgt de licht- of donkerinstelling van je apparaat en wisselt direct mee wanneer die verandert. De keuze wordt lokaal in de browser bewaard; zonder opgeslagen keuze staat het thema op `Automatisch`.
+
 ## Hoofdschermen
 
 De web-app heeft zes hoofdschermen.
@@ -41,6 +45,12 @@ De web-app heeft zes hoofdschermen.
 | `Instellingen` | OpenQuatt configureren, bijwerken en beheren. |
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
+
+In de `Beslislog` staat de nieuwste melding bovenaan. Tijdstippen van gebeurtenissen
+tonen ook seconden: één start kan voorbereiding, een startopdracht en een aparte
+compressorbevestiging bevatten. Een startopdracht betekent nog niet dat de compressor
+draait. De pompkeuze bij een oude gebeurtenis volgt het opgeslagen event, niet de
+actuele draaiurenstand.
 
 ## Warmtecapaciteit op het overzicht
 

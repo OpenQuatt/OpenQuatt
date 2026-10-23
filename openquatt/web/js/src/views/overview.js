@@ -1058,7 +1058,7 @@ import { renderStatCard } from "./stat-card.js";
         series: [
           { id: "outside", sampleKey: "outside", currentKey: "outsideTempSelected", label: t("overview.trendSeriesOutside"), tone: "orange", decimals: 1, unit: " °C" },
           { id: "supply", sampleKey: "supply", currentKey: "supplyTemp", label: t("overview.trendSeriesSupply"), tone: "blue", decimals: 1, unit: " °C" },
-          { id: "supplyTarget", sampleKey: "supplyTarget", currentKey: "strategySupplyTarget", activeStrategyCode: 2, fallbackToHistory: false, label: t("overview.trendSeriesSupplyTarget"), pillLabel: t("overview.trendPillTarget"), tone: "violet", decimals: 1, unit: " °C" },
+          { id: "supplyTarget", sampleKey: "supplyTarget", currentKey: "strategySupplyTarget", activeStrategyCode: 2, inactiveValue: t("overview.trendTargetNotApplicable"), fallbackToHistory: false, label: t("overview.trendSeriesSupplyTarget"), pillLabel: t("overview.trendPillTarget"), tone: "violet", decimals: 1, unit: " °C" },
         ],
       },
       {
@@ -1430,8 +1430,7 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function renderOverviewTrendLatestPill(series, sample) {
-    const value = getOverviewTrendSeriesCurrentValue(series, sample);
-    const formattedValue = formatNumericState(value, series.decimals, series.unit);
+    const formattedValue = formatOverviewTrendSeriesCurrentValue(series, sample);
     const cardId = series.cardId || "";
     const hidden = Boolean(state.trendHiddenSeries[`${cardId}:${series.id}`]);
     return `
@@ -1442,26 +1441,35 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
+  function getOverviewTrendEntityValue(key) {
+    const raw = hasEntity(key) ? getEntityValue(key) : null;
+    if (raw == null || raw === "") {
+      return Number.NaN;
+    }
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) ? numeric : Number.NaN;
+  }
+
+  function formatOverviewTrendSeriesCurrentValue(series, sample) {
+    const activeStrategy = getOverviewTrendEntityValue("strategyActiveCode");
+    if (series.inactiveValue && Number.isFinite(activeStrategy) && activeStrategy !== series.activeStrategyCode) {
+      return series.inactiveValue;
+    }
+    return formatNumericState(getOverviewTrendSeriesCurrentValue(series, sample), series.decimals, series.unit);
+  }
+
   export function getOverviewTrendSeriesCurrentValue(series, fallbackSample) {
     if (series?.currentKey === "totalCop") {
       return getLiveHeatingCopValue("totalCop");
     }
-    const trendEntityValue = (key) => {
-      const raw = hasEntity(key) ? getEntityValue(key) : null;
-      if (raw == null || raw === "") {
-        return Number.NaN;
-      }
-      const numeric = Number(raw);
-      return Number.isFinite(numeric) ? numeric : Number.NaN;
-    };
-    if (series?.activeStrategyCode && trendEntityValue("strategyActiveCode") !== series.activeStrategyCode) {
+    if (series?.activeStrategyCode && getOverviewTrendEntityValue("strategyActiveCode") !== series.activeStrategyCode) {
       return Number.NaN;
     }
-    if (series?.requiredCurrentKey && !Number.isFinite(trendEntityValue(series.requiredCurrentKey))) {
+    if (series?.requiredCurrentKey && !Number.isFinite(getOverviewTrendEntityValue(series.requiredCurrentKey))) {
       return Number.NaN;
     }
     if (series?.currentKey) {
-      const current = trendEntityValue(series.currentKey);
+      const current = getOverviewTrendEntityValue(series.currentKey);
       if (Number.isFinite(current)) {
         return current;
       }
@@ -1485,11 +1493,7 @@ import { renderStatCard } from "./stat-card.js";
       card.series.forEach((series) => {
         const pill = cardElement.querySelector(`[data-oq-trend-current="${series.id}"]`);
         const valueElement = pill?.querySelector("strong");
-        const nextValue = formatNumericState(
-          getOverviewTrendSeriesCurrentValue(series, latest),
-          series.decimals,
-          series.unit,
-        );
+        const nextValue = formatOverviewTrendSeriesCurrentValue(series, latest);
         if (valueElement && valueElement.textContent !== nextValue) {
           valueElement.textContent = nextValue;
         }
