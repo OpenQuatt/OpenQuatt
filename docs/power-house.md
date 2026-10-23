@@ -329,6 +329,8 @@ De actuele status laat zien of de regeling **Normaal verwarmt**, **Doorverwarmt 
 
 Uitschakelen van langer doorverwarmen schakelt de gewone verwarming niet uit: de normale Power House-vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
 
+Een verlaging van de gewenste temperatuur kan ook bij een stilstaande warmtepomp de gewone warmtevraag blokkeren tot de nieuwe herstartgrens is bereikt. Een nog niet verwerkte verlaging blijft na tijdelijk ontbrekende inputs gelden; een verlaging die tijdens uitgeschakeld doorverwarmen al is waargenomen, wordt na inschakelen niet opnieuw toegepast.
+
 Na reboot of firmware-update blijven de instellingen behouden, maar de historische doorverwarmen-cyclus wordt gewist. Er moet eerst weer een echte verwarmingsrun zijn voordat extension een warme herstart mag vrijgeven. De normale comfortregeling kan ondertussen gewoon warmte vragen.
 
 Alle bestaande beveiligingen blijven leidend: waterbegrenzing, stroomlimieten, minimum aan/uit-tijden, defrost en olieretour. De extra minimumvermogenvraag telt niet mee als woningtekort voor ketelbijschakeling.
