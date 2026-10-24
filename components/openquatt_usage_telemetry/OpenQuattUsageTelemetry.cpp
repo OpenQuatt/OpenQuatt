@@ -148,6 +148,19 @@ void append_json_flow_source_(FixedBufferWriter& payload, const select::Select* 
                           flow_source_config_wire_value(flow_option, q_source_available, q_flow_option));
 }
 
+void append_json_water_supply_source_(FixedBufferWriter& payload, const select::Select* source,
+                                      const select::Select* local_source) {
+  if (source == nullptr || !source->has_state()) {
+    append_json_wire_value_(payload, "water_supply_source", nullptr);
+    return;
+  }
+  const std::string empty_option;
+  const std::string& local_option =
+      local_source != nullptr && local_source->has_state() ? local_source->current_option() : empty_option;
+  const char* value = water_supply_source_wire_value(source->current_option(), local_source != nullptr, local_option);
+  append_json_wire_value_(payload, "water_supply_source", value);
+}
+
 void append_json_boiler_connection_(FixedBufferWriter& payload, const select::Select* source) {
   append_json_key_(payload, "boiler_connection");
   if (source == nullptr) {
@@ -1067,6 +1080,8 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   payload += '"';
   append_json_optional_select_(payload, "quatt_hybrid_generation_config", this->quatt_hybrid_generation_select_,
                                quatt_hybrid_generation_wire_value);
+  append_json_water_supply_source_(payload, this->water_supply_source_select_,
+                                   this->local_water_supply_temp_source_select_);
   append_json_flow_source_(payload, this->flow_source_select_, this->q_flow_source_select_);
   append_json_optional_select_(payload, "heating_strategy", this->heating_strategy_select_,
                                heating_strategy_wire_value);

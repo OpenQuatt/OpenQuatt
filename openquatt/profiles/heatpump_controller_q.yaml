@@ -74,6 +74,7 @@ openquatt_usage_telemetry:
   cic_compatibility_switch: cic_compatibility_enable
   ot_thermostat_switch: oq_ot_slave_enabled
   boiler_connection_select: oq_boiler_connection
+  local_water_supply_temp_source_select: oq_local_supply_temp_source
   q_flow_source_select: oq_q_flow_source
 
 psram:

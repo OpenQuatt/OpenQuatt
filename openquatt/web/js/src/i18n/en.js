@@ -2607,7 +2607,7 @@ export default {
     inPlatform: "Platform",
     inPlatformCopy: "Hardware profile, revision, Q-board serial number within its batch (if known), setup, active connection, mode and Wi-Fi signal",
     inConfig: "Configuration",
-    inConfigCopy: "Quatt Hybrid version, heating strategy, flow source and control sources",
+    inConfigCopy: "Quatt Hybrid version, heating strategy, flow source, water supply source and control sources",
     inStatus: "System status",
     inStatusCopy: "Memory, runtime, chip temperature, restart reasons and four Modbus reliability counters (increase since the previous successful send)",
     inCrash: "After a crash",
