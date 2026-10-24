@@ -82,6 +82,14 @@ switch:
     entity_category: config
     disabled_by_default: true
 
+  - platform: template
+    id: ph_inertia_enabled
+    name: "Power House inertia"
+    icon: mdi:gesture-tap-hold
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+
 select:
   - platform: template
     id: oq_ph_response_profile
@@ -179,17 +187,6 @@ number:
     optimistic: true
     initial_value: 0.1
     entity_category: config
-
-  - platform: template
-    id: ph_inertia_enabled
-    name: "Power House inertia"
-    icon: mdi:gesture-tap-hold
-    restore_value: true
-    optimistic: true
-    initial_value: "true"
-    entity_category: config
-    min_value: 0
-    max_value: 1
 
   - platform: template
     id: ph_comfort_band_below_c
