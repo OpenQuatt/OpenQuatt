@@ -21,9 +21,23 @@ TELEMETRY_HEADER = (
 TELEMETRY_INIT = (
     ROOT / "components" / "openquatt_usage_telemetry" / "__init__.py"
 ).read_text()
+Q_PROFILE = (ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml").read_text()
 
 
 class ModbusReliabilityTelemetryContractTest(unittest.TestCase):
+    def test_water_supply_source_is_wired_into_usage_telemetry(self) -> None:
+        self.assertIn("water_supply_source_select: water_supply_source", TELEMETRY_YAML)
+        self.assertIn(
+            "local_water_supply_temp_source_select: oq_local_supply_temp_source",
+            Q_PROFILE,
+        )
+        self.assertIn("cv.Required(CONF_WATER_SUPPLY_SOURCE_SELECT)", TELEMETRY_INIT)
+        self.assertIn(
+            "cv.Optional(CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT)",
+            TELEMETRY_INIT,
+        )
+        self.assertIn('"water_supply_source"', TELEMETRY_CPP)
+
     def test_primary_odu_bus_uses_instrumented_client_hub(self) -> None:
         self.assertIn("components: [openquatt_modbus]", COMMON)
         self.assertIn("openquatt_modbus:", COMMON)

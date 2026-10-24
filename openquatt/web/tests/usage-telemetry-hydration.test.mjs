@@ -19,6 +19,7 @@ const {
   flowSourceConfigWireValue,
   loadUsageTelemetryPreviewMqttEnabled,
   USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS,
+  waterSupplySourceWireValue,
 } = await import("../js/src/core/usage-telemetry-preview.js");
 
 test("usage telemetry is hydrated before Quick Start filters optional steps", () => {
@@ -47,6 +48,8 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     connectionText: "WiFi",
     preferredConnection: "Automatic",
     hpGeneration: "V1.5",
+    waterSupplySource: "Local",
+    localWaterSupplyTempSource: "PT1000",
     flowSource: "Outdoor unit",
     qFlowSource: "Local",
     strategy: "Power House",
@@ -95,6 +98,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     connection: "wifi",
     connection_preference: "auto",
     quatt_hybrid_generation_config: "v1_5",
+    water_supply_source: "pt1000",
     flow_source_config: "controller_local",
     heating_strategy: "power_house",
     room_temperature_source: "opentherm",
@@ -142,8 +146,16 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   assert.ok(Buffer.byteLength(JSON.stringify(largeCounterPayload)) < 2048);
   assert.equal(flowSourceConfigWireValue("Outdoor unit", "Auto", true), "outdoor_unit");
   assert.equal(flowSourceConfigWireValue("Outdoor unit", undefined, false), "outdoor_unit");
+  assert.equal(waterSupplySourceWireValue("Local", "DS18B20", true, true), "ds18b20");
+  assert.equal(waterSupplySourceWireValue("Local", undefined, false, false), "ds18b20");
+  assert.equal(waterSupplySourceWireValue("Local", undefined, false, true), null);
+  assert.equal(waterSupplySourceWireValue("CIC", undefined, false, false), "cic");
+  assert.equal(waterSupplySourceWireValue("HA input", undefined, false, false), "home_assistant");
+  assert.equal(waterSupplySourceWireValue("unknown", undefined, false, false), null);
   assert.equal(configuredSourceWireValue("Schedule"), "schedule");
   assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("psramFree"));
+  assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("waterSupplySource"));
+  assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("localWaterSupplyTempSource"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusPartialResponseCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusRecoveredResponseCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusOfflineCount"));
@@ -417,6 +429,7 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
   assert.match(entitySyncSource, /shouldCaptureUsageTelemetryPreview/);
   const configFields = [
     "quatt_hybrid_generation_config",
+    "water_supply_source",
     "flow_source_config",
     "heating_strategy",
     "room_temperature_source",

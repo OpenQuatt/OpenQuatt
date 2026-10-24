@@ -43,6 +43,8 @@ CONF_CONNECTION = "connection"
 CONF_ACTIVE_CONNECTION_SENSOR = "active_connection_sensor"
 CONF_CONNECTION_PREFERENCE_SELECT = "connection_preference_select"
 CONF_QUATT_HYBRID_GENERATION_SELECT = "quatt_hybrid_generation_select"
+CONF_WATER_SUPPLY_SOURCE_SELECT = "water_supply_source_select"
+CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT = "local_water_supply_temp_source_select"
 CONF_FLOW_SOURCE_SELECT = "flow_source_select"
 CONF_Q_FLOW_SOURCE_SELECT = "q_flow_source_select"
 CONF_HEATING_STRATEGY_SELECT = "heating_strategy_select"
@@ -112,6 +114,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ACTIVE_CONNECTION_SENSOR): cv.use_id(text_sensor.TextSensor),
             cv.Optional(CONF_CONNECTION_PREFERENCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_QUATT_HYBRID_GENERATION_SELECT): cv.use_id(select.Select),
+            cv.Required(CONF_WATER_SUPPLY_SOURCE_SELECT): cv.use_id(select.Select),
+            cv.Optional(CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Optional(CONF_Q_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_HEATING_STRATEGY_SELECT): cv.use_id(select.Select),
@@ -190,6 +194,21 @@ async def to_code(config):
         config[CONF_QUATT_HYBRID_GENERATION_SELECT]
     )
     cg.add(var.set_quatt_hybrid_generation_select(quatt_hybrid_generation_select))
+    water_supply_source_select = await cg.get_variable(
+        config[CONF_WATER_SUPPLY_SOURCE_SELECT]
+    )
+    cg.add(var.set_water_supply_source_select(water_supply_source_select))
+    if local_water_supply_temp_source_select_id := config.get(
+        CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT
+    ):
+        local_water_supply_temp_source_select = await cg.get_variable(
+            local_water_supply_temp_source_select_id
+        )
+        cg.add(
+            var.set_local_water_supply_temp_source_select(
+                local_water_supply_temp_source_select
+            )
+        )
     flow_source_select = await cg.get_variable(config[CONF_FLOW_SOURCE_SELECT])
     cg.add(var.set_flow_source_select(flow_source_select))
     if q_flow_source_select_id := config.get(CONF_Q_FLOW_SOURCE_SELECT):
