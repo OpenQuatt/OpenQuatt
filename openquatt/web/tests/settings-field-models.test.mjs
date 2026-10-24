@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 globalThis.__OQ_PREVIEW__ = false;
-globalThis.window = { location: { pathname: "/" }, localStorage: { getItem: () => null } };
+globalThis.window = { location: { pathname: "/" }, localStorage: { getItem: () => null }, setTimeout, clearTimeout };
 const bundle = await build({
   bundle: true,
   define: { __OQ_PREVIEW__: "false" },
@@ -319,4 +319,124 @@ test("a failed select request restores both controls and releases their busy sta
   assert.equal(choice.getAttribute("aria-pressed"), "false");
   assert.equal(choice.disabled, false);
   assert.match(state.controlError, /connection lost/);
+});
+
+function mockSupplySelection(t, key, previous, read) {
+  state.entities[key] = { state: previous, value: previous };
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    if (String(url).includes("/set?")) return { ok: true };
+    if (String(url).includes("/select/")) return read(options);
+    const lines = new URLSearchParams(options.body).get("entities")?.split("\n") || [];
+    const entities = Object.fromEntries(lines.map((line) => {
+      const field = line.split("\t")[0];
+      return [field, { value: "unknown", state: "unknown" }];
+    }));
+    return { ok: true, json: async () => ({ entities }) };
+  });
+  return requests;
+}
+
+for (const [key, previous, selected] of [
+  ["waterSupplySource", "CIC", "Local"],
+  ["localWaterSupplyTempSource", "DS18B20", "PT1000"],
+]) {
+  test(`${key}: HTTP 200 without the requested controller state is not success`, async (t) => {
+    const requests = mockSupplySelection(t, key, previous, () => ({
+      ok: true, json: async () => ({ value: previous, state: previous }),
+    }));
+    const result = commitSelect(key, selected);
+    assert.equal(state.entities[key].value, previous);
+    assert.equal(state.controlNotice, "");
+    assert.equal(await result, false);
+    assert.equal(state.entities[key].value, previous);
+    assert.equal(state.controlNotice, "");
+    assert.match(state.controlError, new RegExp(previous));
+    assert.equal(state.busyAction, "");
+    assert.equal(requests.filter(({ url }) => url.includes("/set?")).length, 1);
+    assert.ok(requests.filter(({ options }) => options.cache === "no-store").length > 1);
+  });
+
+  test(`${key}: delayed readback confirms the selection before reporting success`, async (t) => {
+    let reads = 0;
+    const requests = mockSupplySelection(t, key, previous, () => ({
+      ok: true, json: async () => ({ state: ++reads === 1 ? previous : selected }),
+    }));
+    assert.equal(await commitSelect(key, selected), true);
+    assert.equal(reads, 2);
+    assert.equal(state.entities[key].value, selected);
+    assert.equal(state.entities[key].state, selected);
+    assert.equal(state.controlError, "");
+    assert.match(state.controlNotice, /bijgewerkt/);
+    assert.equal(requests.filter(({ url }) => url.includes("/set?")).length, 1);
+    assert.equal(state.busyAction, "");
+  });
+}
+
+test("an unavailable supply-source readback keeps the previous selection without success", async (t) => {
+  mockSupplySelection(t, "waterSupplySource", "CIC", () => ({ ok: false, status: 503 }));
+  assert.equal(await commitSelect("waterSupplySource", "Local"), false);
+  assert.equal(state.entities.waterSupplySource.value, "CIC");
+  assert.equal(state.controlNotice, "");
+  assert.match(state.controlError, /HTTP 503/);
+  assert.equal(state.busyAction, "");
+});
+
+test("a temporary readback error can recover without repeating the source write", async (t) => {
+  let reads = 0;
+  const requests = mockSupplySelection(t, "waterSupplySource", "CIC", () => {
+    if (++reads === 1) throw new Error("connection lost");
+    return { ok: true, json: async () => ({ value: "Local" }) };
+  });
+  assert.equal(await commitSelect("waterSupplySource", "Local"), true);
+  assert.equal(reads, 2);
+  assert.equal(state.entities.waterSupplySource.value, "Local");
+  assert.equal(state.controlError, "");
+  assert.equal(requests.filter(({ url }) => url.includes("/set?")).length, 1);
+});
+
+test("missing source state cannot confirm an accepted write", async (t) => {
+  mockSupplySelection(t, "waterSupplySource", "CIC", () => ({ ok: true, json: async () => ({}) }));
+  assert.equal(await commitSelect("waterSupplySource", "Local"), false);
+  assert.equal(state.entities.waterSupplySource.value, "CIC");
+  assert.equal(state.controlNotice, "");
+  assert.match(state.controlError, /controllerstatus kon niet worden bevestigd/);
+});
+
+test("a hanging readback response body times out and releases the source control", async (t) => {
+  mockSupplySelection(t, "waterSupplySource", "CIC", ({ signal }) => ({
+    ok: true,
+    json: () => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }),
+  }));
+  assert.equal(await commitSelect("waterSupplySource", "Local"), false);
+  assert.equal(state.entities.waterSupplySource.value, "CIC");
+  assert.equal(state.controlNotice, "");
+  assert.match(state.controlError, /timed out/);
+  assert.equal(state.busyAction, "");
+});
+
+test("a supply-source mismatch preserves the actual controller selection", async (t) => {
+  mockSupplySelection(t, "waterSupplySource", "CIC", () => ({
+    ok: true, json: async () => ({ value: "HA input" }),
+  }));
+  assert.equal(await commitSelect("waterSupplySource", "Local"), false);
+  assert.equal(state.entities.waterSupplySource.value, "HA input");
+  assert.equal(state.entities.waterSupplySource.state, "HA input");
+  assert.match(state.controlError, /HA input/);
+  assert.equal(state.controlNotice, "");
+});
+
+test("pending supply-source writes do not submit a second source selection", async (t) => {
+  let completeRead;
+  const requests = mockSupplySelection(t, "waterSupplySource", "CIC", () => new Promise((resolve) => { completeRead = resolve; }));
+  const pending = commitSelect("waterSupplySource", "Local");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(await commitSelect("waterSupplySource", "HA input"), false);
+  assert.equal(await commitSelect("localWaterSupplyTempSource", "PT1000"), false);
+  completeRead({ ok: true, json: async () => ({ value: "Local" }) });
+  assert.equal(await pending, true);
+  assert.equal(requests.filter(({ url }) => url.includes("/set?")).length, 1);
 });
