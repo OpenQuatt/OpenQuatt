@@ -120,18 +120,12 @@ class Runtime {
       restart_temperature_c = id(ph_run_extension_restart_cooldown_c).state;
     }
 
-    const bool inertia_enabled = id(ph_inertia_enabled).has_state()
-                                 ? static_cast<bool>(id(ph_inertia_enabled).state)
-                                 : true;
+    const bool inertia_enabled =
+        id(ph_inertia_enabled).has_state() ? static_cast<bool>(id(ph_inertia_enabled).state) : true;
 
     const oq_power_house::DemandTuning demand_tuning{
-        config.temperature_guard_c,
-        id(ph_kp_w_per_k).state,
-        stop_temperature_c,
-        inertia_enabled,
-        id(ph_demand_rise_time_min).state,
-        id(ph_demand_fall_time_min).state,
-        config.demand_max_f,
+        config.temperature_guard_c,        id(ph_kp_w_per_k).state,           stop_temperature_c,  inertia_enabled,
+        id(ph_demand_rise_time_min).state, id(ph_demand_fall_time_min).state, config.demand_max_f,
     };
     const int applied_total =
         std::max(0, static_cast<int>(id(hp1_last_applied_level))) + std::max(0, static_cast<int>(hp2_applied_level));
@@ -363,8 +357,7 @@ class Runtime {
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
-        run_ext_input, {stop_temperature_c, restart_temperature_c},
-        this->run_extension_state_);
+        run_ext_input, {stop_temperature_c, restart_temperature_c}, this->run_extension_state_);
     const bool comfort_was_active =
         this->run_extension_state_.phase == oq_power_house_run_extension::Phase::COMFORT_STOP ||
         this->run_extension_state_.phase == oq_power_house_run_extension::Phase::WAIT_WARM_RESTART;

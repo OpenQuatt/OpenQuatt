@@ -92,12 +92,8 @@ inline bool compute_house_saturated(int base_capped_demand, float house_deficit_
 
 inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   Decision out;
-  const float comfort_stop_c = std::isfinite(in.setpoint_c)
-                                 ? in.setpoint_c + tuning.stop_temperature_c
-                                 : NAN;
-  const float warm_restart_c = std::isfinite(comfort_stop_c)
-                                 ? comfort_stop_c - tuning.restart_temperature_c
-                                 : NAN;
+  const float comfort_stop_c = std::isfinite(in.setpoint_c) ? in.setpoint_c + tuning.stop_temperature_c : NAN;
+  const float warm_restart_c = std::isfinite(comfort_stop_c) ? comfort_stop_c - tuning.restart_temperature_c : NAN;
 
   const bool room_finite = std::isfinite(in.room_c) && std::isfinite(in.setpoint_c);
   const bool thresholds_finite = std::isfinite(comfort_stop_c) && std::isfinite(warm_restart_c);

@@ -143,8 +143,8 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
       input.now_ms, input.outside_c,  input.cold_c,     input.zero_power_c,       input.rated_w,
       input.room_c, input.setpoint_c, input.external_w, input.water_limit_factor, input.external_valid};
   const baseline_0282c2e9::DemandTuning frozen_tuning{
-      tuning.temperature_guard_c, tuning.reaction_w_per_k, 0.0f, tuning.stop_temperature_c,
-      tuning.rise_time_min,       tuning.fall_time_min,    tuning.demand_max};
+      tuning.temperature_guard_c, tuning.reaction_w_per_k, 0.0f, tuning.stop_temperature_c, tuning.rise_time_min,
+      tuning.fall_time_min,       tuning.demand_max};
   const baseline_0282c2e9::DemandState frozen_state{state.last_w, state.last_ms, state.comfort_memory_c};
   const auto expected = baseline_0282c2e9::decide_demand(frozen_input, frozen_tuning, frozen_state);
   assert(actual.valid == expected.valid);

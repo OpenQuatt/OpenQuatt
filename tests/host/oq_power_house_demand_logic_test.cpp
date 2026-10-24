@@ -78,7 +78,7 @@ void test_demand_finite_contract() {
       &DemandInput::outside_c, &DemandInput::cold_c,     &DemandInput::zero_power_c,      &DemandInput::rated_w,
       &DemandInput::room_c,    &DemandInput::setpoint_c, &DemandInput::water_limit_factor};
   float DemandTuning::* tuning_fields[] = {&DemandTuning::temperature_guard_c, &DemandTuning::reaction_w_per_k,
-                                           &DemandTuning::stop_temperature_c,  &DemandTuning::rise_time_min,
+                                           &DemandTuning::stop_temperature_c, &DemandTuning::rise_time_min,
                                            &DemandTuning::fall_time_min};
   for (float value : bad) {
     for (auto field : input_fields) {
@@ -139,10 +139,9 @@ void test_direct_room_error() {
     float room_c, memory_c, expected_w;
   };
   const Case cases[] = {
-      {19.8f, 0.0f, 3600.0f},  {20.0f, 0.0f, 3000.0f},  {20.3f, 0.0f, 2100.0f},
-      {20.4f, 0.0f, 1800.0f},  {21.3f, 0.0f, 0.0f},     {19.8f, 0.2f, 4200.0f},
-      {20.0f, 0.2f, 3600.0f},  {20.05f, 0.2f, 3450.0f}, {20.1f, 0.2f, 3300.0f},
-      {20.4f, 0.2f, 2400.0f},
+      {19.8f, 0.0f, 3600.0f}, {20.0f, 0.0f, 3000.0f}, {20.3f, 0.0f, 2100.0f}, {20.4f, 0.0f, 1800.0f},
+      {21.3f, 0.0f, 0.0f},    {19.8f, 0.2f, 4200.0f}, {20.0f, 0.2f, 3600.0f}, {20.05f, 0.2f, 3450.0f},
+      {20.1f, 0.2f, 3300.0f}, {20.4f, 0.2f, 2400.0f},
   };
   for (const auto& test : cases) {
     auto in = input();
