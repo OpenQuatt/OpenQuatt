@@ -81,6 +81,37 @@ class RecorderComponentRuntimeTest(unittest.TestCase):
             with self.subTest(duo=duo):
                 self.scenario("configuration", duo)
 
+    def test_sensor_source_switch_fallback_missing_measurement_and_recovery_are_exported(self):
+        for duo in self.binaries:
+            with self.subTest(duo=duo):
+                payload = json.loads(self.scenario("sensor-sources", duo)["sources"])
+                state = dict(payload["initial"])
+                rows = []
+                for _, changes in payload["samples"]:
+                    state.update(changes)
+                    rows.append({key: state.get(index) for index, key in enumerate(payload["columns"])})
+                self.assertEqual(len(rows), 4)
+                fallback = f"hp{2 if duo else 1} water out (fallback)"
+                self.assertEqual(rows[0]["waterSupplySource"], "CIC")
+                self.assertEqual(rows[0]["localWaterSupplyTempSource"], "PT1000")
+                self.assertEqual(rows[0]["waterSupplyTempEffectiveSource"], fallback)
+                self.assertTrue(rows[0]["waterSupplyTempFallbackActive"])
+                self.assertAlmostEqual(rows[0]["waterSupplyTempPt1000"], 21.9, places=4)
+                self.assertIsNone(rows[0]["cicWaterSupplyTemp"])
+                self.assertEqual(rows[1]["waterSupplySource"], "Local")
+                self.assertEqual(rows[1]["waterSupplyTempEffectiveSource"], "Local - PT1000")
+                self.assertFalse(rows[1]["waterSupplyTempFallbackActive"])
+                self.assertIsNone(rows[2]["waterSupplyTempPt1000"])
+                self.assertIsNone(rows[2]["waterSupplyTempEsp"])
+                self.assertTrue(rows[2]["pt1000ReadProblem"])
+                self.assertTrue(rows[2]["waterSupplyTempFallbackActive"])
+                self.assertEqual(rows[2]["waterSupplyTempEffectiveSource"], fallback)
+                self.assertFalse(rows[3]["pt1000ReadProblem"])
+                self.assertFalse(rows[3]["waterSupplyTempFallbackActive"])
+                self.assertAlmostEqual(rows[3]["waterSupplyTempPt1000"], 24.3, places=4)
+                self.assertAlmostEqual(rows[3]["supplyTemp"], 24.3, places=4)
+                self.assertEqual(rows[3]["waterSupplyTempEffectiveSource"], "Local - PT1000")
+
     def test_real_default_schema_long_retention_snapshot_interleavings_and_http_failures(self):
         for duo in self.binaries:
             with self.subTest(duo=duo):

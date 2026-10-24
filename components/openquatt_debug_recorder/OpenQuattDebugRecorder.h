@@ -50,11 +50,10 @@ class OpenQuattDebugRecorder : public Component {
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 10000;
   // The full default schema retains over six hours at the 10-second interval.
   static constexpr size_t BUFFER_BYTES = 2U * 1024U * 1024U;
-  // 272 keeps the >= 12 spare field slots the debug-recording contract
-  // requires after adding the defrost/R1 target-control fields. Both field
-  // tables live in PSRAM, so this costs 2 x 16 x sizeof(DebugField) external
-  // bytes and no internal DRAM.
-  static constexpr size_t FIELD_CAPACITY = 272;
+  // Keep at least 12 spare slots after the sensor-source diagnostics. Both
+  // field tables remain strict PSRAM; the 48 extra slots per table cost
+  // 2 x 48 x sizeof(DebugField) external bytes, with no internal fallback.
+  static constexpr size_t FIELD_CAPACITY = 320;
   // Five memory/time fields plus one firmware-owned configuration column.
   static constexpr size_t SYSTEM_FIELD_COUNT = 6;
   static constexpr size_t CONFIGURATION_FIELD_CAPACITY = 16;

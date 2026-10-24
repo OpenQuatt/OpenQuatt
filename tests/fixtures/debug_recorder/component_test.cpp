@@ -296,6 +296,53 @@ void lifecycle() {
   global_preferences = &env.preferences;
 }
 
+void sensor_sources() {
+  Environment env;
+  Recorder recorder;
+  auto& source = env.find(App.selects, "Water Supply Source");
+  auto& local = env.find(App.selects, "Local Water Supply Temp Source");
+  auto& effective = env.find(App.text_sensors, "Water Supply Temp Effective Source");
+  auto& fallback = env.find(App.binary_sensors, "Water Supply Temp Fallback Active");
+  auto& fault = env.find(App.binary_sensors, "PT1000 read problem");
+  auto& pt1000 = env.find(App.sensors, "Water Supply Temp (PT1000)");
+  auto& proxy = env.find(App.sensors, "Water Supply Temp");
+  auto& cic = env.find(App.sensors, "CIC - Water Supply Temp");
+  auto& selected = env.find(App.sensors, "Water Supply Temp (Selected)");
+  const char* fallback_label = OQ_TOPOLOGY_DUO ? "hp2 water out (fallback)" : "hp1 water out (fallback)";
+  source.option = "CIC";
+  local.option = "PT1000";
+  effective.state = fallback_label;
+  fallback.state = true;
+  fault.state = false;
+  pt1000.state = proxy.state = 21.9f;
+  cic.valid = false;
+  selected.state = 21.6f;
+  recorder.setup();
+  env.tick(recorder, 0);
+
+  source.option = "Local";
+  effective.state = "Local - PT1000";
+  fallback.state = false;
+  selected.state = pt1000.state;
+  env.tick(recorder, 10);
+
+  pt1000.valid = proxy.valid = false;
+  fault.state = fallback.state = true;
+  effective.state = fallback_label;
+  selected.state = 21.6f;
+  env.tick(recorder, 20);
+
+  pt1000.valid = proxy.valid = true;
+  pt1000.state = proxy.state = selected.state = 24.3f;
+  fault.state = fallback.state = false;
+  effective.state = "Local - PT1000";
+  env.tick(recorder, 30);
+  httpd_req_t download;
+  recorder.write_recording(&download, 0);
+  assert(download.status == HTTPD_200 && download.finished);
+  emit("sources", download);
+}
+
 void configuration() {
   Environment env;
   Recorder recorder;
@@ -749,6 +796,8 @@ int main(int argc, char** argv) {
     lifecycle();
   else if (scenario == "configuration")
     configuration();
+  else if (scenario == "sensor-sources")
+    sensor_sources();
   else if (scenario == "retention")
     retention();
   else if (scenario == "http")

@@ -250,7 +250,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduRegisterEndIndex, powerInputEndIndex), POWER_INPUT_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(powerInputEndIndex, issue746EndIndex), ISSUE_746_FLOW_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue746EndIndex, defrostBoilerEndIndex), DEFROST_BOOILER_KEYS);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(defrostBoilerEndIndex), [
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(defrostBoilerEndIndex, defrostBoilerEndIndex + 9), [
     "phRunExtensionStatus", "phRunExtensionBasePower", "phRunExtensionFloorPower",
     "phRunExtensionState", "phComfortMemory", "phRunExtensionComfortStop",
     "phRunExtensionWarmRestart", "roomTempEffectiveSource", "roomSetpointEffectiveSource",
@@ -263,12 +263,68 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
   const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
   assert.equal(systemFieldCount, 6);
-  assert.equal(fieldCapacity, 272);
+  assert.equal(fieldCapacity, 320);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
     fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,
     "debugrecorder houdt minimaal 12 entityvelden groeiruimte",
   );
+});
+
+test("systeemrecorder bewaart bronkeuzes, aanvoerfallback en ruwe sensormetingen", async () => {
+  const keys = [
+    "waterSupplySource",
+    "localWaterSupplyTempSource",
+    "waterSupplyTempEffectiveSource",
+    "waterSupplyTempFallbackActive",
+    "pt1000ReadProblem",
+    "waterSupplyTempEsp",
+    "waterSupplyTempPt1000",
+    "waterSupplyTempDs18b20",
+    "cicWaterSupplyTemp",
+    "waterSupplyTempHa",
+    "waterSupplyTempHaValid",
+    "waterSupplyCalibrationOffset",
+    "waterSupplyCalibrationRequired",
+    "waterSupplyCalibrationStatus",
+    "coolingDewPointSource",
+    "coolingEnableSource",
+    "coolingEnableValid",
+    "heatingEnableEffectiveSource",
+    "coolingEnableEffectiveSource",
+    "heatingCurveModifierSource",
+    "heatingCurveModifierHaEffectiveValid",
+    "curveModifier",
+    "cicPollingEnabled",
+    "cicJsonFeedOk",
+    "cicLastSuccessAge",
+    "outsideTempHaValid",
+    "roomTempHaValid",
+    "roomSetpointHaValid",
+    "cicRoomTemp",
+    "cicRoomSetpoint",
+    "outsideTempHa",
+    "roomTempHa",
+    "roomSetpointHa",
+    "coolingDewPointHa",
+    "coolingDewPointHaValid",
+    "heatingCurveModifierHa",
+  ];
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(-keys.length), keys);
+  const packages = [...FIRMWARE_ENTITY_PACKAGES,
+    "../../oq_local_sensors.yaml", "../../oq_cic.yaml", "../../oq_ha_inputs.yaml",
+    "../../oq_hp_water_calibration.yaml", "../../oq_cooling_safety.yaml",
+    "../../profiles/heatpump_controller_q/local_sensors.yaml",
+    "../../profiles/heatpump_controller_q/status_leds.yaml",
+  ];
+  const firmware = (await Promise.all(packages.map((path) => readFile(new URL(path, import.meta.url), "utf8")))).join("\n");
+  for (const key of keys) {
+    assert.ok(ENTITY_DEFS[key], key);
+    assert.ok(firmware.includes(`name: "${ENTITY_DEFS[key].name}"`), key);
+  }
+  for (const key of ["cicFeedUrl", "mqttPassword", "apiKey"]) {
+    assert.ok(!DEBUG_RECORDING_KEYS.includes(key), key);
+  }
 });
 
 test("OpenTherm-opname bewaart signalen zonder afleidbare doublures", () => {

@@ -19,11 +19,11 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((2 * 1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 795);
-  assert.equal(capacity, 2637);
-  // Full default schema: 7 h 19 min 20 s. Optional missing fields can only
+  assert.equal(rowBytes, 885);
+  assert.equal(capacity, 2369);
+  // Full default schema: 6 h 34 min 40 s. Optional missing fields can only
   // increase this capacity; custom schemas still report their actual capacity.
-  assert.equal((capacity - 1) * 10, 26360);
+  assert.equal((capacity - 1) * 10, 23680);
   assert.ok((capacity - 1) * 10 > 6 * 60 * 60);
   assert.match(header, /BUFFER_BYTES = 2U \* 1024U \* 1024U/);
   assert.doesNotMatch(header, /MAX_DURATION_S|MIN_DURATION_S|DEFAULT_DURATION_S/);
