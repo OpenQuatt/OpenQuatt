@@ -12,7 +12,7 @@ import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/secur
 import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSelectControl } from "./controls.js";
 import { t } from "../i18n/index.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
-import { patchRunExtensionThresholds, renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
+import { patchControlledWarmupField, patchRunExtensionThresholds, renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
 import { patchHouseLearningSettingsStatus, renderHouseLearningSettings } from "./house-learning.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
@@ -76,6 +76,7 @@ function syncFrequencyRangeControl(control) {
   }
 
   export function renderSettingsGroupContent() {
+    state.warmupSettingsRenderPending = false;
     const activeGroup = SETTINGS_GROUP_IDS.has(state.settingsGroup) ? state.settingsGroup : SETTINGS_GROUPS[0].id;
     const sections = activeGroup === "installation"
       ? [
@@ -273,6 +274,7 @@ function syncFrequencyRangeControl(control) {
     });
 
     patchHouseLearningSettingsStatus();
+    state.warmupSettingsRenderPending = !patchControlledWarmupField(stack);
     patchRunExtensionThresholds();
 
     const generationStatus = stack.querySelector('button[data-oq-action="open-generation-modal"]')?.closest(".oq-settings-quickstart-status");

@@ -9,6 +9,7 @@
 #include <freertos/semphr.h>
 
 #include "PsramBuffer.h"
+#include "warmup_diagnostics.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/component.h"
@@ -22,6 +23,19 @@ using openquatt_common::PsramBuffer;
 class OpenQuattDebugRecorder : public Component {
  public:
   void set_clock(time::RealTimeClock* clock) { this->clock_ = clock; }
+  // Providers/setters run on the ESPHome loop, never an HTTP worker. Exports
+  // copy recorded samples only; they do not read these live diagnostics.
+  void set_warmup_progress_provider(uint32_t (*provider)()) { this->warmup_progress_provider_ = provider; }
+  void invalidate_warmup_power() {
+    this->warmup_power_ = {};
+    this->warmup_power_.path = WarmupPath::UNAVAILABLE;
+  }
+  bool set_warmup_power(uint32_t log_key, const WarmupPowerSnapshot& power) {
+    const bool changed = log_key != this->warmup_log_key_;
+    this->warmup_log_key_ = log_key;
+    this->warmup_power_ = power;
+    return changed;
+  }
 
   void setup() override;
   void loop() override;
@@ -50,12 +64,12 @@ class OpenQuattDebugRecorder : public Component {
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 10000;
   // The full default schema retains over six hours at the 10-second interval.
   static constexpr size_t BUFFER_BYTES = 2U * 1024U * 1024U;
-  // Keep at least 12 spare slots after the sensor-source diagnostics. Both
+  // Keep at least 12 spare slots after warmup and sensor-source diagnostics. Both
   // field tables remain strict PSRAM; the 48 extra slots per table cost
   // 2 x 48 x sizeof(DebugField) external bytes, with no internal fallback.
-  static constexpr size_t FIELD_CAPACITY = 320;
-  // Five memory/time fields plus one firmware-owned configuration column.
-  static constexpr size_t SYSTEM_FIELD_COUNT = 6;
+  static constexpr size_t FIELD_CAPACITY = 336;
+  // Memory/configuration plus warmup progress and five W values/path code.
+  static constexpr size_t SYSTEM_FIELD_COUNT = 14;
   static constexpr size_t CONFIGURATION_FIELD_CAPACITY = 16;
   static constexpr size_t CONFIGURATION_SCRATCH_BYTES = 1024;
   static constexpr size_t FIELD_KEY_BYTES = 40;
@@ -83,6 +97,14 @@ class OpenQuattDebugRecorder : public Component {
     SYSTEM_FREE_PSRAM,
     SYSTEM_MIN_FREE_HEAP,
     SYSTEM_LARGEST_FREE_HEAP_BLOCK,
+    WARMUP_STATUS,
+    WARMUP_ELAPSED,
+    WARMUP_BASE_W,
+    WARMUP_MINIMUM_W,
+    WARMUP_EXTRA_W,
+    WARMUP_BEFORE_CAPS_W,
+    WARMUP_AFTER_CAPS_W,
+    WARMUP_PATH,
   };
 
   struct DebugField {
@@ -131,6 +153,9 @@ class OpenQuattDebugRecorder : public Component {
   };
 
   time::RealTimeClock* clock_{nullptr};
+  uint32_t (*warmup_progress_provider_)() = nullptr;
+  WarmupPowerSnapshot warmup_power_;
+  uint32_t warmup_log_key_ = 0;
   ESPPreferenceObject enabled_pref_{};
   PsramBuffer<uint8_t> samples_{};
   PsramBuffer<DebugField> fields_{};
@@ -228,7 +253,7 @@ class OpenQuattDebugRecorder : public Component {
   bool activate_pending_configuration_();
   bool compact_strings_();
   void capture_sample_();
-  uint32_t capture_value_(const DebugField& field);
+  uint32_t capture_value_(const DebugField& field, uint32_t warmup_progress, const WarmupPowerSnapshot& warmup_power);
   uint32_t intern_string_(const char* value, size_t length, bool preserve_unknown = false);
   void retain_string_(uint32_t index);
   void release_sample_strings_(const uint8_t* sample);

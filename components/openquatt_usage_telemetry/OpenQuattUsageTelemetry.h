@@ -55,6 +55,10 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   void set_active_connection_sensor(text_sensor::TextSensor* sensor) { this->active_connection_sensor_ = sensor; }
   void set_connection_preference_select(select::Select* source) { this->connection_preference_select_ = source; }
   void set_quatt_hybrid_generation_select(select::Select* source) { this->quatt_hybrid_generation_select_ = source; }
+  void set_water_supply_source_select(select::Select* source) { this->water_supply_source_select_ = source; }
+  void set_local_water_supply_temp_source_select(select::Select* source) {
+    this->local_water_supply_temp_source_select_ = source;
+  }
   void set_flow_source_select(select::Select* source) { this->flow_source_select_ = source; }
   void set_q_flow_source_select(select::Select* source) { this->q_flow_source_select_ = source; }
   void set_heating_strategy_select(select::Select* source) { this->heating_strategy_select_ = source; }
@@ -214,6 +218,8 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   text_sensor::TextSensor* active_connection_sensor_{nullptr};
   select::Select* connection_preference_select_{nullptr};
   select::Select* quatt_hybrid_generation_select_{nullptr};
+  select::Select* water_supply_source_select_{nullptr};
+  select::Select* local_water_supply_temp_source_select_{nullptr};
   select::Select* flow_source_select_{nullptr};
   select::Select* q_flow_source_select_{nullptr};
   select::Select* heating_strategy_select_{nullptr};

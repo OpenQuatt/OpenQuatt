@@ -365,6 +365,10 @@
   flex: 1 1 360px;
 }
 
+[data-oq-warmup-visible][hidden] {
+  display: none;
+}
+
 .oq-run-extension-status {
   padding: 6px 10px;
   border-radius: 999px;
@@ -441,6 +445,11 @@
 }
 
 @media (max-width: 600px) {
+  .oq-run-extension-thresholds,
+  .oq-run-extension-thresholds.oq-warmup-readings {
+    grid-template-columns: 1fr;
+  }
+
   .oq-ph-comfort {
     padding: 0;
     border: 0;

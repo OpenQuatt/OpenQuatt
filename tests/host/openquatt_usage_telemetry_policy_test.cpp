@@ -15,6 +15,7 @@ using esphome::openquatt_usage_telemetry::mqtt_cleanup_decision;
 using esphome::openquatt_usage_telemetry::MQTT_PUBLISH_RETAIN;
 using esphome::openquatt_usage_telemetry::MqttCleanupDecision;
 using esphome::openquatt_usage_telemetry::quatt_hybrid_generation_wire_value;
+using esphome::openquatt_usage_telemetry::water_supply_source_wire_value;
 
 int main() {
   assert(MQTT_PUBLISH_RETAIN == 0);
@@ -56,6 +57,14 @@ int main() {
   assert(std::strcmp(configured_source_wire_value("Schedule"), "schedule") == 0);
   assert(std::strcmp(configured_source_wire_value("Disabled"), "disabled") == 0);
   assert(configured_source_wire_value("unknown") == nullptr);
+
+  assert(std::strcmp(water_supply_source_wire_value("Local", true, "PT1000"), "pt1000") == 0);
+  assert(std::strcmp(water_supply_source_wire_value("Local", true, "DS18B20"), "ds18b20") == 0);
+  assert(std::strcmp(water_supply_source_wire_value("Local", false, ""), "ds18b20") == 0);
+  assert(std::strcmp(water_supply_source_wire_value("CIC", false, ""), "cic") == 0);
+  assert(std::strcmp(water_supply_source_wire_value("HA input", false, ""), "home_assistant") == 0);
+  assert(water_supply_source_wire_value("Local", true, "") == nullptr);
+  assert(water_supply_source_wire_value("unknown", false, "") == nullptr);
 
   assert(std::strcmp(flow_source_config_wire_value("CIC", false, ""), "cic") == 0);
   assert(std::strcmp(flow_source_config_wire_value("Outdoor unit", false, ""), "outdoor_unit") == 0);

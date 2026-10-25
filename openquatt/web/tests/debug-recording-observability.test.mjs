@@ -250,10 +250,12 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduRegisterEndIndex, powerInputEndIndex), POWER_INPUT_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(powerInputEndIndex, issue746EndIndex), ISSUE_746_FLOW_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue746EndIndex, defrostBoilerEndIndex), DEFROST_BOOILER_KEYS);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(defrostBoilerEndIndex, defrostBoilerEndIndex + 9), [
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(defrostBoilerEndIndex, defrostBoilerEndIndex + 17), [
     "phRunExtensionStatus", "phRunExtensionBasePower", "phRunExtensionFloorPower",
     "phRunExtensionState", "phComfortMemory", "phRunExtensionComfortStop",
     "phRunExtensionWarmRestart", "roomTempEffectiveSource", "roomSetpointEffectiveSource",
+    "warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime",
+    "warmupActive", "warmupIntermediateTarget", "warmupBoost", "warmupEffectiveTarget",
   ]);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
@@ -262,8 +264,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   );
   const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
   const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
-  assert.equal(systemFieldCount, 6);
-  assert.equal(fieldCapacity, 320);
+  assert.equal(systemFieldCount, 14);
+  assert.equal(fieldCapacity, 336);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
     fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,

@@ -151,6 +151,47 @@ class RecorderComponentRuntimeTest(unittest.TestCase):
                                           (1439, "23:59"), (1440, None), (65534, None)]:
                     self.assertEqual(self.initial(json.loads(output[f"clock-{minutes}"]))["timeNowHhmm"], expected)
 
+    def test_warmup_values_coherent_provider_nulls_and_export_immutability(self):
+        for duo in self.binaries:
+            with self.subTest(duo=duo):
+                output = self.scenario("warmup", duo)
+                payload = json.loads(output["warmup-recording"])
+                columns = payload["columns"]
+                state = self.initial(payload)
+                self.assertNotIn("warmupStatus", state)
+                self.assertNotIn("warmupElapsed", state)
+                for _, changes in payload["samples"]:
+                    for index, value in changes:
+                        state[columns[index]] = value
+                self.assertEqual(state["warmupStatus"], 2)
+                self.assertEqual(state["warmupElapsed"], 900)
+                self.assertAlmostEqual(state["warmupBoost"], 0.3, places=3)
+                self.assertEqual(state["warmupStepTime"], 45)
+                for key, expected in {"warmupBasePower": 1071.4, "warmupMinimumPower": 2527.6,
+                                      "warmupExtraPower": 840, "warmupBeforeCapsPower": 3367.6,
+                                      "warmupAfterCapsPower": 3000, "warmupPowerPath": 2}.items():
+                    self.assertAlmostEqual(state[key], expected, places=1)
+                between = json.loads(output["warmup-between-ticks"])
+                state = self.initial(between)
+                for _, changes in between["samples"]:
+                    for index, value in changes:
+                        state[between["columns"][index]] = value
+                self.assertEqual(state["warmupStatus"], 3)
+                self.assertEqual(state["warmupPowerPath"], 8)
+                self.assertIsNone(state["warmupExtraPower"])
+                self.assertIsNone(state["warmupBeforeCapsPower"])
+                ended = json.loads(output["warmup-ended"])
+                state = self.initial(ended)
+                for _, changes in ended["samples"]:
+                    for index, value in changes:
+                        state[ended["columns"][index]] = value
+                self.assertIsNone(state["warmupStatus"])
+                self.assertIsNone(state["warmupElapsed"])
+                for key in ["warmupBasePower", "warmupMinimumPower", "warmupExtraPower",
+                            "warmupBeforeCapsPower", "warmupAfterCapsPower"]:
+                    self.assertIsNone(state[key])
+                self.assertEqual(state["warmupPowerPath"], 0)
+
     def test_partial_sync_and_failed_compensation_require_durable_retries(self):
         for duo in self.binaries:
             with self.subTest(duo=duo):
