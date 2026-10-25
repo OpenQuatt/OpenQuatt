@@ -172,6 +172,24 @@ function setSourceSelectionState(mqttEnabled) {
   };
 }
 
+test("aanvoerbron en lokale sensor zijn geblokkeerd tijdens het bevestigen van een bronwissel", () => {
+  setSourceSelectionState(false);
+  try {
+    state.busyAction = "save-waterSupplySource";
+    const pending = renderFocusedSource("water-supply");
+    for (const key of ["waterSupplySource", "localWaterSupplyTempSource"]) {
+      assert.match(pending, new RegExp(`<select[^>]+data-oq-field="${key}"[^>]*disabled`));
+    }
+    state.busyAction = "";
+    const ready = renderFocusedSource("water-supply");
+    for (const key of ["waterSupplySource", "localWaterSupplyTempSource"]) {
+      assert.doesNotMatch(ready, new RegExp(`<select[^>]+data-oq-field="${key}"[^>]*disabled`));
+    }
+  } finally {
+    state.busyAction = "";
+  }
+});
+
 test("integraties laden de aanvoerkalibratiestatus direct", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("waterSupplyCalibrationOffset"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("waterSupplyCalibrationRequired"));

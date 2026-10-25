@@ -1709,6 +1709,11 @@ void OpenQuattIncidentManager::publish_transitions_(UnitState& unit, size_t slot
                      ? incident_reason_(primary)
                      : static_cast<uint8_t>(openquatt_decision_log::REASON_KEEP_CURRENT);
       }
+      const int16_t restart_wait_s = availability == openquatt_decision_log::STATE_BLOCKED
+                                         ? restart_wait_log_seconds(unit.engine.outputs(), current_outputs,
+                                                                    unit.restart_guard.remaining_ms(now_ms))
+                                         : 0;
+      if (restart_wait_s > 0) reason = openquatt_decision_log::REASON_MIN_REST_ACTIVE;
       this->decision_log_->emit(
           openquatt_decision_log::EVENT_HP_AVAILABILITY_CHANGE, event_subject_(slot), reason,
           availability == openquatt_decision_log::STATE_FAULTED || availability == openquatt_decision_log::STATE_OFFLINE
@@ -1716,7 +1721,7 @@ void OpenQuattIncidentManager::publish_transitions_(UnitState& unit, size_t slot
               : openquatt_decision_log::SEVERITY_NORMAL,
           this->control_mode_code_ != nullptr ? static_cast<uint8_t>(this->control_mode_code_->value()) : 0U,
           unit.last_reported_availability, availability, static_cast<int16_t>(current_outputs.primary_incident_id),
-          static_cast<int16_t>(current_outputs.active_incident_count));
+          static_cast<int16_t>(current_outputs.active_incident_count), restart_wait_s);
     }
     unit.last_reported_availability = availability;
   }

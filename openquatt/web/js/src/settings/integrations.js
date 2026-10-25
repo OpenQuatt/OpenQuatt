@@ -691,7 +691,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
               <span>${escapeHtml(config.label || t("settingsIntegrations.defaultSourceLabel"))}</span>
               ${config.infoCopy ? renderSettingsInfoToggle(config.infoId || key, config.infoTitle || config.label || t("settingsIntegrations.defaultSourceLabel"), config.infoCopy) : ""}
             </span>
-            <select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" ${state.loadingEntities ? "disabled" : ""}>
+            <select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" ${state.loadingEntities || ((key === "waterSupplySource" || key === "localWaterSupplyTempSource") && Boolean(state.busyAction)) ? "disabled" : ""}>
               ${unavailableCurrentPlaceholder}${optionMarkup}
             </select>
           </label>

@@ -75,6 +75,22 @@ inline bool availability_baseline_ready(oq_incidents::LinkState link_state, bool
   return link_state == oq_incidents::LinkState::HEALTHY || link_state == oq_incidents::LinkState::LOST;
 }
 
+// Telemetry only: identify a restart guard without attributing another safety
+// gate or a blocking incident to minimum off-time. Non-blocking ODU statuses
+// may still be primary while the engine itself permits a start.
+inline int16_t restart_wait_log_seconds(const oq_incidents::DerivedOutputs& engine_outputs,
+                                        const oq_incidents::DerivedOutputs& published_outputs, uint32_t remaining_ms) {
+  if (remaining_ms == 0U || remaining_ms == UINT32_MAX || !engine_outputs.available_for_start ||
+      published_outputs.available_for_start || published_outputs.must_stop ||
+      oq_incidents::has_effect(published_outputs.active_effects, oq_incidents::IncidentEffect::BLOCK_START) ||
+      published_outputs.link_state != oq_incidents::LinkState::HEALTHY ||
+      published_outputs.run_state != oq_incidents::RunState::STOPPED) {
+    return 0;
+  }
+  const uint32_t seconds = remaining_ms / 1000U + (remaining_ms % 1000U != 0U ? 1U : 0U);
+  return static_cast<int16_t>(seconds > 32767U ? 32767U : seconds);
+}
+
 inline oq_incidents::StartFailureResetResult perform_start_failure_retry(oq_incidents::HpIncidentEngine* engine,
                                                                          uint32_t now_ms) {
   if (engine == nullptr) {
