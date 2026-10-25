@@ -1,0 +1,374 @@
+// ESPHome 2026.9.0, modified 2026-10-20: RTD settling and optional diagnostics. See LICENSE.
+#include "max31865.h"
+
+#include "esphome/core/log.h"
+#include <cmath>
+#include <cinttypes>
+
+namespace esphome::max31865 {
+
+static const char* const TAG = "max31865";
+
+void MAX31865Sensor::update() {
+  // Keep diagnostic waits from overlapping an explicit component.update.
+  if (measurement_active_) return;
+  measurement_active_ = true;
+  measurement_started_us_ = micros();
+  sample_count_++;
+  if (diagnostics_) {
+    diagnostic_phases_ = 0;
+    after_clear_ = {};
+    manual_wait_ = {};
+    after_detection_ = {};
+  }
+  // Check new faults since last measurement
+  if (!has_fault_) {
+    const uint8_t faults = this->read_register_(FAULT_STATUS_REG);
+    if (faults & 0b11111100) {
+      if (faults & (1 << 2)) {
+        ESP_LOGW(TAG, "Overvoltage/undervoltage fault between measurements");
+      }
+      if (faults & (1 << 3)) {
+        ESP_LOGW(TAG, "RTDIN- < 0.85 x V_BIAS (FORCE- open) between measurements");
+      }
+      if (faults & (1 << 4)) {
+        ESP_LOGW(TAG, "REFIN- < 0.85 x V_BIAS (FORCE- open) between measurements");
+      }
+      if (faults & (1 << 5)) {
+        ESP_LOGW(TAG, "REFIN- > 0.85 x V_BIAS between measurements");
+      }
+      if (!has_warn_) {
+        if (faults & (1 << 6)) {
+          ESP_LOGW(TAG, "RTD Low Threshold between measurements");
+        }
+        if (faults & (1 << 7)) {
+          ESP_LOGW(TAG, "RTD High Threshold between measurements");
+        }
+      }
+    }
+  }
+
+  if (separate_clear_) {
+    // Datasheet D1 clear requires D5/D3/D2 = 0.
+    this->write_config_(0b11101110, 0b10000010);
+  } else if (bias_ms_ != 0) {
+    this->write_config_(0b11101110, 0b10000000);
+  }
+  if (diagnostics_) {
+    phase_started_us_ = micros();
+    if (separate_clear_) {
+      after_clear_ = this->read_fault_snapshot_();
+      diagnostic_phases_ |= 1;
+    }
+  }
+  if (bias_ms_ != 0) {
+    this->set_timeout("bias", bias_ms_, [this]() { this->start_fault_detection_(); });
+  } else {
+    this->start_fault_detection_();
+  }
+}
+
+void MAX31865Sensor::start_fault_detection_() {
+  if (diagnostics_ && (diagnostic_phases_ & 1)) after_clear_.wait_us = micros() - phase_started_us_;
+  if (manual_ms_ != 0) {
+    // First manual step checks with FORCE- closed, then opens the switch.
+    this->write_config_(0b11101110, 0b10001000);
+    if (diagnostics_) phase_started_us_ = micros();
+    this->set_timeout("manual", manual_ms_, [this]() {
+      if (diagnostics_) {
+        // D3:D2 must still be 10 here. A lost first manual command could make
+        // the second command run the short automatic test instead.
+        manual_wait_ = this->read_fault_snapshot_();
+        manual_wait_.wait_us = micros() - phase_started_us_;
+        diagnostic_phases_ |= 2;
+      }
+      this->write_config_(0b11101110, 0b10001100);
+      this->finish_fault_detection_();
+    });
+  } else {
+    // Default retains the upstream combined clear + automatic-detect write.
+    this->write_config_(0b11101110, separate_clear_ ? 0b10000100 : 0b10000110);
+    this->finish_fault_detection_();
+  }
+}
+
+void MAX31865Sensor::finish_fault_detection_() {
+  const uint32_t start_time = micros();
+  uint8_t config;
+  uint32_t fault_detect_time;
+  do {
+    config = this->read_register_(CONFIGURATION_REG);
+    fault_detect_time = micros() - start_time;
+    if ((fault_detect_time >= 6000) && (config & 0b00001100)) {
+      ESP_LOGE(TAG,
+               "Fault detection incomplete (0x%02X) after %" PRIu32 "μs (datasheet spec is 600μs max)! Aborting read.",
+               config, fault_detect_time);
+      this->publish_state(NAN);
+      this->status_set_error();
+      // A stuck detector must not leave BIAS/FORCE- in a test state.
+      this->write_config_(0b11101110, 0);
+      measurement_active_ = false;
+      if (diagnostics_) {
+        ESP_LOGE("oq.max31865_diag", "sample=%" PRIu32 " detector_timeout cfg=0x%02X", sample_count_, config);
+        this->diagnose_fault_detection_();
+      }
+      return;
+    }
+  } while (config & 0b00001100);
+  ESP_LOGV(TAG, "Fault detection completed in %" PRIu32 "μs.", fault_detect_time);
+  fault_detect_us_ = fault_detect_time;
+  if (diagnostics_) {
+    phase_started_us_ = micros();
+    after_detection_ = this->read_fault_snapshot_();
+    diagnostic_phases_ |= 4;
+  }
+  if (conversion_ms_ != 0) {
+    this->set_timeout("settle", conversion_ms_, [this]() { this->start_conversion_(); });
+  } else {
+    this->start_conversion_();
+  }
+}
+
+void MAX31865Sensor::start_conversion_() {
+  if (diagnostics_) after_detection_.wait_us = micros() - phase_started_us_;
+  // Start 1-shot conversion
+  this->write_config_(0b11100000, 0b10100000);
+  conversion_started_us_ = micros();
+
+  // Datasheet max conversion time is 55ms for 60Hz / 66ms for 50Hz
+  // The Q profile adds 1 ms so millisecond scheduler quantization cannot shorten
+  // the datasheet's maximum conversion time.
+  this->set_timeout("value", (filter_ == FILTER_60HZ ? 55 : 66) + read_margin_ms_, [this]() { this->read_data_(); });
+}
+
+void MAX31865Sensor::setup() {
+  this->spi_setup();
+
+  // Build base configuration
+  base_config_ = 0b00000000;
+  base_config_ |= (filter_ & 1) << 0;
+  if (rtd_wires_ == 3) {
+    base_config_ |= 1 << 4;
+  }
+
+  // Clear any existing faults & set base config
+  this->write_config_(0b00000010, 0b00000010);
+}
+
+void MAX31865Sensor::dump_config() {
+  ESP_LOGCONFIG(TAG, "Timing: clear=%u bias=%" PRIu32 " manual=%" PRIu32 " post=%" PRIu32 " read_margin=%" PRIu32 " ms",
+                separate_clear_, bias_ms_, manual_ms_, conversion_ms_, read_margin_ms_);
+  ESP_LOGCONFIG(TAG, "Diagnostics: %s", diagnostics_ ? "on (pre/post BIAS-off)" : "off");
+  if (diagnostics_) ESP_LOGCONFIG(TAG, "Fault-stage diagnostics: on");
+  LOG_SENSOR("", "MAX31865", this);
+  LOG_PIN("  CS Pin: ", this->cs_);
+  LOG_UPDATE_INTERVAL(this);
+  ESP_LOGCONFIG(
+      TAG,
+      "  Reference Resistance: %.2fΩ\n"
+      "  RTD: %u-wire %.2fΩ\n"
+      "  Mains Filter: %s",
+      reference_resistance_, rtd_wires_, rtd_nominal_resistance_,
+      (filter_ == FILTER_60HZ ? LOG_STR_LITERAL("60 Hz")
+                              : (filter_ == FILTER_50HZ ? LOG_STR_LITERAL("50 Hz") : LOG_STR_LITERAL("Unknown!"))));
+}
+
+void MAX31865Sensor::read_data_() {
+  measurement_active_ = false;
+  // Read temperature, disable V_BIAS (save power)
+  const uint32_t read_started_us = micros();
+  const uint16_t rtd_resistance_register = this->read_register_16_(RTD_RESISTANCE_MSB_REG);
+  DiagnosticSnapshot before{};
+  if (diagnostics_) {
+    // Only reads here: capture the state with BIAS still on. Log after power-off
+    // so logger/network work cannot stretch the BIAS-on diagnostic interval.
+    before = this->read_diagnostic_snapshot_(rtd_resistance_register, this->read_register_(FAULT_STATUS_REG));
+  }
+  const uint32_t bias_off_us = micros();
+  this->write_config_(0b11000000, 0b00000000);
+
+  // Check for bad connection
+  if (rtd_resistance_register == 0b0000000000000000 || rtd_resistance_register == 0b1111111111111111) {
+    if (diagnostics_)
+      this->diagnose_(rtd_resistance_register, this->read_register_(FAULT_STATUS_REG), before, read_started_us,
+                      bias_off_us);
+    ESP_LOGE(TAG, "SPI bus read all 0 or all 1 (0x%04X), check MAX31865 wiring & power.", rtd_resistance_register);
+    this->publish_state(NAN);
+    this->status_set_error();
+    return;
+  }
+
+  // Check faults
+  const uint8_t faults = this->read_register_(FAULT_STATUS_REG);
+  if (diagnostics_) this->diagnose_(rtd_resistance_register, faults, before, read_started_us, bias_off_us);
+  has_fault_ = faults & 0b00111100;
+  if (has_fault_) {
+    if (faults & (1 << 2)) {
+      ESP_LOGE(TAG, "Overvoltage/undervoltage fault");
+    }
+    if (faults & (1 << 3)) {
+      ESP_LOGE(TAG, "RTDIN- < 0.85 x V_BIAS (FORCE- open)");
+    }
+    if (faults & (1 << 4)) {
+      ESP_LOGE(TAG, "REFIN- < 0.85 x V_BIAS (FORCE- open)");
+    }
+    if (faults & (1 << 5)) {
+      ESP_LOGE(TAG, "REFIN- > 0.85 x V_BIAS");
+    }
+    this->publish_state(NAN);
+    this->status_set_error();
+    return;
+  } else {
+    this->status_clear_error();
+  }
+  has_warn_ = faults & 0b11000000;
+  if (has_warn_) {
+    if (faults & (1 << 6)) {
+      ESP_LOGW(TAG, "RTD Low Threshold");
+    }
+    if (faults & (1 << 7)) {
+      ESP_LOGW(TAG, "RTD High Threshold");
+    }
+    this->status_set_warning();
+  } else {
+    this->status_clear_warning();
+  }
+
+  // Process temperature
+  if (rtd_resistance_register & 0x0001) {
+    ESP_LOGW(TAG, "RTD Resistance Registers fault bit set! (0x%04X)", rtd_resistance_register);
+    this->status_set_warning();
+  }
+  const float rtd_ratio = static_cast<float>(rtd_resistance_register >> 1) / static_cast<float>((1 << 15) - 1);
+  const float temperature = this->calc_temperature_(rtd_ratio);
+  ESP_LOGV(TAG, "RTD read complete. %.5f (ratio) * %.1fΩ (reference) = %.2fΩ --> %.2f°C", rtd_ratio,
+           reference_resistance_, reference_resistance_ * rtd_ratio, temperature);
+  this->publish_state(temperature);
+}
+
+MAX31865Sensor::DiagnosticSnapshot MAX31865Sensor::read_diagnostic_snapshot_(uint16_t rtd, uint8_t faults) {
+  DiagnosticSnapshot snapshot{};
+  snapshot.rtd[0] = rtd;
+  snapshot.faults[0] = faults;
+  snapshot.config[0] = this->read_register_(CONFIGURATION_REG);
+  snapshot.rtd[1] = this->read_register_16_(RTD_RESISTANCE_MSB_REG);
+  snapshot.faults[1] = this->read_register_(FAULT_STATUS_REG);
+  snapshot.config[1] = this->read_register_(CONFIGURATION_REG);
+  return snapshot;
+}
+
+MAX31865Sensor::FaultSnapshot MAX31865Sensor::read_fault_snapshot_() {
+  FaultSnapshot snapshot{};
+  snapshot.config = this->read_register_(CONFIGURATION_REG);
+  snapshot.faults = this->read_register_(FAULT_STATUS_REG);
+  return snapshot;
+}
+
+void MAX31865Sensor::diagnose_fault_detection_() {
+  ESP_LOGI("oq.max31865_diag",
+           "sample=%" PRIu32
+           " stages=%u clear_cfg=%02X clear_fault=%02X manual_cfg=%02X manual_fault=%02X "
+           "detect_cfg=%02X detect_fault=%02X bias_wait_us=%" PRIu32 " manual_wait_us=%" PRIu32 " settle_us=%" PRIu32,
+           sample_count_, diagnostic_phases_, after_clear_.config, after_clear_.faults, manual_wait_.config,
+           manual_wait_.faults, after_detection_.config, after_detection_.faults, after_clear_.wait_us,
+           manual_wait_.wait_us, after_detection_.wait_us);
+}
+
+void MAX31865Sensor::diagnose_(uint16_t rtd, uint8_t faults, const DiagnosticSnapshot& before, uint32_t read_started_us,
+                               uint32_t bias_off_us) {
+  // Reads do not clear latched faults. The original pre-off RTD and first
+  // post-off fault read remain authoritative, even when snapshots disagree.
+  const auto after = this->read_diagnostic_snapshot_(this->read_register_16_(RTD_RESISTANCE_MSB_REG), faults);
+  const uint32_t elapsed_us = micros() - measurement_started_us_;
+  const uint32_t post_us = micros() - bias_off_us;
+  if ((faults & 0xFC) || (rtd & 1) || rtd == 0 || rtd == 0xFFFF) fault_count_++;
+  ESP_LOGI("oq.max31865_diag",
+           "sample=%" PRIu32 " pre rtd=%04X/%04X fault=%02X/%02X cfg=%02X/%02X conv_us=%" PRIu32 " pre_us=%" PRIu32,
+           sample_count_, before.rtd[0], before.rtd[1], before.faults[0], before.faults[1], before.config[0],
+           before.config[1], read_started_us - conversion_started_us_, bias_off_us - read_started_us);
+  ESP_LOGI("oq.max31865_diag",
+           "sample=%" PRIu32 " post rtd=%04X/%04X fault=%02X/%02X cfg=%02X/%02X t_ms=%" PRIu32 " detect_us=%" PRIu32
+           " post_us=%" PRIu32 " total_us=%" PRIu32 " faults=%" PRIu32,
+           sample_count_, after.rtd[0], after.rtd[1], after.faults[0], after.faults[1], after.config[0],
+           after.config[1], millis(), fault_detect_us_, post_us, elapsed_us, fault_count_);
+  this->diagnose_fault_detection_();
+}
+
+void MAX31865Sensor::write_config_(uint8_t mask, uint8_t bits, uint8_t start_position) {
+  uint8_t value = base_config_;
+
+  value &= (~mask);
+  value |= (bits << start_position);
+
+  this->write_register_(CONFIGURATION_REG, value);
+}
+
+void MAX31865Sensor::write_register_(uint8_t reg, uint8_t value) {
+  this->enable();
+  this->write_byte(reg |= SPI_WRITE_M);
+  this->write_byte(value);
+  this->disable();
+  ESP_LOGVV(TAG, "write_register_ 0x%02X: 0x%02X", reg, value);
+}
+
+uint8_t MAX31865Sensor::read_register_(uint8_t reg) {
+  this->enable();
+  this->write_byte(reg);
+  const uint8_t value(this->read_byte());
+  this->disable();
+  ESP_LOGVV(TAG, "read_register_ 0x%02X: 0x%02X", reg, value);
+  return value;
+}
+
+uint16_t MAX31865Sensor::read_register_16_(uint8_t reg) {
+  this->enable();
+  this->write_byte(reg);
+  const uint8_t msb(this->read_byte());
+  const uint8_t lsb(this->read_byte());
+  this->disable();
+  const uint16_t value((msb << 8) | lsb);
+  ESP_LOGVV(TAG, "read_register_16_ 0x%02X: 0x%04X", reg, value);
+  return value;
+}
+
+float MAX31865Sensor::calc_temperature_(float rtd_ratio) {
+  // Based loosely on Adafruit's library: https://github.com/adafruit/Adafruit_MAX31865
+  // Mainly based on formulas provided by Analog:
+  // http://www.analog.com/media/en/technical-documentation/application-notes/AN709_0.pdf
+
+  const float a = 3.9083e-3;
+  const float b = -5.775e-7;
+  const float z1 = -a;
+  const float z2 = a * a - 4 * b;
+  const float z3 = 4 * b / rtd_nominal_resistance_;
+  const float z4 = 2 * b;
+
+  float rtd_resistance = rtd_ratio * reference_resistance_;
+
+  // ≥ 0°C Formula
+  const float pos_temp = (z1 + std::sqrt(z2 + (z3 * rtd_resistance))) / z4;
+  if (pos_temp >= 0) {
+    return pos_temp;
+  }
+
+  // < 0°C Formula
+  if (rtd_nominal_resistance_ != 100) {
+    // Normalize RTD to 100Ω
+    rtd_resistance /= rtd_nominal_resistance_;
+    rtd_resistance *= 100;
+  }
+  float rpoly = rtd_resistance;
+  float neg_temp = -242.02f;
+  neg_temp += 2.2228f * rpoly;
+  rpoly *= rtd_resistance;  // square
+  neg_temp += 2.5859e-3f * rpoly;
+  rpoly *= rtd_resistance;  // ^3
+  neg_temp -= 4.8260e-6f * rpoly;
+  rpoly *= rtd_resistance;  // ^4
+  neg_temp -= 2.8183e-8f * rpoly;
+  rpoly *= rtd_resistance;  // ^5
+  neg_temp += 1.5243e-10f * rpoly;
+  return neg_temp;
+}
+
+}  // namespace esphome::max31865

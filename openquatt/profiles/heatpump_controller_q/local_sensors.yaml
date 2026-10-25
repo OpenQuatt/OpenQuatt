@@ -1,6 +1,13 @@
 # ==============================================================================
 # OpenQuatt - Heatpump Controller Q-edition local sensors
 # ==============================================================================
+external_components:
+  # ESPHome 2026.9.0 MAX31865 with explicit settling for the Q PT1000 input filter.
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [max31865]
+
 select:
   - platform: template
     id: oq_local_supply_temp_source
@@ -112,6 +119,15 @@ sensor:
     rtd_nominal_resistance: ${hpcq_pt1000_nominal_resistance_ohm}
     rtd_wires: ${hpcq_pt1000_rtd_wires}
     mains_filter: "50 Hz"
+    # Separate clear, settle BIAS, manually time the FORCE- test, then settle
+    # before sampling. Keep the existing fault handling and 5 s polling policy.
+    separate_fault_clear: true
+    bias_settle: 10ms
+    manual_fault_settle: 10ms
+    conversion_settle: 10ms
+    conversion_read_margin: 1ms
+    # Temporary PR #877 instrumentation; retain exactly the same timing.
+    diagnostics: true
     filters:
       - lambda: |-
           if (isnan(x)) return x;
