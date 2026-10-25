@@ -946,7 +946,7 @@ void OpenQuattUsageTelemetry::complete_publish_session_() {
   this->session_kind_.store(SessionKind::NONE);
 
   if (succeeded) {
-    this->commit_modbus_counter_snapshot_();
+    this->counter_snapshot_.commit();
   }
 
   if (!this->enabled_.load()) {
@@ -976,6 +976,7 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   uint16_t hardware_serial = 0;
   const std::string hardware_revision = this->read_hardware_revision_(hardware_serial);
   if (this->payload_message_id_.empty()) {
+    this->counter_snapshot_.reset();
     this->payload_message_id_ = random_message_id_();
   }
 
@@ -1101,24 +1102,31 @@ bool OpenQuattUsageTelemetry::build_payload_() {
                                configured_source_wire_value);
   append_json_optional_select_(payload, "heating_supply_target_source", this->heating_supply_target_source_select_,
                                configured_source_wire_value);
-  const uint32_t partial_response_count =
-      this->modbus_hub_ != nullptr ? this->modbus_hub_->partial_response_count() : 0U;
-  const uint32_t parse_failed_count = this->modbus_hub_ != nullptr ? this->modbus_hub_->parse_failed_count() : 0U;
-  const uint32_t recovered_response_count =
-      this->modbus_hub_ != nullptr ? this->modbus_hub_->recovered_response_count() : 0U;
-  const uint32_t offline_count = this->modbus_hub_ != nullptr ? this->modbus_hub_->offline_count() : 0U;
-  this->modbus_partial_response_count_snapshot_ = partial_response_count;
-  this->modbus_parse_failed_count_snapshot_ = parse_failed_count;
-  this->modbus_recovered_response_count_snapshot_ = recovered_response_count;
-  this->modbus_offline_count_snapshot_ = offline_count;
-  append_json_uint_(payload, "modbus_partial_response_count",
-                    modbus_counter_delta(partial_response_count, this->modbus_partial_response_count_baseline_));
-  append_json_uint_(payload, "modbus_parse_failed_count",
-                    modbus_counter_delta(parse_failed_count, this->modbus_parse_failed_count_baseline_));
+  std::array<uint32_t, COUNTER_COUNT> counters{};
+  if (this->modbus_hub_ != nullptr) {
+    counters[MODBUS_PARTIAL_RESPONSE] = this->modbus_hub_->partial_response_count();
+    counters[MODBUS_PARSE_FAILED] = this->modbus_hub_->parse_failed_count();
+    counters[MODBUS_RECOVERED_RESPONSE] = this->modbus_hub_->recovered_response_count();
+    counters[MODBUS_OFFLINE] = this->modbus_hub_->offline_count();
+  }
+#ifdef USE_OPENQUATT_MAX31865_COUNTERS
+  if (this->max31865_sensor_ != nullptr) {
+    counters[MAX31865_REFIN_LOW] = this->max31865_sensor_->refin_low_fault_count();
+    counters[MAX31865_RTDIN_LOW] = this->max31865_sensor_->rtdin_low_fault_count();
+  }
+#endif
+  this->counter_snapshot_.capture(counters);
+  append_json_uint_(payload, "modbus_partial_response_count", this->counter_snapshot_.delta(MODBUS_PARTIAL_RESPONSE));
+  append_json_uint_(payload, "modbus_parse_failed_count", this->counter_snapshot_.delta(MODBUS_PARSE_FAILED));
   append_json_uint_(payload, "modbus_recovered_response_count",
-                    modbus_counter_delta(recovered_response_count, this->modbus_recovered_response_count_baseline_));
-  append_json_uint_(payload, "modbus_offline_count",
-                    modbus_counter_delta(offline_count, this->modbus_offline_count_baseline_));
+                    this->counter_snapshot_.delta(MODBUS_RECOVERED_RESPONSE));
+  append_json_uint_(payload, "modbus_offline_count", this->counter_snapshot_.delta(MODBUS_OFFLINE));
+#ifdef USE_OPENQUATT_MAX31865_COUNTERS
+  if (this->max31865_sensor_ != nullptr) {
+    append_json_uint_(payload, "max31865_refin_low_fault_count", this->counter_snapshot_.delta(MAX31865_REFIN_LOW));
+    append_json_uint_(payload, "max31865_rtdin_low_fault_count", this->counter_snapshot_.delta(MAX31865_RTDIN_LOW));
+  }
+#endif
   append_json_uint_(payload, "heap_free_b", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
   append_json_uint_(payload, "heap_min_free_b", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
   append_json_uint_(payload, "heap_largest_block_b", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
@@ -1153,13 +1161,6 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   }
   this->payload_size_ = payload.size();
   return true;
-}
-
-void OpenQuattUsageTelemetry::commit_modbus_counter_snapshot_() {
-  this->modbus_partial_response_count_baseline_ = this->modbus_partial_response_count_snapshot_;
-  this->modbus_parse_failed_count_baseline_ = this->modbus_parse_failed_count_snapshot_;
-  this->modbus_recovered_response_count_baseline_ = this->modbus_recovered_response_count_snapshot_;
-  this->modbus_offline_count_baseline_ = this->modbus_offline_count_snapshot_;
 }
 
 void OpenQuattUsageTelemetry::clear_payload_() {

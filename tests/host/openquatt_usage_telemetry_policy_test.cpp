@@ -18,6 +18,32 @@ using esphome::openquatt_usage_telemetry::quatt_hybrid_generation_wire_value;
 using esphome::openquatt_usage_telemetry::water_supply_source_wire_value;
 
 int main() {
+  esphome::openquatt_usage_telemetry::TelemetryCounterSnapshot<2> counters;
+  counters.capture({2U, 3U});
+  assert(counters.delta(0) == 2U && counters.delta(1) == 3U);
+  // A lost PUBACK may cause delivery of the same logical message twice.
+  counters.capture({5U, 7U});
+  assert(counters.delta(0) == 2U && counters.delta(1) == 3U);
+  counters.commit();
+  counters.reset();
+  counters.capture({5U, 7U});
+  assert(counters.delta(0) == 3U && counters.delta(1) == 4U);
+  // Abandoning an unacknowledged message (opt-out/build failure) does not commit.
+  counters.reset();
+  counters.capture({6U, 8U});
+  assert(counters.delta(0) == 4U && counters.delta(1) == 5U);
+  counters.commit();
+  counters.reset();
+  counters.capture({UINT32_MAX, UINT32_MAX});
+  assert(counters.delta(0) == UINT32_MAX - 6U);
+  counters.commit();
+  counters.reset();
+  counters.capture({UINT32_MAX, UINT32_MAX});
+  assert(counters.delta(0) == 0U && counters.delta(1) == 0U);
+  // Counts intentionally reset on reboot.
+  esphome::openquatt_usage_telemetry::TelemetryCounterSnapshot<2> restarted;
+  restarted.capture({1U, 0U});
+  assert(restarted.delta(0) == 1U && restarted.delta(1) == 0U);
   assert(MQTT_PUBLISH_RETAIN == 0);
 
   assert(modbus_counter_delta(12U, 5U) == 7U);

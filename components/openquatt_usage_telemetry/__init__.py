@@ -18,6 +18,7 @@ from esphome.components.esp32 import (
     idf_version,
     include_builtin_idf_component,
 )
+from esphome.components.max31865.sensor import MAX31865Sensor
 from esphome.const import ENTITY_CATEGORY_CONFIG
 from esphome.core import CORE
 
@@ -71,6 +72,7 @@ CONF_DECISION_LOG_FLASH_SWITCH = "decision_log_flash_switch"
 CONF_ENERGY_HISTORY_FLASH_SWITCH = "energy_history_flash_switch"
 CONF_HOUSE_LEARNING_SWITCH = "house_learning_switch"
 CONF_MODBUS_HUB = "modbus_hub"
+CONF_MAX31865_SENSOR = "max31865_sensor"
 
 openquatt_usage_telemetry_ns = cg.esphome_ns.namespace("openquatt_usage_telemetry")
 OpenQuattUsageTelemetry = openquatt_usage_telemetry_ns.class_(
@@ -142,6 +144,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_ENERGY_HISTORY_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Optional(CONF_HOUSE_LEARNING_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_MODBUS_HUB): cv.use_id(openquatt_modbus.OpenQuattModbusClientHub),
+            cv.Optional(CONF_MAX31865_SENSOR): cv.use_id(MAX31865Sensor),
         }
     )
     .extend(cv.COMPONENT_SCHEMA),
@@ -283,3 +286,7 @@ async def to_code(config):
         cg.add(var.set_house_learning_switch(house_learning_switch))
     modbus_hub = await cg.get_variable(config[CONF_MODBUS_HUB])
     cg.add(var.set_modbus_hub(modbus_hub))
+    if CONF_MAX31865_SENSOR in config:
+        cg.add_define("USE_OPENQUATT_MAX31865_COUNTERS")
+        max31865_sensor = await cg.get_variable(config[CONF_MAX31865_SENSOR])
+        cg.add(var.set_max31865_sensor(max31865_sensor))

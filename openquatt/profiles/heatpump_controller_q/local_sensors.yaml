@@ -1,6 +1,12 @@
 # ==============================================================================
 # OpenQuatt - Heatpump Controller Q-edition local sensors
 # ==============================================================================
+external_components:
+  - source:
+      type: local
+      path: ../../../components
+    components: [max31865]
+
 select:
   - platform: template
     id: oq_local_supply_temp_source
