@@ -180,6 +180,29 @@ inline const char* configured_source_wire_value(const std::string& option) {
   return nullptr;
 }
 
+inline const char* water_supply_source_wire_value(const std::string& source, bool local_source_available,
+                                                  const std::string& local_source) {
+  if (source == "CIC") {
+    return "cic";
+  }
+  if (source == "HA input") {
+    return "home_assistant";
+  }
+  if (source != "Local") {
+    return nullptr;
+  }
+  if (!local_source_available) {
+    return "ds18b20";
+  }
+  if (local_source == "PT1000") {
+    return "pt1000";
+  }
+  if (local_source == "DS18B20") {
+    return "ds18b20";
+  }
+  return nullptr;
+}
+
 inline const char* flow_source_config_wire_value(const std::string& flow_source, bool q_source_available,
                                                  const std::string& q_flow_source) {
   if (flow_source == "CIC") {

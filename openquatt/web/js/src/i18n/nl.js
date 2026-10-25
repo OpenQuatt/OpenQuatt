@@ -2607,7 +2607,7 @@ export default {
     inPlatform: "Platform",
     inPlatformCopy: "Hardwareprofiel, revisie, Q-printserienummer binnen de batch (indien bekend), opstelling, actieve verbinding, modus en wifi-signaal",
     inConfig: "Configuratie",
-    inConfigCopy: "Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen",
+    inConfigCopy: "Quatt Hybrid-versie, verwarmingsstrategie, flowbron, aanvoerbron en regelbronnen",
     inStatus: "Systeemstatus",
     inStatusCopy: "Geheugen, looptijd, chiptemperatuur, herstartreden en vier Modbus-betrouwbaarheidstellers (toename sinds de vorige succesvolle verzending)",
     inCrash: "Na een crash",

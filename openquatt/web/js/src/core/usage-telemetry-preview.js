@@ -18,6 +18,8 @@ export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "connectionText",
   "preferredConnection",
   "hpGeneration",
+  "waterSupplySource",
+  "localWaterSupplyTempSource",
   "flowSource",
   "qFlowSource",
   "strategy",
@@ -129,6 +131,23 @@ export function flowSourceConfigWireValue(flowSource, qFlowSource, qSourceAvaila
   return qFlowSource === "Auto" || qFlowSource === "Outdoor unit" ? "outdoor_unit" : null;
 }
 
+export function waterSupplySourceWireValue(waterSupplySource, localWaterSupplyTempSource, localSourceAvailable, qController) {
+  const source = optionalText(waterSupplySource);
+  if (source === "CIC") {
+    return "cic";
+  }
+  if (source === "HA input") {
+    return "home_assistant";
+  }
+  if (source !== "Local") {
+    return null;
+  }
+  if (!localSourceAvailable) {
+    return qController ? null : "ds18b20";
+  }
+  return ({ PT1000: "pt1000", DS18B20: "ds18b20" })[optionalText(localWaterSupplyTempSource)] ?? null;
+}
+
 function boilerConnectionWireValue(values) {
   if (!Object.prototype.hasOwnProperty.call(values, "boilerConnection")) {
     return "on_off";
@@ -181,6 +200,12 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
     connection: connectionWireValue(values.connectionText),
     connection_preference: connectionWireValue(values.preferredConnection || values.connectionText),
     quatt_hybrid_generation_config: quattHybridGenerationWireValue(values.hpGeneration),
+    water_supply_source: waterSupplySourceWireValue(
+      values.waterSupplySource,
+      values.localWaterSupplyTempSource,
+      Object.prototype.hasOwnProperty.call(values, "localWaterSupplyTempSource"),
+      values.hardwareProfileText === "heatpump_controller_q",
+    ),
     flow_source_config: flowSourceConfigWireValue(values.flowSource, values.qFlowSource, qSourceAvailable),
     heating_strategy: heatingStrategyWireValue(values.strategy),
     room_temperature_source: configuredSourceWireValue(values.roomTempSource),
