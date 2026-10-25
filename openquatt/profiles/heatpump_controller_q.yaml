@@ -71,6 +71,7 @@ packages:
   oq_q_local_sensors: !include heatpump_controller_q/local_sensors.yaml
 
 openquatt_usage_telemetry:
+  max31865_sensor: water_supply_temp_pt1000
   cic_compatibility_switch: cic_compatibility_enable
   ot_thermostat_switch: oq_ot_slave_enabled
   boiler_connection_select: oq_boiler_connection
