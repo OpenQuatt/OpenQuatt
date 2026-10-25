@@ -254,6 +254,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     "phRunExtensionStatus", "phRunExtensionBasePower", "phRunExtensionFloorPower",
     "phRunExtensionState", "phComfortMemory", "phRunExtensionComfortStop",
     "phRunExtensionWarmRestart", "roomTempEffectiveSource", "roomSetpointEffectiveSource",
+    "warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime",
+    "warmupActive", "warmupIntermediateTarget", "warmupBoost", "warmupEffectiveTarget",
   ]);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
@@ -262,8 +264,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   );
   const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
   const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
-  assert.equal(systemFieldCount, 6);
-  assert.equal(fieldCapacity, 272);
+  assert.equal(systemFieldCount, 14);
+  assert.equal(fieldCapacity, 288);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
     fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,
