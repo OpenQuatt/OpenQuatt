@@ -159,7 +159,7 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
             self.assertLess(len(key), 40)
         header_capacity = int(re.search(r"FIELD_CAPACITY = (\d+)", RECORDER_HEADER).group(1))
         header_system = int(re.search(r"SYSTEM_FIELD_COUNT = (\d+)", RECORDER_HEADER).group(1))
-        self.assertEqual(header_capacity, 288)
+        self.assertEqual(header_capacity, 336)
         self.assertEqual(header_system, 14)
         self.assertLessEqual(243, header_capacity - header_system)
 
