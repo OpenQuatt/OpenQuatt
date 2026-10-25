@@ -18,7 +18,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Grouped start sequences, truthful historical evidence and confirmed compressor history:
     // Includes stop sequences, observed operating periods, concise details and recorded restart waits.
     // +23,809 B raw / +7,071 B gzip versus #882 on Node 24.19.0; relative gzip limits unchanged.
-    raw: 1_363_000,
+    // Usage telemetry water-supply source adds 238 B raw / 125 B gzip on Node 24.14.1.
+    raw: 1_363_500,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
