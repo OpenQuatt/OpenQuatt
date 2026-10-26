@@ -11,6 +11,9 @@
 #include <freertos/task.h>
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/openquatt_modbus/OpenQuattModbusClientHub.h"
+#ifdef USE_OPENQUATT_MAX31865_COUNTERS
+#include "esphome/components/max31865/max31865.h"
+#endif
 #include "esphome/components/select/select.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/switch/switch.h"
@@ -55,6 +58,10 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   void set_active_connection_sensor(text_sensor::TextSensor* sensor) { this->active_connection_sensor_ = sensor; }
   void set_connection_preference_select(select::Select* source) { this->connection_preference_select_ = source; }
   void set_quatt_hybrid_generation_select(select::Select* source) { this->quatt_hybrid_generation_select_ = source; }
+  void set_water_supply_source_select(select::Select* source) { this->water_supply_source_select_ = source; }
+  void set_local_water_supply_temp_source_select(select::Select* source) {
+    this->local_water_supply_temp_source_select_ = source;
+  }
   void set_flow_source_select(select::Select* source) { this->flow_source_select_ = source; }
   void set_q_flow_source_select(select::Select* source) { this->q_flow_source_select_ = source; }
   void set_heating_strategy_select(select::Select* source) { this->heating_strategy_select_ = source; }
@@ -95,6 +102,9 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   }
   void set_house_learning_switch(switch_::Switch* feature_switch) { this->house_learning_switch_ = feature_switch; }
   void set_modbus_hub(openquatt_modbus::OpenQuattModbusClientHub* hub) { this->modbus_hub_ = hub; }
+#ifdef USE_OPENQUATT_MAX31865_COUNTERS
+  void set_max31865_sensor(max31865::MAX31865Sensor* sensor) { this->max31865_sensor_ = sensor; }
+#endif
 
   // A second opt-in telemetry feature may reuse this outbound-only client.
   // Its payload stays separate from usage statistics and is protected by its
@@ -186,7 +196,6 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   void finish_publish_session_(bool succeeded);
   void complete_publish_session_();
   bool build_payload_();
-  void commit_modbus_counter_snapshot_();
   void clear_payload_();
   std::string read_hardware_revision_(uint16_t& serial) const;
   static bool time_reached_(uint32_t now_ms, uint32_t target_ms);
@@ -214,6 +223,8 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   text_sensor::TextSensor* active_connection_sensor_{nullptr};
   select::Select* connection_preference_select_{nullptr};
   select::Select* quatt_hybrid_generation_select_{nullptr};
+  select::Select* water_supply_source_select_{nullptr};
+  select::Select* local_water_supply_temp_source_select_{nullptr};
   select::Select* flow_source_select_{nullptr};
   select::Select* q_flow_source_select_{nullptr};
   select::Select* heating_strategy_select_{nullptr};
@@ -240,6 +251,9 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   switch_::Switch* energy_history_flash_switch_{nullptr};
   switch_::Switch* house_learning_switch_{nullptr};
   openquatt_modbus::OpenQuattModbusClientHub* modbus_hub_{nullptr};
+#ifdef USE_OPENQUATT_MAX31865_COUNTERS
+  max31865::MAX31865Sensor* max31865_sensor_{nullptr};
+#endif
   ESPPreferenceObject pref_;
   std::array<uint8_t, 16> installation_id_bytes_{};
   std::string installation_id_;
@@ -247,14 +261,18 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   openquatt_common::PsramBuffer<char> payload_;
   size_t payload_size_{0U};
   std::string payload_message_id_;
-  uint32_t modbus_partial_response_count_baseline_{0U};
-  uint32_t modbus_parse_failed_count_baseline_{0U};
-  uint32_t modbus_recovered_response_count_baseline_{0U};
-  uint32_t modbus_offline_count_baseline_{0U};
-  uint32_t modbus_partial_response_count_snapshot_{0U};
-  uint32_t modbus_parse_failed_count_snapshot_{0U};
-  uint32_t modbus_recovered_response_count_snapshot_{0U};
-  uint32_t modbus_offline_count_snapshot_{0U};
+  enum CounterIndex : size_t {
+    MODBUS_PARTIAL_RESPONSE,
+    MODBUS_PARSE_FAILED,
+    MODBUS_RECOVERED_RESPONSE,
+    MODBUS_OFFLINE,
+#ifdef USE_OPENQUATT_MAX31865_COUNTERS
+    MAX31865_REFIN_LOW,
+    MAX31865_RTDIN_LOW,
+#endif
+    COUNTER_COUNT,
+  };
+  TelemetryCounterSnapshot<COUNTER_COUNT> counter_snapshot_;
   openquatt_common::PsramBuffer<char> external_publish_topic_;
   openquatt_common::PsramBuffer<char> external_payload_;
   size_t external_payload_size_{0U};

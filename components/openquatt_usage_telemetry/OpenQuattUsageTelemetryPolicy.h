@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <cinttypes>
 #include <cstddef>
 #include <cstdio>
@@ -15,6 +17,29 @@ inline constexpr int MQTT_PUBLISH_RETAIN = 0;
 inline uint32_t modbus_counter_delta(uint32_t current, uint32_t baseline) {
   return current >= baseline ? current - baseline : current;
 }
+
+// Main-loop owned. A logical message keeps the same counter values across
+// retries, even when its PUBACK was lost and the receiver deduplicates its ID.
+template <size_t Count>
+class TelemetryCounterSnapshot {
+ public:
+  void reset() { this->valid_ = false; }
+  void capture(const std::array<uint32_t, Count>& current) {
+    if (!this->valid_) {
+      this->snapshot_ = current;
+      this->valid_ = true;
+    }
+  }
+  uint32_t delta(size_t index) const { return modbus_counter_delta(this->snapshot_[index], this->baseline_[index]); }
+  void commit() {
+    if (this->valid_) this->baseline_ = this->snapshot_;
+  }
+
+ private:
+  std::array<uint32_t, Count> baseline_{};
+  std::array<uint32_t, Count> snapshot_{};
+  bool valid_{false};
+};
 
 enum class MqttCleanupDecision : uint8_t {
   DESTROY = 0U,
@@ -176,6 +201,29 @@ inline const char* configured_source_wire_value(const std::string& option) {
   }
   if (option == "Heating curve") {
     return "heating_curve";
+  }
+  return nullptr;
+}
+
+inline const char* water_supply_source_wire_value(const std::string& source, bool local_source_available,
+                                                  const std::string& local_source) {
+  if (source == "CIC") {
+    return "cic";
+  }
+  if (source == "HA input") {
+    return "home_assistant";
+  }
+  if (source != "Local") {
+    return nullptr;
+  }
+  if (!local_source_available) {
+    return "ds18b20";
+  }
+  if (local_source == "PT1000") {
+    return "pt1000";
+  }
+  if (local_source == "DS18B20") {
+    return "ds18b20";
   }
   return nullptr;
 }

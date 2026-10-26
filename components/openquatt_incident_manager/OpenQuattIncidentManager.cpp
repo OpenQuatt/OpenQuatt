@@ -423,6 +423,18 @@ class IncidentManagerRequestHandler : public AsyncWebHandler {
     return url_path_matches(url_buf, "/openquatt/incidents") && request->method() == HTTP_GET;
   }
 
+  enum class Action : uint8_t { SNAPSHOT, RETRY_START, CONFIRM_ODU_POWER_CYCLE };
+
+  // Keep URL routing scratch out of the action and response call chains.
+  __attribute__((noinline)) static Action parse_action_(AsyncWebServerRequest* request) {
+    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
+    request->url_to(url_buf);
+    if (url_path_matches(url_buf, "/openquatt/incidents/retry-start")) return Action::RETRY_START;
+    if (url_path_matches(url_buf, "/openquatt/incidents/confirm-odu-power-cycle"))
+      return Action::CONFIRM_ODU_POWER_CYCLE;
+    return Action::SNAPSHOT;
+  }
+
   void handleRequest(AsyncWebServerRequest* request) override {
     if (!this->parent_->request_is_authenticated(request)) {
       request->requestAuthentication();
@@ -432,56 +444,57 @@ class IncidentManagerRequestHandler : public AsyncWebHandler {
       send_json(request, "503 Service Unavailable", R"({"error":"snapshot_unavailable"})");
       return;
     }
-    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-    request->url_to(url_buf);
-    const bool retry_start = url_path_matches(url_buf, "/openquatt/incidents/retry-start");
-    const bool confirm_odu_power_cycle = url_path_matches(url_buf, "/openquatt/incidents/confirm-odu-power-cycle");
-    if (retry_start || confirm_odu_power_cycle) {
-      if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        send_json(request, "403 Forbidden", R"({"accepted":false,"result":"forbidden"})");
-        return;
-      }
-
-      const std::string hp_arg = request->arg("hp");
-      const uint8_t hp_index = hp_arg == "1" ? 1U : (hp_arg == "2" ? 2U : 0U);
-      if (hp_index == 0U) {
-        send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_hp"})");
-        return;
-      }
-      if (!this->parent_->hp_configured(hp_index)) {
-        send_json(request, "404 Not Found", R"({"accepted":false,"result":"hp_not_configured"})");
-        return;
-      }
-      const uint32_t request_id = parse_positive_request_id(request->arg("request_id"));
-      if (request_id == 0U) {
-        send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_request_id"})");
-        return;
-      }
-      const OpenQuattIncidentManager::DeferredActionQueueResult queue_result =
-          retry_start ? this->parent_->defer_start_failure_retry(hp_index, request_id)
-                      : this->parent_->defer_odu_power_cycle_confirmation(hp_index, request_id);
-      if (queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::BUSY) {
-        send_json(request, "409 Conflict", R"({"accepted":false,"result":"action_in_progress"})");
-        return;
-      }
-      if (queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::INVALID) {
-        send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_request_id"})");
-        return;
-      }
-      char response[192];
-      std::snprintf(
-          response, sizeof(response), R"({"accepted":true,"duplicate":%s,"hp":%u,"action":"%s","action_id":%u})",
-          queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::DUPLICATE ? "true" : "false", hp_index,
-          retry_start ? "start_failure_retry" : "confirm_odu_power_cycle", static_cast<unsigned>(request_id));
-      send_json(request, "202 Accepted", response);
+    const Action action = parse_action_(request);
+    if (action != Action::SNAPSHOT) {
+      this->handle_action_(request, action);
       return;
     }
-
     httpd_req_t* req = *request;
     httpd_resp_set_status(req, HTTPD_200);
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     this->parent_->write_snapshot(req);
+  }
+
+  __attribute__((noinline)) void handle_action_(AsyncWebServerRequest* request, Action action) {
+    const bool retry_start = action == Action::RETRY_START;
+    if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+      send_json(request, "403 Forbidden", R"({"accepted":false,"result":"forbidden"})");
+      return;
+    }
+
+    const std::string hp_arg = request->arg("hp");
+    const uint8_t hp_index = hp_arg == "1" ? 1U : (hp_arg == "2" ? 2U : 0U);
+    if (hp_index == 0U) {
+      send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_hp"})");
+      return;
+    }
+    if (!this->parent_->hp_configured(hp_index)) {
+      send_json(request, "404 Not Found", R"({"accepted":false,"result":"hp_not_configured"})");
+      return;
+    }
+    const uint32_t request_id = parse_positive_request_id(request->arg("request_id"));
+    if (request_id == 0U) {
+      send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_request_id"})");
+      return;
+    }
+    const OpenQuattIncidentManager::DeferredActionQueueResult queue_result =
+        retry_start ? this->parent_->defer_start_failure_retry(hp_index, request_id)
+                    : this->parent_->defer_odu_power_cycle_confirmation(hp_index, request_id);
+    if (queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::BUSY) {
+      send_json(request, "409 Conflict", R"({"accepted":false,"result":"action_in_progress"})");
+      return;
+    }
+    if (queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::INVALID) {
+      send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_request_id"})");
+      return;
+    }
+    char response[192];
+    std::snprintf(
+        response, sizeof(response), R"({"accepted":true,"duplicate":%s,"hp":%u,"action":"%s","action_id":%u})",
+        queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::DUPLICATE ? "true" : "false", hp_index,
+        retry_start ? "start_failure_retry" : "confirm_odu_power_cycle", static_cast<unsigned>(request_id));
+    send_json(request, "202 Accepted", response);
   }
 
  protected:
@@ -1696,6 +1709,11 @@ void OpenQuattIncidentManager::publish_transitions_(UnitState& unit, size_t slot
                      ? incident_reason_(primary)
                      : static_cast<uint8_t>(openquatt_decision_log::REASON_KEEP_CURRENT);
       }
+      const int16_t restart_wait_s = availability == openquatt_decision_log::STATE_BLOCKED
+                                         ? restart_wait_log_seconds(unit.engine.outputs(), current_outputs,
+                                                                    unit.restart_guard.remaining_ms(now_ms))
+                                         : 0;
+      if (restart_wait_s > 0) reason = openquatt_decision_log::REASON_MIN_REST_ACTIVE;
       this->decision_log_->emit(
           openquatt_decision_log::EVENT_HP_AVAILABILITY_CHANGE, event_subject_(slot), reason,
           availability == openquatt_decision_log::STATE_FAULTED || availability == openquatt_decision_log::STATE_OFFLINE
@@ -1703,7 +1721,7 @@ void OpenQuattIncidentManager::publish_transitions_(UnitState& unit, size_t slot
               : openquatt_decision_log::SEVERITY_NORMAL,
           this->control_mode_code_ != nullptr ? static_cast<uint8_t>(this->control_mode_code_->value()) : 0U,
           unit.last_reported_availability, availability, static_cast<int16_t>(current_outputs.primary_incident_id),
-          static_cast<int16_t>(current_outputs.active_incident_count));
+          static_cast<int16_t>(current_outputs.active_incident_count), restart_wait_s);
     }
     unit.last_reported_availability = availability;
   }

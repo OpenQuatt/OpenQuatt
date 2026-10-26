@@ -142,6 +142,7 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
         "uart",
     ),
     "openquatt/profiles/heatpump_controller_q/local_sensors.yaml": (
+        "external_components",
         "select",
         "number",
         "spi",
@@ -190,6 +191,7 @@ NESTED_KEY_ORDER_RULES = {
     ),
     ("openquatt/packages/20_strategies.yaml", "packages"): (
         "oq_strategy_manager",
+        "oq_warmup",
         "oq_cooling_strategy",
         "oq_heating_curve_strategy",
         "oq_power_house_strategy",
@@ -272,7 +274,7 @@ PACKAGE_GROUP_BY_KEY = {
     "wifi": 0,
     "captive_portal": 0,
     "improv_serial": 0,
-    "esp32_improv": 0,
+    "improv_ble": 0,
     "http_request": 0,
     "uart": 0,
     "modbus": 0,

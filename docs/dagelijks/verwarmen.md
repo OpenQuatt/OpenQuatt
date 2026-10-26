@@ -126,6 +126,28 @@ Kies eerder stooklijnregeling als:
 
 Twijfel je? Begin dan met de strategie die het meest logisch voelt, en wissel niet te snel heen en weer. Eerst kijken hoe het systeem zich over langere tijd gedraagt is meestal verstandiger dan direct finetunen.
 
+## Geleidelijk opwarmen na nachtverlaging
+
+Bij `Power House` kun je na nachtverlaging of langere afwezigheid geleidelijk
+opwarmen. De functie staat standaard uit. Je thermostaat blijft de gewenste
+eindtemperatuur bepalen; dit werkt ook met andere thermostaten dan Tado.
+
+Zet de functie aan vóór je de thermostaat hoger zet. Bij een nieuw doel van
+20,5 °C en een gemeten kamer van 18 °C is het verschil 2,5 °C: groter dan de
+standaardstartgrens van 1,5 °C. Het eerste vaste tussendoel wordt 18,1 °C.
+Na bereiken volgt direct een nieuwe stap. Wordt het tussendoel na 45 minuten
+niet gehaald, dan groeit een aparte boost; het tussendoel blijft staan.
+Na iedere behaalde stap wordt de boost nul. Het regeldoel blijft begrensd op
+de thermostaattemperatuur.
+
+Alleen inschakelen start geen sessie voor een eerdere thermostaatverhoging.
+Bij bereiken van het echte thermostaatdoel of na 8 uur neemt de normale regeling
+over. Opwarmen kan langer duren; een energiebesparing is niet gegarandeerd.
+De stooklijn gebruikt deze functie niet.
+
+Zie [Geleidelijk opwarmen instellen](../web-app/instellingen.md#geleidelijk-opwarmen-na-nachtverlaging)
+voor de bediening, instellingen en voorbeelden.
+
 ## Hoe kiest OpenQuatt een compressorstand?
 
 Bij automatisch verwarmen bekijkt OpenQuatt de frequenties uit de ingelezen standentabel van iedere warmtepomp. Het performancemodel schat bij die frequenties en de buiten- en watertemperatuur hoeveel warmte de unit levert. De regeling kiest daaruit een passende stand; bij `Duo` beoordeelt zij de combinatie van beide units binnen de bestaande inschakel- en wisselvoorwaarden.

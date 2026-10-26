@@ -98,14 +98,46 @@ async function commitPerformanceTelemetrySwitch(entity, enabled) {
   });
 }
 
+async function confirmSupplySourceSelection(key, option) {
+  const entity = ENTITY_DEFS[key];
+  const deadline = Date.now() + 2000;
+  let error = new Error(t("common.unknown"));
+  for (let attempt = 0; attempt < 8 && Date.now() < deadline; attempt += 1) {
+    try {
+      const payload = await fetchWithTimeout(buildEntityPath(entity.domain, entity.name), {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-store" },
+      }, Math.max(1, deadline - Date.now()), "", async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      });
+      const actual = String(payload?.value ?? payload?.state ?? "");
+      if (actual) {
+        state.entities[key] = { ...(state.entities[key] || {}), ...payload, state: actual, value: actual };
+        if (actual === option) return;
+      }
+      error = new Error(t("actions.controllerMismatch", { value: actual || t("common.unknown") }));
+    } catch (readError) {
+      error = readError;
+    }
+    const remaining = deadline - Date.now();
+    if (attempt < 7 && remaining > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(250, remaining)));
+    }
+  }
+  throw new Error(t("actions.controllerStatusUnconfirmed", { error: error.message }));
+}
+
 export async function commitSelect(key, option) {
   const entity = ENTITY_DEFS[key];
   const previousEntity = state.entities[key] ? { ...state.entities[key] } : null;
   const verifyControlModeOverride = key === "controlModeOverride";
+  const verifySupplySource = key === "waterSupplySource" || key === "localWaterSupplyTempSource";
+  if (verifySupplySource && state.busyAction) return false;
   state.busyAction = `save-${key}`;
   state.controlNotice = "";
   state.controlError = "";
-  if (!verifyControlModeOverride) {
+  if (!verifyControlModeOverride && !verifySupplySource) {
     state.entities[key] = {
       ...(state.entities[key] || {}),
       state: option,
@@ -115,12 +147,15 @@ export async function commitSelect(key, option) {
   render();
 
   try {
-    const response = await fetch(
-      `${buildEntityPath(entity.domain, entity.name, "set")}?option=${encodeURIComponent(option)}`,
-      { method: "POST" }
-    );
+    const url = `${buildEntityPath(entity.domain, entity.name, "set")}?option=${encodeURIComponent(option)}`;
+    const response = verifySupplySource
+      ? await fetchWithTimeout(url, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS)
+      : await fetch(url, { method: "POST" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
+    }
+    if (verifySupplySource) {
+      await confirmSupplySourceSelection(key, option);
     }
     if (verifyControlModeOverride) {
       let confirmationPayload = null;
@@ -182,7 +217,7 @@ export async function commitSelect(key, option) {
     } else if (key === "preferredConnection") {
       // The controller confirms this asynchronous switch once the target is stable.
     } else if (state.appView === "settings") {
-      await refreshEntities(getSettingsRefreshKeys(), "all");
+      await refreshEntities(getSettingsRefreshKeys().filter((refreshKey) => !verifySupplySource || refreshKey !== key), "all");
     } else {
       await refreshEntities(["setupComplete", "strategy", "openquattEnabled", "manualCoolingEnable", "silentModeOverride", ...FLOW_SETTING_KEYS, ...LIMIT_KEYS], "state");
     }
@@ -191,7 +226,7 @@ export async function commitSelect(key, option) {
     }
     return true;
   } catch (error) {
-    if (!verifyControlModeOverride && previousEntity) {
+    if (!verifyControlModeOverride && !verifySupplySource && previousEntity) {
       state.entities[key] = previousEntity;
     }
     state.controlError = t("actions.entityUpdateFailed", { name: entity.name, error: error.message });

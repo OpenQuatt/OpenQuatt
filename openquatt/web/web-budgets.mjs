@@ -14,7 +14,15 @@ export const WEB_BUNDLE_BUDGETS = [
     // Hiding CV energy and decision-log views without an auxiliary heat source adds ~0.8 kB raw / ~0.3 kB gzip.
     // An automatic theme that follows the device light/dark setting adds ~1.3 kB raw / ~0.3 kB gzip.
     // The existing relative gzip growth limit remains unchanged.
-    raw: 1_337_852,
+    // Complete heating/cooling inputs: +314 B raw versus dev (Node 24.19.0).
+    // Grouped start sequences, truthful historical evidence and confirmed compressor history:
+    // Includes stop sequences, observed operating periods, concise details and recorded restart waits.
+    // +23,809 B raw / +7,071 B gzip versus #882 on Node 24.19.0; relative gzip limits unchanged.
+    // Usage telemetry water-supply source adds 238 B raw / 125 B gzip on Node 24.14.1.
+    // Plus the unchanged 13,452 B allowance for warmup controls and diagnostics.
+    // dev 9b8dfa57 raw budget 1,363,500 B; relative gzip limits stay unchanged.
+    // Measured raw: dev 1,363,238 B, PR 1,375,748 B (Node 24.14.1); gzip +3,779 B (+0.99%).
+    raw: 1_376_952,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

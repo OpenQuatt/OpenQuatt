@@ -23,7 +23,7 @@ export function v2PowerInput({ voltageV, currentA, fanSpeed, status2108 = 0, pum
       1.02579 * voltageV * currentA -
       0.0133119 * fanSpeed +
       ((status2108 & 0x0800) !== 0 ? pumpPowerW : 0) +
-      ((status2108 & 0x0004) !== 0 ? 140 : 0) +
+      ((status2108 & 0x0004) !== 0 ? 280 : 0) +
       ((status2108 & 0x0008) !== 0 ? 33.62 : 0),
   );
 }
@@ -208,8 +208,8 @@ async function testPowerInput(controller, simulator, interrupted) {
   console.log('TEST V2 Power Input raw telemetry and R2108 auxiliary loads');
   const result = {
     baseW: await setStatusAndWait(controller, simulator, 0, EXPECTED_POWER_W, interrupted, 'base V2 Power Input'),
-    bottomPlateW: await setStatusAndWait(controller, simulator, 0x0004, EXPECTED_POWER_W + 140, interrupted,
-      'bottom-plate heater load'),
+    bottomPlateW: await setStatusAndWait(controller, simulator, 0x0004, EXPECTED_POWER_W + 280, interrupted,
+      'bottom-plate and drain-pan heater load'),
     crankcaseW: await setStatusAndWait(controller, simulator, 0x0008, EXPECTED_POWER_W + 33.62, interrupted,
       'crankcase heater load'),
     pumpW: await setStatusAndWait(controller, simulator, 0x0800, EXPECTED_POWER_W + 30, interrupted,
@@ -236,7 +236,7 @@ async function testPowerInput(controller, simulator, interrupted) {
   );
   result.defrostOnlyW = await waitNumber(controller, 'HP1 - Power Input',
     (value) => closeEnough(value, EXPECTED_POWER_W, 0.15),
-    'defrost does not add bottom-plate load', { timeoutMs: 70000, intervalMs: 1500, interrupted });
+    'defrost does not add bottom-plate or drain-pan load', { timeoutMs: 70000, intervalMs: 1500, interrupted });
   await simulator.setSwitch('ODU 1 defrost', false);
   console.log('PASS V2 Power Input fixture and defrost separation');
   return result;

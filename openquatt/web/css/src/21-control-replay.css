@@ -378,8 +378,7 @@
 }
 
 .oq-working-tab-icon,
-.oq-working-pill-icon,
-.oq-working-reason-icon {
+.oq-working-pill-icon {
   width: 18px;
   height: 18px;
   stroke: currentColor;
@@ -697,6 +696,29 @@
   min-width: 0;
 }
 
+.oq-working-start-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.oq-working-start-steps li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.oq-working-start-steps time {
+  font-variant-numeric: tabular-nums;
+  color: var(--oq-overview-muted);
+}
+
+.oq-working-start-steps strong,
+.oq-working-start-steps span {
+  display: block;
+}
+
 .oq-working-entry-time {
   text-align: right;
 }
@@ -704,6 +726,34 @@
 .oq-working-entry-time strong {
   font-size: 0.9rem;
   line-height: 1.05;
+}
+
+.oq-working-entry-range {
+  display: grid;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oq-working-entry-range > time:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.oq-working-entry-time-end {
+  display: flex;
+  justify-content: flex-end;
+  align-items: end;
+  gap: 3px;
+  color: var(--oq-overview-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.oq-working-entry-day {
+  display: block;
+  color: var(--oq-overview-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
 }
 
 .oq-working-entry-time small,
@@ -773,10 +823,6 @@
   line-height: inherit;
 }
 
-.oq-working-entry-meta-mode {
-  font-variant-numeric: tabular-nums;
-}
-
 .oq-working-entry-status {
   justify-self: end;
   padding: 4px 8px;
@@ -826,19 +872,6 @@
 .oq-working-detail-block span {
   color: var(--oq-overview-muted);
   line-height: 1.45;
-}
-
-.oq-working-checks {
-  display: grid;
-  gap: 8px;
-}
-
-.oq-working-checks span {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--oq-overview-title);
-  font-weight: 850;
 }
 
 .oq-working-optimizer {
@@ -1012,19 +1045,6 @@
   padding: 0;
   border: 0;
   background: transparent;
-}
-
-.oq-working-reason-list {
-  display: grid;
-  gap: 10px;
-}
-
-.oq-working-reason-list span {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--oq-overview-title);
-  font-weight: 850;
 }
 
 .oq-working-source-grid {

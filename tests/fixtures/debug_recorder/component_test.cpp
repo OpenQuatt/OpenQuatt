@@ -48,7 +48,11 @@ class Recorder : public OpenQuattDebugRecorder {
     assert(false && "expected field missing from real default schema");
     return 0;
   }
-  uint32_t capture(const char* key) { return capture_value_(fields_[field_index(key)]); }
+  uint32_t capture(const char* key) {
+    return capture_value_(fields_[field_index(key)],
+                          warmup_progress_provider_ != nullptr ? warmup_progress_provider_() : UINT32_MAX,
+                          warmup_power_);
+  }
   uint32_t sample_value(size_t row, const char* key) const {
     return read_value_(sample_at_(row), fields_[field_index(key)]);
   }
@@ -294,6 +298,53 @@ void lifecycle() {
   env.tick(reboot, 1);
   assert(reboot.last_sample_monotonic_ms_ > UINT32_MAX);
   global_preferences = &env.preferences;
+}
+
+void sensor_sources() {
+  Environment env;
+  Recorder recorder;
+  auto& source = env.find(App.selects, "Water Supply Source");
+  auto& local = env.find(App.selects, "Local Water Supply Temp Source");
+  auto& effective = env.find(App.text_sensors, "Water Supply Temp Effective Source");
+  auto& fallback = env.find(App.binary_sensors, "Water Supply Temp Fallback Active");
+  auto& fault = env.find(App.binary_sensors, "PT1000 read problem");
+  auto& pt1000 = env.find(App.sensors, "Water Supply Temp (PT1000)");
+  auto& proxy = env.find(App.sensors, "Water Supply Temp");
+  auto& cic = env.find(App.sensors, "CIC - Water Supply Temp");
+  auto& selected = env.find(App.sensors, "Water Supply Temp (Selected)");
+  const char* fallback_label = OQ_TOPOLOGY_DUO ? "hp2 water out (fallback)" : "hp1 water out (fallback)";
+  source.option = "CIC";
+  local.option = "PT1000";
+  effective.state = fallback_label;
+  fallback.state = true;
+  fault.state = false;
+  pt1000.state = proxy.state = 21.9f;
+  cic.valid = false;
+  selected.state = 21.6f;
+  recorder.setup();
+  env.tick(recorder, 0);
+
+  source.option = "Local";
+  effective.state = "Local - PT1000";
+  fallback.state = false;
+  selected.state = pt1000.state;
+  env.tick(recorder, 10);
+
+  pt1000.valid = proxy.valid = false;
+  fault.state = fallback.state = true;
+  effective.state = fallback_label;
+  selected.state = 21.6f;
+  env.tick(recorder, 20);
+
+  pt1000.valid = proxy.valid = true;
+  pt1000.state = proxy.state = selected.state = 24.3f;
+  fault.state = fallback.state = false;
+  effective.state = "Local - PT1000";
+  env.tick(recorder, 30);
+  httpd_req_t download;
+  recorder.write_recording(&download, 0);
+  assert(download.status == HTTPD_200 && download.finished);
+  emit("sources", download);
 }
 
 void configuration() {
@@ -670,6 +721,69 @@ void preference_failures() {
   }
 }
 
+uint32_t progress_word = UINT32_MAX;
+unsigned progress_reads = 0;
+uint32_t warmup_progress_provider() {
+  assert(recorder_test::allow_entity_reads);  // Never called from HTTP export.
+  ++progress_reads;
+  return progress_word;
+}
+
+void warmup_diagnostics() {
+  Environment env;
+  Recorder recorder;
+  recorder.setup();
+  env.tick(recorder, 0);  // Missing provider must export unknown, not invented idle.
+  progress_reads = 0;
+  progress_word = (2U << 24U) | 900U;
+  recorder.set_warmup_progress_provider(warmup_progress_provider);
+  env.find(App.sensors, "Controlled warmup boost").state = 0.3f;
+  env.find(App.sensors, "Controlled warmup intermediate target").state = 19.18f;
+  env.find(App.sensors, "Controlled warmup effective target").state = 19.48f;
+  env.find(App.numbers, "Controlled warmup step").state = 0.1f;
+  env.find(App.numbers, "Controlled warmup step time").state = 45;
+  const WarmupPowerSnapshot power{1071.4f, 2527.6f, 840, 3367.6f, 3000, WarmupPath::APPLIED};
+  const auto key = warmup_log_key(true, 19.18f, 0.3f, power.path);
+  assert(recorder.set_warmup_power(key, power));
+  for (int i = 0; i < 1000; ++i) assert(!recorder.set_warmup_power(key, power));
+  env.tick(recorder, 10);
+  assert(progress_reads == 1);
+  httpd_req_t initial;
+  recorder.write_recording(&initial, 0);
+  emit("warmup-recording", initial);
+  assert(progress_reads == 1);
+  // A live change during HTTP streaming cannot mutate its frozen snapshot.
+  recorder_test::chunk_hook = [&]() {
+    progress_word = (3U << 24U) | 905U;
+    recorder.set_warmup_power(warmup_log_key(false, NAN, NAN, WarmupPath::INACTIVE), {});
+  };
+  httpd_req_t immutable;
+  recorder.write_recording(&immutable, 0);
+  assert(initial.response == immutable.response);
+  assert(progress_reads == 1);
+  recorder_test::chunk_hook = {};
+  // Owner transition is newer than the PH cadence: Watts must be unknown,
+  // even if a recorder sample lands before the next PH decision.
+  recorder.invalidate_warmup_power();
+  env.tick(recorder, 20);
+  assert(progress_reads == 2);
+  httpd_req_t between;
+  recorder.write_recording(&between, 0);
+  emit("warmup-between-ticks", between);
+  recorder.set_warmup_power(0, {});
+  recorder.set_warmup_progress_provider(nullptr);
+  env.tick(recorder, 30);
+  assert(progress_reads == 2);
+  httpd_req_t ended;
+  recorder.write_recording(&ended, 0);
+  emit("warmup-ended", ended);
+  // Invalid/missing targets normalize to one key; elapsed/Watt noise cannot log.
+  assert(warmup_log_key(true, NAN, NAN, WarmupPath::NO_MODEL) == warmup_log_key(true, NAN, NAN, WarmupPath::NO_MODEL));
+  assert(warmup_log_key(true, 19.180001f, 0.3f, power.path) == key);
+  assert(warmup_log_key(true, 19.18f, 0.4f, power.path) != key);
+  assert(warmup_log_key(true, 19.18f, 0.3f, WarmupPath::WATER_LIMIT) != key);
+}
+
 void http_boundaries() {
   Environment env;
   Recorder recorder;
@@ -749,8 +863,12 @@ int main(int argc, char** argv) {
     lifecycle();
   else if (scenario == "configuration")
     configuration();
+  else if (scenario == "sensor-sources")
+    sensor_sources();
   else if (scenario == "retention")
     retention();
+  else if (scenario == "warmup")
+    warmup_diagnostics();
   else if (scenario == "http")
     http_boundaries();
   else if (scenario == "preference-failures")

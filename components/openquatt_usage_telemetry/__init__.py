@@ -18,6 +18,7 @@ from esphome.components.esp32 import (
     idf_version,
     include_builtin_idf_component,
 )
+from esphome.components.max31865.sensor import MAX31865Sensor
 from esphome.const import ENTITY_CATEGORY_CONFIG
 from esphome.core import CORE
 
@@ -43,6 +44,8 @@ CONF_CONNECTION = "connection"
 CONF_ACTIVE_CONNECTION_SENSOR = "active_connection_sensor"
 CONF_CONNECTION_PREFERENCE_SELECT = "connection_preference_select"
 CONF_QUATT_HYBRID_GENERATION_SELECT = "quatt_hybrid_generation_select"
+CONF_WATER_SUPPLY_SOURCE_SELECT = "water_supply_source_select"
+CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT = "local_water_supply_temp_source_select"
 CONF_FLOW_SOURCE_SELECT = "flow_source_select"
 CONF_Q_FLOW_SOURCE_SELECT = "q_flow_source_select"
 CONF_HEATING_STRATEGY_SELECT = "heating_strategy_select"
@@ -69,6 +72,7 @@ CONF_DECISION_LOG_FLASH_SWITCH = "decision_log_flash_switch"
 CONF_ENERGY_HISTORY_FLASH_SWITCH = "energy_history_flash_switch"
 CONF_HOUSE_LEARNING_SWITCH = "house_learning_switch"
 CONF_MODBUS_HUB = "modbus_hub"
+CONF_MAX31865_SENSOR = "max31865_sensor"
 
 openquatt_usage_telemetry_ns = cg.esphome_ns.namespace("openquatt_usage_telemetry")
 OpenQuattUsageTelemetry = openquatt_usage_telemetry_ns.class_(
@@ -112,6 +116,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ACTIVE_CONNECTION_SENSOR): cv.use_id(text_sensor.TextSensor),
             cv.Optional(CONF_CONNECTION_PREFERENCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_QUATT_HYBRID_GENERATION_SELECT): cv.use_id(select.Select),
+            cv.Required(CONF_WATER_SUPPLY_SOURCE_SELECT): cv.use_id(select.Select),
+            cv.Optional(CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Optional(CONF_Q_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_HEATING_STRATEGY_SELECT): cv.use_id(select.Select),
@@ -138,6 +144,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_ENERGY_HISTORY_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Optional(CONF_HOUSE_LEARNING_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_MODBUS_HUB): cv.use_id(openquatt_modbus.OpenQuattModbusClientHub),
+            cv.Optional(CONF_MAX31865_SENSOR): cv.use_id(MAX31865Sensor),
         }
     )
     .extend(cv.COMPONENT_SCHEMA),
@@ -190,6 +197,21 @@ async def to_code(config):
         config[CONF_QUATT_HYBRID_GENERATION_SELECT]
     )
     cg.add(var.set_quatt_hybrid_generation_select(quatt_hybrid_generation_select))
+    water_supply_source_select = await cg.get_variable(
+        config[CONF_WATER_SUPPLY_SOURCE_SELECT]
+    )
+    cg.add(var.set_water_supply_source_select(water_supply_source_select))
+    if local_water_supply_temp_source_select_id := config.get(
+        CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT
+    ):
+        local_water_supply_temp_source_select = await cg.get_variable(
+            local_water_supply_temp_source_select_id
+        )
+        cg.add(
+            var.set_local_water_supply_temp_source_select(
+                local_water_supply_temp_source_select
+            )
+        )
     flow_source_select = await cg.get_variable(config[CONF_FLOW_SOURCE_SELECT])
     cg.add(var.set_flow_source_select(flow_source_select))
     if q_flow_source_select_id := config.get(CONF_Q_FLOW_SOURCE_SELECT):
@@ -264,3 +286,7 @@ async def to_code(config):
         cg.add(var.set_house_learning_switch(house_learning_switch))
     modbus_hub = await cg.get_variable(config[CONF_MODBUS_HUB])
     cg.add(var.set_modbus_hub(modbus_hub))
+    if CONF_MAX31865_SENSOR in config:
+        cg.add_define("USE_OPENQUATT_MAX31865_COUNTERS")
+        max31865_sensor = await cg.get_variable(config[CONF_MAX31865_SENSOR])
+        cg.add(var.set_max31865_sensor(max31865_sensor))

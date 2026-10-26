@@ -37,6 +37,12 @@ class WiFiDisableAction final : public Action<Ts...> {
 };
 
 template <typename... Ts>
+class WiFiRoamAction final : public Action<Ts...> {
+ public:
+  void play(const Ts&... x) override { global_wifi_component->force_roam_check(); }
+};
+
+template <typename... Ts>
 class WiFiConfigureAction final : public Action<Ts...>, public Component {
  public:
   TEMPLATABLE_VALUE(std::string, ssid)
@@ -76,13 +82,13 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
     // Enable WiFi
     global_wifi_component->enable();
     // Set timeout for the connection
-    this->set_timeout("wifi-connect-timeout", this->connection_timeout_.value(x...), [this, x...]() {
+    this->set_timeout(CONNECT_TIMEOUT_ID, this->connection_timeout_.value(x...), [this, x...]() {
       // If the timeout is reached, stop connecting and revert to the old AP
       global_wifi_component->disable();
       global_wifi_component->save_wifi_sta(old_sta_.get_ssid(), old_sta_.get_password());
       global_wifi_component->enable();
       // Start a timeout for the fallback if the connection to the old AP fails
-      this->set_timeout("wifi-fallback-timeout", this->connection_timeout_.value(x...), [this]() {
+      this->set_timeout(FALLBACK_TIMEOUT_ID, this->connection_timeout_.value(x...), [this]() {
         this->connecting_ = false;
         this->error_trigger_.trigger();
       });
@@ -96,8 +102,8 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
     if (!this->connecting_) return;
     if (global_wifi_component->is_connected()) {
       // The WiFi is connected, stop the timeout and reset the connecting flag
-      this->cancel_timeout("wifi-connect-timeout");
-      this->cancel_timeout("wifi-fallback-timeout");
+      this->cancel_timeout(CONNECT_TIMEOUT_ID);
+      this->cancel_timeout(FALLBACK_TIMEOUT_ID);
       this->connecting_ = false;
       char ssid_buf[SSID_BUFFER_SIZE];
       if (strcmp(global_wifi_component->wifi_ssid_to(ssid_buf), this->new_sta_.get_ssid().c_str()) == 0) {
@@ -111,6 +117,8 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
   }
 
  protected:
+  static constexpr uint32_t CONNECT_TIMEOUT_ID = 0;
+  static constexpr uint32_t FALLBACK_TIMEOUT_ID = 1;
   bool connecting_{false};
   WiFiAP new_sta_;
   WiFiAP old_sta_;

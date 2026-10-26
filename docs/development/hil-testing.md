@@ -268,10 +268,11 @@ node scripts/hil/run-v2-performance.mjs \
 ```
 
 De `power`-stage controleert de V2-formule bij 230 V, 1,3 A en fanwaarde 200,
-plus de afzonderlijke bijdragen van bodemplaatverwarming (R2108 bit 2),
-carterverwarming (bit 3) en pompfeedback (bit 11). Defrost wordt bewust als
-negatieve scheidingstest gebruikt: defrost alleen mag de 140 W van de
-bodemplaatverwarming niet toevoegen. De `performance`-stage controleert het
+plus de afzonderlijke bijdragen van de V2-heatergroep (R2108 bit 2: 280 W voor
+de parallel geschakelde bottom plate heater en drain pan heater van elk 140 W),
+carterverwarming (bit 3: 33,62 W) en pompfeedback (bit 11). Defrost wordt bewust
+als negatieve scheidingstest gebruikt: defrost alleen mag de 280 W van de
+heatergroep niet toevoegen. De `performance`-stage controleert het
 exacte kaartpunt A=12,6 °C, wateraanvoer=22,5 °C en 20 Hz (Pth=3072,6185 W),
 en daarnaast een veldfixture van circa 1020 l/h en ΔT=2,03 K.
 

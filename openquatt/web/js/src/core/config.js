@@ -587,6 +587,16 @@
     ["phComfortMemory", DOMAIN_SENSOR, "Power House – comfort memory"],
     ["phRunExtensionComfortStop", DOMAIN_SENSOR, "Power House run extension comfort stop"],
     ["phRunExtensionWarmRestart", DOMAIN_SENSOR, "Power House run extension warm restart"],
+    ["warmupEnabled", DOMAIN_SWITCH, "Controlled warmup enabled"],
+    ["warmupTrigger", DOMAIN_NUMBER, "Controlled warmup trigger"],
+    ["warmupStep", DOMAIN_NUMBER, "Controlled warmup step"],
+    ["warmupStepTime", DOMAIN_NUMBER, "Controlled warmup step time"],
+    ["warmupActive", DOMAIN_BINARY_SENSOR, "Controlled warmup active"],
+    ["warmupIntermediateTarget", DOMAIN_SENSOR, "Controlled warmup intermediate target"],
+    ["warmupBoost", DOMAIN_SENSOR, "Controlled warmup boost"],
+    ["warmupEffectiveTarget", DOMAIN_SENSOR, "Controlled warmup effective target"],
+    ["warmupStatus", DOMAIN_SENSOR, "Controlled warmup status"],
+    ["warmupElapsed", DOMAIN_SENSOR, "Controlled warmup elapsed"],
     ["lowLoadDynamicThresholds", DOMAIN_TEXT_SENSOR, "Low-load dynamic thresholds"],
     ["lowLoadDynamicOffFactor", DOMAIN_NUMBER, "Low-load dynamic OFF factor"],
     ["lowLoadDynamicOnFactor", DOMAIN_NUMBER, "Low-load dynamic ON factor"],
@@ -864,6 +874,8 @@
     "phRunExtensionStopMargin",
     "phRunExtensionRestartCooldown",
   ];
+  export const WARMUP_SETTING_KEYS = ["warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime"];
+  export const WARMUP_STATE_KEYS = ["warmupActive", "warmupIntermediateTarget", "warmupBoost", "warmupEffectiveTarget", "warmupStatus", "warmupElapsed"];
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
   export const FREQUENCY_MINIMUM_KEYS = ["hp1MinimumHeatingHz", "hp1MinimumCoolingHz", "hp2MinimumHeatingHz", "hp2MinimumCoolingHz"];
   export const LIMIT_KEYS = [...FREQUENCY_CAP_KEYS, "maxWater"];
@@ -1067,6 +1079,8 @@
     "hp2Mode",
   ];
   export const SERVICE_STATUS_ENTITY_KEYS = new Set([
+    "warmupStatus",
+    "warmupElapsed",
     "commissioningStatus",
     "cm100Active",
     "boilerPowerTestResult",
@@ -1708,6 +1722,51 @@
     "phRunExtensionWarmRestart",
     "roomTempEffectiveSource",
     "roomSetpointEffectiveSource",
+    "warmupEnabled",
+    "warmupTrigger",
+    "warmupStep",
+    "warmupStepTime",
+    "warmupActive",
+    "warmupIntermediateTarget",
+    "warmupBoost",
+    "warmupEffectiveTarget",
+    // Source diagnostics are sampled by firmware, including without a browser.
+    "waterSupplySource",
+    "localWaterSupplyTempSource",
+    "waterSupplyTempEffectiveSource",
+    "waterSupplyTempFallbackActive",
+    "pt1000ReadProblem",
+    "waterSupplyTempEsp",
+    "waterSupplyTempPt1000",
+    "waterSupplyTempDs18b20",
+    "cicWaterSupplyTemp",
+    "waterSupplyTempHa",
+    "waterSupplyTempHaValid",
+    "waterSupplyCalibrationOffset",
+    "waterSupplyCalibrationRequired",
+    "waterSupplyCalibrationStatus",
+    "coolingDewPointSource",
+    "coolingEnableSource",
+    "coolingEnableValid",
+    "heatingEnableEffectiveSource",
+    "coolingEnableEffectiveSource",
+    "heatingCurveModifierSource",
+    "heatingCurveModifierHaEffectiveValid",
+    "curveModifier",
+    "cicPollingEnabled",
+    "cicJsonFeedOk",
+    "cicLastSuccessAge",
+    "outsideTempHaValid",
+    "roomTempHaValid",
+    "roomSetpointHaValid",
+    "cicRoomTemp",
+    "cicRoomSetpoint",
+    "outsideTempHa",
+    "roomTempHa",
+    "roomSetpointHa",
+    "coolingDewPointHa",
+    "coolingDewPointHaValid",
+    "heatingCurveModifierHa",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];
@@ -1736,6 +1795,8 @@
     "controlModeOverride",
   ];
   export const OVERVIEW_KEYS = [
+    "warmupStatus",
+    "warmupElapsed",
     "strategy",
     "openquattEnabled",
     "usageTelemetryEnabled",
@@ -1854,6 +1915,8 @@
     "hp2RuntimeHours",
   ];
   export const FAST_OVERVIEW_KEYS = [
+    "warmupStatus",
+    "warmupElapsed",
     "strategy",
     "openquattEnabled",
     "usageTelemetryEnabled",
@@ -2094,6 +2157,8 @@
     ...COOLING_SETTING_KEYS,
     ...LIMIT_KEYS,
     ...POWER_HOUSE_KEYS,
+    ...WARMUP_SETTING_KEYS,
+    ...WARMUP_STATE_KEYS,
     ...CURVE_SETTING_KEYS,
     ...COMPRESSOR_SETTING_KEYS,
     ...SILENT_SETTING_KEYS,
@@ -2237,6 +2302,11 @@
         "phRunExtensionStopMargin",
         "phRunExtensionRestartCooldown",
       ],
+    },
+    {
+      id: "warmup",
+      labelKey: "backupSections.warmup",
+      keys: [...WARMUP_SETTING_KEYS],
     },
     {
       id: "flow",

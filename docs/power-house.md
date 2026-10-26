@@ -64,6 +64,14 @@ Praktisch merk je dan:
 - sneller terugnemen als de ruimte wegdrijft;
 - minder kans dat het systeem te lang blijft doorduwen.
 
+## Na nachtverlaging
+
+Met [Geleidelijk opwarmen](web-app/instellingen.md#geleidelijk-opwarmen-na-nachtverlaging)
+kan Power House tijdelijk een tussendoel voor de kamertemperatuur gebruiken.
+De thermostaat blijft het einddoel bepalen. De functie staat standaard uit;
+zie [Verwarmen en comfort](dagelijks/verwarmen.md#geleidelijk-opwarmen-na-nachtverlaging)
+voor een voorbeeld van 17 naar 20,5 °C.
+
 ## Na een herstart of firmware-update
 
 Power House wacht maximaal twee minuten vanaf de herstart op geldige inputs voor de warmtevraag, waaronder buitentemperatuur, kamertemperatuur en setpoint. Tijdens het wachten is de warmtevraag onbekend en geeft Power House geen compressor- of ketelhulpvraag door. Ontbrekende inputs worden niet als vorige warmtevraag van 0 W opgeslagen.
@@ -328,6 +336,8 @@ De stopmarge en herstartafstand horen bij het aparte doorverwarmen-mechanisme. K
 De actuele status laat zien of de regeling **Normaal verwarmt**, **Doorverwarmt op minimumvermogen**, een **Stop heeft aangevraagd**, **Wacht op afkoeling** of een **Herstart heeft aangevraagd**. De firmwarewaarden blijven `normal`, `extending`, `comfort_stop`, `wait_warm_restart` en `warm_restart`. **Herstart aangevraagd** betekent dat herstart is vrijgegeven, niet dat de compressor al draait. De berekende grenzen in het instellingenblok zijn geen bewijs dat een bestaande aanvraag is ingetrokken.
 
 Uitschakelen van langer doorverwarmen schakelt de gewone verwarming niet uit: de normale Power House-vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
+
+Een verlaging van de gewenste temperatuur kan ook bij een stilstaande warmtepomp de gewone warmtevraag blokkeren tot de nieuwe herstartgrens is bereikt. Een nog niet verwerkte verlaging blijft na tijdelijk ontbrekende inputs gelden; een verlaging die tijdens uitgeschakeld doorverwarmen al is waargenomen, wordt na inschakelen niet opnieuw toegepast.
 
 Na reboot of firmware-update blijven de instellingen behouden, maar de historische doorverwarmen-cyclus wordt gewist. Er moet eerst weer een echte verwarmingsrun zijn voordat extension een warme herstart mag vrijgeven. De normale comfortregeling kan ondertussen gewoon warmte vragen.
 

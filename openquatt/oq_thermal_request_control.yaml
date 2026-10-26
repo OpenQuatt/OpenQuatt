@@ -334,6 +334,12 @@ sensor:
     update_interval: 10s
     lambda: |-
       return oq_energy_runtime::total_power_input();
+    on_value:
+      then:
+        - lambda: |-
+            const bool cooling = id(oq_cooling_energy_session_active);
+            id(oq_heating_power_input).publish_state(oq_energy::attributed_input_power(x, cooling, false));
+            id(oq_cooling_power_input).publish_state(oq_energy::attributed_input_power(x, cooling, true));
 
   - platform: template
     id: oq_heating_power_input
@@ -343,9 +349,7 @@ sensor:
     device_class: power
     state_class: measurement
     accuracy_decimals: 2
-    update_interval: 10s
-    lambda: |-
-      return oq_energy_runtime::heating_power_input();
+    update_interval: never
 
   - platform: template
     id: oq_cooling_power_input
@@ -355,9 +359,7 @@ sensor:
     device_class: power
     state_class: measurement
     accuracy_decimals: 2
-    update_interval: 10s
-    lambda: |-
-      return oq_energy_runtime::cooling_power_input();
+    update_interval: never
 
   - platform: template
     id: oq_total_heat_power

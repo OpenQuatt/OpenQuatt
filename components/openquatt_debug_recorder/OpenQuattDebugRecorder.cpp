@@ -562,7 +562,7 @@ uint8_t OpenQuattDebugRecorder::value_size_for_type_(FieldType type) {
 
 bool OpenQuattDebugRecorder::event_type_(FieldType type) {
   return type == FieldType::BINARY_SENSOR || type == FieldType::SWITCH || type == FieldType::TEXT_SENSOR ||
-         type == FieldType::SELECT;
+         type == FieldType::SELECT || type == FieldType::WARMUP_STATUS || type == FieldType::WARMUP_PATH;
 }
 
 bool OpenQuattDebugRecorder::string_type_(FieldType type) {
@@ -817,10 +817,33 @@ void OpenQuattDebugRecorder::release_sample_strings_(const uint8_t* sample) {
   }
 }
 
-uint32_t OpenQuattDebugRecorder::capture_value_(const DebugField& field) {
+uint32_t OpenQuattDebugRecorder::capture_value_(const DebugField& field, uint32_t warmup_progress,
+                                                const WarmupPowerSnapshot& warmup_power) {
+  const auto encoded_float = [](float number) -> uint32_t {
+    if (!std::isfinite(number)) return MISSING_VALUE;
+    uint32_t value;
+    std::memcpy(&value, &number, sizeof(value));
+    return value;
+  };
   switch (field.type) {
     case FieldType::CONFIGURATION_SNAPSHOT:
       return this->capture_configuration_();
+    case FieldType::WARMUP_STATUS:
+      return warmup_progress == UINT32_MAX ? MISSING_VALUE : warmup_progress >> 24U;
+    case FieldType::WARMUP_ELAPSED:
+      return warmup_progress == UINT32_MAX ? MISSING_VALUE : warmup_progress & 0x00ffffffU;
+    case FieldType::WARMUP_BASE_W:
+      return encoded_float(warmup_power.base_w);
+    case FieldType::WARMUP_MINIMUM_W:
+      return encoded_float(warmup_power.minimum_w);
+    case FieldType::WARMUP_EXTRA_W:
+      return encoded_float(warmup_power.extra_w);
+    case FieldType::WARMUP_BEFORE_CAPS_W:
+      return encoded_float(warmup_power.before_caps_w);
+    case FieldType::WARMUP_AFTER_CAPS_W:
+      return encoded_float(warmup_power.after_caps_w);
+    case FieldType::WARMUP_PATH:
+      return static_cast<uint32_t>(warmup_power.path);
     case FieldType::SYSTEM_UPTIME_MS:
       return millis();
     case FieldType::SYSTEM_FREE_HEAP:
@@ -1027,7 +1050,15 @@ bool OpenQuattDebugRecorder::configure(const std::string& entities, bool reset) 
         !add_system_field("freePsram", "B", FieldType::SYSTEM_FREE_PSRAM) ||
         !add_system_field("minFreeHeap", "B", FieldType::SYSTEM_MIN_FREE_HEAP) ||
         !add_system_field("largestFreeHeapBlock", "B", FieldType::SYSTEM_LARGEST_FREE_HEAP_BLOCK) ||
-        !add_system_field("configurationSnapshot", "", FieldType::CONFIGURATION_SNAPSHOT)) {
+        !add_system_field("configurationSnapshot", "", FieldType::CONFIGURATION_SNAPSHOT) ||
+        !add_system_field("warmupStatus", "", FieldType::WARMUP_STATUS) ||
+        !add_system_field("warmupElapsed", "s", FieldType::WARMUP_ELAPSED) ||
+        !add_system_field("warmupBasePower", "W", FieldType::WARMUP_BASE_W) ||
+        !add_system_field("warmupMinimumPower", "W", FieldType::WARMUP_MINIMUM_W) ||
+        !add_system_field("warmupExtraPower", "W", FieldType::WARMUP_EXTRA_W) ||
+        !add_system_field("warmupBeforeCapsPower", "W", FieldType::WARMUP_BEFORE_CAPS_W) ||
+        !add_system_field("warmupAfterCapsPower", "W", FieldType::WARMUP_AFTER_CAPS_W) ||
+        !add_system_field("warmupPowerPath", "", FieldType::WARMUP_PATH)) {
       return fail();
     }
   } else if (!this->configuration_pending_) {
@@ -1149,7 +1180,15 @@ bool OpenQuattDebugRecorder::configure_default_schema_() {
       !add_system_field("freePsram", "B", FieldType::SYSTEM_FREE_PSRAM) ||
       !add_system_field("minFreeHeap", "B", FieldType::SYSTEM_MIN_FREE_HEAP) ||
       !add_system_field("largestFreeHeapBlock", "B", FieldType::SYSTEM_LARGEST_FREE_HEAP_BLOCK) ||
-      !add_system_field("configurationSnapshot", "", FieldType::CONFIGURATION_SNAPSHOT)) {
+      !add_system_field("configurationSnapshot", "", FieldType::CONFIGURATION_SNAPSHOT) ||
+      !add_system_field("warmupStatus", "", FieldType::WARMUP_STATUS) ||
+      !add_system_field("warmupElapsed", "s", FieldType::WARMUP_ELAPSED) ||
+      !add_system_field("warmupBasePower", "W", FieldType::WARMUP_BASE_W) ||
+      !add_system_field("warmupMinimumPower", "W", FieldType::WARMUP_MINIMUM_W) ||
+      !add_system_field("warmupExtraPower", "W", FieldType::WARMUP_EXTRA_W) ||
+      !add_system_field("warmupBeforeCapsPower", "W", FieldType::WARMUP_BEFORE_CAPS_W) ||
+      !add_system_field("warmupAfterCapsPower", "W", FieldType::WARMUP_AFTER_CAPS_W) ||
+      !add_system_field("warmupPowerPath", "", FieldType::WARMUP_PATH)) {
     this->abort_pending_configuration_();
     return false;
   }
@@ -1318,11 +1357,16 @@ void OpenQuattDebugRecorder::capture_sample_() {
     this->release_sample_strings_(sample);
   }
 
+  // One coherent progress read per sample. Live diagnostics are loop-owned;
+  // HTTP export reads the immutable RecordingSnapshot, never these providers.
+  const uint32_t warmup_progress =
+      this->warmup_progress_provider_ != nullptr ? this->warmup_progress_provider_() : UINT32_MAX;
+  const auto warmup_power = this->warmup_power_;
   uint16_t change_count = 0;
   uint16_t event_count = 0;
   for (size_t index = 0; index < this->field_count_; ++index) {
     const DebugField& field = this->fields_[index];
-    const uint32_t value = this->capture_value_(field);
+    const uint32_t value = this->capture_value_(field, warmup_progress, warmup_power);
     write_value_(sample, field, value);
     if (string_type_(field.type) && value != MISSING_VALUE) {
       this->retain_string_(value);
@@ -1852,7 +1896,12 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
     }
     switch (field.type) {
       case FieldType::SENSOR:
-      case FieldType::NUMBER: {
+      case FieldType::NUMBER:
+      case FieldType::WARMUP_BASE_W:
+      case FieldType::WARMUP_MINIMUM_W:
+      case FieldType::WARMUP_EXTRA_W:
+      case FieldType::WARMUP_BEFORE_CAPS_W:
+      case FieldType::WARMUP_AFTER_CAPS_W: {
         float numeric;
         std::memcpy(&numeric, &value, sizeof(numeric));
         return writer.write_float(numeric);

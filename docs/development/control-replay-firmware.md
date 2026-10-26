@@ -68,6 +68,19 @@ Belangrijk:
 
 ## Event-types
 
+### Vastgelegde herstartpauze
+
+Bij `hp_availability_change` naar `blocked` met reason `min_rest_active` bevat
+`threshold_a` de bij deze overgang resterende minimale uit-tijd in seconden
+(naar boven afgerond, verzadigd op 32767). `value_a` blijft de primaire incident-ID;
+`value_b` blijft het aantal actieve meldingen. Een informatieve ODU-status kan
+naast deze pauze bestaan. Alleen als de incident-engine starten toestaat, de
+gepubliceerde unit gestopt/online is en geen andere start- of stopbeveiliging
+ingrijpt, wordt deze reden gebruikt. De regelgates blijven ongewijzigd.
+Bestaande records zonder reden of tijd blijven onbekend, behalve het reeds
+ondersteunde exacte stopbevestiging/beschikbaarheids-paar. Recordformaat,
+flashversie en configuratie blijven gelijk; geen migratie nodig.
+
 ### Historische context van verwarmstops
 
 Nieuwe automatische verwarmstops gebruiken append-only reason-codes 75–90 uit

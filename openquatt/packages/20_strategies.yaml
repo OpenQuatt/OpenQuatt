@@ -6,6 +6,7 @@ packages:
     file: ../oq_strategy_manager.yaml
     vars:
       secondary_outside_is_distinct: "${secondary_outside_is_distinct}"
+  oq_warmup: !include ../oq_warmup.yaml
   oq_cooling_strategy: !include ../oq_cooling_strategy.yaml
   oq_heating_curve_strategy: !include ../oq_heating_curve_strategy.yaml
   oq_power_house_strategy: !include ../oq_power_house_strategy.yaml

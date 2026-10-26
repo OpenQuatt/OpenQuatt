@@ -256,6 +256,7 @@ int main() {
 #include <string>
 #include <vector>
 #include "components/openquatt_performance_telemetry/OpenQuattPerformanceTelemetryPolicy.h"
+#include "components/openquatt_usage_telemetry/OpenQuattUsageTelemetryPolicy.h"
 using esphome::openquatt_performance_telemetry::FixedBufferWriter;
 #define ESP_LOGW(...) do {} while (0)
 #define ESP_LOGD(...) do {} while (0)
@@ -293,7 +294,7 @@ struct OpenQuattUsageTelemetry {
   void clear_payload_() {}
   void schedule_regular_publish_() {}
   void schedule_retry_() {}
-  void commit_modbus_counter_snapshot_() {}
+  esphome::openquatt_usage_telemetry::TelemetryCounterSnapshot<6> counter_snapshot_;
   bool request_external_publish(const char*, const char*, size_t);
   void cancel_external_publish();
   void complete_publish_session_();
@@ -304,6 +305,7 @@ int main() {
   for (auto result : {ExternalPublishResult::SUCCEEDED, ExternalPublishResult::FAILED,
                      ExternalPublishResult::CANCELLED}) {
     OpenQuattUsageTelemetry transport;
+    transport.counter_snapshot_.capture({2U, 3U, 4U, 5U, 6U, 7U});
     now_us = 0;
     assert(transport.request_external_publish("/performance", "{}", 2));
     // Starting the external session, not acceptance or teardown, anchors the
@@ -315,6 +317,10 @@ int main() {
     if (result == ExternalPublishResult::CANCELLED) transport.cancel_external_publish();
     transport.complete_publish_session_();
     assert(transport.external_publish_result_ == result);
+    // External publication must never acknowledge usage/Modbus/MAX counters.
+    assert(transport.counter_snapshot_.delta(0) == 2U);
+    assert(transport.counter_snapshot_.delta(4) == 6U);
+    assert(transport.counter_snapshot_.delta(5) == 7U);
     // A subsequent session gets a fresh start-anchored gate; teardown and
     // consent cancellation cannot bypass that gate.
     transport.cancel_external_publish();
@@ -350,6 +356,21 @@ int main() {
   assert(!transport.request_external_publish("/performance", "{}", 2));
   ++now_us;
   assert(transport.request_external_publish("/performance", "{}", 2));
+  // Only a successful usage session acknowledges the counter snapshot,
+  // including completion after usage consent has been switched off.
+  for (bool enabled : {false, true}) {
+    for (bool succeeded : {false, true}) {
+      OpenQuattUsageTelemetry usage;
+      usage.enabled_ = enabled;
+      usage.session_kind_ = SessionKind::USAGE;
+      usage.cleanup_succeeded_ = succeeded;
+      usage.counter_snapshot_.capture({2U, 3U, 4U, 5U, 6U, 7U});
+      usage.complete_publish_session_();
+      assert(usage.counter_snapshot_.delta(0) == (succeeded ? 0U : 2U));
+      assert(usage.counter_snapshot_.delta(4) == (succeeded ? 0U : 6U));
+      assert(usage.counter_snapshot_.delta(5) == (succeeded ? 0U : 7U));
+    }
+  }
 }
 '''
         self.compile_and_run(
