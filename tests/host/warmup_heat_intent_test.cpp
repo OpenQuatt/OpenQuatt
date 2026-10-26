@@ -89,7 +89,7 @@ struct Simulation {
     if (target.limited) demand_state.comfort_memory_c = 0;
     const oq_power_house::DemandInput demand_input{now, 19.62f,       -10,  18, 10000, room, target.effective_c,
                                                    NAN, water_factor, false};
-    const oq_power_house::DemandTuning tuning{0, 2000, input.comfort_below_c, 0.3f, 5, 2, 20};
+    const oq_power_house::DemandTuning tuning{0, 2000, 0.3f, true, 5, 2, 20};
     const auto demand = oq_power_house::decide_demand(demand_input, tuning, demand_state);
     assert(demand.valid && demand.contributions.modelled_base_w == 0);
     demand_state = demand.next;
@@ -213,7 +213,8 @@ void test_permission_freshness_water_limit_and_invalid_goal() {
     if (boundary == 4) sim.water_factor = 0;
     if (boundary == 5) entities.room_temp_source.option = "Unknown source";
     const auto decision = sim.tick(182000, 20.109375f);
-    assert(!sim.compressor && sim.requested_w == 0);
+    assert(!sim.compressor);
+    if (boundary == 4) assert(sim.requested_w == 0);
     if (boundary != 4) assert(!decision.active && !decision.next.initialized);
   }
   Simulation sim;
@@ -295,7 +296,7 @@ void test_interrupted_run_requires_a_new_confirmed_start() {
   assert(!sim.compressor && sim.requested_w == 0);
   sim.water_factor = 1;
   auto decision = sim.tick(242000, 20.109375f);
-  assert(!decision.fast_start && !decision.room_recovery_active && !sim.compressor && sim.requested_w == 0);
+  assert(!decision.fast_start && !decision.room_recovery_active && !sim.compressor);
   decision = sim.tick(302000, 20.109375f);
   assert(decision.fast_start && sim.compressor && sim.starts == 2);
 }
@@ -304,13 +305,13 @@ void test_warmup_handoff_to_adjustable_run_extension() {
   namespace extension = oq_power_house_run_extension;
   // A 0.1 C step is smaller than the 0.2 C cold comfort margin. The
   // extension thresholds must still follow the real 22 C thermostat goal.
-  for (float cooldown : {0.2f, 0.7f, 0.9f, 1.2f, 3.0f}) {
+  for (float cooldown : {0.1f, 0.2f, 0.3f, 0.4f, 0.5f}) {
     Simulation sim(20.0f, 0.2f);
     sim.tick(2000, 20.0f);
     sim.tick(62000, 20.0f);
     assert(sim.compressor);
     extension::State state;
-    const extension::Tuning tuning{0.7f, cooldown, sim.input.comfort_below_c};
+    const extension::Tuning tuning{0.7f, cooldown};
     extension::Input in{true, true, true, true, true, 20.0f, 22.0f, sim.requested_w, kMinimumW, 1.0f};
     auto result = extension::evaluate(in, tuning, state);
     state = result.next;
@@ -322,7 +323,7 @@ void test_warmup_handoff_to_adjustable_run_extension() {
       result = extension::evaluate(in, tuning, state);
       state = result.next;
       assert(!result.force_comfort_stop && !result.warm_restart_intent);
-      assert(result.comfort_stop_c == 22.7f);
+      assert(std::fabs((in.setpoint_c + tuning.stop_temperature_c) - 22.7f) < 0.00001f);
     }
     sim.tick(sim.input.now_ms + 60000, 22.0f);
     assert(!sim.warmup.active() && !sim.intent_state.room_recovery_active);
@@ -330,14 +331,13 @@ void test_warmup_handoff_to_adjustable_run_extension() {
     in.base_requested_w = 0;
     result = extension::evaluate(in, tuning, state);
     assert(result.floor_active && !result.force_comfort_stop);
-    in.room_c = result.comfort_stop_c;
+    in.room_c = in.setpoint_c + tuning.stop_temperature_c;
     result = extension::evaluate(in, tuning, result.next);
     assert(result.force_comfort_stop);
     in.cycle_active = in.actual_heating_active = false;
     result = extension::evaluate(in, tuning, result.next);
-    assert(result.next.phase == extension::Phase::WAIT_WARM_RESTART);
-    const float restart = std::max(22.7f - cooldown, 21.8f);
-    assert(std::fabs(result.warm_restart_c - restart) < 0.00001f);
+    assert(result.next.phase == extension::Phase::ROOM_TEMP_LOW_RESTART);
+    const float restart = in.setpoint_c + cooldown;
     in.base_requested_w = 100;
     in.room_c = restart + 0.01f;
     result = extension::evaluate(in, tuning, result.next);

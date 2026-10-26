@@ -420,23 +420,25 @@ class Runtime {
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
         run_ext_input, {stop_temperature_c, restart_temperature_c}, this->run_extension_state_);
+    const float run_ext_stop_c = std::isfinite(setpoint_c) ? setpoint_c + stop_temperature_c : NAN;
+    const float run_ext_restart_c = std::isfinite(setpoint_c) ? setpoint_c + restart_temperature_c : NAN;
     const bool comfort_was_active =
-        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::COMFORT_STOP ||
-        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::WAIT_WARM_RESTART;
+        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::ROOM_TEMP_HIGH_STOP ||
+        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::ROOM_TEMP_LOW_RESTART;
     if (run_ext_decision.next.phase != this->last_run_ext_phase_) {
       ESP_LOGI("quatt.strategy", "ph run extension %s -> %s (room %.2f stop %.2f restart %.2f base %.0f floor %.0f)",
                oq_power_house_run_extension::phase_name(this->last_run_ext_phase_),
                oq_power_house_run_extension::phase_name(run_ext_decision.next.phase), (double)room_c,
-               (double)run_ext_decision.comfort_stop_c, (double)run_ext_decision.warm_restart_c,
-               (double)base_requested_w, (double)run_ext_decision.floor_w);
+               (double)run_ext_stop_c, (double)run_ext_restart_c, (double)base_requested_w,
+               (double)run_ext_decision.floor_w);
       this->last_run_ext_phase_ = run_ext_decision.next.phase;
     }
     this->run_extension_state_ = run_ext_decision.next;
     this->run_ext_enabled_ = run_ext_enabled;
     this->run_ext_base_w_ = base_requested_w;
     this->run_ext_floor_w_ = run_ext_decision.floor_active ? run_ext_decision.floor_w : 0.0f;
-    this->run_ext_comfort_stop_c_ = run_ext_decision.comfort_stop_c;
-    this->run_ext_warm_restart_c_ = run_ext_decision.warm_restart_c;
+    this->run_ext_comfort_stop_c_ = run_ext_stop_c;
+    this->run_ext_warm_restart_c_ = run_ext_restart_c;
     // Blocked diagnostic: enabled and armed below Pmin, but water limiter or
     // missing Pmin prevents the floor from being applied.
     this->run_ext_blocked_ = run_ext_enabled && room_inputs_valid && heating_allowed &&
@@ -445,7 +447,7 @@ class Runtime {
     if (run_ext_enabled && room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
         oq_power_house_run_extension::pmin_valid(minimum_viable_w) && base_requested_w < minimum_viable_w &&
         !oq_power_house_run_extension::water_floor_allowed(id(oq_water_temp_limit_factor)) && std::isfinite(room_c) &&
-        std::isfinite(run_ext_decision.comfort_stop_c) && room_c < run_ext_decision.comfort_stop_c)
+        std::isfinite(run_ext_stop_c) && room_c < run_ext_stop_c)
       this->run_ext_blocked_ = true;
     float effective_requested_w = base_requested_w;
     int effective_raw_demand = base_raw_demand;
@@ -501,7 +503,7 @@ class Runtime {
                "pmin=%.0f extra=%.0f pre_cap=%.0f post_cap=%.0f hp1=%d hp2=%d",
                diagnostics::warmup_path_name(warmup_power.path), room_c, setpoint_c,
                warmup_runtime.intermediate_target(), warmup_runtime.offset(), effective_target_c,
-               demand_tuning.reaction_w_per_k, demand_tuning.comfort_below_c, warmup_power.base_w,
+               demand_tuning.reaction_w_per_k, demand_tuning.stop_temperature_c, warmup_power.base_w,
                warmup_power.minimum_w, warmup_power.extra_w, warmup_power.before_caps_w, warmup_power.after_caps_w,
                dispatch.hp1_level, dispatch.hp2_level);
     }
@@ -551,8 +553,8 @@ class Runtime {
       stop_snapshot.effective_w = demand.valid ? stop::encode(requested_w) : stop::UNKNOWN_VALUE;
       stop_snapshot.room_c = room_inputs_valid ? stop::encode(room_c, 100.0f) : stop::UNKNOWN_VALUE;
       if (run_ext_decision.force_comfort_stop) {
-        stop_snapshot.room_stop_c = stop::encode(run_ext_decision.comfort_stop_c, 100.0f);
-        stop_snapshot.room_restart_c = stop::encode(run_ext_decision.warm_restart_c, 100.0f);
+        stop_snapshot.room_stop_c = stop::encode(run_ext_stop_c, 100.0f);
+        stop_snapshot.room_restart_c = stop::encode(run_ext_restart_c, 100.0f);
       }
       if (stop_reason == esphome::openquatt_decision_log::REASON_HEATING_WATER_LIMIT)
         stop_snapshot.supply_c = stop::encode(id(oq_system_supply_temp).state, 100.0f);

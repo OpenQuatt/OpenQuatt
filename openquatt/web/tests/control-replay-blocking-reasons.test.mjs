@@ -171,8 +171,8 @@ test("run extension requires confirmed active heating and preserves protection a
   for (const patch of [
     { phRunExtension: false }, { phRunExtension: "nan" }, { phRunExtension: undefined },
     { phRunExtensionStatus: undefined }, { phRunExtensionStatus: "normal" },
-    { phRunExtensionStatus: "comfort_stop" }, { phRunExtensionStatus: "blocked" },
-    { phRunExtensionStatus: "wait_warm_restart" }, { strategyActiveCode: 2 },
+    { phRunExtensionStatus: "room_temp_high_stop" }, { phRunExtensionStatus: "blocked" },
+    { phRunExtensionStatus: "room_temp_low_restart" }, { strategyActiveCode: 2 },
     { hp1Mode: "Standby" }, { hp1Mode: "Cooling" },
     { hp1Mode: "Unknown", hp1Freq: 2 }, { hp1Mode: undefined, hp1Freq: 2 }, { hp1Defrost: true }, { controlModeLabel: "CM98" },
     { controlModeLabel: "CM4" }, { coolingRequestActive: true }, { stickyActive: true },

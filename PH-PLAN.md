@@ -241,7 +241,7 @@ Notities:
   struct Decision {
     State next;
     bool force_comfort_stop = false;
-    bool warm_restart_intent = true;   // Blijft voor interne logica
+    bool warm_restart_intent = false;  // Alleen true op het restartpad (fail-closed)
     bool floor_active = false;
     float floor_w = 0.0f;
     // comfort_stop_c VERWIJDERD
@@ -258,10 +258,14 @@ Notities:
     const float comfort_stop_c = std::isfinite(in.setpoint_c)
                                  ? in.setpoint_c + tuning.stop_temperature_c
                                  : NAN;
-    const float warm_restart_c = std::isfinite(comfort_stop_c)
-                                 ? comfort_stop_c - tuning.restart_temperature_c
-                                 : NAN;
+    const float restart_c = std::isfinite(in.setpoint_c)
+                            ? in.setpoint_c + tuning.restart_temperature_c
+                            : NAN;
     ```
+  - Dezelfde `restart_c` geldt na een comfortstop én na een gewone stopperiode:
+    er is geen aparte warme en koude herstartgrens.
+  - Een gestopte run gaat via `ROOM_TEMP_LOW_RESTART` en blokkeert nieuwe vraag
+    totdat `room_c <= restart_c`.
 
 #### `oq_power_house_runtime.h`
 

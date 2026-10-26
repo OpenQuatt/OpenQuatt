@@ -52,7 +52,7 @@ void test_idle_without_cycle_does_not_block_normal_demand() {
     in.room_c = room_c;
     State current = reset_state();
     for (int tick = 0; tick < 3; ++tick) {
-      const auto out = evaluate(in, {0.4f, 0.2f, 0.0f}, current);
+      const auto out = evaluate(in, {0.4f, 0.2f}, current);
       assert(out.next.phase == Phase::INACTIVE && !out.next.cycle_armed);
       assert(!out.force_comfort_stop && !out.floor_active && !out.warm_restart_intent);
       current = out.next;
@@ -70,7 +70,7 @@ void test_active_setback_during_outage_keeps_temperature_gate() {
         in.heating_allowed = input_loss;
         in.setpoint_c = lowered_during_outage ? 19.5f : 20.0f;
         in.room_c = 20.27f;
-        const auto unavailable = evaluate(in, {0.4f, 0.2f, 0.0f}, running);
+        const auto unavailable = evaluate(in, {0.4f, 0.2f}, running);
         assert(!unavailable.next.cycle_armed && unavailable.next.last_setpoint_c == 20.0f);
         assert(!unavailable.floor_active && !unavailable.warm_restart_intent);
         // The compressor stops before recovery. A genuine setback is still
@@ -80,12 +80,12 @@ void test_active_setback_during_outage_keeps_temperature_gate() {
         in.setpoint_c = 19.5f;
         in.room_c = 19.8f;
         in.base_requested_w = 2500.0f;
-        const auto recovered = evaluate(in, {0.4f, 0.2f, 0.0f}, unavailable.next);
-        assert(recovered.next.phase == Phase::WAIT_WARM_RESTART && recovered.force_comfort_stop);
+        const auto recovered = evaluate(in, {0.4f, 0.2f}, unavailable.next);
+        assert(recovered.next.phase == Phase::ROOM_TEMP_LOW_RESTART && recovered.force_comfort_stop);
         assert(!recovered.next.cycle_armed && !recovered.floor_active && !recovered.warm_restart_intent);
-        assert(evaluate(in, {0.4f, 0.2f, 0.0f}, recovered.next).force_comfort_stop);
+        assert(evaluate(in, {0.4f, 0.2f}, recovered.next).force_comfort_stop);
         in.room_c = 19.69f;
-        const auto cooled = evaluate(in, {0.4f, 0.2f, 0.0f}, recovered.next);
+        const auto cooled = evaluate(in, {0.4f, 0.2f}, recovered.next);
         assert(!cooled.force_comfort_stop && !cooled.floor_active && !cooled.warm_restart_intent);
       }
     }
@@ -99,8 +99,8 @@ void test_armed_idle_at_stop_keeps_comfort_hold() {
   in.room_c = 19.9f;
   for (const auto phase : {Phase::INACTIVE, Phase::RUNNING, Phase::EXTENDING}) {
     const State armed{phase, in.setpoint_c, true};
-    const auto out = evaluate(in, {0.4f, 0.2f, 0.0f}, armed);
-    assert(out.next.phase == Phase::WAIT_WARM_RESTART && out.force_comfort_stop);
+    const auto out = evaluate(in, {0.4f, 0.2f}, armed);
+    assert(out.next.phase == Phase::ROOM_TEMP_LOW_RESTART && out.force_comfort_stop);
     assert(!out.floor_active && !out.warm_restart_intent);
   }
 }
@@ -148,7 +148,7 @@ void test_comfort_stop_at_threshold() {
   state.cycle_armed = true;
   state.last_setpoint_c = 20.5f;
   const auto out = evaluate(in, tuning(), state);
-  assert(out.next.phase == Phase::COMFORT_STOP);
+  assert(out.next.phase == Phase::ROOM_TEMP_HIGH_STOP);
   assert(out.force_comfort_stop);
 }
 
@@ -156,33 +156,33 @@ void test_comfort_stop_latched_while_compressor_active() {
   // 21.0 comfort stop, compressor still spinning down, quantised dip to 20.9:
   // the stop must not be aborted and the 0.2 K hysteresis must not be bypassed.
   State state;
-  state.phase = Phase::COMFORT_STOP;
+  state.phase = Phase::ROOM_TEMP_HIGH_STOP;
   state.cycle_armed = true;
   state.last_setpoint_c = 20.5f;
   Input in = base_input();
   in.room_c = 20.9f;
   in.base_requested_w = 700.0f;
   const auto out = evaluate(in, tuning(), state);
-  assert(out.next.phase == Phase::COMFORT_STOP);
+  assert(out.next.phase == Phase::ROOM_TEMP_HIGH_STOP);
   assert(out.force_comfort_stop);
 }
 
 void test_comfort_stop_transitions_to_wait() {
   State state;
-  state.phase = Phase::COMFORT_STOP;
+  state.phase = Phase::ROOM_TEMP_HIGH_STOP;
   state.cycle_armed = true;
   state.last_setpoint_c = 20.5f;
   Input in = base_input();
   in.actual_heating_active = false;
   in.cycle_active = false;
   const auto out = evaluate(in, tuning(), state);
-  assert(out.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(out.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
   assert(out.force_comfort_stop);
 }
 
 void test_wait_needs_cooldown_and_base() {
   State wait;
-  wait.phase = Phase::WAIT_WARM_RESTART;
+  wait.phase = Phase::ROOM_TEMP_LOW_RESTART;
   wait.cycle_armed = true;
   wait.last_setpoint_c = 20.5f;
   Input warm = base_input();
@@ -190,10 +190,10 @@ void test_wait_needs_cooldown_and_base() {
   warm.actual_heating_active = false;
   warm.room_c = 20.9f;
   warm.base_requested_w = 700.0f;
-  assert(evaluate(warm, tuning(), wait).next.phase == Phase::WAIT_WARM_RESTART);
-  warm.room_c = 20.8f;
+  assert(evaluate(warm, tuning(), wait).next.phase == Phase::ROOM_TEMP_LOW_RESTART);
+  warm.room_c = 20.7f;
   warm.base_requested_w = 0.0f;
-  assert(evaluate(warm, tuning(), wait).next.phase == Phase::WAIT_WARM_RESTART);
+  assert(evaluate(warm, tuning(), wait).next.phase == Phase::ROOM_TEMP_LOW_RESTART);
   warm.base_requested_w = 700.0f;
   const auto out = evaluate(warm, tuning(), wait);
   assert(out.next.phase == Phase::WARM_RESTART);
@@ -216,6 +216,33 @@ void test_warm_restart_keeps_intent_on_jitter() {
   assert(out.warm_restart_intent);
 }
 
+void test_stopped_run_waits_for_same_restart_temperature() {
+  // A normal (cool) restart is gated by the configured restart temperature just
+  // like the restart after a comfort stop.
+  for (const auto phase : {Phase::RUNNING, Phase::EXTENDING}) {
+    Input in = base_input();
+    in.cycle_active = in.actual_heating_active = false;
+    in.room_c = 20.75f;
+    in.base_requested_w = 2500.0f;
+    const State running{phase, in.setpoint_c, true};
+    const auto wait = evaluate(in, tuning(), running);
+    assert(wait.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
+    assert(wait.force_comfort_stop && !wait.floor_active && !wait.warm_restart_intent);
+    assert(!wait.next.cycle_armed);
+
+    in.room_c = 20.71f;
+    const auto held = evaluate(in, tuning(), wait.next);
+    assert(held.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
+    assert(held.force_comfort_stop && !held.floor_active && !held.warm_restart_intent);
+
+    in.room_c = in.setpoint_c + tuning().restart_temperature_c;
+    const auto released = evaluate(in, tuning(), held.next);
+    assert(released.next.phase == Phase::INACTIVE);
+    assert(!released.force_comfort_stop && !released.floor_active && !released.warm_restart_intent);
+    assert(!released.next.cycle_armed);
+  }
+}
+
 void test_warm_restart_hands_back_to_run() {
   State restart;
   restart.phase = Phase::WARM_RESTART;
@@ -231,10 +258,10 @@ void test_warm_restart_hands_back_to_run() {
 void test_wait_suppresses_base_above_restart_threshold() {
   // Comfort stop at 21.0, compressor stopped, room 20.9 with 2500 W of modelled
   // house demand: WAIT must hold the normal request at 0 instead of passing
-  // base through, otherwise the normal start logic restarts above the 20.8 C
-  // hysteresis. At 20.8 C with house need the warm restart may go ahead.
+  // base through, otherwise the normal start logic restarts above the 20.7 C
+  // restart temperature. At 20.7 C with house need the restart may go ahead.
   State wait;
-  wait.phase = Phase::WAIT_WARM_RESTART;
+  wait.phase = Phase::ROOM_TEMP_LOW_RESTART;
   wait.cycle_armed = true;
   wait.last_setpoint_c = 20.5f;
   Input idle = base_input();
@@ -243,7 +270,7 @@ void test_wait_suppresses_base_above_restart_threshold() {
   idle.room_c = 20.9f;
   idle.base_requested_w = 2500.0f;
   const auto held = evaluate(idle, tuning(), wait);
-  assert(held.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(held.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
   assert(held.force_comfort_stop);
   assert(!held.floor_active);
   // An unexpectedly running compressor at 20.9 must not lift the hysteresis.
@@ -251,23 +278,23 @@ void test_wait_suppresses_base_above_restart_threshold() {
   running.cycle_active = true;
   running.actual_heating_active = true;
   const auto held_running = evaluate(running, tuning(), wait);
-  assert(held_running.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(held_running.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
   assert(held_running.force_comfort_stop);
-  // Room at the restart threshold with house need: warm restart.
+  // Room at the restart threshold with house need: restart.
   Input cooled = idle;
-  cooled.room_c = 20.8f;
+  cooled.room_c = 20.7f;
   const auto restart = evaluate(cooled, tuning(), wait);
   assert(restart.next.phase == Phase::WARM_RESTART);
   assert(restart.warm_restart_intent);
   // A run already going at/below the restart threshold is a normal takeover.
   Input takeover = running;
-  takeover.room_c = 20.7f;
+  takeover.room_c = 20.6f;
   assert(evaluate(takeover, tuning(), wait).next.phase == Phase::RUNNING);
   // Room back above the stop with the compressor running re-latches the stop.
   Input overrun = running;
   overrun.room_c = 21.0f;
   const auto relatch = evaluate(overrun, tuning(), wait);
-  assert(relatch.next.phase == Phase::COMFORT_STOP);
+  assert(relatch.next.phase == Phase::ROOM_TEMP_HIGH_STOP);
   assert(relatch.force_comfort_stop);
 }
 
@@ -285,7 +312,7 @@ void test_warm_restart_reverts_when_base_drops_to_zero() {
   in.room_c = 20.7f;
   in.base_requested_w = 0.0f;
   const auto out = evaluate(in, tuning(), restart);
-  assert(out.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(out.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
   assert(!out.warm_restart_intent);
   assert(!out.floor_active);
 }
@@ -333,16 +360,16 @@ void test_disabled_tracks_setpoint_without_replaying_setback() {
   in.cycle_active = in.actual_heating_active = false;
   in.setpoint_c = 20.0f;
   in.room_c = 19.8f;
-  State current{Phase::WAIT_WARM_RESTART, 20.0f, true};
-  current = evaluate(in, {0.4f, 0.2f, 0.0f}, current).next;
+  State current{Phase::ROOM_TEMP_LOW_RESTART, 20.0f, true};
+  current = evaluate(in, {0.4f, 0.2f}, current).next;
   in.setpoint_c = 19.5f;
-  const auto disabled = evaluate(in, {0.4f, 0.2f, 0.0f}, current);
+  const auto disabled = evaluate(in, {0.4f, 0.2f}, current);
   assert(disabled.next.phase == Phase::INACTIVE && !disabled.next.cycle_armed);
   assert(disabled.next.last_setpoint_c == in.setpoint_c);
   assert(!disabled.force_comfort_stop && !disabled.floor_active && !disabled.warm_restart_intent);
   in.enabled = true;
   in.base_requested_w = 2500.0f;
-  const auto enabled = evaluate(in, {0.4f, 0.2f, 0.0f}, disabled.next);
+  const auto enabled = evaluate(in, {0.4f, 0.2f}, disabled.next);
   assert(enabled.next.phase == Phase::INACTIVE && !enabled.next.cycle_armed);
   assert(!enabled.force_comfort_stop && !enabled.floor_active && !enabled.warm_restart_intent);
 }
@@ -355,10 +382,10 @@ void test_stale_inputs_fail_closed() {
   in.inputs_valid = false;
   assert(evaluate(in, tuning(), state).next.phase == Phase::INACTIVE);
   State wait;
-  wait.phase = Phase::WAIT_WARM_RESTART;
+  wait.phase = Phase::ROOM_TEMP_LOW_RESTART;
   wait.cycle_armed = true;
   const auto held = evaluate(in, tuning(), wait);
-  assert(held.next.phase == Phase::WAIT_WARM_RESTART && !held.next.cycle_armed);
+  assert(held.next.phase == Phase::ROOM_TEMP_LOW_RESTART && !held.next.cycle_armed);
   assert(held.force_comfort_stop);
   in.inputs_valid = true;
   in.cycle_active = in.actual_heating_active = false;
@@ -372,17 +399,17 @@ void test_input_outage_cannot_abort_pending_comfort_stop() {
     in.room_c = 21.0f;
     in.inputs_valid = !input_loss;
     in.heating_allowed = input_loss;
-    const State stopping{Phase::COMFORT_STOP, in.setpoint_c, true};
+    const State stopping{Phase::ROOM_TEMP_HIGH_STOP, in.setpoint_c, true};
     const auto interrupted = evaluate(in, tuning(), stopping);
-    assert(interrupted.next.phase == Phase::COMFORT_STOP && interrupted.force_comfort_stop);
+    assert(interrupted.next.phase == Phase::ROOM_TEMP_HIGH_STOP && interrupted.force_comfort_stop);
     assert(!interrupted.next.cycle_armed);
     in.inputs_valid = in.heating_allowed = true;
     in.room_c = 20.7f;
     const auto still_running = evaluate(in, tuning(), interrupted.next);
-    assert(still_running.next.phase == Phase::COMFORT_STOP && still_running.force_comfort_stop);
+    assert(still_running.next.phase == Phase::ROOM_TEMP_HIGH_STOP && still_running.force_comfort_stop);
     in.cycle_active = in.actual_heating_active = false;
     const auto stopped = evaluate(in, tuning(), still_running.next);
-    assert(stopped.next.phase == Phase::WAIT_WARM_RESTART && stopped.force_comfort_stop);
+    assert(stopped.next.phase == Phase::ROOM_TEMP_LOW_RESTART && stopped.force_comfort_stop);
     const auto cooled = evaluate(in, tuning(), stopped.next);
     assert(!cooled.force_comfort_stop && !cooled.floor_active && !cooled.warm_restart_intent);
   }
@@ -390,7 +417,7 @@ void test_input_outage_cannot_abort_pending_comfort_stop() {
 
 void test_setpoint_drop_cancels_restart() {
   State wait;
-  wait.phase = Phase::WAIT_WARM_RESTART;
+  wait.phase = Phase::ROOM_TEMP_LOW_RESTART;
   wait.cycle_armed = true;
   wait.last_setpoint_c = 20.5f;
   Input in = base_input();
@@ -403,7 +430,7 @@ void test_setpoint_drop_cancels_restart() {
 }
 
 void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
-  const Tuning night{0.4f, 0.2f, 0.0f};
+  const Tuning night{0.4f, 0.2f};
   State extending;
   extending.phase = Phase::EXTENDING;
   extending.cycle_armed = true;
@@ -413,14 +440,14 @@ void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
   lowered.room_c = 20.27f;
   lowered.base_requested_w = 700.0f;
   const auto stopping = evaluate(lowered, night, extending);
-  assert(stopping.next.phase == Phase::COMFORT_STOP);
+  assert(stopping.next.phase == Phase::ROOM_TEMP_HIGH_STOP);
   assert(stopping.force_comfort_stop);
   assert(!stopping.next.cycle_armed);
 
   lowered.actual_heating_active = false;
   lowered.cycle_active = false;
   const auto stopped = evaluate(lowered, night, stopping.next);
-  assert(stopped.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(stopped.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
   assert(!stopped.warm_restart_intent);
 
   // Night setback 20.0 -> 19.5: ordinary model demand must not restart a
@@ -431,7 +458,7 @@ void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
     lowered.base_requested_w = 2171.0f;
     for (int tick = 0; tick < 3; ++tick) {
       const auto held = evaluate(lowered, night, current);
-      assert(held.next.phase == Phase::WAIT_WARM_RESTART);
+      assert(held.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
       assert(held.force_comfort_stop && !held.floor_active && !held.warm_restart_intent);
       assert(!held.next.cycle_armed);
       const float effective_w = held.force_comfort_stop ? 0.0f : std::max(lowered.base_requested_w, held.floor_w);
@@ -439,7 +466,7 @@ void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
       current = held.next;
     }
   }
-  lowered.room_c = evaluate(lowered, night, current).warm_restart_c;
+  lowered.room_c = lowered.setpoint_c + night.restart_temperature_c;
   const auto cooled = evaluate(lowered, night, current);
   assert(cooled.next.phase == Phase::INACTIVE);
   assert(!cooled.force_comfort_stop && !cooled.floor_active && !cooled.warm_restart_intent);
@@ -457,22 +484,22 @@ void test_setpoint_drop_while_waiting_keeps_temperature_gate() {
   idle.room_c = 19.8f;
   idle.base_requested_w = 2500.0f;
   for (const auto phase :
-       {Phase::INACTIVE, Phase::RUNNING, Phase::EXTENDING, Phase::WAIT_WARM_RESTART, Phase::WARM_RESTART}) {
+       {Phase::INACTIVE, Phase::RUNNING, Phase::EXTENDING, Phase::ROOM_TEMP_LOW_RESTART, Phase::WARM_RESTART}) {
     const State previous{phase, 20.0f, true};
-    const auto held = evaluate(idle, {0.4f, 0.2f, 0.0f}, previous);
-    assert((held.next.phase == Phase::WAIT_WARM_RESTART || held.next.phase == Phase::COMFORT_STOP) &&
+    const auto held = evaluate(idle, {0.4f, 0.2f}, previous);
+    assert((held.next.phase == Phase::ROOM_TEMP_LOW_RESTART || held.next.phase == Phase::ROOM_TEMP_HIGH_STOP) &&
            !held.next.cycle_armed);
     assert(held.force_comfort_stop && !held.floor_active && !held.warm_restart_intent);
-    assert(evaluate(idle, {0.4f, 0.2f, 0.0f}, held.next).force_comfort_stop);
+    assert(evaluate(idle, {0.4f, 0.2f}, held.next).force_comfort_stop);
     // The selected room value can still be finite during a source outage.
     // Consuming the setback on that invalid tick must not release a start.
     for (bool input_loss : {false, true}) {
       Input unavailable = idle;
       unavailable.inputs_valid = !input_loss;
       unavailable.heating_allowed = input_loss;
-      const auto interrupted = evaluate(unavailable, {0.4f, 0.2f, 0.0f}, previous);
+      const auto interrupted = evaluate(unavailable, {0.4f, 0.2f}, previous);
       assert(interrupted.force_comfort_stop && !interrupted.next.cycle_armed);
-      const auto recovered = evaluate(idle, {0.4f, 0.2f, 0.0f}, interrupted.next);
+      const auto recovered = evaluate(idle, {0.4f, 0.2f}, interrupted.next);
       assert(recovered.force_comfort_stop && !recovered.floor_active && !recovered.warm_restart_intent);
     }
   }
@@ -515,17 +542,17 @@ void test_configurable_stop_and_restart() {
   in.setpoint_c = 21.0f;
   in.cycle_active = false;
   in.actual_heating_active = false;
-  State wait{Phase::WAIT_WARM_RESTART, 21.0f, true};
+  State wait{Phase::ROOM_TEMP_LOW_RESTART, 21.0f, true};
   for (const auto settings : {Tuning{1.5f, 0.2f}, Tuning{1.5f, 0.7f}, Tuning{1.5f, 0.9f}, Tuning{1.5f, 1.2f}}) {
-    const float expected = 21.0f + settings.stop_temperature_c - settings.restart_temperature_c;
+    const float expected = 21.0f + settings.restart_temperature_c;
     in.room_c = expected + 0.01f;
     in.base_requested_w = 2500.0f;
     const auto held = evaluate(in, settings, wait);
-    assert(held.next.phase == Phase::WAIT_WARM_RESTART);
+    assert(held.next.phase == Phase::ROOM_TEMP_LOW_RESTART);
     assert(held.force_comfort_stop && !held.floor_active);
     in.room_c = expected;
     in.base_requested_w = 0.0f;
-    assert(evaluate(in, settings, wait).next.phase == Phase::WAIT_WARM_RESTART);
+    assert(evaluate(in, settings, wait).next.phase == Phase::ROOM_TEMP_LOW_RESTART);
     in.base_requested_w = 900.0f;
     const auto restart = evaluate(in, settings, wait);
     assert(restart.next.phase == Phase::WARM_RESTART);
@@ -544,7 +571,7 @@ void test_cold_room_intent_releases_wait() {
   const Tuning settings{1.2f, 0.2f};
   in.room_c = oq_heat_intent::room_cold_edge_c(in.setpoint_c, settings.stop_temperature_c);
   in.base_requested_w = 0.0f;
-  State wait{Phase::WAIT_WARM_RESTART, in.setpoint_c, true};
+  State wait{Phase::ROOM_TEMP_LOW_RESTART, in.setpoint_c, true};
   oq_heat_intent::Input room;
   room.now_ms = 1;
   room.strategy_active = room.heating_enable_valid = room.heating_enabled = true;
@@ -572,13 +599,13 @@ void test_restart_setting_changes_and_failure_boundaries() {
   in.cycle_active = false;
   in.actual_heating_active = false;
   in.room_c = 20.7f;
-  State wait{Phase::WAIT_WARM_RESTART, in.setpoint_c, true};
+  State wait{Phase::ROOM_TEMP_LOW_RESTART, in.setpoint_c, true};
   assert(evaluate(in, {0.5f, 0.2f}, wait).warm_restart_intent);
-  assert(evaluate(in, {0.45f, 0.3f}, wait).force_comfort_stop);
+  assert(evaluate(in, {0.5f, 0.1f}, wait).force_comfort_stop);
   State restart{Phase::WARM_RESTART, in.setpoint_c, true};
   // A permitted restart keeps its existing latch across temperature/settings jitter.
-  assert(evaluate(in, {0.45f, 0.3f}, restart).warm_restart_intent);
-  for (const auto phase : {Phase::EXTENDING, Phase::WAIT_WARM_RESTART, Phase::WARM_RESTART}) {
+  assert(evaluate(in, {0.5f, 0.1f}, restart).warm_restart_intent);
+  for (const auto phase : {Phase::EXTENDING, Phase::ROOM_TEMP_LOW_RESTART, Phase::WARM_RESTART}) {
     State state{phase, in.setpoint_c, true};
     Input invalid = in;
     invalid.inputs_valid = false;
@@ -608,7 +635,7 @@ void test_same_logic_with_three_emitter_lags() {
   for (const float lag_s : {300.0f, 1200.0f, 3600.0f}) {
     for (const float cooldown_c : {0.2f, 0.3f, 0.4f}) {
       const Tuning settings{0.7f, cooldown_c};
-      const float warm_restart_c = 21.0f + settings.stop_temperature_c - settings.restart_temperature_c;
+      const float restart_c = 21.0f + settings.restart_temperature_c;
       State state;
       float room_c = 20.8f;
       float emitted_w = 0.0f;
@@ -622,9 +649,9 @@ void test_same_logic_with_three_emitter_lags() {
         in.cycle_active = in.actual_heating_active = running;
         in.base_requested_w = std::max(0.0f, 1400.0f + 3000.0f * (21.0f - room_c));
         const auto out = evaluate(in, settings, state);
-        if (state.phase == Phase::WAIT_WARM_RESTART && room_c <= warm_restart_c && in.base_requested_w > 0.0f)
+        if (state.phase == Phase::ROOM_TEMP_LOW_RESTART && room_c <= restart_c && in.base_requested_w > 0.0f)
           assert(!out.force_comfort_stop);
-        saw_stop |= out.next.phase == Phase::COMFORT_STOP;
+        saw_stop |= out.next.phase == Phase::ROOM_TEMP_HIGH_STOP;
         saw_restart |= out.next.phase == Phase::WARM_RESTART;
         const float request_w = out.force_comfort_stop ? 0.0f : std::max(in.base_requested_w, out.floor_w);
         if (request_w == 0.0f)
@@ -665,6 +692,7 @@ int main() {
   test_warm_restart_reverts_when_base_drops_to_zero();
   test_warm_restart_confirmed_run_allows_zero_base();
   test_warm_restart_hands_back_to_run();
+  test_stopped_run_waits_for_same_restart_temperature();
   test_disable_clears_extending();
   test_disabled_tracks_setpoint_without_replaying_setback();
   test_stale_inputs_fail_closed();

@@ -1098,6 +1098,7 @@ export default {
     phRestartTemperatureLabel: "Restart temperature control",
     phRestartTemperatureCopy: "To prevent the heat pump from switching off and on in quick succession, a restart point lower than the stop temperature must be chosen.",
     phSetpointPrefix: "setpoint +",
+    invalidNumber: "Enter a valid number.",
     phTemperatureValidationError: "Restart temperature must be at least 0.1 °C lower than the stop temperature.",
     phStopTemperatureMinError: "Stop temperature must be ≥ 0.",
 

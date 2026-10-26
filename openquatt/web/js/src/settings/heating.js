@@ -577,8 +577,8 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
 
   const RUN_EXTENSION_STATUS_COPY = {
     extending: "runExtension.extending",
-    comfort_stop: "runExtension.comfortStop",
-    wait_warm_restart: "runExtension.waitRestart",
+    room_temp_high_stop: "runExtension.comfortStop",
+    room_temp_low_restart: "runExtension.waitRestart",
     warm_restart: "runExtension.warmRestart",
     normal: "runExtension.normal",
     blocked: "runExtension.blocked",

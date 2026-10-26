@@ -26,7 +26,7 @@ struct Simulation {
   oq_warmup_runtime::Runtime warmup;
   oq_warmup::Settings settings{0.8f, 0.1f, 300000U};
   oq_warmup::Input room{1000U, true, true, true, 1, 1, 19.08f, 17.0f, 0.1f};
-  oq_power_house::DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2, 20};
+  oq_power_house::DemandTuning tuning{0, 3000, 0.3f, true, 5, 2, 20};
   oq_power_house::DemandState house_state;
   oq_heat_intent::State intent_state;
   oq_power_house_dispatch::DispatchInput dispatch;
@@ -65,8 +65,8 @@ struct Simulation {
     const auto target = warmup.control_target(room.requested_c, settings.trigger_c, room.enabled, room.room_c);
     const auto intent = oq_heat_intent::evaluate(
         {now, true, permission_valid, permission, room_fresh, goal_fresh,
-         dispatch.hp1.candidate.previous_applied_level > 0, 1, room.room_c, target.effective_c, tuning.comfort_below_c,
-         0.2f, 10000, room.requested_c, !target.limited, target.limited},
+         dispatch.hp1.candidate.previous_applied_level > 0, 1, room.room_c, target.effective_c,
+         tuning.stop_temperature_c, 0.2f, 10000, room.requested_c, !target.limited, target.limited},
         intent_state);
     intent_state = intent.next;
     if (dispatch.hp1.candidate.previous_applied_level > 0 && fast_floor_w > 0)
@@ -128,10 +128,10 @@ void test_boost_adds_power_and_dispatches() {
         legacy.tick(now);
         assert(near(sim.house_w, legacy.house_w));
         assert(near(sim.house_state.last_w, legacy.house_state.last_w));
-        assert(near(sim.requested_w, sim.minimum_w + std::max(0.0f, 3000.0f * (step * 0.1f - 0.02f))));
+        assert(near(sim.requested_w, sim.minimum_w + std::max(0.0f, 3000.0f * (step * 0.1f))));
         if (step >= 3) assert(sim.hz() > 30);
         if (outside == 12 && step == 3) {
-          assert(near(sim.requested_w, 3367.63f));
+          assert(near(sim.requested_w, 3427.63f));
           assert(legacy.hz() == 30 && near(legacy.requested_w, sim.minimum_w));
         }
         std::printf("%s Tout=%.0f boost=%.1f house=%.0f HP=%.0f -> %u Hz\n", duo ? "Duo/one HP" : "Single", outside,
@@ -284,7 +284,7 @@ void test_repeated_ticks_do_not_accumulate_boost_or_house_deficit() {
     const uint32_t now = sim.room.now_ms + 5000;
     sim.tick(now);
     legacy.tick(now);
-    assert(near(sim.requested_w, 3367.63f));
+    assert(near(sim.requested_w, 3427.63f));
     assert(near(sim.house_w, legacy.house_w) && near(sim.house_state.last_w, legacy.house_state.last_w));
     assert(near(sim.deficit_w, legacy.deficit_w));
   }
@@ -298,13 +298,13 @@ void test_repeated_ticks_do_not_accumulate_boost_or_house_deficit() {
 
 void test_composition_envelope_slew_and_no_boost_compatibility() {
   using namespace oq_power_house;
-  const DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2, 20};
+  const DemandTuning tuning{0, 3000, 0.3f, true, 5, 2, 20};
   DemandInput input{6000, 12, -10, 18, 5000, 19.1f, 19.48f, NAN, 1, false};
   const WarmupBoost boost{19.18f, 2527.63f};
   auto out = decide_demand(input, tuning, {2527.63f, 1000, 0}, boost);
   assert(near(out.requested_w, 2527.63f + 5000.0f * 5 / 300));
-  assert(near(out.contributions.warmup_base_w, 1071.43f));
-  assert(near(out.contributions.warmup_extra_w, 840));
+  assert(near(out.contributions.warmup_base_w, 1311.43f));
+  assert(near(out.contributions.warmup_extra_w, 900));
   out = decide_demand(input, tuning, {}, {19.18f, 9000});
   assert(out.requested_w == 5000 && out.raw_demand == 20);
   for (float water : {0.0f, 0.5f, 0.998f}) {

@@ -163,12 +163,7 @@ inline DemandDecision decide_demand_with_power(const DemandInput& in, const Dema
   float composed_w =
       out.contributions.selected_feedforward_w + out.contributions.adaptive_w + out.contributions.room_feedback_w;
   if (warmup_boost) {
-    float baseline_error_c = 0.0f;
-    if (in.room_c < boost.baseline_c - below_c)
-      baseline_error_c = boost.baseline_c - below_c - in.room_c;
-    else if (in.room_c > boost.baseline_c + above_c)
-      baseline_error_c = boost.baseline_c + above_c - in.room_c;
-    const float baseline_feedback_w = tuning.reaction_w_per_k * baseline_error_c;
+    const float baseline_feedback_w = tuning.reaction_w_per_k * (boost.baseline_c - in.room_c);
     const float extra_w = fmaxf(0.0f, out.contributions.room_feedback_w - baseline_feedback_w);
     const float baseline_w = feedforward.house_power_w + baseline_feedback_w;
     out.contributions.warmup_base_w = baseline_w;

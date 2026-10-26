@@ -1098,6 +1098,7 @@ export default {
     phRestartTemperatureLabel: "Herstarttemperatuur regeling",
     phRestartTemperatureCopy: "Om te voorkomen dat de warmtepomp snel achter elkaar uit en aan schakelt, moet er een herstartpunt gekozen worden, lager dan de stoptemperatuur.",
     phSetpointPrefix: "setpoint +",
+    invalidNumber: "Voer een geldig getal in.",
     phTemperatureValidationError: "Herstarttemperatuur moet tenminste 0,1 °C lager zijn dan de stoptemperatuur.",
     phStopTemperatureMinError: "Stoptemperatuur moet ≥ 0 zijn.",
 
