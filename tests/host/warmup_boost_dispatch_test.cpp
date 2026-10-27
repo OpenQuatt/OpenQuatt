@@ -99,10 +99,10 @@ struct Simulation {
       if (std::isfinite(hp_slew_w)) hp_slew_w = requested_w;
     }
     dispatch.now_ms = now;
-    dispatch.requested_w = std::min(requested_w, 5000.0f * power_cap / 20);
+    dispatch.requested_w = oq_power_house::power_capped_request_w(requested_w, power_cap, 20, 5000);
     dispatch.demand_level = std::min(power_cap, static_cast<int>(std::ceil(dispatch.requested_w * 20 / 5000)));
     selected = oq_power_house_dispatch::decide_dispatch(dispatch, limits, dispatch_state);
-    const float capped_house = std::min(house_w, 5000.0f * power_cap / 20);
+    const float capped_house = oq_power_house::power_capped_request_w(house_w, power_cap, 20, 5000);
     deficit_w = oq_power_house_run_extension::compute_house_deficit_w(
         capped_house, selected.capacity_w, selected.output_valid, std::isfinite(hp_slew_w) ? NAN : selected.deficit_w);
     if (!oq_hp_supervisory::apply_heating_enable_gate(true, permission_valid, permission)) {
@@ -306,7 +306,7 @@ void test_composition_envelope_slew_and_no_boost_compatibility() {
   assert(near(out.contributions.warmup_base_w, 1071.43f));
   assert(near(out.contributions.warmup_extra_w, 840));
   out = decide_demand(input, tuning, {}, {19.18f, 9000});
-  assert(out.requested_w == 5000 && out.raw_demand == 20);
+  assert(near(out.requested_w, 9840.0f) && out.raw_demand == 20);
   for (float water : {0.0f, 0.5f, 0.998f}) {
     input.water_limit_factor = water;
     assert(near(decide_demand(input, tuning, {}, boost).requested_w, decide_demand(input, tuning, {}).requested_w));

@@ -13,13 +13,14 @@ void test_model_and_feedforward() {
   struct ModelCase {
     float outside_c, expected_w;
   };
-  const ModelCase models[] = {{21.0f, 0.0f}, {16.0f, 0.0f}, {3.0f, 3000.0f}, {-10.0f, 6000.0f}, {-20.0f, 6000.0f}};
+  const ModelCase models[] = {{21.0f, 0.0f}, {16.0f, 0.0f}, {3.0f, 3000.0f}, {-10.0f, 6000.0f}, {-20.0f, 8307.692f}};
   for (const auto& test : models)
     assert(near(modelled_house_power_w(16.0f, -10.0f, test.outside_c, 6000.0f), test.expected_w));
   assert(isnan(modelled_house_power_w(16.0f, -10.0f, NAN, 6000.0f)));
   assert(isnan(modelled_house_power_w(16.0f, -10.0f, 3.0f, 0.0f)));
   assert(isnan(modelled_house_power_w(16.0f, 16.0f, 3.0f, 6000.0f)));
   assert(isnan(modelled_house_power_w(-10.0f, 16.0f, 3.0f, 6000.0f)));
+  assert(isnan(modelled_house_power_w(16.0f, -10.0f, -FLT_MAX, 7020.0f)));
   struct FeedCase {
     float external_w, rated_w, expected_w;
     bool present, external;
@@ -33,6 +34,61 @@ void test_model_and_feedforward() {
     const auto result = select_feedforward(2500.0f, test.external_w, test.present, test.rated_w);
     assert(result.external == test.external && near(result.house_power_w, test.expected_w));
   }
+}
+void test_cold_weather_exceeds_reference_power() {
+  auto in = input();
+  in.rated_w = 7020.0f;
+  in.outside_c = -15.0f;
+  assert(near(modelled_house_power_w(16.0f, -10.0f, -15.0f, 7020.0f), 8370.0f));
+  const auto cold = decide_demand(in, tuning(), {});
+  assert(cold.valid && near(cold.requested_w, 8370.0f) && cold.raw_demand == 20);
+  assert(near(cold.contributions.modelled_base_w, 8370.0f));
+  assert(near(cold.contributions.selected_feedforward_w, 8370.0f));
+
+  // A prior request above Pr must survive the next tick's history handling.
+  in.now_ms += 60000U;
+  const auto held = decide_demand(in, tuning(), cold.next);
+  assert(held.valid && near(held.requested_w, 8370.0f));
+  in.outside_c = -20.0f;
+  const auto rising = decide_demand(in, tuning(), cold.next);
+  assert(rising.valid && near(rising.requested_w, 9072.0f));
+  in.outside_c = -10.0f;
+  const auto falling = decide_demand(in, tuning(), cold.next);
+  assert(falling.valid && near(falling.requested_w, 7020.0f));
+
+  in.outside_c = -15.0f;
+  in.water_limit_factor = 0.5f;
+  const auto water = decide_demand(in, tuning(), {});
+  assert(water.valid && near(water.requested_w, 4185.0f) && water.raw_demand == 12);
+  in.water_limit_factor = 0.0f;
+  assert(decide_demand(in, tuning(), {}).requested_w == 0.0f);
+
+  // Pr is a reference for external demand and room feedback as well.
+  in.water_limit_factor = 1.0f;
+  in.external_valid = true;
+  in.external_w = 10000.0f;
+  const auto external = decide_demand(in, tuning(), {});
+  assert(external.valid && external.external && near(external.requested_w, 10000.0f));
+  in.external_valid = false;
+  in.room_c = 19.0f;
+  const auto recovery = decide_demand(in, tuning(), {});
+  assert(recovery.valid && near(recovery.requested_w, 11070.0f) && recovery.raw_demand == 20);
+}
+void test_normalized_demand_and_explicit_power_caps() {
+  assert(ceil_demand_level(8370.0f, 7020.0f, 20) == 20);
+  assert(ceil_demand_level(FLT_MAX, FLT_MIN, 20) == 20);
+  assert(ceil_demand_level(0.0f, 7020.0f, 20) == 0);
+  assert(ceil_demand_level(2000.0f, 7020.0f, 20) == 6);
+  assert(ceil_demand_level(NAN, 7020.0f, 20) == 0);
+  assert(ceil_demand_level(8370.0f, 0.0f, 20) == 0);
+  assert(ceil_demand_level(8370.0f, 7020.0f, 0) == 0);
+  assert(near(power_capped_request_w(8370.0f, 20, 20, 7020.0f), 8370.0f));
+  assert(near(power_capped_request_w(8370.0f, 10, 20, 7020.0f), 3510.0f));
+  assert(near(power_capped_request_w(1000.0f, 10, 20, 7020.0f), 1000.0f));
+  assert(power_capped_request_w(8370.0f, 0, 20, 7020.0f) == 0.0f);
+  assert(isnan(power_capped_request_w(NAN, 20, 20, 7020.0f)));
+  assert(isnan(power_capped_request_w(8370.0f, 20, 20, NAN)));
+  assert(isnan(power_capped_request_w(8370.0f, 20, 0, 7020.0f)));
 }
 void test_cache_and_cadence_rollover() {
   constexpr uint32_t hold_ms = 300000U;
@@ -180,6 +236,8 @@ void test_comfort_warm_edge_and_recovery_boundary() {
 }  // namespace
 int main() {
   test_model_and_feedforward();
+  test_cold_weather_exceeds_reference_power();
+  test_normalized_demand_and_explicit_power_caps();
   test_cache_and_cadence_rollover();
   test_demand_finite_contract();
   test_demand_slew_and_limits();

@@ -5,6 +5,11 @@ RUNTIME = (ROOT / "openquatt/includes/control/oq_power_house_runtime.h").read_te
 DISPATCH_LOGIC = (ROOT / "openquatt/includes/control/oq_power_house_dispatch_logic.h").read_text()
 RUN_EXTENSION_LOGIC = (ROOT / "openquatt/includes/control/oq_power_house_run_extension_logic.h").read_text()
 class PowerHouseDemandContractTest(unittest.TestCase):
+    def test_dispatch_and_boiler_deficit_share_power_cap_conversion(self) -> None:
+        self.assertEqual(RUNTIME.count("oq_power_house::power_capped_request_w("), 2)
+        self.assertIn("power_capped_request_w(requested_w, capped_demand,", RUNTIME)
+        self.assertIn("power_capped_request_w(base_capped_w, base_capped_demand,", RUNTIME)
+
     def test_demand_delegates_to_runtime(self) -> None:
         yaml = YAML
         text = RUNTIME
