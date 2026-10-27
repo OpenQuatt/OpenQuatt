@@ -21,9 +21,9 @@ Legacy controllerplatforms zijn sinds #681 verwijderd. Passief leren wordt daaro
 - `HouseLine`: `heat_loss_w_per_k` en `zero_power_temp_c`.
 - `PowerHouseEnvelope`: `request_max_w`, `demand_scale_w` en `slew_scale_w`.
 
-De ongeclipte woninglijn is `max(0, H * (T0 - Tout))`. `Tc` blijft de representatiecoördinaat; `Pr = H * (T0 - Tc)`. Een geleerd ander lijnpunt verandert geen envelope. Handmatige invoer gebruikt `Pr` als demand- en slewschaal, zonder een request-cap op `Pr`. Onder `Tc` loopt de woningvraag verder op; stroom-, water- en compressorgrenzen blijven onafhankelijk actief.
+De ongeclipte woninglijn is `max(0, H * (T0 - Tout))`. `Tc` blijft de representatiecoördinaat; `Pr = H * (T0 - Tc)`. Een geleerd ander lijnpunt verandert geen envelope. Handmatige invoer gebruikt `Pr` als demand- en slewschaal, zonder request-cap op `Pr`.
 
-Het handmatige pad deelt eerst en vermenigvuldigt daarna, met alleen een ondergrens van nul. Eerst `H` uitrekenen kan bij halve demand-levels een andere afronding geven. De bevroren C++ baselinevergelijking controleert daarom de ongewijzigde bedrijfssituaties op watts, discrete demand-uitvoer, flags en timestamps. Gerichte regressies controleren de doorlopende woningvraag en de bijbehorende dispatch en tekortberekening.
+Het handmatige pad deelt eerst en vermenigvuldigt daarna, met alleen een ondergrens van nul. Eerst `H` uitrekenen kan bij halve demand-levels een andere afronding geven. De bevroren C++ baselinevergelijking controleert de ongewijzigde bedrijfssituaties; gerichte regressies bewaken de doorlopende woningvraag, dispatch en tekortberekening.
 
 ```text
 HouseLine                  geselecteerde externe feedforward

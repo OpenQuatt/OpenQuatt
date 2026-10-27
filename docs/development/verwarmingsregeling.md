@@ -56,13 +56,10 @@ H = Pr / (T0 - Tc)                         [W/K]
 P_model = Pr × max(0, (T0 - Tout)/(T0 - Tc))
 ```
 
-`Pr` is een referentiewaarde, geen bovengrens: onder `Tc` loopt de lijn door.
-Bij `Tc = -10 °C`, `T0 = 16 °C` en `Pr = 7020 W` geeft `Tout = -15 °C`
-een modelvraag van 8370 W. De berekening deelt eerst en vermenigvuldigt daarna;
-een andere rekenvolgorde kan anders afronden bij de latere demandnormalisatie.
+`Pr` bepaalt de demand- en slewschaal, geen bovengrens: onder `Tc` loopt de lijn
+door. Behoud de volgorde van delen en vermenigvuldigen vanwege demandafronding.
 De structurele `HouseLine` en de regelgrenzen in `PowerHouseEnvelope` hebben
-aparte verantwoordelijkheden. De handmatige referentie bepaalt de demand- en
-slewschaal, zonder de wattsvraag op `Pr` te begrenzen.
+aparte verantwoordelijkheden.
 
 Een geldige externe warmtevraag kan het modeldeel vervangen. Kamerfeedback,
 opbouw-/afbouwbegrenzing, waterlimieten en dispatch blijven daarna actief.
@@ -101,10 +98,8 @@ installatie-envelope en de ingestelde opbouw-/afbouwtijd. De waterlimitfactor
 reduceert de effectieve vraag. De dispatcher zoekt vervolgens een toegestane
 HP-combinatie die deze vraag kan leveren.
 
-De genormaliseerde demand blijft maximaal 20. Bij die volle demand blijven de
-gevraagde watts boven `Pr` behouden voor dispatch en de berekening van een
-warmtetekort. Een lagere demandgrens door de bestaande stroombegrenzer blijft
-wel naar een wattgrens worden omgerekend; nul blijft een stopvraag.
+Bij volle demand (20) blijven watts boven `Pr` behouden voor dispatch en
+tekortberekening. Lagere stroomcaps blijven een wattgrens; nul blijft een stop.
 
 Bij een bevestigde kamer- of setpointverhogingsvraag kan startondersteuning het
 laagste geschikte vermogen vragen terwijl de gewone wattsvraag nog oploopt.

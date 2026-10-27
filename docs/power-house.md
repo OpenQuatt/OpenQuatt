@@ -96,15 +96,10 @@ Belangrijke instellingen:
 
 Samen bepalen die hoe "zwaar" jouw woning aanvoelt voor de regeling.
 
-`Rated maximum house power` heet in de web-app **Nominaal woningvermogen**:
-het benodigde warmtevermogen bij de ingestelde koude referentietemperatuur.
-Bij lagere buitentemperaturen loopt de berekende warmtevraag evenredig verder op.
-Met een koude referentie van −10 °C, een maximale buitentemperatuur voor verwarmen
-van 16 °C en een nominaal woningvermogen van 7020 W wordt de woningvraag bij
-−15 °C dus **8370 W**. Het nominale woningvermogen is geen vermogensbegrenzing.
-De kamercorrectie en opbouw-/afbouwtijd blijven van toepassing. Hoeveel warmte
-de warmtepomp kan leveren, hangt af van de beschikbare capaciteit en de actieve
-stroom-, water- en compressorgrenzen.
+Het **Nominaal woningvermogen** is een referentie, geen begrenzing. Bij een koude
+referentie van −10 °C, een verwarmingsgrens van 16 °C en 7020 W nominale vraag
+wordt de woningvraag bij −15 °C **8370 W**. Kamercorrectie, opbouw-/afbouwtijd en
+de beschikbare capaciteit en veiligheidsgrenzen blijven van toepassing.
 
 ### 2. Kamercorrectie
 

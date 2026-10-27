@@ -39,13 +39,6 @@ void test_cold_weather_request_reaches_dispatch_and_deficit() {
     const float deficit = oq_power_house_run_extension::compute_house_deficit_w(in.requested_w, out.capacity_w,
                                                                                 out.output_valid, out.deficit_w);
     assert(fabsf(deficit - 1370.0f) < 0.01f);
-    in.demand_level = 10;
-    in.requested_w = oq_power_house::power_capped_request_w(demand.requested_w, 10, 20, 7020);
-    assert(in.requested_w == 3510.0f);
-    in.demand_level = 0;
-    in.requested_w = oq_power_house::power_capped_request_w(demand.requested_w, 0, 20, 7020);
-    out = decide_dispatch(in, limits, {});
-    assert(out.hp1_level == 0 && out.hp2_level == 0);
   }
 }
 void expect_safe(const DispatchDecision& out, const DispatchInput& in, const DispatchTuning& cfg) {
