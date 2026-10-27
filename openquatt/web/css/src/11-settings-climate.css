@@ -85,15 +85,30 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
-.oq-house-learning-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.oq-house-learning-model,
 .oq-house-learning-sources,
 .oq-house-learning-water {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
+
+.oq-house-learning-model { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.oq-house-learning-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; }
+.oq-house-learning-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.oq-house-learning-heading h3 { margin: 0; }
+.oq-house-learning-current { padding: 18px; border: 1px solid var(--oq-helper-line); border-radius: 12px; background: var(--oq-helper-card); }
+.oq-house-learning-current-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+.oq-house-learning-current-head > div:first-child { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.oq-house-learning-current-head h4 { margin: 0; color: var(--oq-helper-ink); font-size: 0.94rem; }
+.oq-house-learning-current-head > div:first-child > strong { color: var(--oq-helper-soft); font-size: 0.78rem; }
+.oq-house-learning-count { flex: 0 0 auto; display: grid; gap: 2px; text-align: right; }
+.oq-house-learning-count span { color: var(--oq-helper-faint); font-size: 0.72rem; }
+.oq-house-learning-count strong { color: var(--oq-helper-ink); font-size: 1.45rem; line-height: 1.1; }
+.oq-house-learning-current-time { margin: 8px 0 12px; color: var(--oq-helper-ink); font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.oq-house-learning-current-note { margin: 10px 0 0; color: var(--oq-helper-soft); font-size: 0.78rem; line-height: 1.45; }
+.oq-house-learning-thermal { display: grid; gap: 10px; margin: 22px 0; padding-top: 20px; border-top: 1px solid var(--oq-helper-line); }
+.oq-house-learning-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.oq-house-learning-section-head h4 { margin: 0; color: var(--oq-helper-ink); font-size: 0.94rem; }
+.oq-house-learning-thermal-progress { margin: 0; color: var(--oq-helper-soft); font-size: 0.84rem; }
+.oq-house-learning-actions { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--oq-helper-line); }
 
 .oq-house-learning-sources .oq-settings-system-row {
   min-width: 0;
@@ -101,7 +116,6 @@
 }
 
 @media (max-width: 980px) {
-  .oq-house-learning-summary,
   .oq-house-learning-model,
   .oq-house-learning-sources,
   .oq-house-learning-water {
@@ -110,7 +124,11 @@
 }
 
 @media (max-width: 640px) {
-  .oq-house-learning-summary,
+  .oq-house-learning-current-head { flex-direction: column; gap: 10px; }
+  .oq-house-learning-count { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; text-align: left; }
+  .oq-house-learning-count strong { font-size: 1.1rem; }
+
+  .oq-house-learning-parameters,
   .oq-house-learning-model,
   .oq-house-learning-sources,
   .oq-house-learning-water {

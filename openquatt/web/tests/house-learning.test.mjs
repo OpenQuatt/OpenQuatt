@@ -506,8 +506,8 @@ test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
   assert.match(markup, /Warmteverlies \(U\)[\s\S]*196,3 W\/K/);
   assert.match(markup, /Warmteopslag \(C\)[\s\S]*4\.803,5 Wh\/K/);
   assert.doesNotMatch(markup, /Nog geen metingen/);
-  assert.ok(markup.indexOf("Warmteverlies (U)") < markup.indexOf("Modeldiagnostiek"));
-  assert.ok(markup.indexOf("Modeldiagnostiek") < markup.indexOf("Warmteverlies per graad (H)"));
+  assert.ok(markup.indexOf("Warmteverlies (U)") < markup.indexOf("Bronnen en technische details"));
+  assert.ok(markup.indexOf("Bronnen en technische details") < markup.indexOf("Warmteverlies per graad (H)"));
 });
 
 test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () => {
@@ -703,6 +703,7 @@ test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen
     houseLearningEnabled: switchEntity(false),
     houseLearningReset: {},
   };
+  state.houseLearningChart = [];
   const markup = renderHouseLearningSettings();
   assert.match(markup, /Passief leren/);
   assert.doesNotMatch(markup, /data-oq-field="houseLearning(?:Hydraulics|Fluid)"/);
@@ -719,6 +720,110 @@ test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen
     assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes(key));
     assert.ok(!markup.includes(`data-oq-field="${key}"`));
   }
+});
+
+test("passief leren verbergt standaard alle meetdetails en beheeracties achter één ingang", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true), houseLearningReset: {} };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true, daily_record_count: 12 }));
+  state.houseLearningChart = null;
+  state.busyAction = "";
+  const collapsed = renderHouseLearningSettings();
+  assert.match(collapsed, /aria-label="Meetgegevens tonen" aria-expanded="false"/);
+  assert.match(collapsed, /Woninglijn uit dagmetingen/);
+  assert.doesNotMatch(collapsed, /data-oq-house-learning-secondary|oq-house-learning-thermal|<details\b|data-oq-action="download-house-learning"|data-oq-entity-action|Warmteverlies \(U\)|Warmteopslag \(C\)/);
+  state.houseLearningChart = [];
+  const html = renderHouseLearningSettings();
+  assert.match(html, /aria-label="Meetgegevens verbergen" aria-expanded="true"/);
+  assert.equal((html.match(/<details\b/g) || []).length, 1);
+  assert.match(html, /data-oq-settings-advanced="house-learning-technical"[\s\S]*Bronnen en technische details/);
+  assert.doesNotMatch(html, /data-oq-settings-advanced="house-learning-model"/);
+  assert.ok(html.indexOf("data-oq-house-learning-status") < html.indexOf("data-oq-house-learning-chart-panel"));
+  assert.ok(html.indexOf("data-oq-house-learning-chart-panel") < html.indexOf("data-oq-house-learning-secondary"));
+  assert.ok(html.indexOf("data-oq-house-learning-secondary") < html.indexOf("<details"));
+  assert.match(html, /role="switch"[\s\S]*data-control-key="houseLearningEnabled"[\s\S]*aria-checked="true"/);
+  assert.match(html, /data-oq-action="download-house-learning"/);
+  assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
+  const closedAgain = renderHouseLearningSettings();
+  assert.doesNotMatch(closedAgain, /data-oq-house-learning-secondary|oq-house-learning-actions|Bronnen en technische details/);
+});
+
+test("de oude leerstatus-uitklapper opent de nieuwe technische details niet vanzelf", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+  state.houseLearningChart = [];
+  const before = state.settingsAdvancedOpen;
+  try {
+    state.settingsAdvancedOpen = { "house-learning-details": true };
+    const details = renderHouseLearningSettings().match(/<details\b[^>]*>/)?.[0];
+    assert.match(details, /house-learning-technical/);
+    assert.doesNotMatch(details, /\bopen\b/);
+  } finally {
+    state.settingsAdvancedOpen = before;
+  }
+});
+
+test("mislukte grafieklading houdt beheer bereikbaar en kan worden gesloten voor een nieuwe poging", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true), houseLearningReset: {} };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+  state.houseLearningChart = null;
+  state.houseLearningChartLoading = false;
+  state.houseLearningChartError = "Meetgegevens niet beschikbaar";
+  const html = renderHouseLearningSettings();
+  assert.match(html, /aria-label="Meetgegevens verbergen" aria-expanded="true"/);
+  assert.match(html, /Meetgegevens niet beschikbaar/);
+  assert.match(html, /data-oq-house-learning-secondary/);
+  assert.match(html, /data-oq-action="download-house-learning"/);
+  assert.match(html, /data-oq-button-key="houseLearningReset"/);
+  assert.doesNotMatch(html, /oq-house-learning-chart-wrap/);
+  assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
+  assert.equal(state.houseLearningChartError, "");
+  const closed = renderHouseLearningSettings();
+  assert.match(closed, /aria-label="Meetgegevens tonen" aria-expanded="false"/);
+  assert.doesNotMatch(closed, /data-oq-house-learning-secondary|oq-house-learning-actions/);
+});
+
+test("de compacte leerschakelaar behoudt de bestaande loading- en schrijfgates", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  state.houseLearningEndpointAvailable = true;
+  const loadingBefore = state.loadingEntities;
+  try {
+    for (const [loading, busy] of [[true, ""], [false, "switch-houseLearningEnabled"], [false, "houseLearningReset"]]) {
+      state.loadingEntities = loading;
+      state.busyAction = busy;
+      const switchTag = renderHouseLearningSettings().match(/<button\b[^>]*role="switch"[^>]*>/)?.[0];
+      assert.ok(switchTag);
+      assert.match(switchTag, /\bdisabled/);
+    }
+  } finally {
+    state.loadingEntities = loadingBefore;
+    state.busyAction = "";
+  }
+});
+
+test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigde polls te renderen", () => {
+  const status = normalizeHouseLearningStatus(statusPayload({ batch_status: "insufficient_spread" }));
+  assert.equal(status.batchStatus, "insufficient_spread");
+  assert.equal(normalizeHouseLearningStatus(statusPayload({ batch_status: undefined })).batchStatus, "unknown");
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  state.houseLearningStatus = status;
+  state.houseLearningEndpointAvailable = true;
+  const statusNode = { innerHTML: "" };
+  const secondaryNode = { innerHTML: "" };
+  let signature;
+  let writes = 0;
+  const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; } };
+  const nodes = { "[data-oq-house-learning-status]": statusNode, "[data-oq-house-learning-secondary]": secondaryNode, "[data-oq-house-learning-chart-panel]": chartNode };
+  state.root = { querySelector: () => ({ querySelector: (selector) => nodes[selector] || null }) };
+  patchHouseLearningSettingsStatus();
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 1);
+  status.batchStatus = "unstable_fit";
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 2);
+  assert.match(secondaryNode.innerHTML, /Bronnen en technische details/);
 });
 
 test("mock biedt de capability alleen voor Q-edition", async () => {
@@ -793,7 +898,7 @@ test("grafiekpatch behoudt meetpuntfocus bij ongewijzigde data en volgt nieuwe f
   let signature;
   let writes = 0;
   const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; } };
-  const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : chartNode };
+  const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : selector === "[data-oq-house-learning-chart-panel]" ? chartNode : null };
   state.root = { querySelector: () => panel };
   patchHouseLearningSettingsStatus();
   patchHouseLearningSettingsStatus();
@@ -865,7 +970,7 @@ test("eerdere onderbreking staat apart van actuele verzameling en geldige bronne
   assert.doesNotMatch(nl, />Ongeldig</);
   assert.match(nl, /Perioden voor opwarmen en afkoelen[\s\S]*>362</);
   assert.match(nl, /Dagmetingen \(24 uur\)[\s\S]*>0</);
-  assert.ok(nl.indexOf("Dagmetingen (24 uur)") < nl.indexOf("Modeldiagnostiek"));
+  assert.ok(nl.indexOf("Dagmetingen (24 uur)") < nl.indexOf("Bronnen en technische details"));
   assert.match(nl, /Verwarmingsgrens \(T₀\)[\s\S]*woninglijn nul raakt; geen inschakelgrens/);
   assert.doesNotMatch(nl, /batch-|Batch /);
 
