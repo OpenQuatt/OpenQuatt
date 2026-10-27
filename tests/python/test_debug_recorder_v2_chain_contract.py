@@ -164,7 +164,7 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         self.assertLessEqual(243, header_capacity - header_system)
 
     def test_power_input_diagnostics_include_model_ids_and_quality(self) -> None:
-        self.assertIn('\\"availableModels\\":{\\"v2Thermal\\":\\"oq-v2-heating-r1\\"', POWER_HOUSE)
+        self.assertIn('\\"availableModels\\":{\\"v2Thermal\\":\\"oq-v2-heating-r2\\"', POWER_HOUSE)
         self.assertIn('\\"v2Input\\":\\"oq-v2-input-r1\\"', POWER_HOUSE)
         self.assertIn("id: ${hp_id}_power_input_quality", HP_IO)
         self.assertIn('name: "${prefix}Power Input quality"', HP_IO)

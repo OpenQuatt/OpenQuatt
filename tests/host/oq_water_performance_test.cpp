@@ -28,13 +28,13 @@ int main() {
   const auto own1 = observed(variants[0], 90, -7, 35.77f);
   const auto own2 = observed(variants[1], 82, -7, 40.75f);
   assert(own1.valid() && own2.valid());
-  assert(std::fabs(own1.thermal_w - 5829.51f) < .1f);
-  assert(std::fabs(own2.thermal_w - 5002.60f) < .1f);
+  assert(std::fabs(own1.thermal_w - 5812.774f) < .1f);
+  assert(std::fabs(own2.thermal_w - 4985.13f) < .1f);
 
   const auto duo = series(variants, {90, 82}, -7, 30, flow);
   assert(duo[0].valid() && duo[1].valid());
-  assert(std::fabs(duo[0].thermal_w + duo[1].thermal_w - 10835.01f) < 2);
-  assert(std::fabs(duo[0].electrical_w + duo[1].electrical_w - 4160.83f) < 2);
+  assert(std::fabs(duo[0].thermal_w + duo[1].thermal_w - 10803.54156f) < 2);
+  assert(std::fabs(duo[0].electrical_w + duo[1].electrical_w - 4136.95535f) < 2);
   for (unsigned hp = 0; hp < 2; ++hp) {
     const float inlet = hp == 0 ? 30 : duo[0].outlet_c;
     assert(std::fabs(capacity * (duo[hp].outlet_c - inlet) - duo[hp].thermal_w) <= 1.0f);
@@ -55,17 +55,31 @@ int main() {
   assert(!solve(variants[0], 90, -7, 30, NAN).valid());
   assert(!solve(variants[0], 90, -7, 100, flow).valid());
 
+  // The initial upper guess crosses 49 C, but the actual F1 root is supported.
+  for (auto variant : variants) {
+    for (const auto point :
+         {std::array<float, 3>{47.2f, 1000, 48.948952f}, {42.5f, 300, 48.402f}, {47.0f, 900, 48.94352f}}) {
+      const auto root = solve(variant, 20, 14.6f, point[0], point[1]);
+      assert(root.valid() && std::fabs(root.outlet_c - point[2]) < .01f);
+      assert(std::fabs(point[1] * 4186 / 3600 * (root.outlet_c - point[0]) - root.thermal_w) <= 1);
+    }
+    // Clipping the search bracket must never invent a root outside the map.
+    assert(!solve(variant, 20, 14.6f, 47.5f, 1000).valid());
+    assert(!solve(variant, 20, 14.6f, 49, 1000).valid());
+  }
+
   for (auto variant : {oq_odu::Variant::V1, oq_odu::Variant::V1_5}) {
     const auto cold = solve(variant, 90, -15, 35, 800);
     assert(cold.valid() && cold.outlet_c > 37 && cold.outlet_c < 39);
     assert(std::fabs(800 * 4186.0f / 3600 * (cold.outlet_c - 35) - cold.thermal_w) <= 1);
   }
   const auto cool_return = solve(variants[0], 30, 7, 15, 300);
-  assert(cool_return.valid() && std::fabs(cool_return.outlet_c - 25.0741f) < .01f);
+  assert(cool_return.valid() && std::fabs(cool_return.outlet_c - 25.06614f) < .01f);
   assert(std::fabs(300 * 4186.0f / 3600 * (cool_return.outlet_c - 15) - cool_return.thermal_w) <= 1);
   assert(!solve(variants[0], 30, 7, 0, 300).valid());
-  const auto hot_return = solve(variants[0], 72, -7, 65, 500);
-  assert(hot_return.valid() && std::fabs(hot_return.outlet_c - 69.94704f) < .01f);
+  assert(!solve(variants[0], 72, -7, 65, 500).valid());  // New envelope caps this region at 60 Hz.
+  const auto hot_return = solve(variants[0], 48, -7, 65, 500);
+  assert(hot_return.valid() && std::fabs(hot_return.outlet_c - 68.13822f) < .01f);
   assert(std::fabs(500 * 4186.0f / 3600 * (hot_return.outlet_c - 65) - hot_return.thermal_w) <= 1);
   assert(solve(variants[0], 90, -7, 10, flow, true).valid());  // Existing cold-start boundary remains usable.
   const Frequency frequency;
@@ -87,7 +101,7 @@ int main() {
     }
   const oq_power_house_dispatch::DispatchTuning limits{6000, 6500};
   const auto pair = oq_power_house_dispatch::make_candidate(in, limits, 10, 15, 8000);
-  assert(pair.valid && std::fabs(pair.thermal_w - 10835.01f) < 2);
+  assert(pair.valid && std::fabs(pair.thermal_w - 10803.54156f) < 2);
   const auto chosen = oq_power_house_dispatch::decide_dispatch(in, limits, {});
   assert(chosen.output_valid && chosen.hp1_level + chosen.hp2_level > 0);
   assert(std::fabs(chosen.expected_w - model.pair(chosen.hp1_level, chosen.hp2_level).thermal_w) < .01f);
