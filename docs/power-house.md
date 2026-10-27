@@ -96,6 +96,11 @@ Belangrijke instellingen:
 
 Samen bepalen die hoe "zwaar" jouw woning aanvoelt voor de regeling.
 
+Het **Nominaal woningvermogen** is een referentie, geen begrenzing. Bij een koude
+referentie van −10 °C, een verwarmingsgrens van 16 °C en 7020 W nominale vraag
+wordt de woningvraag bij −15 °C **8370 W**. Kamercorrectie, opbouw-/afbouwtijd en
+de beschikbare capaciteit en veiligheidsgrenzen blijven van toepassing.
+
 ### 2. Kamercorrectie
 
 Daarna kijkt `Power House` of de kamer te koud, ongeveer goed of te warm is.

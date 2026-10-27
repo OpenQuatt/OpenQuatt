@@ -108,7 +108,7 @@ class Runtime {
         id(oq_water_temp_limit_factor),
         id(external_heat_demand_selected).has_state(),
     };
-    // Capture the legacy envelope once with the manual inputs for this tick.
+    // Capture the reference scales once with the manual inputs for this tick.
     // Future line calibration must not change these control scales.
     const auto envelope = oq_power_house::house_envelope_from_legacy(demand_input.rated_w);
     const oq_power_house::DemandTuning demand_tuning{
@@ -352,16 +352,11 @@ class Runtime {
       next_last_w = std::max(next_last_w, house_requested_w);
       this->fast_floor_w_ = house_requested_w;
       if (std::isfinite(this->warmup_request_w_)) this->warmup_request_w_ = requested_w;
-      const float demand_scale_w = envelope.demand_scale_w;
-      if (std::isfinite(demand_scale_w) && demand_scale_w > 0.0f && config.demand_max_f > 0)
-        raw_demand = std::max(
-            raw_demand, std::min(config.demand_max_f,
-                                 static_cast<int>(std::ceil(requested_w * config.demand_max_f / demand_scale_w))));
-      if (std::isfinite(demand_scale_w) && demand_scale_w > 0.0f && config.demand_max_f > 0)
-        house_raw_demand =
-            std::max(house_raw_demand,
-                     std::min(config.demand_max_f,
-                              static_cast<int>(std::ceil(house_requested_w * config.demand_max_f / demand_scale_w))));
+      raw_demand = std::max(
+          raw_demand, oq_power_house::ceil_demand_level(requested_w, envelope.demand_scale_w, config.demand_max_f));
+      house_raw_demand =
+          std::max(house_raw_demand,
+                   oq_power_house::ceil_demand_level(house_requested_w, envelope.demand_scale_w, config.demand_max_f));
     } else if (applied_total == 0) {
       this->fast_floor_w_ = 0.0f;
     }
@@ -444,12 +439,9 @@ class Runtime {
       effective_raw_demand = 0;
     } else if (run_ext_decision.floor_active) {
       effective_requested_w = std::max(base_requested_w, run_ext_decision.floor_w);
-      const float rated_tmp_w = id(house_rated_power_w).state;
-      if (std::isfinite(rated_tmp_w) && rated_tmp_w > 0.0f && config.demand_max_f > 0)
-        effective_raw_demand =
-            std::max(base_raw_demand,
-                     std::min(config.demand_max_f,
-                              static_cast<int>(std::ceil(effective_requested_w * config.demand_max_f / rated_tmp_w))));
+      effective_raw_demand = std::max(
+          base_raw_demand,
+          oq_power_house::ceil_demand_level(effective_requested_w, envelope.demand_scale_w, config.demand_max_f));
     }
     this->run_ext_effective_w_ = effective_requested_w;
     requested_w = effective_requested_w;
@@ -467,8 +459,8 @@ class Runtime {
     const int capped_demand =
         std::min(raw_demand, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
     const float demand_scale_w = envelope.demand_scale_w;
-    if (std::isfinite(requested_w) && std::isfinite(demand_scale_w) && demand_scale_w > 0.0f && config.demand_max_f > 0)
-      requested_w = std::min(requested_w, demand_scale_w * static_cast<float>(capped_demand) / config.demand_max_f);
+    requested_w =
+        oq_power_house::power_capped_request_w(requested_w, capped_demand, config.demand_max_f, demand_scale_w);
     dispatch_input.demand_level = capped_demand;
     dispatch_input.requested_w = requested_w;
     if (warming) warmup_power.after_caps_w = requested_w;
@@ -504,10 +496,8 @@ class Runtime {
     const int base_capped_demand =
         std::min(house_raw_demand, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
     float base_capped_w = house_requested_w;
-    if (std::isfinite(base_capped_w) && std::isfinite(demand_scale_w) && demand_scale_w > 0.0f &&
-        config.demand_max_f > 0)
-      base_capped_w =
-          std::min(base_capped_w, demand_scale_w * static_cast<float>(base_capped_demand) / config.demand_max_f);
+    base_capped_w =
+        oq_power_house::power_capped_request_w(base_capped_w, base_capped_demand, config.demand_max_f, demand_scale_w);
     const float house_deficit_w = oq_power_house_run_extension::compute_house_deficit_w(
         base_capped_w, dispatch.capacity_w, dispatch.output_valid,
         std::isfinite(this->warmup_request_w_) ? NAN : dispatch.deficit_w);

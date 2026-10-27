@@ -45,8 +45,7 @@ struct WarmupBoost {
 // structural HouseLine and existing room feedback. Adaptive control is not
 // implemented: adaptive_w remains zero and has no setter or persistent state.
 struct DemandContributions {
-  // Input to the composition path. The legacy adapter preserves its historical
-  // base clipping; house_line_power_w() exposes the uncapped structural line.
+  // Structural house need before room feedback and installation limits.
   float modelled_base_w = NAN;
   float selected_feedforward_w = NAN;
   float adaptive_w = 0.0f;
@@ -82,16 +81,18 @@ inline float modelled_house_power_w(float zero_power_temp_c, float cold_temp_c, 
       rated_power_w <= 0.0f || !(zero_power_temp_c > cold_temp_c)) {
     return NAN;
   }
-  const float load = clamp_power((zero_power_temp_c - outside_temp_c) / (zero_power_temp_c - cold_temp_c), 0.0f, 1.0f);
-  return rated_power_w * load;
+  const float load = (zero_power_temp_c - outside_temp_c) / (zero_power_temp_c - cold_temp_c);
+  if (!isfinite(load)) return NAN;
+  const float watts = rated_power_w * fmaxf(0.0f, load);
+  return isfinite(watts) ? watts : NAN;
 }
 inline Feedforward select_feedforward(float modelled_power_w, float external_power_w, bool external_valid,
-                                      float rated_power_w) {
+                                      float request_max_w) {
   Feedforward result{modelled_power_w, false};
-  if (!external_valid || !isfinite(external_power_w) || !isfinite(rated_power_w) || rated_power_w <= 0.0f) {
+  if (!external_valid || !isfinite(external_power_w) || !isfinite(request_max_w) || request_max_w <= 0.0f) {
     return result;
   }
-  result.house_power_w = clamp_power(external_power_w, 0.0f, rated_power_w);
+  result.house_power_w = clamp_power(external_power_w, 0.0f, request_max_w);
   result.external = true;
   return result;
 }
@@ -108,6 +109,24 @@ inline CadenceDecision decide_cadence(uint32_t now_ms, uint32_t last_ms, uint32_
   const uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - last_ms);
   if (elapsed_ms < target_ms) return {};
   return {true, static_cast<float>(elapsed_ms) / 1000.0f};
+}
+// Saturate before converting requests above the reference scale to a level.
+inline int ceil_demand_level(float requested_w, float demand_scale_w, int demand_max) {
+  if (!isfinite(requested_w) || requested_w <= 0.0f || !isfinite(demand_scale_w) || demand_scale_w <= 0.0f ||
+      demand_max <= 0)
+    return 0;
+  const float scaled = demand_max * (requested_w / demand_scale_w);
+  return scaled >= static_cast<float>(demand_max) ? demand_max : static_cast<int>(ceilf(scaled));
+}
+// A full normalized demand is not a watt ceiling. Lower levels retain the
+// existing power-limiter conversion, including a zero-level stop.
+inline float power_capped_request_w(float requested_w, int capped_demand, int demand_max, float demand_scale_w) {
+  if (!isfinite(requested_w) || requested_w < 0.0f || !isfinite(demand_scale_w) || demand_scale_w <= 0.0f ||
+      demand_max <= 0)
+    return NAN;
+  if (capped_demand <= 0) return 0.0f;
+  if (capped_demand >= demand_max) return requested_w;
+  return fminf(requested_w, demand_scale_w * static_cast<float>(capped_demand) / demand_max);
 }
 // Shared control path. Only the feedforward line may differ; the installation
 // envelope owns clipping, normalization and slew independently of that line.

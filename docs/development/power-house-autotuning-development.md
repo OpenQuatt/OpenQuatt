@@ -21,9 +21,9 @@ Legacy controllerplatforms zijn sinds #681 verwijderd. Passief leren wordt daaro
 - `HouseLine`: `heat_loss_w_per_k` en `zero_power_temp_c`.
 - `PowerHouseEnvelope`: `request_max_w`, `demand_scale_w` en `slew_scale_w`.
 
-De ongeclipte woninglijn is `max(0, H * (T0 - Tout))`. `Tc` blijft de representatiecoördinaat; `Pr = H * (T0 - Tc)`. Een geleerd ander lijnpunt verandert geen envelope. Handmatige legacy-invoer behoudt de oude betekenis: het ingestelde `Pr` vult alle drie envelopewaarden.
+De ongeclipte woninglijn is `max(0, H * (T0 - Tout))`. `Tc` blijft de representatiecoördinaat; `Pr = H * (T0 - Tc)`. Een geleerd ander lijnpunt verandert geen envelope. Handmatige invoer gebruikt `Pr` als demand- en slewschaal, zonder request-cap op `Pr`.
 
-Het legacy-pad behoudt bewust de oude volgorde van delen, clippen en vermenigvuldigen. Eerst `H` uitrekenen kan bij halve demand-levels een andere afronding geven. De bevroren C++ baselinevergelijking controleert daarom behalve watts ook exact de discrete demand-uitvoer, flags en timestamps.
+Het handmatige pad deelt eerst en vermenigvuldigt daarna, met alleen een ondergrens van nul. Eerst `H` uitrekenen kan bij halve demand-levels een andere afronding geven. De bevroren C++ baselinevergelijking controleert de ongewijzigde bedrijfssituaties; gerichte regressies bewaken de doorlopende woningvraag, dispatch en tekortberekening.
 
 ```text
 HouseLine                  geselecteerde externe feedforward
@@ -39,7 +39,7 @@ HouseLine                  geselecteerde externe feedforward
          bestaande dispatch en supervisory
 ```
 
-`DemandContributions` maakt `modelled_base_w`, `selected_feedforward_w`, `adaptive_w` en `room_feedback_w` afzonderlijk beschikbaar. `modelled_base_w` behoudt in het legacy-pad de historische basisclipping; `house_line_power_w()` geeft de ongeclipte structurele lijn. `adaptive_w` is in deze bouwstap altijd nul. Het samenvoegpunt staat vóór de bestaande regellimieten. Er bestaat geen adaptive instelling, toestand, actuatorpad of modelwrite.
+`DemandContributions` maakt `modelled_base_w`, `selected_feedforward_w`, `adaptive_w` en `room_feedback_w` afzonderlijk beschikbaar. `modelled_base_w` geeft de structurele woningvraag vóór kamerfeedback en installatiegrenzen, ook boven `Pr`. `adaptive_w` is in deze bouwstap altijd nul. Het samenvoegpunt staat vóór de bestaande regellimieten. Er bestaat geen adaptive instelling, toestand, actuatorpad of modelwrite.
 
 De conceptuele som `P_base + P_adaptive + P_room` is geen vervanging voor bronkeuze, clipping of veiligheidslogica. Externe feedforward blijft zijn bestaande betekenis houden; een toekomstige adaptive laag krijgt daarvoor een expliciet uitsluitcontract. De learner krijgt geen toegang tot `ph_kp_w_per_k`, comfort memory, rise/fall-state, compressorlevels of dispatchkeuzes.
 

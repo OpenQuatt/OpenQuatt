@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "../../openquatt/includes/control/oq_power_house_dispatch_logic.h"
+#include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
+#include "../../openquatt/includes/control/oq_power_house_run_extension_logic.h"
 
 namespace {
 using namespace oq_power_house_dispatch;
@@ -18,6 +20,27 @@ HpInput hp(int previous = 0, bool available = true) {
 }
 DispatchInput input(bool duo = false) { return {60000, 3, 3000.0f, duo, true, true, hp(), hp()}; }
 DispatchTuning tuning() { return {9000.0f, 10000.0f, 5.0f, 150.0f, 450.0f, 6, 1}; }
+void test_cold_weather_request_reaches_dispatch_and_deficit() {
+  const oq_power_house::DemandInput demand_input{60000U, -15, -10, 16, 7020, 20, 20, NAN, 1, false};
+  const oq_power_house::DemandTuning demand_tuning{0.5f, 3000, 0.1f, 0.3f, 10, 5, 20};
+  const auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, {});
+  for (bool duo : {false, true}) {
+    auto in = input(duo);
+    in.demand_level = demand.raw_demand;
+    in.requested_w = oq_power_house::power_capped_request_w(demand.requested_w, in.demand_level, 20, 7020);
+    assert(fabsf(in.requested_w - 8370.0f) < 0.01f);
+    auto out = decide_dispatch(in, tuning(), {});
+    assert(out.output_valid && out.expected_w > 7020.0f && out.deficit_w == 0.0f);
+    // An actual electrical constraint still limits the available candidates.
+    auto limits = tuning();
+    limits.soft_limit_w = limits.peak_limit_w = 700.0f;
+    out = decide_dispatch(in, limits, {});
+    assert(out.output_valid && out.capacity_w == 7000.0f && fabsf(out.deficit_w - 1370.0f) < 0.01f);
+    const float deficit = oq_power_house_run_extension::compute_house_deficit_w(in.requested_w, out.capacity_w,
+                                                                                out.output_valid, out.deficit_w);
+    assert(fabsf(deficit - 1370.0f) < 0.01f);
+  }
+}
 void expect_safe(const DispatchDecision& out, const DispatchInput& in, const DispatchTuning& cfg) {
   assert(out.hp1_level >= 0 && out.hp1_level <= kMaxLevel && out.hp2_level >= 0 && out.hp2_level <= kMaxLevel);
   assert((in.duo || out.hp2_level == 0) && out.owner_hp == owner(out.hp1_level, out.hp2_level));
@@ -297,6 +320,7 @@ void test_duo_holds_and_boost() {
 }
 }  // namespace
 int main() {
+  test_cold_weather_request_reaches_dispatch_and_deficit();
   test_actuator_hold_constrains_owner_swap();
   test_timing_and_matrix();
   test_performance_supply_fallback();

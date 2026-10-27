@@ -698,8 +698,9 @@ void test_power_house_memory_roundtrip_and_current_inputs() {
   assert(oq_power_house::decide_demand(input, tuning, retained).requested_w == 0.0f);
   input.water_limit_factor = 1.0f;
   input.rated_w = 750.0f;
-  const auto current_limit = oq_power_house::decide_demand(input, tuning, retained);
-  assert(current_limit.valid && current_limit.requested_w <= 750.0f);
+  const auto current_scale = oq_power_house::decide_demand(input, tuning, retained);
+  // A changed reference rescales slew; it must not clip the retained watts.
+  assert(current_scale.valid && current_scale.requested_w > 1499.0f && current_scale.requested_w <= restored.last_w);
   input.room_c = NAN;
   assert(!oq_power_house::decide_demand(input, tuning, retained).valid);
   assert(consume_record(storage, context, &hp1, &hp2, &resume));

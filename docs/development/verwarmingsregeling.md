@@ -53,13 +53,13 @@ De handmatige woninglijn gebruikt `Tc` (`House cold temp`), `T0`
 
 ```text
 H = Pr / (T0 - Tc)                         [W/K]
-P_model = Pr × clamp((T0 - Tout)/(T0 - Tc), 0, 1)
+P_model = Pr × max(0, (T0 - Tout)/(T0 - Tc))
 ```
 
-De actieve legacyberekening begrenst de belastingfractie vóór vermenigvuldiging.
-Behoud die volgorde bij refactors: een andere rekenvolgorde kan anders afronden
-bij de latere demandnormalisatie. De structurele `HouseLine` en de regelgrenzen
-in `PowerHouseEnvelope` hebben aparte verantwoordelijkheden.
+`Pr` bepaalt de demand- en slewschaal, geen bovengrens: onder `Tc` loopt de lijn
+door. Behoud de volgorde van delen en vermenigvuldigen vanwege demandafronding.
+De structurele `HouseLine` en de regelgrenzen in `PowerHouseEnvelope` hebben
+aparte verantwoordelijkheden.
 
 Een geldige externe warmtevraag kan het modeldeel vervangen. Kamerfeedback,
 opbouw-/afbouwbegrenzing, waterlimieten en dispatch blijven daarna actief.
@@ -97,6 +97,9 @@ De som van feedforward en kamerfeedback wordt begrensd door de
 installatie-envelope en de ingestelde opbouw-/afbouwtijd. De waterlimitfactor
 reduceert de effectieve vraag. De dispatcher zoekt vervolgens een toegestane
 HP-combinatie die deze vraag kan leveren.
+
+Bij volle demand (20) blijven watts boven `Pr` behouden voor dispatch en
+tekortberekening. Lagere stroomcaps blijven een wattgrens; nul blijft een stop.
 
 Bij een bevestigde kamer- of setpointverhogingsvraag kan startondersteuning het
 laagste geschikte vermogen vragen terwijl de gewone wattsvraag nog oploopt.

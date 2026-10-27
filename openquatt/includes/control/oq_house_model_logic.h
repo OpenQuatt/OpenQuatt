@@ -1,5 +1,6 @@
 #pragma once
 
+#include <float.h>
 #include <math.h>
 
 namespace oq_power_house {
@@ -34,9 +35,9 @@ inline HouseLine house_line_from_legacy(float cold_c, float zero_power_c, float 
   return valid_house_line(line) ? line : HouseLine{};
 }
 
-// A manual legacy edit retains its existing scale/cap semantics. A fitted line
-// must never be passed here to derive a new control envelope.
-inline PowerHouseEnvelope house_envelope_from_legacy(float rated_w) { return {rated_w, rated_w, rated_w}; }
+// The manual reference power sets normalization and slew, not a request ceiling.
+// A fitted line must never be used to change those control scales.
+inline PowerHouseEnvelope house_envelope_from_legacy(float rated_w) { return {FLT_MAX, rated_w, rated_w}; }
 
 inline float house_line_power_w(const HouseLine& line, float outside_c) {
   if (!valid_house_line(line) || !isfinite(outside_c)) return NAN;

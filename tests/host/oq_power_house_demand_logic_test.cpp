@@ -13,13 +13,14 @@ void test_model_and_feedforward() {
   struct ModelCase {
     float outside_c, expected_w;
   };
-  const ModelCase models[] = {{21.0f, 0.0f}, {16.0f, 0.0f}, {3.0f, 3000.0f}, {-10.0f, 6000.0f}, {-20.0f, 6000.0f}};
+  const ModelCase models[] = {{21.0f, 0.0f}, {16.0f, 0.0f}, {3.0f, 3000.0f}, {-10.0f, 6000.0f}, {-20.0f, 8307.692f}};
   for (const auto& test : models)
     assert(near(modelled_house_power_w(16.0f, -10.0f, test.outside_c, 6000.0f), test.expected_w));
   assert(isnan(modelled_house_power_w(16.0f, -10.0f, NAN, 6000.0f)));
   assert(isnan(modelled_house_power_w(16.0f, -10.0f, 3.0f, 0.0f)));
   assert(isnan(modelled_house_power_w(16.0f, 16.0f, 3.0f, 6000.0f)));
   assert(isnan(modelled_house_power_w(-10.0f, 16.0f, 3.0f, 6000.0f)));
+  assert(isnan(modelled_house_power_w(16.0f, -10.0f, -FLT_MAX, 7020.0f)));
   struct FeedCase {
     float external_w, rated_w, expected_w;
     bool present, external;
@@ -33,6 +34,27 @@ void test_model_and_feedforward() {
     const auto result = select_feedforward(2500.0f, test.external_w, test.present, test.rated_w);
     assert(result.external == test.external && near(result.house_power_w, test.expected_w));
   }
+}
+void test_cold_weather_exceeds_reference_power() {
+  auto in = input();
+  in.rated_w = 7020.0f;
+  in.outside_c = -15.0f;
+  assert(near(modelled_house_power_w(16.0f, -10.0f, -15.0f, 7020.0f), 8370.0f));
+  const auto cold = decide_demand(in, tuning(), {});
+  assert(cold.valid && near(cold.requested_w, 8370.0f) && cold.raw_demand == 20);
+  // Preserve demand above Pr and the existing rise rate on subsequent ticks.
+  in.now_ms += 60000U;
+  assert(near(decide_demand(in, tuning(), cold.next).requested_w, 8370.0f));
+  assert(near(decide_demand(in, tuning(), {7020, cold.next.last_ms, 0}).requested_w, 7722.0f));
+  in.water_limit_factor = 0.5f;
+  const auto water = decide_demand(in, tuning(), {});
+  assert(water.valid && near(water.requested_w, 4185.0f) && water.raw_demand == 12);
+}
+void test_normalized_demand_and_explicit_power_caps() {
+  assert(ceil_demand_level(FLT_MAX, FLT_MIN, 20) == 20);
+  assert(near(power_capped_request_w(8370.0f, 20, 20, 7020.0f), 8370.0f));
+  assert(near(power_capped_request_w(8370.0f, 10, 20, 7020.0f), 3510.0f));
+  assert(power_capped_request_w(8370.0f, 0, 20, 7020.0f) == 0.0f);
 }
 void test_cache_and_cadence_rollover() {
   constexpr uint32_t hold_ms = 300000U;
@@ -180,6 +202,8 @@ void test_comfort_warm_edge_and_recovery_boundary() {
 }  // namespace
 int main() {
   test_model_and_feedforward();
+  test_cold_weather_exceeds_reference_power();
+  test_normalized_demand_and_explicit_power_caps();
   test_cache_and_cadence_rollover();
   test_demand_finite_contract();
   test_demand_slew_and_limits();

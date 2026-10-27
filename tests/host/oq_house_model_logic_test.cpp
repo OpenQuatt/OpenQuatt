@@ -16,13 +16,13 @@ void equivalent_reference_points() {
     assert(near(house_line_power_w(first, outside), house_line_power_w(second, outside)));
   assert(near(house_line_power_w(first, -7.0f), 6210.0f));
   assert(near(house_line_reference_power_w(first, -5.0f), 5670.0f));
-  assert(near(modelled_house_power_w(16.0f, -5.0f, -7.0f, 5670.0f), 5670.0f));
+  assert(near(modelled_house_power_w(16.0f, -5.0f, -7.0f, 5670.0f), 6210.0f));
 }
 
 void line_does_not_own_envelope() {
   const DemandTuning tuning{0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20};
   DemandInput in{60001U, -10.0f, -10.0f, 16.0f, 6000.0f, 18.0f, 20.0f, NAN, 1.0f, false};
-  const auto envelope = house_envelope_from_legacy(6000.0f);
+  const PowerHouseEnvelope envelope{6000.0f, 6000.0f, 6000.0f};
   // Both lines retain the full warm-up request and exactly the same slew scale.
   for (const HouseLine line : {HouseLine{100.0f, 16.0f}, HouseLine{270.0f, 16.0f}}) {
     const auto start = decide_demand_with_line(in, tuning, {}, line, envelope);
