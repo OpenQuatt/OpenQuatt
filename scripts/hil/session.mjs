@@ -9,7 +9,9 @@ import { waitValue } from './wait.mjs';
 export const SNAPSHOT_SCHEMA = 3;
 
 export const controllerSettings = [
+  { key: 'enabled', domain: 'switch', name: 'OpenQuatt Enabled', kind: 'switch' },
   { key: 'cmOverride', domain: 'select', name: 'CM Override', kind: 'select' },
+  { key: 'silentMode', domain: 'select', name: 'Silent Mode Override', kind: 'select' },
   { key: 'cicPolling', domain: 'switch', name: 'CIC - Enable polling', kind: 'switch' },
   { key: 'otEnabled', domain: 'switch', name: 'OpenTherm Enabled', kind: 'switch' },
   { key: 'waterSupplySource', domain: 'select', name: 'Water Supply Source', kind: 'select' },
@@ -24,6 +26,19 @@ export const controllerSettings = [
   { key: 'heatingMode', domain: 'select', name: 'Heating Control Mode', kind: 'select' },
   { key: 'phReaction', domain: 'number', name: 'Power House temperature reaction', kind: 'number' },
   { key: 'phRise', domain: 'number', name: 'Power House demand rise time', kind: 'number' },
+  { key: 'phFall', domain: 'number', name: 'Power House demand fall time', kind: 'number' },
+  { key: 'phComfortBelow', domain: 'number', name: 'Power House comfort below setpoint', kind: 'number' },
+  { key: 'phComfortAbove', domain: 'number', name: 'Power House comfort above setpoint', kind: 'number' },
+  { key: 'phExtension', domain: 'switch', name: 'Power House run extension', kind: 'switch' },
+  { key: 'controlledWarmup', domain: 'switch', name: 'Controlled warmup enabled', kind: 'switch' },
+  { key: 'phExtensionStop', domain: 'number', name: 'Power House run extension stop margin', kind: 'number' },
+  { key: 'phExtensionCooldown', domain: 'number', name: 'Power House run extension restart cooldown', kind: 'number' },
+  { key: 'minimumRuntime', domain: 'number', name: 'Minimum runtime', kind: 'number' },
+  { key: 'maximumHeatingOutside', domain: 'number', name: 'Maximum heating outdoor temperature', kind: 'number' },
+  { key: 'hp1ExcludeMin', domain: 'number', name: 'HP1 - Excluded frequency minimum', kind: 'number' },
+  { key: 'hp1ExcludeMax', domain: 'number', name: 'HP1 - Excluded frequency maximum', kind: 'number' },
+  { key: 'hp2ExcludeMin', domain: 'number', name: 'HP2 - Excluded frequency minimum', kind: 'number' },
+  { key: 'hp2ExcludeMax', domain: 'number', name: 'HP2 - Excluded frequency maximum', kind: 'number' },
   { key: 'flowSource', domain: 'select', name: 'Flow Source', kind: 'select' },
   { key: 'outdoorFlowMode', domain: 'select', name: 'Outdoor Unit Flow Mode', kind: 'select' },
   { key: 'flowMode', domain: 'select', name: 'Flow Control Mode', kind: 'select' },
@@ -38,6 +53,10 @@ export const simulatorSettings = [
   { key: 'hp1Address', domain: 'number', name: 'ODU 1 Modbus address (pending)', kind: 'number' },
   { key: 'hp2Address', domain: 'number', name: 'ODU 2 Modbus address (pending)', kind: 'number' },
   { key: 'externalFlow', domain: 'switch', name: 'ODU external system pump flow', kind: 'switch' },
+  { key: 'hp1Outside', domain: 'number', name: 'ODU 1 outside temperature', kind: 'number' },
+  { key: 'hp2Outside', domain: 'number', name: 'ODU 2 outside temperature', kind: 'number' },
+  { key: 'hp1WaterIn', domain: 'number', name: 'ODU 1 water-in temperature', kind: 'number' },
+  { key: 'hp2WaterIn', domain: 'number', name: 'ODU 2 water-in temperature', kind: 'number' },
   { key: 'hp1NoFlow', domain: 'switch', name: 'ODU 1 force no flow', kind: 'switch' },
   { key: 'hp2NoFlow', domain: 'switch', name: 'ODU 2 force no flow', kind: 'switch' },
   { key: 'hp1Defrost', domain: 'switch', name: 'ODU 1 defrost', kind: 'switch' },
@@ -228,7 +247,9 @@ export async function restoreSettings({
   );
   await attempt('wait for safe CM0', () =>
     waitValue(controller, 'text_sensor', 'Control Mode', 'CM0', 'safe CM0 before restore', {
-      timeoutMs: 50000,
+      // A requested CM0 still respects the production minimum runtime and
+      // hydraulic run-down. Do not time out recovery during that safe hold.
+      timeoutMs: 480000,
     }),
   );
 

@@ -282,6 +282,7 @@ class Runtime {
       dispatch_input.pair_context = &model;
     }
     float minimum_viable_w = NAN;
+    int minimum_viable_level = 0;
     const auto include_minimum = [&](const oq_power_house_dispatch::HpInput& hp) {
       if (!oq_hp_candidate::may_serve_candidate(hp.candidate)) return;
       for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
@@ -289,8 +290,11 @@ class Runtime {
         if (!estimate.allowed || !estimate.thermal_valid || !std::isfinite(estimate.thermal_w) ||
             estimate.thermal_w <= 0.0f)
           continue;
-        minimum_viable_w =
-            std::isfinite(minimum_viable_w) ? std::min(minimum_viable_w, estimate.thermal_w) : estimate.thermal_w;
+        if (!std::isfinite(minimum_viable_w) || estimate.thermal_w < minimum_viable_w ||
+            (estimate.thermal_w == minimum_viable_w && level < minimum_viable_level)) {
+          minimum_viable_w = estimate.thermal_w;
+          minimum_viable_level = level;
+        }
         break;
       }
     };
@@ -406,6 +410,7 @@ class Runtime {
     run_ext_input.setpoint_c = setpoint_c;
     run_ext_input.base_requested_w = base_requested_w;
     run_ext_input.minimum_viable_w = minimum_viable_w;
+    run_ext_input.minimum_viable_level = minimum_viable_level;
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
         run_ext_input, {stop_margin_c, id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c},

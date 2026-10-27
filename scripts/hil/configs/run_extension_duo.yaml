@@ -1,0 +1,31 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Power House run extension / Q Duo
+# ==============================================================================
+# Uses production start/stop timers and real ODU feedback. The CIC fixture only
+# supplies a deterministic water-supply measurement; it does not bypass guards.
+packages:
+  hil_v2_performance: !include v2_performance_duo.yaml
+
+# Keep normal and test build caches independent during automatic recovery.
+esphome:
+  build_path: ../../../../.esphome/build/heatpump_controller_q_duo_run_extension_hil
+
+text_sensor:
+  - id: !extend oq_hil_test_profile
+    lambda: |-
+      return {"run-extension-v1"};
+
+sensor:
+  - platform: template
+    name: "HIL HP1 minimum-runtime remaining"
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      const uint32_t started_ms = id(hp1_last_real_heat_start_ms);
+      if (started_ms == 0) return NAN;
+      const uint32_t minimum_ms = 1000UL * oq_request::minimum_runtime_seconds(
+          id(oq_min_runtime_min).has_state(), id(oq_min_runtime_min).state,
+          ${oq_hp_min_runtime_min_s});
+      const uint32_t elapsed_ms = millis() - started_ms;
+      return elapsed_ms < minimum_ms ? (minimum_ms - elapsed_ms) / 1000.0f : 0.0f;

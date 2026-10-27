@@ -30,6 +30,7 @@ struct Input {
   float setpoint_c = NAN;
   float base_requested_w = 0.0f;
   float minimum_viable_w = NAN;
+  int minimum_viable_level = 0;
   float water_limit_factor = NAN;
 };
 
@@ -43,6 +44,7 @@ struct State {
   Phase phase = Phase::INACTIVE;
   float last_setpoint_c = NAN;
   bool cycle_armed = false;
+  bool stop_at_setpoint = false;
 };
 
 struct Decision {
@@ -97,7 +99,18 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   Decision out;
   const float stop_margin_c = std::isfinite(tuning.stop_margin_c) ? tuning.stop_margin_c : 0.5f;
   const float hysteresis_c = std::isfinite(tuning.restart_cooldown_c) ? tuning.restart_cooldown_c : kRestartHysteresisC;
-  const float comfort_stop_c = std::isfinite(in.setpoint_c) ? in.setpoint_c + stop_margin_c : NAN;
+  // Extra heat above the room target is only useful at the lowest physical
+  // level. A higher minimum (e.g. V2 old F3 from 14 C) may still serve real
+  // demand, but must not fill the optional extension margin at that power.
+  // Retain the earlier stop through spin-down and restart waiting, including
+  // loss of Pmin or a return to F1, so neither can bypass its hysteresis.
+  const bool comfort_hold = state.phase == Phase::COMFORT_STOP || state.phase == Phase::WAIT_WARM_RESTART ||
+                            state.phase == Phase::WARM_RESTART;
+  const bool elevated_minimum = in.minimum_viable_level > 1 && pmin_valid(in.minimum_viable_w) &&
+                                std::isfinite(in.base_requested_w) && in.base_requested_w < in.minimum_viable_w;
+  const bool stop_at_setpoint = elevated_minimum || (state.stop_at_setpoint && comfort_hold);
+  const float comfort_stop_c =
+      std::isfinite(in.setpoint_c) ? in.setpoint_c + (stop_at_setpoint ? 0.0f : stop_margin_c) : NAN;
   const float cold_edge_c = oq_heat_intent::room_cold_edge_c(in.setpoint_c, tuning.room_resume_delta_c);
   // Extension may delay a restart inside the comfort zone, never below its cold edge.
   const float warm_restart_c = std::isfinite(comfort_stop_c) && std::isfinite(cold_edge_c)
@@ -114,10 +127,12 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   const bool setpoint_drop = std::isfinite(in.setpoint_c) && std::isfinite(state.last_setpoint_c) &&
                              (in.setpoint_c < state.last_setpoint_c - 0.01f);
   State next = state;
+  next.stop_at_setpoint = stop_at_setpoint;
 
   if (!in.enabled) {
     next.phase = Phase::INACTIVE;
     next.cycle_armed = false;
+    next.stop_at_setpoint = false;
     if (std::isfinite(in.setpoint_c)) next.last_setpoint_c = in.setpoint_c;
     out.next = next;
     return out;
@@ -134,12 +149,13 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   // Fail closed on stale/invalid inputs or when heating is no longer permitted.
   // Cancel extra heat, but retain an existing comfort stop across input loss.
   if (!in.inputs_valid || !in.heating_allowed) {
-    const bool comfort_hold = state.phase == Phase::COMFORT_STOP || state.phase == Phase::WAIT_WARM_RESTART ||
-                              (setpoint_drop && !in.actual_heating_active);
-    next.phase = comfort_hold ? Phase::WAIT_WARM_RESTART : Phase::INACTIVE;
+    const bool preserve_stop = state.phase == Phase::COMFORT_STOP || state.phase == Phase::WAIT_WARM_RESTART ||
+                               (state.stop_at_setpoint && state.phase == Phase::WARM_RESTART) ||
+                               (setpoint_drop && !in.actual_heating_active);
+    next.phase = preserve_stop ? Phase::WAIT_WARM_RESTART : Phase::INACTIVE;
     if (state.phase == Phase::COMFORT_STOP && in.actual_heating_active) next.phase = Phase::COMFORT_STOP;
     next.cycle_armed = false;
-    out.force_comfort_stop = comfort_hold;
+    out.force_comfort_stop = preserve_stop;
     out.next = next;
     return out;
   }

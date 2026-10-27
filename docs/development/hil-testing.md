@@ -249,6 +249,35 @@ config-validaties controleren respectievelijk de testoverlay en de canonieke
 HIL-entrypoint tegen de actuele firmwarecompositie. De Duo HIL-config wordt ook
 automatisch in CI gevalideerd.
 
+## Power House: langer doorverwarmen bij een hogere minimumstand
+
+De gerichte stage `extension` gebruikt HP1 als V2 old en sluit HP2 via het
+normale frequentiebereik uit van de dispatch. De simulator blijft dynamisch;
+de echte Modbus-frequentie en werkmodus bewijzen de start en stop. De bestaande
+CIC-fixture levert uitsluitend de geselecteerde aanvoertemperatuur.
+
+```bash
+node scripts/hil/run-run-extension.mjs \
+  --controller http://openquatt-test.local \
+  --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config scripts/hil/configs/run_extension_duo.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage extension \
+  --apply
+```
+
+De stage controleert inschakelen tijdens stilstand, doorverwarmen op F1 onder
+14 °C, de eerdere stop bij het setpoint vanaf 14 °C, afkoel-/herstartgrenzen en
+echte warmtevraag boven het minimumvermogen. Productietimers blijven gelden:
+300 seconden minimumlooptijd en 240 seconden minimum-uit-tijd. Reken daarom op
+circa een kwartier, naast compileren en OTA. De gedeelde snapshot en recovery
+bewaren ook de geraakte comfort-, extension-, warmup-, frequentie- en
+simulatortemperatuurinstellingen.
+Recovery wacht in veilige CM0-aanvraag op de minimumlooptijd en hydraulische
+uitloop voordat OTA mag beginnen. Na herstel van de simulatorprofielen herstart
+het scenario de normale controller en bevestigt het ook beide ODU-varianten.
+
 ## Issue #667: V2 performance en Power Input
 
 Dit afzonderlijke scenario gebruikt het volledige V2-model van simulator

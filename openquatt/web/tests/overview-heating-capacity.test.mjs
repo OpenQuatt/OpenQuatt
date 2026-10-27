@@ -35,3 +35,23 @@ test("capaciteitsuitleg wisselt mee naar Engels", () => {
     setLocale("nl");
   }
 });
+
+test("vermogensbijsturing omvat ook langer doorverwarmen en wisselt mee van taal", () => {
+  setup("Power House", 6726);
+  state.entities.phouseHouse = { value: 999 };
+  state.entities.phouseReq = { value: 4001 };
+  try {
+    for (const [locale, label, note, value] of [
+      ["nl", "Vermogensbijsturing", /langer doorverwarmen/, "+3.002 W"],
+      ["en", "Demand adjustment", /extended heating/, "+3,002 W"],
+    ]) {
+      setLocale(locale);
+      const metric = getOverviewStrategySectionModel().metrics[1];
+      assert.equal(metric.label, label);
+      assert.equal(metric.value, value);
+      assert.match(metric.note, note);
+    }
+  } finally {
+    setLocale("nl");
+  }
+});
