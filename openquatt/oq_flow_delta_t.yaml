@@ -23,8 +23,14 @@
 #   - The minimum stays above the low-flow fault threshold plus a margin.
 #   - The maximum also never sits below Quatt's own fixed flow for the version
 #     chosen at installation (Quatt Hybrid version: 800 L/h, V2 1000 L/h).
-#   - Defrost, a low-flow fault or missing temperatures fall back to the normal
-#     Flow Setpoint. When the water temperature protection cuts power, the flow
+#   - A low-flow fault or missing temperatures fall back to the normal Flow
+#     Setpoint. Defrost keeps the flow it had, never less than Flow Setpoint,
+#     because less water would cool the heat exchanger further and slow the
+#     defrost; ten minutes later the cycle restarts from that flow.
+#   - The flow is only capped below the setpoint when the pump runs at full
+#     drive and still falls short. Manual PWM, frost protection, idle and the
+#     service tasks end the cycle; heating afterwards starts with a settle.
+#   - When the water temperature protection cuts power, the flow
 #     goes straight to the maximum first; if the protection is still cutting
 #     power five minutes later, Flow Delta T Warning turns on.
 #   - During an oil return cycle the flow is held where it is: the compressor
@@ -90,14 +96,15 @@ number:
     entity_category: config
 
   # Pacing. The logic keeps each value inside bounds that stay slow and stable
-  # (1-30 min, 10-200 L/h, 0.1-1.0 K), so a bad setting cannot make it hunt.
+  # (2-30 min, 10-200 L/h, 0.1-1.0 K), and ignores the first minute after each
+  # step, so a bad setting cannot make it hunt.
   - platform: template
     id: oq_flow_dt_step_interval_min
     name: "Flow Delta T Step Interval"
     icon: mdi:timer-outline
     unit_of_measurement: "min"
     mode: box
-    min_value: 1
+    min_value: 2
     max_value: 30
     step: 1
     restore_value: true
@@ -170,7 +177,7 @@ binary_sensor:
 
 text_sensor:
   # What the mode is doing and why, which is otherwise opaque: it may be off,
-  # settling after a start, holding the fixed flow during defrost, or parked at
+  # settling after a start, holding the flow during defrost, or parked at
   # a limit.
   - platform: template
     id: oq_flow_dt_status

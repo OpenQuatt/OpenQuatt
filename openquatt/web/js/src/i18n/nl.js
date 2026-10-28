@@ -1022,7 +1022,7 @@ export default {
     flowModeCopy: "Kies tussen een vaste flow, ΔT-regeling (de flow beweegt mee met de warmtevraag) en een vaste pompstand.",
     flowManualTitle: "Vaste pompstand",
     flowManualCopy: "Deze pompstand wordt gebruikt zolang de regeling op handmatig staat.",
-    flowHeatDeltaTCopy: "Start- en terugvalflow voor de ΔT-regeling: hier begint de pomp, en hierheen gaat hij terug bij ontdooien, een flowstoring of ontbrekende temperaturen.",
+    flowHeatDeltaTCopy: "Start- en terugvalflow voor de ΔT-regeling: hier begint de pomp, en hierheen gaat hij terug bij een flowstoring of ontbrekende temperaturen. Bij ontdooien zakt de flow nooit onder deze waarde.",
     flowDeltaTTargetTitle: "Gewenst temperatuurverschil",
     flowDeltaTTargetCopy: "Het verschil tussen water in en uit per draaiende warmtepomp waar de flow naartoe werkt. Bij een Duo telt het gemiddelde.",
     flowDeltaTMinTitle: "Minimale flow",

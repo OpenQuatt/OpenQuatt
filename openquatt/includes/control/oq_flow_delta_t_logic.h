@@ -35,9 +35,10 @@ constexpr float kDefaultDeadbandK = 0.3f;        // ignore differences at sensor
 constexpr uint32_t kSettleMs = 300000u;          // after a start, or a unit joining or leaving
 constexpr uint32_t kDefrostHoldMs = 600000u;     // after any defrost
 constexpr int kMinSamples = 6;                   // at least a minute of 10 s samples per step
+constexpr uint32_t kStepBlankMs = 60000u;        // samples this soon after a step still show the transition
 constexpr float kGain = 0.5f;                    // move half of the gap per step
 constexpr float kLowFlowMarginLph = 50.0f;       // floor kept above the low-flow fault threshold
-constexpr float kShortfallLph = 75.0f;           // flow this far below the setpoint: pump at its limit
+constexpr float kShortfallLph = 75.0f;           // flow this far below the setpoint: pump behind
 constexpr float kCeilingMarginLph = 25.0f;
 constexpr float kMinUsableRiseK = 0.2f;         // below this a sample says nothing about the flow
 constexpr uint32_t kWarnAfterMs = 300000u;      // water limit still cutting power after this at maximum flow
@@ -69,7 +70,7 @@ inline const char* reason_text(Reason reason) {
     case Reason::SETTLING:
       return "Settling";
     case Reason::DEFROST:
-      return "Defrost - fixed flow";
+      return "Defrost - holding flow";
     case Reason::NO_DATA:
       return "No reliable temperatures - fixed flow";
     case Reason::FLOW_FAULT:
@@ -122,6 +123,7 @@ struct Input {
   float deadband_k = kDefaultDeadbandK;
   bool water_limit_active = false;  // water temperature protection is cutting power
   bool flow_fault = false;          // low-flow fault active
+  bool pump_at_full_drive = false;  // the flow PI drives the pump as hard as it can
 };
 
 struct State {
@@ -131,6 +133,7 @@ struct State {
   uint32_t settle_until_ms = 0;
   bool defrost_hold = false;
   uint32_t defrost_until_ms = 0;
+  float defrost_flow_lph = NAN;  // held through a defrost; the next cycle starts here
   uint32_t last_step_ms = 0;
   uint8_t unit_mask = 0;
   int levels[2] = {0, 0};
@@ -173,12 +176,13 @@ struct Pacing {
 
 // The configured pacing, held to bounds that keep the loop slow and stable: a
 // step interval of zero would hunt, a step of zero would freeze, and a dead
-// band under sensor resolution would chase noise. A missing value falls back
-// to its default.
+// band under sensor resolution would chase noise. The shortest interval is the
+// blanking after a step plus a minute of samples. A missing value falls back to
+// its default.
 inline Pacing pacing(const Input& in) {
   Pacing out;
   const float minutes =
-      isfinite(in.step_interval_min) ? clampf(in.step_interval_min, 1.0f, 30.0f) : kDefaultStepIntervalMin;
+      isfinite(in.step_interval_min) ? clampf(in.step_interval_min, 2.0f, 30.0f) : kDefaultStepIntervalMin;
   out.step_interval_ms = static_cast<uint32_t>(minutes * 60000.0f);
   out.max_step_lph = isfinite(in.max_step_lph) ? clampf(in.max_step_lph, 10.0f, 200.0f) : kDefaultMaxStepLph;
   out.deadband_k = isfinite(in.deadband_k) ? clampf(in.deadband_k, 0.1f, 1.0f) : kDefaultDeadbandK;
@@ -230,6 +234,7 @@ inline void reset_cycle(State& state) {
   state.warning = false;
   state.oil_hold = false;
   state.ceiling_lph = NAN;
+  state.defrost_flow_lph = NAN;
   state.unit_mask = 0;
   state.levels[0] = 0;
   state.levels[1] = 0;
@@ -243,6 +248,31 @@ inline Output pass_through(Output out, const Input& in, Reason reason) {
   return out;
 }
 
+// Defrost and the hold after it. The cycle restarts once the hold ends, from
+// the flow held here.
+inline Output hold_for_defrost(Output out, const Input& in) {
+  const float held_lph = isfinite(out.next.defrost_flow_lph) ? out.next.defrost_flow_lph : in.base_setpoint_lph;
+  reset_cycle(out.next);
+  out.next.defrost_flow_lph = held_lph;
+  out.next.reason = Reason::DEFROST;
+  out.setpoint_lph = held_lph;
+  out.controlling = isfinite(held_lph);
+  return out;
+}
+
+// The flow loop took a path that does not use this mode this tick: manual PWM,
+// frost protection, idle or a service task. End the cycle, so the next heating
+// tick starts afresh with a settle instead of resuming on samples, a setpoint
+// and a pump ceiling from before. The pump output stays with that path.
+inline Output stand_aside(const State& state, bool enabled) {
+  Output out;
+  out.next = state;
+  out.next.defrost_hold = false;  // a stale deadline must not outlive the cycle
+  reset_cycle(out.next);
+  out.next.reason = enabled ? Reason::NOT_HEATING : Reason::OFF;
+  return out;
+}
+
 inline Output decide(const Input& in, const State& state) {
   Output out;
   out.next = state;
@@ -251,23 +281,30 @@ inline Output decide(const Input& in, const State& state) {
   out.min_lph = limits.min_lph;
   out.max_lph = limits.max_lph;
 
-  if (!in.enabled) return pass_through(out, in, Reason::OFF);
-  if (!in.heating_mode) return pass_through(out, in, Reason::NOT_HEATING);
+  if (!in.enabled || !in.heating_mode) {
+    // Outside heat pump heating a defrost hold has nothing left to protect, and
+    // its deadline would go stale over a long pause.
+    out.next.defrost_hold = false;
+    return pass_through(out, in, in.enabled ? Reason::NOT_HEATING : Reason::OFF);
+  }
 
   const int units = in.unit_count >= 2 ? 2 : 1;
   bool any_defrost = false;
   for (int i = 0; i < units; ++i) any_defrost = any_defrost || in.units[i].defrost;
+  if (any_defrost && !out.next.defrost_hold) {
+    // Defrost pulls heat back out of the water. Less water would leave the heat
+    // exchanger colder and slow the defrost, so it keeps the flow it had, and
+    // never less than the fixed Flow Setpoint it would get in fixed mode.
+    const bool running = out.next.active && isfinite(out.next.setpoint_lph);
+    out.next.defrost_flow_lph = running ? fmaxf(out.next.setpoint_lph, in.base_setpoint_lph) : in.base_setpoint_lph;
+  }
   if (any_defrost) {
-    // Defrost pulls heat back out of the water, so it gets the known fixed
-    // flow, and the hold restarts the cycle cleanly afterwards.
-    Output held = pass_through(out, in, Reason::DEFROST);
-    held.next.defrost_hold = true;
-    held.next.defrost_until_ms = in.now_ms + kDefrostHoldMs;
-    return held;
+    out.next.defrost_hold = true;
+    out.next.defrost_until_ms = in.now_ms + kDefrostHoldMs;
   }
   if (out.next.defrost_hold) {
-    if (before(in.now_ms, out.next.defrost_until_ms)) return pass_through(out, in, Reason::DEFROST);
-    out.next.defrost_hold = false;
+    if (any_defrost || before(in.now_ms, out.next.defrost_until_ms)) return hold_for_defrost(out, in);
+    out.next.defrost_hold = false;  // never compare against this deadline again
   }
 
   uint8_t mask = 0;
@@ -290,10 +327,13 @@ inline Output decide(const Input& in, const State& state) {
 
   State& next = out.next;
   if (!next.active) {
-    // A new cycle starts from the known fixed flow, then waits for the water
-    // temperatures to mean something before the first step.
+    // A new cycle starts from the known fixed flow, or from the flow a defrost
+    // held, then waits for the water temperatures to mean something before the
+    // first step.
+    const float start_lph = isfinite(next.defrost_flow_lph) ? next.defrost_flow_lph : in.base_setpoint_lph;
+    next.defrost_flow_lph = NAN;
     next.active = true;
-    next.setpoint_lph = clampf(in.base_setpoint_lph, limits.min_lph, limits.max_lph);
+    next.setpoint_lph = clampf(start_lph, limits.min_lph, limits.max_lph);
     next.settling = true;
     next.settle_until_ms = in.now_ms + kSettleMs;
     next.last_step_ms = in.now_ms;
@@ -320,9 +360,10 @@ inline Output decide(const Input& in, const State& state) {
     clear_window(next);
   }
 
-  // The live band may have moved under a running cycle.
-  if (isfinite(next.ceiling_lph) && in.flow_lph > next.ceiling_lph + 2.0f * kCeilingMarginLph)
-    next.ceiling_lph = NAN;  // the installation takes more water again, for instance valves opened
+  // The live band may have moved under a running cycle. A pump with drive to
+  // spare is not at its limit, so the ceiling lifts the moment the PI backs
+  // off, for instance because valves opened.
+  if (isfinite(next.ceiling_lph) && !in.pump_at_full_drive) next.ceiling_lph = NAN;
   const float upper =
       isfinite(next.ceiling_lph) ? fmaxf(limits.min_lph, fminf(limits.max_lph, next.ceiling_lph)) : limits.max_lph;
   next.setpoint_lph = clampf(next.setpoint_lph, limits.min_lph, limits.max_lph);
@@ -393,7 +434,11 @@ inline Output decide(const Input& in, const State& state) {
     if (in.units[i].heating) rise_k += in.units[i].out_c - in.units[i].in_c;
   }
   rise_k /= static_cast<float>(counted);
-  if (rise_k >= kMinUsableRiseK) {
+  // The first minute after a step still shows the transition to the new flow.
+  // Judging the next step on it would stack steps on a half-settled response
+  // and make a fast pacing hunt.
+  const bool after_step = static_cast<uint32_t>(in.now_ms - next.last_step_ms) < kStepBlankMs;
+  if (rise_k >= kMinUsableRiseK && !after_step) {
     next.rise_sum_k += rise_k;
     next.rise_count++;
     for (int i = 0; i < units; ++i) {
@@ -415,10 +460,13 @@ inline Output decide(const Input& in, const State& state) {
   clear_window(next);
   next.last_step_ms = in.now_ms;
 
-  // The pump could not follow the last setpoint: this is the ceiling of this
-  // installation, so stop asking for more instead of winding up.
-  if (next.setpoint_lph - in.flow_lph > kShortfallLph)
-    next.ceiling_lph = fmaxf(limits.min_lph, in.flow_lph + kCeilingMarginLph);
+  // The flow lags the last setpoint. Only a pump the PI already drives as hard
+  // as it can marks the ceiling of this installation; fixed mode could not get
+  // more water through either. With drive to spare the PI is still catching
+  // up, so the flow is not raised further until it has.
+  const bool behind = next.setpoint_lph - in.flow_lph > kShortfallLph;
+  if (behind && in.pump_at_full_drive) next.ceiling_lph = fmaxf(limits.min_lph, in.flow_lph + kCeilingMarginLph);
+  const bool catching_up = behind && !in.pump_at_full_drive;
   const float step_upper =
       isfinite(next.ceiling_lph) ? fmaxf(limits.min_lph, fminf(limits.max_lph, next.ceiling_lph)) : upper;
 
@@ -433,7 +481,7 @@ inline Output decide(const Input& in, const State& state) {
   // would give the target follows directly from the measurement.
   const float desired_lph = in.flow_lph * average_k / in.target_k;
   float step = kGain * (desired_lph - next.setpoint_lph);
-  step = clampf(step, -pace.max_step_lph, pace.max_step_lph);
+  step = clampf(step, -pace.max_step_lph, catching_up ? 0.0f : pace.max_step_lph);
   next.setpoint_lph = clampf(next.setpoint_lph + step, limits.min_lph, step_upper);
 
   if (next.setpoint_lph >= step_upper - 0.5f)

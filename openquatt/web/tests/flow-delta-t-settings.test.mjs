@@ -55,7 +55,7 @@ function seed(mode) {
   state.entities.flowDeltaTTarget = { value: 3, min_value: 2, max_value: 8, step: 0.5, uom: "K" };
   state.entities.flowDeltaTMinFlow = { value: 500, min_value: 400, max_value: 1500, step: 10, uom: "L/h" };
   state.entities.flowDeltaTMaxFlow = { value: 1200, min_value: 400, max_value: 1500, step: 10, uom: "L/h" };
-  state.entities.flowDeltaTStepInterval = { value: 5, min_value: 1, max_value: 30, step: 1, uom: "min" };
+  state.entities.flowDeltaTStepInterval = { value: 5, min_value: 2, max_value: 30, step: 1, uom: "min" };
   state.entities.flowDeltaTMaxStep = { value: 50, min_value: 10, max_value: 200, step: 10, uom: "L/h" };
   state.entities.flowDeltaTDeadband = { value: 0.3, min_value: 0.1, max_value: 1, step: 0.1, uom: "K" };
   state.entities.flowDeltaTStatus = { value: "Adjusting - rise 2.4 K, 1 unit, 640 L/h" };

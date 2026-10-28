@@ -65,6 +65,7 @@ class Runtime {
   }
 
   void tick(const TickConfig& config) {
+    oq_flow_delta_t_runtime::TickScope delta_t_scope;  // ends the Delta T cycle on paths that skip apply()
     const int cm_code = id(oq_control_mode_code);
     const int task_code = id(oq_commissioning_task_code);
     const bool want_manual = id(oq_flow_control_mode).active_index().value_or(0) == 1;

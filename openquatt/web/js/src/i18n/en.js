@@ -1022,7 +1022,7 @@ export default {
     flowModeCopy: "Choose between a fixed flow rate, ΔT control (the flow follows the heat demand) and a fixed pump speed.",
     flowManualTitle: "Fixed pump speed",
     flowManualCopy: "This pump speed is used while control is set to manual.",
-    flowHeatDeltaTCopy: "Start and fallback flow for ΔT control: the pump starts here, and returns here during defrost, a flow fault or missing temperatures.",
+    flowHeatDeltaTCopy: "Start and fallback flow for ΔT control: the pump starts here, and returns here on a flow fault or missing temperatures. During defrost the flow never drops below it.",
     flowDeltaTTargetTitle: "Target temperature difference",
     flowDeltaTTargetCopy: "The difference between water in and out per running heat pump that the flow works towards. On a Duo the average counts.",
     flowDeltaTMinTitle: "Minimum flow rate",

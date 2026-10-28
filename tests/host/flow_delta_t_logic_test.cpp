@@ -144,24 +144,74 @@ void test_water_temperature_limit_goes_straight_to_maximum_flow() {
   assert(out.next.reason == Reason::SETTLING && out.setpoint_lph == 1200.0f);
 }
 
-void test_defrost_falls_back_and_holds_before_a_clean_restart() {
+// Ticks with a unit defrosting.
+Output defrost(State& state, uint32_t& now_ms, int ticks) {
+  Output out;
+  for (int i = 0; i < ticks; ++i) {
+    Input in = heating(now_ms, isfinite(state.setpoint_lph) ? state.setpoint_lph : 800.0f, -2.0f);
+    in.units[0].defrost = true;
+    out = decide(in, state);
+    state = out.next;
+    now_ms += kTickMs;
+  }
+  return out;
+}
+
+void test_defrost_never_runs_below_the_fixed_flow() {
   State state;
   uint32_t now = 1000;
   run(state, now, 30, 1.5f);
   run(state, now, 24, 1.5f);
   assert(state.setpoint_lph < 800.0f);
-  Input in = heating(now, state.setpoint_lph, -2.0f);
-  in.units[0].defrost = true;
-  Output out = decide(in, state);
-  assert(!out.controlling && out.next.reason == Reason::DEFROST && out.setpoint_lph == 800.0f);
-  state = out.next;
-  now += kTickMs;
-  // Ten minutes after the defrost ends the fixed flow still applies.
+  // Low load sat below the fixed flow: defrost raises it to Flow Setpoint.
+  Output out = defrost(state, now, 1);
+  assert(out.controlling && out.next.reason == Reason::DEFROST && out.setpoint_lph == 800.0f);
+  // Ten minutes after the defrost ends it still holds.
   out = run(state, now, 59, 1.5f);
-  assert(!out.controlling && out.next.reason == Reason::DEFROST && out.setpoint_lph == 800.0f);
-  // Then a fresh cycle from the fixed flow, settling first.
+  assert(out.next.reason == Reason::DEFROST && out.setpoint_lph == 800.0f);
+  // Then a fresh cycle from that flow, settling first.
   out = run(state, now, 2, 1.5f);
   assert(out.controlling && out.next.reason == Reason::SETTLING && out.setpoint_lph == 800.0f);
+}
+
+void test_defrost_keeps_a_higher_flow_through_the_hold_and_restarts_from_it() {
+  State state;
+  uint32_t now = 1000;
+  run(state, now, 30, 6.0f);
+  run(state, now, 12 * 2, 6.0f);  // high load: 800 -> 1000
+  assert(near(state.setpoint_lph, 1000.0f));
+  // Lowering the flow would cool the heat exchanger further: it stays at 1000,
+  // through a defrost that lasts five minutes and the hold after it.
+  Output out = defrost(state, now, 30);
+  assert(out.next.reason == Reason::DEFROST && near(out.setpoint_lph, 1000.0f));
+  out = run(state, now, 59, 6.0f);
+  assert(out.next.reason == Reason::DEFROST && near(out.setpoint_lph, 1000.0f));
+  // The new cycle starts from 1000, not from the fixed 800.
+  out = run(state, now, 2, 6.0f);
+  assert(out.next.reason == Reason::SETTLING && near(out.setpoint_lph, 1000.0f));
+  // A later cycle that starts without a defrost uses the fixed flow again.
+  Input off = heating(now, 1000.0f, 6.0f);
+  off.units[0].heating = false;
+  state = decide(off, state).next;
+  out = run(state, now, 1, 6.0f);
+  assert(out.next.reason == Reason::SETTLING && out.setpoint_lph == 800.0f);
+}
+
+void test_leaving_heating_drops_a_defrost_hold() {
+  // A hold left over from the last defrost of the season must not come back
+  // after a long pause, when its deadline has long gone stale.
+  State state;
+  uint32_t now = 1000;
+  run(state, now, 31, 3.0f);
+  defrost(state, now, 1);
+  assert(state.defrost_hold);
+  Input in = heating(now, 800.0f, 3.0f);
+  in.heating_mode = false;
+  state = decide(in, state).next;
+  assert(!state.defrost_hold);
+  now += 0x80000000u;  // the season later
+  Output out = run(state, now, 1, 3.0f);
+  assert(out.next.reason == Reason::SETTLING);
 }
 
 void test_missing_temperatures_and_flow_fault_fall_back() {
@@ -227,18 +277,96 @@ void test_a_unit_joining_resettles_but_a_level_change_does_not() {
   assert(out.next.settling && out.next.reason == Reason::SETTLING);
 }
 
+// Ticks where the pump delivers at most max_flow_lph, as a real pump would:
+// the PI follows the setpoint below that, and is at full drive at it.
+Output run_pump(State& state, uint32_t& now_ms, int ticks, float rise_k, float max_flow_lph) {
+  Output out;
+  for (int i = 0; i < ticks; ++i) {
+    const float wanted = isfinite(state.setpoint_lph) ? state.setpoint_lph : 800.0f;
+    Input in = heating(now_ms, fminf(wanted, max_flow_lph), rise_k);
+    in.pump_at_full_drive = wanted > max_flow_lph;
+    out = decide(in, state);
+    state = out.next;
+    now_ms += kTickMs;
+  }
+  return out;
+}
+
 void test_pump_limit_stops_asking_for_more() {
   State state;
   uint32_t now = 1000;
   run(state, now, 30, 6.0f, 800.0f);
-  // The setpoint climbs, but the installation tops out at 900 L/h.
-  Output out = run(state, now, 12 * 6, 6.0f, 900.0f);
+  // The setpoint climbs, but the pump tops out at 900 L/h at full drive.
+  Output out = run_pump(state, now, 12 * 6, 6.0f, 900.0f);
   assert(isfinite(out.next.ceiling_lph));
   assert(out.setpoint_lph <= 900.0f + kCeilingMarginLph + 0.5f);
   assert(out.next.reason == Reason::PUMP_LIMIT);
-  // Valves open and the flow rises well above the ceiling: the ceiling clears.
-  out = run(state, now, 1, 6.0f, 1050.0f);
+  // Valves open: the PI backs off from full drive and the ceiling lifts at once.
+  Input in = heating(now, 950.0f, 6.0f);
+  in.pump_at_full_drive = false;
+  out = decide(in, state);
   assert(!isfinite(out.next.ceiling_lph));
+}
+
+void test_a_lagging_flow_with_drive_to_spare_is_not_a_pump_limit() {
+  // HIL regression: driven to the minimum, then asked for more, the flow lags
+  // the setpoint by 100 L/h while the pump still has drive to spare. That is
+  // the PI catching up, not the limit of the installation.
+  State state;
+  uint32_t now = 1000;
+  run(state, now, 30, 9.0f);
+  run(state, now, 12 * 3, 1.0f);  // 800 -> 500
+  assert(near(state.setpoint_lph, 500.0f));
+  run(state, now, 12, 9.0f);  // 500 -> 600
+  assert(near(state.setpoint_lph, 600.0f));
+  Output out;
+  for (int i = 0; i < 12 * 3; ++i) {
+    Input in = heating(now, state.setpoint_lph - 100.0f, 9.0f);
+    out = decide(in, state);
+    state = out.next;
+    now += kTickMs;
+  }
+  // No ceiling, and no further rise while the flow is still behind.
+  assert(!isfinite(out.next.ceiling_lph) && near(out.setpoint_lph, 600.0f));
+  // Once the flow catches up the climb resumes, all the way to the maximum.
+  out = run(state, now, 12 * 8, 9.0f);
+  assert(near(out.setpoint_lph, 1200.0f) && out.next.reason == Reason::AT_MAXIMUM);
+}
+
+void test_standing_aside_ends_the_cycle() {
+  // Manual PWM, frost protection, idle or a service task took the tick: the
+  // next heating tick must start afresh, not resume on old samples, setpoint
+  // and ceiling.
+  State state;
+  uint32_t now = 1000;
+  run(state, now, 30, 6.0f, 800.0f);
+  run_pump(state, now, 12 * 6, 6.0f, 900.0f);  // ends a minute after a step: samples in the window
+  assert(state.active && isfinite(state.ceiling_lph) && state.rise_count > 0);
+  Output out = stand_aside(state, false);  // Manual PWM selected
+  assert(!out.controlling && out.next.reason == Reason::OFF);
+  assert(!out.next.active && !isfinite(out.next.ceiling_lph) && out.next.rise_count == 0);
+  out = stand_aside(state, true);  // Delta T selected, frost protection or idle
+  assert(out.next.reason == Reason::NOT_HEATING && !out.next.active);
+  state = out.next;
+  out = run(state, now, 1, 6.0f);
+  assert(out.next.reason == Reason::SETTLING && out.setpoint_lph == 800.0f);
+}
+
+void test_the_first_minute_after_a_step_is_not_measured() {
+  State state;
+  uint32_t now = 1000;
+  run(state, now, 30, 1.5f);
+  run(state, now, 6, 1.5f);  // the first step lands on the sixth sample
+  assert(near(state.setpoint_lph, 700.0f) && state.rise_count == 0);
+  // The transition to the new flow: five more ticks, nothing counted.
+  run(state, now, 5, 1.5f);
+  assert(state.rise_count == 0);
+  // From a minute after the step the samples count again.
+  run(state, now, 1, 1.5f);
+  assert(state.rise_count == 1);
+  // Six samples later the next step lands, two minutes after the last one.
+  Output out = run(state, now, 6, 1.5f);
+  assert(near(out.setpoint_lph, 600.0f));
 }
 
 void test_long_uptime_does_not_freeze_the_controller() {
@@ -357,7 +485,7 @@ void test_pacing_defaults_and_configuration() {
   in.max_step_lph = 1000.0f;
   in.deadband_k = NAN;
   pace = pacing(in);
-  assert(pace.step_interval_ms == 60000u && pace.max_step_lph == 200.0f && near(pace.deadband_k, 0.3f, 0.001f));
+  assert(pace.step_interval_ms == 120000u && pace.max_step_lph == 200.0f && near(pace.deadband_k, 0.3f, 0.001f));
 
   // With the defaults the first step lands five minutes in, once a minute of
   // samples is gathered after settling, and moves 50 L/h.
@@ -446,11 +574,16 @@ int main() {
   test_rise_within_deadband_holds_the_flow();
   test_maximum_can_never_sit_below_the_fixed_setpoint();
   test_water_temperature_limit_goes_straight_to_maximum_flow();
-  test_defrost_falls_back_and_holds_before_a_clean_restart();
+  test_defrost_never_runs_below_the_fixed_flow();
+  test_defrost_keeps_a_higher_flow_through_the_hold_and_restarts_from_it();
+  test_leaving_heating_drops_a_defrost_hold();
   test_missing_temperatures_and_flow_fault_fall_back();
   test_duo_averages_the_rise_per_running_unit();
   test_a_unit_joining_resettles_but_a_level_change_does_not();
   test_pump_limit_stops_asking_for_more();
+  test_a_lagging_flow_with_drive_to_spare_is_not_a_pump_limit();
+  test_standing_aside_ends_the_cycle();
+  test_the_first_minute_after_a_step_is_not_measured();
   test_long_uptime_does_not_freeze_the_controller();
   test_maximum_follows_the_configured_quatt_version();
   test_warning_when_the_water_limit_persists_at_maximum_flow();

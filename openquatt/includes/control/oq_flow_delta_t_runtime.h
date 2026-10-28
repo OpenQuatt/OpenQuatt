@@ -21,6 +21,19 @@ namespace oq_flow_delta_t_runtime {
 constexpr size_t kModeIndex = 2;
 // The same freshness window the water performance model uses.
 constexpr uint64_t kFreshMs = 30000;
+// iPWM is inverted and clamped at 50: at or near it the PI drives the pump as
+// hard as it can.
+constexpr int kFullDriveIpwm = 55;
+
+inline oq_flow_delta_t::State& state_() {
+  static oq_flow_delta_t::State state;
+  return state;
+}
+
+inline bool& applied_this_tick_() {
+  static bool applied = false;
+  return applied;
+}
 
 // A unit counts as heating with exactly the rule the boot-resume and water
 // performance code use: heating working mode with the compressor turning.
@@ -88,7 +101,7 @@ inline void publish_(const oq_flow_delta_t::Output& out) {
 // Returns the setpoint the flow PI should track. Outside Delta T mode, or
 // whenever the mode steps aside, this is selected_setpoint_lph unchanged.
 inline float apply(float selected_setpoint_lph, int cm_code) {
-  static oq_flow_delta_t::State state;
+  applied_this_tick_() = true;
   const uint64_t now_ms = oq_sources::monotonic_ms();
 
   oq_flow_delta_t::Input in;
@@ -123,11 +136,30 @@ inline float apply(float selected_setpoint_lph, int cm_code) {
   in.standard_flow_lph = v2 ? 1000.0f : 800.0f;
   in.water_limit_active = id(oq_water_temp_limit_factor) < 0.999f;
   in.flow_fault = id(oq_lowflow_fault_active);
+  in.pump_at_full_drive = id(oq_flow_last_pwm) <= kFullDriveIpwm;
 
-  const auto out = oq_flow_delta_t::decide(in, state);
-  state = out.next;
+  const auto out = oq_flow_delta_t::decide(in, state_());
+  state_() = out.next;
   publish_(out);
   return out.setpoint_lph;
 }
+
+// Scoped to one flow tick. Every tick that never reaches apply() - manual PWM,
+// frost protection, idle or a service task - ends the Delta T cycle, so the
+// status does not go stale and the next heating tick starts afresh. Only the
+// Delta T state is touched; the pump output stays with the branch that owns it.
+class TickScope {
+ public:
+  TickScope() { applied_this_tick_() = false; }
+  ~TickScope() {
+    if (applied_this_tick_()) return;
+    const bool enabled = id(oq_flow_control_mode).active_index().value_or(0) == kModeIndex;
+    const auto out = oq_flow_delta_t::stand_aside(state_(), enabled);
+    state_() = out.next;
+    publish_(out);
+  }
+  TickScope(const TickScope&) = delete;
+  TickScope& operator=(const TickScope&) = delete;
+};
 
 }  // namespace oq_flow_delta_t_runtime
