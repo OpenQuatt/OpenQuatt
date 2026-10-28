@@ -1,0 +1,180 @@
+# ==============================================================================
+# OpenQuatt - Delta T flow control
+# ==============================================================================
+#
+# Goal:
+#   Let the heating flow follow the heat demand. Instead of one fixed flow, the
+#   flow setpoint moves slowly so the water temperature rise across each running
+#   heat pump approaches a target. A fixed flow is only right at one load: at low
+#   load the pump moves more water than the heat needs, and at high load the
+#   large rise forces a hotter supply, which costs compressor efficiency.
+#
+# Role in architecture:
+#   Owns every entity the mode needs. Selected as the third Flow Control Mode
+#   option, "Delta T". The decision lives in
+#   includes/control/oq_flow_delta_t_logic.h and the id() marshalling in
+#   includes/control/oq_flow_delta_t_runtime.h; oq_flow_runtime.h carries only
+#   one call that may replace the heating setpoint.
+#
+# Safety:
+#   - The flow PI keeps owning the pump; this only supplies its setpoint.
+#   - The maximum never sits below the normal Flow Setpoint, so at full power
+#     this mode never moves less water than the fixed setpoint would.
+#   - The minimum stays above the low-flow fault threshold plus a margin.
+#   - The maximum also never sits below Quatt's own fixed flow for the version
+#     chosen at installation (Quatt Hybrid version: 800 L/h, V2 1000 L/h).
+#   - Defrost, a low-flow fault or missing temperatures fall back to the normal
+#     Flow Setpoint. When the water temperature protection cuts power, the flow
+#     goes straight to the maximum first; if the protection is still cutting
+#     power five minutes later, Flow Delta T Warning turns on.
+#   - During an oil return cycle the flow is held where it is: the compressor
+#     runs a forced pattern, so the rise then says nothing about the load. The
+#     samples are discarded for the cycle and two minutes after it.
+#
+# What this package DOES NOT do:
+#   - Does not touch cooling: cooling keeps its own fixed setpoint
+#   - Does not run outside heat pump heating (CM2): preflow, boiler modes, frost
+#     protection and service tasks all use the normal setpoints
+#
+# ==============================================================================
+
+globals:
+  # The low-flow fault threshold, carried here because substitutions do not
+  # expand inside C++ headers.
+  - id: oq_flow_dt_lowflow_threshold_lph
+    type: float
+    restore_value: false
+    initial_value: "${oq_cm_min_flow_lph}"
+
+number:
+  - platform: template
+    id: oq_flow_dt_target_k
+    name: "Flow Delta T Target"
+    icon: mdi:thermometer-lines
+    unit_of_measurement: "K"
+    mode: box
+    min_value: 2
+    max_value: 8
+    step: 0.5
+    restore_value: true
+    optimistic: true
+    initial_value: 3
+    entity_category: config
+
+  - platform: template
+    id: oq_flow_dt_min_lph
+    name: "Flow Delta T Minimum Flow"
+    icon: mdi:waves-arrow-left
+    unit_of_measurement: "L/h"
+    mode: box
+    min_value: 400
+    max_value: 1500
+    step: 10
+    restore_value: true
+    optimistic: true
+    initial_value: 500
+    entity_category: config
+
+  - platform: template
+    id: oq_flow_dt_max_lph
+    name: "Flow Delta T Maximum Flow"
+    icon: mdi:waves-arrow-right
+    unit_of_measurement: "L/h"
+    mode: box
+    min_value: 400
+    max_value: 1500
+    step: 10
+    restore_value: true
+    optimistic: true
+    initial_value: 1200
+    entity_category: config
+
+  # Pacing. The logic keeps each value inside bounds that stay slow and stable
+  # (1-30 min, 10-200 L/h, 0.1-1.0 K), so a bad setting cannot make it hunt.
+  - platform: template
+    id: oq_flow_dt_step_interval_min
+    name: "Flow Delta T Step Interval"
+    icon: mdi:timer-outline
+    unit_of_measurement: "min"
+    mode: box
+    min_value: 1
+    max_value: 30
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 5
+    entity_category: config
+
+  - platform: template
+    id: oq_flow_dt_max_step_lph
+    name: "Flow Delta T Max Step"
+    icon: mdi:stairs
+    unit_of_measurement: "L/h"
+    mode: box
+    min_value: 10
+    max_value: 200
+    step: 10
+    restore_value: true
+    optimistic: true
+    initial_value: 50
+    entity_category: config
+
+  - platform: template
+    id: oq_flow_dt_deadband_k
+    name: "Flow Delta T Deadband"
+    icon: mdi:arrow-collapse-vertical
+    unit_of_measurement: "K"
+    mode: box
+    min_value: 0.1
+    max_value: 1.0
+    step: 0.1
+    restore_value: true
+    optimistic: true
+    initial_value: 0.3
+    entity_category: config
+
+sensor:
+  # Average temperature rise per running heat pump over the last step.
+  - platform: template
+    id: oq_flow_dt_rise_k
+    name: "Flow Delta T Measured"
+    icon: mdi:thermometer-lines
+    unit_of_measurement: "K"
+    accuracy_decimals: 1
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
+
+  # The flow the mode currently asks the PI for.
+  - platform: template
+    id: oq_flow_dt_setpoint_lph
+    name: "Flow Delta T Setpoint"
+    icon: mdi:waves-arrow-right
+    unit_of_measurement: "L/h"
+    accuracy_decimals: 0
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
+
+binary_sensor:
+  # The water temperature protection is still cutting power although the flow
+  # has been at its maximum for five minutes: more water did not help, so the
+  # cause is structural - a maximum set too low, or an installation that cannot
+  # take more water.
+  - platform: template
+    id: oq_flow_dt_warning
+    name: "Flow Delta T Warning"
+    icon: mdi:alert-outline
+    device_class: problem
+    entity_category: diagnostic
+
+text_sensor:
+  # What the mode is doing and why, which is otherwise opaque: it may be off,
+  # settling after a start, holding the fixed flow during defrost, or parked at
+  # a limit.
+  - platform: template
+    id: oq_flow_dt_status
+    name: "Flow Delta T Status"
+    icon: mdi:information-outline
+    entity_category: diagnostic
+    update_interval: never

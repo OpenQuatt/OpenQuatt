@@ -22,7 +22,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Plus the unchanged 13,452 B allowance for warmup controls and diagnostics.
     // dev 9b8dfa57 raw budget 1,363,500 B; relative gzip limits stay unchanged.
     // Measured raw: dev 1,363,238 B, PR 1,375,748 B (Node 24.14.1); gzip +3,779 B (+0.99%).
-    raw: 1_376_952,
+    // Delta T flow control settings, status and copy in both locales:
+    // measured raw dev 1,375,784 B, PR 1,379,193 B (+3,409 B; gzip +1,250 B, Node 24.19.0).
+    raw: 1_380_361,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

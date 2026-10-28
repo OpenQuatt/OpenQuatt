@@ -195,6 +195,13 @@
     ["flowSetpoint", DOMAIN_NUMBER, "Flow Setpoint", false],
     ["coolingFlowSetpoint", DOMAIN_NUMBER, "Cooling Flow Setpoint"],
     ["manualIpwm", DOMAIN_NUMBER, "Manual iPWM", false],
+    // Delta T flow control (oq_flow_delta_t.yaml).
+    ["flowDeltaTTarget", DOMAIN_NUMBER, "Flow Delta T Target"],
+    ["flowDeltaTMinFlow", DOMAIN_NUMBER, "Flow Delta T Minimum Flow"],
+    ["flowDeltaTMaxFlow", DOMAIN_NUMBER, "Flow Delta T Maximum Flow"],
+    ["flowDeltaTStepInterval", DOMAIN_NUMBER, "Flow Delta T Step Interval"],
+    ["flowDeltaTMaxStep", DOMAIN_NUMBER, "Flow Delta T Max Step"],
+    ["flowDeltaTDeadband", DOMAIN_NUMBER, "Flow Delta T Deadband"],
     ["flowOutputIpwm", DOMAIN_SENSOR, "Flow Output iPWM"],
     ["compressorStarts2hWarningLimit", DOMAIN_NUMBER, "Compressor starts 2h warning limit"],
     ["compressorStarts72hWarningLimit", DOMAIN_NUMBER, "Compressor starts 72h warning limit"],
@@ -378,6 +385,7 @@
     ["waterSupplyCalibrationStatus", DOMAIN_TEXT_SENSOR, "Water Supply Temperature Calibration Status"],
     ["controlModeLabel", DOMAIN_TEXT_SENSOR, "Control Mode (Label)", false],
     ["flowMode", DOMAIN_TEXT_SENSOR, "Flow Mode", false],
+    ["flowDeltaTStatus", DOMAIN_TEXT_SENSOR, "Flow Delta T Status"],
     ["dayMaxHz", DOMAIN_NUMBER, "Day max frequency"],
     ["silentMaxHz", DOMAIN_NUMBER, "Silent max frequency"],
     ["silentStartTime", DOMAIN_TIME, "Silent start time", false],
@@ -871,7 +879,19 @@
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
   export const FREQUENCY_MINIMUM_KEYS = ["hp1MinimumHeatingHz", "hp1MinimumCoolingHz", "hp2MinimumHeatingHz", "hp2MinimumCoolingHz"];
   export const LIMIT_KEYS = [...FREQUENCY_CAP_KEYS, "maxWater"];
-  export const FLOW_SETTING_KEYS = ["flowControlMode", "flowSetpoint", "coolingFlowSetpoint", "manualIpwm"];
+  export const FLOW_SETTING_KEYS = [
+    "flowControlMode",
+    "flowSetpoint",
+    "coolingFlowSetpoint",
+    "manualIpwm",
+    "flowDeltaTTarget",
+    "flowDeltaTMinFlow",
+    "flowDeltaTMaxFlow",
+    "flowDeltaTStepInterval",
+    "flowDeltaTMaxStep",
+    "flowDeltaTDeadband",
+    "flowDeltaTStatus",
+  ];
   export const FLOW_TUNING_KEYS = ["flowKp", "flowKi"];
   export const SENSOR_CALIBRATION_KEYS = [
     "hp1WaterInOffset",
@@ -2302,7 +2322,7 @@
     {
       id: "flow",
       labelKey: "backupSections.flow",
-      keys: ["flowControlMode", "flowSetpoint", "coolingFlowSetpoint", "manualIpwm", "flowKp", "flowKi"],
+      keys: ["flowControlMode", "flowSetpoint", "coolingFlowSetpoint", "manualIpwm", "flowDeltaTTarget", "flowDeltaTMinFlow", "flowDeltaTMaxFlow", "flowDeltaTStepInterval", "flowDeltaTMaxStep", "flowDeltaTDeadband", "flowKp", "flowKi"],
     },
     {
       id: "cooling",
