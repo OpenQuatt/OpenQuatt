@@ -82,6 +82,14 @@ switch:
     entity_category: config
     disabled_by_default: true
 
+  - platform: template
+    id: ph_inertia_enabled
+    name: "Power House inertia"
+    icon: mdi:gesture-tap-hold
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+
 select:
   - platform: template
     id: oq_ph_response_profile
@@ -155,6 +163,32 @@ number:
     entity_category: config
 
   - platform: template
+    id: ph_stop_temperature_c
+    name: "Power House stop temperature"
+    icon: mdi:thermometer-chevron-up
+    unit_of_measurement: "°C"
+    min_value: 0
+    max_value: 2.0
+    step: 0.05
+    restore_value: true
+    optimistic: true
+    initial_value: 0.3
+    entity_category: config
+
+  - platform: template
+    id: ph_restart_temperature_c
+    name: "Power House restart temperature"
+    icon: mdi:thermometer-chevron-down
+    unit_of_measurement: "°C"
+    min_value: -2.0
+    max_value: 1.9
+    step: 0.05
+    restore_value: true
+    optimistic: true
+    initial_value: 0.1
+    entity_category: config
+
+  - platform: template
     id: ph_comfort_band_below_c
     name: "Power House comfort below setpoint"
     icon: mdi:thermometer-chevron-down
@@ -166,6 +200,7 @@ number:
     optimistic: true
     initial_value: 0.1
     entity_category: config
+    disabled_by_default: true
 
   - platform: template
     id: ph_comfort_band_above_c
@@ -179,6 +214,7 @@ number:
     optimistic: true
     initial_value: 0.3
     entity_category: config
+    disabled_by_default: true
 
   - platform: template
     id: ph_demand_rise_time_min
@@ -345,7 +381,7 @@ text_sensor:
       snprintf(hp2_json, sizeof(hp2_json), "null");
       #endif
       char cold_b[16]{}, zero_b[16]{}, rated_b[16]{}, kp_b[16]{};
-      char below_b[16]{}, above_b[16]{}, rise_b[16]{}, fall_b[16]{};
+      char stop_b[16]{}, restart_b[16]{}, inertia_b[32]{}, rise_b[16]{}, fall_b[16]{};
       const char *cold = fmt_float(
           id(house_cold_temp_c).has_state() ? id(house_cold_temp_c).state : NAN, cold_b, sizeof(cold_b));
       const char *zero = fmt_float(
@@ -354,10 +390,12 @@ text_sensor:
           id(house_rated_power_w).has_state() ? id(house_rated_power_w).state : NAN, rated_b, sizeof(rated_b));
       const char *kp = fmt_float(
           id(ph_kp_w_per_k).has_state() ? id(ph_kp_w_per_k).state : NAN, kp_b, sizeof(kp_b));
-      const char *below = fmt_float(
-          id(ph_comfort_band_below_c).has_state() ? id(ph_comfort_band_below_c).state : NAN, below_b, sizeof(below_b));
-      const char *above = fmt_float(
-          id(ph_comfort_band_above_c).has_state() ? id(ph_comfort_band_above_c).state : NAN, above_b, sizeof(above_b));
+      const char *stop = fmt_float(
+          id(ph_stop_temperature_c).has_state() ? id(ph_stop_temperature_c).state : NAN, stop_b, sizeof(stop_b));
+      const char *restart = fmt_float(
+          id(ph_restart_temperature_c).has_state() ? id(ph_restart_temperature_c).state : NAN, restart_b, sizeof(restart_b));
+      const char *inertia = fmt_float(
+          id(ph_inertia_enabled).has_state() ? (id(ph_inertia_enabled).state ? 1.0f : 0.0f) : NAN, inertia_b, sizeof(inertia_b));
       const char *rise = fmt_float(
           id(ph_demand_rise_time_min).has_state() ? id(ph_demand_rise_time_min).state : NAN, rise_b, sizeof(rise_b));
       const char *fall = fmt_float(
@@ -368,10 +406,10 @@ text_sensor:
           "{\"availableModels\":{\"v2Thermal\":\"oq-v2-heating-r1\","
           "\"v2Input\":\"oq-v2-input-r1\"},"
           "\"hp1\":{\"valid\":%s,\"count\":%u,\"hash\":%u,\"hz\":%s},\"hp2\":%s,"
-          "\"house\":{\"cold\":%s,\"zero\":%s,\"rated\":%s,\"kp\":%s,\"cbBelow\":%s,\"cbAbove\":%s,"
+          "\"house\":{\"cold\":%s,\"zero\":%s,\"rated\":%s,\"kp\":%s,\"stopTemp\":%s,\"restartTemp\":%s,\"inertia\":%s,"
           "\"rise\":%s,\"fall\":%s},\"minOffS\":%s,\"extStaleS\":%s}",
           hp1_snapshot.heating.valid ? "true" : "false", (unsigned) hp1_snapshot.heating.level_count,
-          (unsigned) hp1_hash, hp1_hz, hp2_json, cold, zero, rated, kp, below, above, rise, fall,
+          (unsigned) hp1_hash, hp1_hz, hp2_json, cold, zero, rated, kp, stop, restart, inertia, rise, fall,
           "${oq_hp_min_off_s}", "${api_input_external_heat_demand_stale_s}");
       if (n < 0 || (size_t) n >= sizeof(buf)) return std::string("unknown");
       return std::string(buf);

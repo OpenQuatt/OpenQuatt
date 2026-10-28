@@ -338,7 +338,7 @@ De stopmarge en herstartafstand horen bij het aparte doorverwarmen-mechanisme. K
 
 ### Status, uitschakelen en herstart van de controller
 
-De actuele status laat zien of de regeling **Normaal verwarmt**, **Doorverwarmt op minimumvermogen**, een **Stop heeft aangevraagd**, **Wacht op afkoeling** of een **Herstart heeft aangevraagd**. De firmwarewaarden blijven `normal`, `extending`, `comfort_stop`, `wait_warm_restart` en `warm_restart`. **Herstart aangevraagd** betekent dat herstart is vrijgegeven, niet dat de compressor al draait. De berekende grenzen in het instellingenblok zijn geen bewijs dat een bestaande aanvraag is ingetrokken.
+De actuele status laat zien of de regeling **Normaal verwarmt**, **Doorverwarmt op minimumvermogen**, een **Stop heeft aangevraagd**, **Wacht op afkoeling** of een **Herstart heeft aangevraagd**. De firmwarewaarden blijven `normal`, `extending`, `room_temp_high_stop`, `room_temp_low_restart` en `warm_restart`. **Herstart aangevraagd** betekent dat herstart is vrijgegeven, niet dat de compressor al draait. De berekende grenzen in het instellingenblok zijn geen bewijs dat een bestaande aanvraag is ingetrokken.
 
 Uitschakelen van langer doorverwarmen schakelt de gewone verwarming niet uit: de normale Power House-vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
 

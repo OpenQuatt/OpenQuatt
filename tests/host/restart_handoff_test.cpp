@@ -688,7 +688,7 @@ void test_power_house_memory_roundtrip_and_current_inputs() {
   assert(!handoff::may_restore_power_house(restored, true, NAN, 23.0f));
   // Reproduce an above-setpoint cycle carried by demand/comfort memory, using the real demand calculation.
   oq_power_house::DemandInput input{60000U, 3.0f, -10.0f, 16.0f, 6000.0f, 23.05f, 23.0f, 0.0f, 1.0f, true};
-  oq_power_house::DemandTuning tuning{0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20};
+  oq_power_house::DemandTuning tuning{0.5f, 3000.0f, 0.3f, true, 10.0f, 5.0f, 20};
   const auto lost = oq_power_house::decide_demand(input, tuning, {});
   const oq_power_house::DemandState retained{restored.last_w, input.now_ms - 1U, restored.comfort_memory_c};
   const auto resumed = oq_power_house::decide_demand(input, tuning, retained);

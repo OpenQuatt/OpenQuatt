@@ -111,14 +111,28 @@ class Runtime {
     // Capture the reference scales once with the manual inputs for this tick.
     // Future line calibration must not change these control scales.
     const auto envelope = oq_power_house::house_envelope_from_legacy(demand_input.rated_w);
+    // Read new fields with backward compatibility fallback
+    float stop_temperature_c = 0.3f;
+    if (id(ph_stop_temperature_c).has_state() && std::isfinite(id(ph_stop_temperature_c).state)) {
+      stop_temperature_c = id(ph_stop_temperature_c).state;
+    } else if (id(ph_comfort_band_above_c).has_state() && std::isfinite(id(ph_comfort_band_above_c).state)) {
+      stop_temperature_c = id(ph_comfort_band_above_c).state;
+    }
+
+    float restart_temperature_c = 0.1f;
+    if (id(ph_restart_temperature_c).has_state() && std::isfinite(id(ph_restart_temperature_c).state)) {
+      restart_temperature_c = id(ph_restart_temperature_c).state;
+    } else if (id(ph_run_extension_restart_cooldown_c).has_state() &&
+               std::isfinite(id(ph_run_extension_restart_cooldown_c).state)) {
+      restart_temperature_c = id(ph_run_extension_restart_cooldown_c).state;
+    }
+
+    const bool inertia_enabled =
+        id(ph_inertia_enabled).has_state() ? static_cast<bool>(id(ph_inertia_enabled).state) : true;
+
     const oq_power_house::DemandTuning demand_tuning{
-        config.temperature_guard_c,
-        id(ph_kp_w_per_k).state,
-        id(ph_comfort_band_below_c).state,
-        id(ph_comfort_band_above_c).state,
-        id(ph_demand_rise_time_min).state,
-        id(ph_demand_fall_time_min).state,
-        config.demand_max_f,
+        config.temperature_guard_c,        id(ph_kp_w_per_k).state,           stop_temperature_c,  inertia_enabled,
+        id(ph_demand_rise_time_min).state, id(ph_demand_fall_time_min).state, config.demand_max_f,
     };
     const int applied_total =
         std::max(0, static_cast<int>(id(hp1_last_applied_level))) + std::max(0, static_cast<int>(hp2_applied_level));
@@ -149,7 +163,7 @@ class Runtime {
     int raw_demand = demand.raw_demand;
     float house_requested_w = requested_w;
     int house_raw_demand = raw_demand;
-    const float room_resume_delta_c = std::max(0.0f, demand_tuning.comfort_below_c);
+    const float room_resume_delta_c = stop_temperature_c;
     const auto intent = oq_heat_intent_runtime::evaluate(
         now_ms, applied_total > 0, room_resume_delta_c, 10000UL, config.ot_room_temperature_fresh,
         config.ot_room_setpoint_fresh, this->intent_state_, effective_target_c, warming);
@@ -372,9 +386,6 @@ class Runtime {
     // stop/warm-restart latch at every intermediate target. Its floor is Pmin.
     const float setpoint_c = id(room_setpoint_selected).state;
     const bool run_ext_enabled = id(ph_run_extension_enabled).state;
-    float stop_margin_c = 0.5f;
-    if (id(ph_run_extension_stop_margin_c).has_state() && std::isfinite(id(ph_run_extension_stop_margin_c).state))
-      stop_margin_c = std::max(0.1f, std::min(1.0f, id(ph_run_extension_stop_margin_c).state));
     const bool room_inputs_valid = std::isfinite(room_c) && std::isfinite(setpoint_c) &&
                                    oq_heat_intent_runtime::room_temperature_fresh(config.ot_room_temperature_fresh) &&
                                    oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh);
@@ -403,25 +414,26 @@ class Runtime {
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
-        run_ext_input, {stop_margin_c, id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c},
-        this->run_extension_state_);
+        run_ext_input, {stop_temperature_c, restart_temperature_c}, this->run_extension_state_);
+    const float run_ext_stop_c = std::isfinite(setpoint_c) ? setpoint_c + stop_temperature_c : NAN;
+    const float run_ext_restart_c = std::isfinite(setpoint_c) ? setpoint_c + restart_temperature_c : NAN;
     const bool comfort_was_active =
-        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::COMFORT_STOP ||
-        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::WAIT_WARM_RESTART;
+        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::ROOM_TEMP_HIGH_STOP ||
+        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::ROOM_TEMP_LOW_RESTART;
     if (run_ext_decision.next.phase != this->last_run_ext_phase_) {
       ESP_LOGI("quatt.strategy", "ph run extension %s -> %s (room %.2f stop %.2f restart %.2f base %.0f floor %.0f)",
                oq_power_house_run_extension::phase_name(this->last_run_ext_phase_),
                oq_power_house_run_extension::phase_name(run_ext_decision.next.phase), (double)room_c,
-               (double)run_ext_decision.comfort_stop_c, (double)run_ext_decision.warm_restart_c,
-               (double)base_requested_w, (double)run_ext_decision.floor_w);
+               (double)run_ext_stop_c, (double)run_ext_restart_c, (double)base_requested_w,
+               (double)run_ext_decision.floor_w);
       this->last_run_ext_phase_ = run_ext_decision.next.phase;
     }
     this->run_extension_state_ = run_ext_decision.next;
     this->run_ext_enabled_ = run_ext_enabled;
     this->run_ext_base_w_ = base_requested_w;
     this->run_ext_floor_w_ = run_ext_decision.floor_active ? run_ext_decision.floor_w : 0.0f;
-    this->run_ext_comfort_stop_c_ = run_ext_decision.comfort_stop_c;
-    this->run_ext_warm_restart_c_ = run_ext_decision.warm_restart_c;
+    this->run_ext_comfort_stop_c_ = run_ext_stop_c;
+    this->run_ext_warm_restart_c_ = run_ext_restart_c;
     // Blocked diagnostic: enabled and armed below Pmin, but water limiter or
     // missing Pmin prevents the floor from being applied.
     this->run_ext_blocked_ = run_ext_enabled && room_inputs_valid && heating_allowed &&
@@ -430,7 +442,7 @@ class Runtime {
     if (run_ext_enabled && room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
         oq_power_house_run_extension::pmin_valid(minimum_viable_w) && base_requested_w < minimum_viable_w &&
         !oq_power_house_run_extension::water_floor_allowed(id(oq_water_temp_limit_factor)) && std::isfinite(room_c) &&
-        std::isfinite(run_ext_decision.comfort_stop_c) && room_c < run_ext_decision.comfort_stop_c)
+        std::isfinite(run_ext_stop_c) && room_c < run_ext_stop_c)
       this->run_ext_blocked_ = true;
     float effective_requested_w = base_requested_w;
     int effective_raw_demand = base_raw_demand;
@@ -483,7 +495,7 @@ class Runtime {
                "pmin=%.0f extra=%.0f pre_cap=%.0f post_cap=%.0f hp1=%d hp2=%d",
                diagnostics::warmup_path_name(warmup_power.path), room_c, setpoint_c,
                warmup_runtime.intermediate_target(), warmup_runtime.offset(), effective_target_c,
-               demand_tuning.reaction_w_per_k, demand_tuning.comfort_below_c, warmup_power.base_w,
+               demand_tuning.reaction_w_per_k, demand_tuning.stop_temperature_c, warmup_power.base_w,
                warmup_power.minimum_w, warmup_power.extra_w, warmup_power.before_caps_w, warmup_power.after_caps_w,
                dispatch.hp1_level, dispatch.hp2_level);
     }
@@ -531,8 +543,8 @@ class Runtime {
       stop_snapshot.effective_w = demand.valid ? stop::encode(requested_w) : stop::UNKNOWN_VALUE;
       stop_snapshot.room_c = room_inputs_valid ? stop::encode(room_c, 100.0f) : stop::UNKNOWN_VALUE;
       if (run_ext_decision.force_comfort_stop) {
-        stop_snapshot.room_stop_c = stop::encode(run_ext_decision.comfort_stop_c, 100.0f);
-        stop_snapshot.room_restart_c = stop::encode(run_ext_decision.warm_restart_c, 100.0f);
+        stop_snapshot.room_stop_c = stop::encode(run_ext_stop_c, 100.0f);
+        stop_snapshot.room_restart_c = stop::encode(run_ext_restart_c, 100.0f);
       }
       if (stop_reason == esphome::openquatt_decision_log::REASON_HEATING_WATER_LIMIT)
         stop_snapshot.supply_c = stop::encode(id(oq_system_supply_temp).state, 100.0f);

@@ -82,7 +82,7 @@ static void test_consumer_before_lifecycle_tick() {
   // 1s owner. Repeated reads must suppress both full room feedback and fast start.
   input.requested_c = 20;
   oq_power_house::DemandInput demand{1000, 5, -10, 18, 10000, 17, 20, NAN, 1, false};
-  oq_power_house::DemandTuning tuning{0, 2000, 0.2f, 0.3f, 8, 3, 20};
+  oq_power_house::DemandTuning tuning{0, 2000, 0.3f, true, 8, 3, 20};
   const auto normal = oq_power_house::decide_demand(demand, tuning, {});
   for (int i = 0; i < 100; ++i) {
     const auto target = runtime.control_target(20, settings.trigger_c, true, input.room_c);

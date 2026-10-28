@@ -20,7 +20,7 @@ void equivalent_reference_points() {
 }
 
 void line_does_not_own_envelope() {
-  const DemandTuning tuning{0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20};
+  const DemandTuning tuning{0.5f, 3000.0f, 0.3f, true, 10.0f, 5.0f, 20};
   DemandInput in{60001U, -10.0f, -10.0f, 16.0f, 6000.0f, 18.0f, 20.0f, NAN, 1.0f, false};
   const PowerHouseEnvelope envelope{6000.0f, 6000.0f, 6000.0f};
   // Both lines retain the full warm-up request and exactly the same slew scale.
@@ -61,7 +61,7 @@ void invalid_models_fail_closed() {
   assert(isnan(house_line_power_w({FLT_MAX, 16.0f}, -FLT_MAX)));
   assert(isnan(house_line_reference_power_w({200.0f, 16.0f}, 16.0f)));
   const DemandInput in{1U, 3.0f, -10.0f, 16.0f, 6000.0f, 20.0f, 20.0f, 1000.0f, 1.0f, true};
-  const DemandTuning tuning{0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20};
+  const DemandTuning tuning{0.5f, 3000.0f, 0.3f, true, 10.0f, 5.0f, 20};
   // External feedforward cannot make a corrupt house model valid.
   assert(!decide_demand_with_line(in, tuning, {}, {}, house_envelope_from_legacy(6000.0f)).valid);
   assert(!decide_demand_with_line(in, tuning, {}, {200.0f, 16.0f}, {6000.0f, NAN, 6000.0f}).valid);

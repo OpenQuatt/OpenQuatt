@@ -377,6 +377,104 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     );
   }
 
+  // Helper function for flow prose blocks
+  export function renderSettingsProseBlock(text, className = "") {
+    if (!text) return "";
+    return `<p class="oq-settings-prose ${escapeHtml(className)}">${escapeHtml(text)}</p>`;
+  }
+
+  // Helper function for flow item rendering
+  export function renderSettingsFlowItem(key, label, controlMarkup, unit = "", className = "") {
+    return `
+      <div class="oq-settings-flow-item ${escapeHtml(className)}">
+        <span class="oq-settings-flow-label" id="${escapeHtml(key)}-label">${escapeHtml(label)}</span>
+        ${controlMarkup}
+        ${unit ? `<span class="oq-settings-flow-unit">${escapeHtml(unit)}</span>` : ""}
+      </div>
+    `;
+  }
+
+  // Get setpoint value for flow display
+  function getSetpointFlowValue() {
+    const raw = hasEntity("roomSetpoint") ? getEntityValue("roomSetpoint") : NaN;
+    return Number.isFinite(Number(raw))
+        ? formatNumber(Number(raw), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+        : "\u2014";
+  }
+
+  // New flow-based Power House rendering
+  export function renderPowerHouseFlow() {
+    const fields = [
+      renderSettingsNumberField("phKp", t("settingsHeating.phKpLabel"), "", "", { 
+        flow: true, 
+        unitOverride: "W/\u00b0C",
+        labelPrefix: "",
+        className: "oq-settings-field--flow"
+      }),
+      renderSettingsSwitchField("phInertia", t("settingsHeating.phInertiaTitle"),
+          t("settingsHeating.phInertiaCopy"),
+          t("settingsHeating.phInertiaOn"), t("settingsHeating.phInertiaOff"),
+          "oq-settings-field--flow"),
+      renderSettingsNumberField("phStopTemperature", t("settingsHeating.phStopTemperatureLabel"), "", "", {
+        flow: true, 
+        labelPrefix: `${t("settingsHeating.phSetpointPrefix")} `, 
+        step: 0.05, 
+        min: 0,
+        className: "oq-settings-field--flow"
+      }),
+      renderSettingsNumberField("phRestartTemperature", t("settingsHeating.phRestartTemperatureLabel"), "", "", {
+        flow: true, 
+        labelPrefix: `${t("settingsHeating.phSetpointPrefix")} `, 
+        step: 0.05,
+        className: "oq-settings-field--flow"
+      }),
+    ].filter(Boolean);
+
+    if (!fields.length && !hasEntity("phComfortBelow") && !hasEntity("phComfortAbove") && !hasEntity("phRunExtension")) {
+      return "";
+    }
+
+    return `
+      <div class="oq-settings-flow oq-ph-comfort">
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowSetpointCopy", { value: getSetpointFlowValue() }), "oq-settings-prose--setpoint")}
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowHousePowerCopy"))}
+        ${renderPowerHouseBaseFields("oq-settings-grid")}
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowResponseCopy"))}
+        ${renderPowerHouseResponseProfilesField()}
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowKpCopy"))}
+        ${renderSettingsNumberField("phKp", t("settingsHeating.phKpLabel"), "", "", { 
+          flow: true, 
+          unitOverride: "W/\u00b0C",
+          className: "oq-settings-field--flow"
+        })}
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowInertiaCopy"))}
+        ${renderSettingsSwitchField("phInertia", t("settingsHeating.phInertiaTitle"),
+            t("settingsHeating.phInertiaCopy"),
+            t("settingsHeating.phInertiaOn"), t("settingsHeating.phInertiaOff"),
+            "oq-settings-field--flow")}
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowStopCopy"))}
+        ${renderSettingsNumberField("phStopTemperature", t("settingsHeating.phStopTemperatureLabel"), "", "", {
+          flow: true, 
+          labelPrefix: `${t("settingsHeating.phSetpointPrefix")} `, 
+          step: 0.05, 
+          min: 0,
+          className: "oq-settings-field--flow"
+        })}
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowRestartCopy"))}
+        ${renderSettingsNumberField("phRestartTemperature", t("settingsHeating.phRestartTemperatureLabel"), "", "", {
+          flow: true, 
+          labelPrefix: `${t("settingsHeating.phSetpointPrefix")} `, 
+          step: 0.05,
+          className: "oq-settings-field--flow"
+        })}
+        <div class="oq-run-extension-summary" data-oq-power-house-comfort-thresholds>${renderPowerHouseComfortThresholds()}</div>
+        ${renderSettingsProseBlock(t("settingsHeating.phFlowRunExtensionCopy"))}
+        ${renderPowerHouseRunExtensionField()}
+      </div>
+    `;
+  }
+
+  // Keep old function for backward compatibility
   export function renderPowerHouseAdvancedField() {
     const fields = [
       renderSettingsNumberField("phKp", t("settingsHeating.phKpTitle"), t("settingsHeating.phKpCopy"), "", { unitOverride: "W/K" }),
@@ -415,6 +513,34 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} °C` : "—";
   }
 
+  // Validation functions for new Power House fields
+  export function validateStopTemperature(value, context = {}) {
+    const stop = parseFloat(value);
+    if (!Number.isFinite(stop)) {
+      return t("settingsHeating.invalidNumber");
+    }
+    if (stop < 0) {
+      return t("settingsHeating.phStopTemperatureMinError");
+    }
+    const restart = parseFloat(context.restart ?? getEntityValue("phRestartTemperature") ?? "0.1");
+    if (stop - restart < 0.1) {
+      return t("settingsHeating.phTemperatureValidationError");
+    }
+    return null;
+  }
+
+  export function validateRestartTemperature(value, context = {}) {
+    const restart = parseFloat(value);
+    if (!Number.isFinite(restart)) {
+      return t("settingsHeating.invalidNumber");
+    }
+    const stop = parseFloat(context.stop ?? getEntityValue("phStopTemperature") ?? "0.3");
+    if (stop - restart < 0.1) {
+      return t("settingsHeating.phTemperatureValidationError");
+    }
+    return null;
+  }
+
   export function getRunExtensionThresholds(useDrafts = true) {
     const numeric = (key) => {
       const entity = state.entities[key];
@@ -434,10 +560,25 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     return { setpoint, margin, cooldown, stop, configuredRestart, coldEdge, warmEdge, restart, limited: restart > configuredRestart };
   }
 
+  // New threshold calculation for Power House flow
+  export function getPowerHouseFlowThresholds(useDrafts = true) {
+    const numeric = (key) => {
+      const entity = state.entities[key];
+      const value = useDrafts ? getInputDraftValue(key) : entity?.value ?? entity?.state ?? "";
+      return value === "" || value == null ? NaN : Number(value);
+    };
+    const setpoint = hasEntity("roomSetpoint") ? numeric("roomSetpoint") : NaN;
+    const stopTemp = hasEntity("phStopTemperature") ? numeric("phStopTemperature") : 0.3;
+    const restartTemp = hasEntity("phRestartTemperature") ? numeric("phRestartTemperature") : 0.1;
+    const stop = Number.isFinite(setpoint) && Number.isFinite(stopTemp) ? setpoint + stopTemp : NaN;
+    const restart = Number.isFinite(setpoint) && Number.isFinite(restartTemp) ? setpoint + restartTemp : NaN;
+    return { setpoint, stopTemp, restartTemp, stop, restart };
+  }
+
   const RUN_EXTENSION_STATUS_COPY = {
     extending: "runExtension.extending",
-    comfort_stop: "runExtension.comfortStop",
-    wait_warm_restart: "runExtension.waitRestart",
+    room_temp_high_stop: "runExtension.comfortStop",
+    room_temp_low_restart: "runExtension.waitRestart",
     warm_restart: "runExtension.warmRestart",
     normal: "runExtension.normal",
     blocked: "runExtension.blocked",
@@ -495,6 +636,21 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     if (target) target.innerHTML = renderRunExtensionThresholds();
     const status = state.root?.querySelector("[data-oq-run-extension-status]");
     if (status) status.textContent = getRunExtensionCurrentStatus();
+    // Patch setpoint in flow
+    const setpointEl = state.root?.querySelector(".oq-settings-prose--setpoint");
+    if (setpointEl) {
+      const value = getSetpointFlowValue();
+      setpointEl.textContent = t("settingsHeating.phFlowSetpointCopy", { value });
+    }
+  }
+
+  // Patch Power House flow thresholds
+  export function patchPowerHouseFlow() {
+    const setpointEl = state.root?.querySelector(".oq-settings-prose--setpoint");
+    if (setpointEl) {
+      const value = getSetpointFlowValue();
+      setpointEl.textContent = t("settingsHeating.phFlowSetpointCopy", { value });
+    }
   }
 
   export function renderPowerHouseRunExtensionField() {
@@ -712,9 +868,8 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
             <h4>Power House</h4>
             <p>${escapeHtml(t("settingsHeating.phouseCopy"))}</p>
           </div>
-          ${renderPowerHouseBaseFields()}
+          ${renderPowerHouseFlow()}
         </div>
-        ${renderPowerHouseAdvancedField()}
       `;
 
     return renderSettingsSection(

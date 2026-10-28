@@ -968,6 +968,16 @@ export default {
     cm100StartCopy: "Open the modal to start CM100 and unlock the tasks below.",
   },
   settingsHeating: {
+    // Prose blocks for Power House flow
+    phFlowSetpointCopy: "The requested room temperature from the thermostat is called the setpoint. It is currently set to {value} °C.",
+    phFlowHousePowerCopy: "The heat loss indicates the power needed to keep a house at temperature.",
+    phFlowResponseCopy: "When the room deviates from the setpoint, the system can respond in different ways. What works well for a radiator system is not always suitable for underfloor heating.",
+    phFlowKpCopy: "The room correction indicates how strongly the system corrects when the room deviates from the setpoint.",
+    phFlowInertiaCopy: "A fast system (radiators) may need some lag (an integrating control action). This is modelled as an offset on the room demand of up to 0.2 °C.",
+    phFlowStopCopy: "The outdoor unit switches off at a fixed offset from the setpoint:",
+    phFlowRestartCopy: "To prevent the heat pump from switching off and on in quick succession, a restart point lower than the stop temperature must be chosen. This can lie either above or below the setpoint.",
+    phFlowRunExtensionCopy: "It is not good for a heat pump to shut down too often. At moderate temperatures this can happen quickly. To prevent this, the system can always continue at the lowest setting up to the stop temperature.",
+
     simpleTitle: "Set heating curve",
     simpleCopy: "Shape a baseline with the sliders, then fine-tune all six points in the same chart.",
     simpleSlope: "Slope",
@@ -1074,10 +1084,34 @@ export default {
     curveStableCopy: "Responds more gradually and adjusts less quickly. Useful if you want as little fluctuation as possible.",
     phKpTitle: "Temperature response",
     phKpCopy: "Sets how strongly Power House adjusts heating output to the room temperature. A higher value means more extra heat when the room is too cold and a stronger reduction when it is too warm.",
+
+    // New field labels for Power House flow
+    phKpLabel: "Room correction",
+    phInertiaTitle: "Inertia",
+    phInertiaCopy: "Inertia adds an integrating control action: with a persistent deviation below the setpoint the demand slowly builds up, up to 0.2 °C.",
+    phInertiaOn: "On: inertia is enabled.",
+    phInertiaOff: "Off: only the direct deviation from the setpoint is controlled.",
+    phStopTemperatureTitle: "Stop temperature control",
+    phStopTemperatureLabel: "Stop temperature control",
+    phStopTemperatureCopy: "The outdoor unit switches off at a fixed offset from the setpoint.",
+    phRestartTemperatureTitle: "Restart temperature control",
+    phRestartTemperatureLabel: "Restart temperature control",
+    phRestartTemperatureCopy: "To prevent the heat pump from switching off and on in quick succession, a restart point lower than the stop temperature must be chosen.",
+    phSetpointPrefix: "setpoint +",
+    invalidNumber: "Enter a valid number.",
+    phTemperatureValidationError: "Restart temperature must be at least 0.1 °C lower than the stop temperature.",
+    phStopTemperatureMinError: "Stop temperature must be ≥ 0.",
+
+    // Old field labels (kept for backward compatibility)
     phComfortBelowTitle: "Cooling below desired temperature",
     phComfortBelowCopy: "Example: you want 21.0 °C and enter 0.2 °C of cooling here. Power House then requests extra heat when the room drops below 20.8 °C. Enter 0.4 °C and this happens below 20.6 °C. If the room has been too cold for a long time, Power House may request extra heat sooner and continue for a while as the room warms up.",
     phComfortAboveTitle: "Reduce heat above desired temperature",
     phComfortAboveCopy: "Example: you want 20.0 °C and enter 0.3 °C here. Above 20.3 °C, Power House requests less heat. Enter 1.0 °C and heat reduction starts above 21.0 °C. The further the room rises above that threshold, the more heat the controller takes away. The heat pump does not automatically stop at this temperature. Minimum run time and heat from the floor or radiators can warm the room further.",
+
+    // Run Extension labels
+    phRunExtensionTitle: "Extended heating",
+    phRunExtensionLabel: "Extended heating",
+
     tuningTitle: "Power House — comfort",
     tuningCopy: "Power House controls how much heat your home receives. Set when it requests extra heat and whether the heat pump may keep heating for longer.",
     limiterExcludedTitle: "Excluded frequency range",

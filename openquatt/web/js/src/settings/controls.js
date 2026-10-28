@@ -289,16 +289,28 @@ export function renderSettingsSwitchField(key, title, copy, enabledCopy = "", di
   }
 
   const { enabled, busy } = getSettingsSwitchModel(key);
-  return renderSettingsFieldCard(
-    key,
-    title,
-    copy,
-    `
+  const controlMarkup = `
       <div class="oq-settings-compact-switch-field">
         ${renderSettingsCompactSwitchControl(key, title, enabled, busy)}
         ${renderSettingsSwitchCopy(key, enabled, enabledCopy, disabledCopy)}
       </div>
-    `,
+    `;
+
+  // Flow layout: compact rendering without card
+  if (className && className.includes("oq-settings-field--flow")) {
+    return `
+      <div class="oq-settings-flow-item ${escapeHtml(className)}">
+        <span class="oq-settings-flow-label" id="${escapeHtml(key)}-label">${escapeHtml(title)}:</span>
+        ${controlMarkup}
+      </div>
+    `;
+  }
+
+  return renderSettingsFieldCard(
+    key,
+    title,
+    copy,
+    controlMarkup,
     className,
   );
 }
@@ -408,7 +420,7 @@ export function renderSettingsNumberField(key, title, copy, className = "", opti
     key,
     value,
     meta,
-    controlClass: `oq-helper-control${showUnit && !useInlineUnit ? " oq-helper-control--split" : ""}${useInlineUnit ? " oq-helper-control--suffix" : ""}`,
+    controlClass: `oq-helper-control${showUnit && !useInlineUnit ? " oq-helper-control--split" : ""}${useInlineUnit ? " oq-helper-control--suffix" : ""}${options.flow ? " oq-helper-control--flow" : ""}`,
     unitMarkup: showUnit
       ? useInlineUnit
         ? `<span class="oq-helper-unit-chip">${escapeHtml(unit)}</span>`
@@ -416,7 +428,30 @@ export function renderSettingsNumberField(key, title, copy, className = "", opti
       : "",
   });
 
+  // Flow layout: compact bullet-style rendering
+  if (options.flow) {
+    const labelText = options.labelPrefix ? `${options.labelPrefix}${title}` : title;
+    return renderSettingsFlowItem(key, labelText, controlMarkup, unit, className);
+  }
+
   return renderSettingsFieldCard(key, title, copy, controlMarkup, className, options.footerMarkup || "");
+}
+
+// Flow item helper (defined here for circular dependency)
+export function renderSettingsFlowItem(key, label, controlMarkup, unit = "", className = "") {
+  return `
+    <div class="oq-settings-flow-item ${escapeHtml(className)}">
+      <span class="oq-settings-flow-label" id="${escapeHtml(key)}-label">${escapeHtml(label)}</span>
+      ${controlMarkup}
+      ${unit ? `<span class="oq-settings-flow-unit">${escapeHtml(unit)}</span>` : ""}
+    </div>
+  `;
+}
+
+// Prose block helper
+export function renderSettingsProseBlock(text, className = "") {
+  if (!text) return "";
+  return `<p class="oq-settings-prose ${escapeHtml(className)}">${escapeHtml(text)}</p>`;
 }
 
 export function renderSettingsSliderField(key, title, copy, className = "", options = {}) {

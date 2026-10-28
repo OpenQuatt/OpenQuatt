@@ -32,13 +32,22 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertNotIn("ph_run_extension_enabled).has_state()", text)
         self.assertIn("ph_run_extension_stop_margin_c", yaml)
         self.assertIn("ph_run_extension_restart_cooldown_c", yaml)
-        self.assertIn("id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c", text)
+        self.assertIn("run_ext_input, {stop_temperature_c, restart_temperature_c}", text)
+        self.assertIn("restart_temperature_c = id(ph_run_extension_restart_cooldown_c).state;", text)
+        self.assertIn(
+            "const float run_ext_restart_c = std::isfinite(setpoint_c) ? setpoint_c + restart_temperature_c : NAN;",
+            text,
+        )
+        self.assertIn(
+            "const float restart_c = std::isfinite(in.setpoint_c) ? in.setpoint_c + tuning.restart_temperature_c : NAN;",
+            RUN_EXTENSION_LOGIC,
+        )
         cooldown = yaml.split("id: ph_run_extension_restart_cooldown_c", 1)[1].split("text_sensor:", 1)[0]
         for marker in ("restore_value: true", "disabled_by_default: true", "initial_value: ${oq_ph_run_extension_restart_hysteresis_c}", "min_value: 0.1", "max_value: 3.0"):
             self.assertIn(marker, cooldown)
         self.assertIn("oq_ph_run_extension_status", yaml)
         self.assertIn("enum class Phase", RUN_EXTENSION_LOGIC)
-        self.assertIn("WAIT_WARM_RESTART", RUN_EXTENSION_LOGIC)
+        self.assertIn("ROOM_TEMP_LOW_RESTART", RUN_EXTENSION_LOGIC)
         self.assertIn("compute_house_deficit_w(", text)
         # Review #726: topology-optimizer hold is not a #608 run right.
         self.assertNotIn("topology_hold_active", text)

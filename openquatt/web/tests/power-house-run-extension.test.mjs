@@ -137,11 +137,11 @@ test("zonder setpoint geen verzonnen absolute waarde", () => {
   assert.doesNotMatch(markup, /<strong>21,0 °C/);
 });
 
-test("status extending en wait_warm_restart geven juiste tekst", () => {
+test("status extending en room_temp_low_restart geven juiste tekst", () => {
   assert.equal(getRunExtensionStatusCopy("extending"), "Doorverwarmen op minimumvermogen");
-  assert.equal(getRunExtensionStatusCopy("wait_warm_restart"), "Wacht op afkoeling");
+  assert.equal(getRunExtensionStatusCopy("room_temp_low_restart"), "Wacht op afkoeling");
   assert.equal(getRunExtensionStatusCopy("warm_restart"), "Herstart aangevraagd");
-  assert.equal(getRunExtensionStatusCopy("comfort_stop"), "Stop aangevraagd");
+  assert.equal(getRunExtensionStatusCopy("room_temp_high_stop"), "Stop aangevraagd");
 });
 
 test("herstart onder setpoint toont een negatieve relatieve marge", () => {
@@ -234,6 +234,7 @@ test("input en live patches houden herstartvoorvertoning actueel zonder de invoe
   state.root = { querySelector(selector) {
     if (selector === "[data-oq-power-house-comfort-thresholds]") return comfort;
     if (selector === "[data-oq-run-extension-status]") return null;
+    if (selector === ".oq-settings-prose--setpoint") return null;
     assert.equal(selector, "[data-oq-run-extension-thresholds]");
     return preview;
   } };
@@ -387,8 +388,8 @@ test("live status blijft actueel tijdens invoer zonder de voorvertoning te beves
     const input = { dataset: { oqField: "phRunExtensionRestartCooldown" }, type: "number", value: "0.7" };
     handleInput({ target: input });
     assert.equal(status.textContent, "Doorverwarmen op minimumvermogen");
-    state.entities.phRunExtensionStatus.value = "comfort_stop";
-    state.entities.phRunExtensionStatus.state = "comfort_stop";
+    state.entities.phRunExtensionStatus.value = "room_temp_high_stop";
+    state.entities.phRunExtensionStatus.state = "room_temp_high_stop";
     patchRunExtensionThresholds();
     assert.equal(status.textContent, "Stop aangevraagd");
     assert.match(preview.innerHTML, /Voorbeeld van je wijziging — nog niet bevestigd/);

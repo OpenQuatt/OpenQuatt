@@ -968,6 +968,16 @@ export default {
     cm100StartCopy: "Open de modal om CM100 te starten en de taken hieronder te ontgrendelen.",
   },
   settingsHeating: {
+    // Prose blocks for Power House flow
+    phFlowSetpointCopy: "De gevraagde kamertemperatuur door de thermostaat noemen we het setpoint. Momenteel is deze ingesteld op {value} °C.",
+    phFlowHousePowerCopy: "Het warmteverlies geeft aan welk vermogen er nodig is om een huis op temperatuur te houden.",
+    phFlowResponseCopy: "Bij afwijkingen van het setpoint kan het systeem op verschillende manieren reageren. Wat handig is voor een systeem met radiatoren, is niet altijd handig voor een systeem met vloerverwarming.",
+    phFlowKpCopy: "De kamercorrectie geeft aan hoe sterk er bijgestuurd wordt bij een afwijking van het setpoint.",
+    phFlowInertiaCopy: "Bij een snel systeem (radiatoren) kan het nodig zijn om wat traagheid (een integrerende regeling) in te bouwen. Dit wordt gemodelleerd als een afwijking op de kamervraag tot maximaal 0,2 °C.",
+    phFlowStopCopy: "De buitenunit gaat uit bij een vaste afwijking op het setpoint:",
+    phFlowRestartCopy: "Om te voorkomen dat de warmtepomp snel achter elkaar uit en aan schakelt, moet er een herstartpunt gekozen worden, lager dan de stoptemperatuur. Dit kan zowel boven als onder het setpoint liggen.",
+    phFlowRunExtensionCopy: "Voor een warmtepomp is het niet goed om te vaak af te slaan. Bij gematigde temperaturen kan dit snel gebeuren. Om dit te voorkomen kan er tot aan de stoptemperatuur altijd minimaal op de laagste stand worden doorverwarmd.",
+
     simpleTitle: "Stooklijn instellen",
     simpleCopy: "Vorm met de schuiven een basislijn. Verfijn daarna de zes punten in dezelfde grafiek.",
     simpleSlope: "Helling",
@@ -1074,10 +1084,34 @@ export default {
     curveStableCopy: "Reageert rustiger en stuurt minder snel bij. Fijn als je zo min mogelijk schommelingen wilt.",
     phKpTitle: "Temperatuurreactie",
     phKpCopy: "Bepaalt hoe sterk Power House het verwarmingsvermogen aanpast aan de kamertemperatuur. Een hogere waarde betekent meer extra warmte bij een te koude kamer en sterker terugregelen bij een te warme kamer.",
+
+    // New field labels for Power House flow
+    phKpLabel: "Kamercorrectie",
+    phInertiaTitle: "Traagheid",
+    phInertiaCopy: "Traagheid zorgt voor een integrerende regeling: bij een aanhoudende afwijking onder het setpoint bouwt de vraag langzaam op, tot maximaal 0,2 °C.",
+    phInertiaOn: "Aan: traagheid is ingeschakeld.",
+    phInertiaOff: "Uit: er wordt alleen direct geregeld op de afwijking van het setpoint.",
+    phStopTemperatureTitle: "Stoptemperatuur regeling",
+    phStopTemperatureLabel: "Stoptemperatuur regeling",
+    phStopTemperatureCopy: "De buitenunit gaat uit bij een vaste afwijking op het setpoint.",
+    phRestartTemperatureTitle: "Herstarttemperatuur regeling",
+    phRestartTemperatureLabel: "Herstarttemperatuur regeling",
+    phRestartTemperatureCopy: "Om te voorkomen dat de warmtepomp snel achter elkaar uit en aan schakelt, moet er een herstartpunt gekozen worden, lager dan de stoptemperatuur.",
+    phSetpointPrefix: "setpoint +",
+    invalidNumber: "Voer een geldig getal in.",
+    phTemperatureValidationError: "Herstarttemperatuur moet tenminste 0,1 °C lager zijn dan de stoptemperatuur.",
+    phStopTemperatureMinError: "Stoptemperatuur moet ≥ 0 zijn.",
+
+    // Old field labels (kept for backward compatibility)
     phComfortBelowTitle: "Afkoeling onder gewenste temperatuur",
     phComfortBelowCopy: "Voorbeeld: je wilt 21,0 °C en stelt hier 0,2 °C afkoeling in. Power House vraagt dan extra warmte als de kamer onder 20,8 °C komt. Stel je hier 0,4 °C in, dan gebeurt dat onder 20,6 °C. Was de kamer langere tijd te koud, dan kan Power House al eerder extra warmte vragen en daarmee nog een tijdje doorgaan terwijl de kamer opwarmt.",
     phComfortAboveTitle: "Afremmen boven gewenste temperatuur",
     phComfortAboveCopy: "Voorbeeld: je wilt 20,0 °C en stelt hier 0,3 °C in. Boven 20,3 °C vraagt Power House minder warmte. Stel je 1,0 °C in, dan begint het afremmen boven 21,0 °C. Hoe verder de kamer boven die grens komt, hoe meer warmte de regeling terugneemt. De warmtepomp stopt niet automatisch bij deze temperatuur. Minimale looptijd en warmte uit de vloer of radiatoren kunnen de kamer verder opwarmen.",
+
+    // Run Extension labels
+    phRunExtensionTitle: "Langer doorverwarmen",
+    phRunExtensionLabel: "Langer doorverwarmen",
+
     tuningTitle: "Power House — comfort",
     tuningCopy: "Power House regelt hoeveel warmte je woning krijgt. Hier stel je in wanneer het extra warmte vraagt en of de warmtepomp langer mag doorverwarmen.",
     limiterExcludedTitle: "Uitgesloten frequentiebereik",

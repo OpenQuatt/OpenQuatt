@@ -18,8 +18,8 @@ test("Toby-context bevat drie instelwaarden, setpoint, comfortband en cyclusdiag
     assert.ok(powerHouse.includes(`name: "${ENTITY_DEFS[key].name}"`), key);
   }
   assert.ok(DEBUG_RECORDING_KEYS.includes("debugStaticSnapshot"));
-  assert.match(powerHouse, /cbBelow/);
-  assert.match(powerHouse, /cbAbove/);
+  assert.match(powerHouse, /ph_comfort_band_below_c/);
+  assert.match(powerHouse, /ph_comfort_band_above_c/);
   assert.match(powerHouse, /run_extension_comfort_stop_c\(\)/);
   assert.match(powerHouse, /run_extension_warm_restart_c\(\)/);
 });
