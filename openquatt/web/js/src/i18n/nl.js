@@ -3976,6 +3976,7 @@ export default {
     exportDone: "Diagnosebestand ({range}) {action}.",
     exportCopied: "gekopieerd",
     exportDownloaded: "gedownload",
+    exportCopyReady: "Gegevens opgehaald. Klik nogmaals op Kopieer gegevens of Kopieer + analyser om te kopiëren.",
     exportCopyFail: "Kopiëren mislukt. Probeer opnieuw of download het diagnosebestand.",
     exportDownloadFail: "Download mislukt. Probeer opnieuw of kopieer de gegevens.",
     stringOverflow: "De stringopslag is volgelopen; enkele tekstwaarden ontbreken in de opname.",

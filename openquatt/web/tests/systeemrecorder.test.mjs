@@ -1009,3 +1009,106 @@ test("kopieer-en-open opent geen tab bij een mislukte kopie", async (t) => {
   assert.equal(opened, 0);
   assert.match(state.debugRecordingError, /Kopiëren mislukt/);
 });
+
+test("verlopen klikactivatie bewaart de export voor een tweede kopieerklik zonder fetch", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalClipboard = window.navigator.clipboard;
+  const originalActivation = window.navigator.userActivation;
+  const originalDocument = globalThis.document;
+  const originalOpen = window.open;
+  t.after(() => {
+    setDebugRecordingDownloadRange(15);
+    window.fetch = originalFetch;
+    window.navigator.clipboard = originalClipboard;
+    window.navigator.userActivation = originalActivation;
+    globalThis.document = originalDocument;
+    window.open = originalOpen;
+    restoreTimers();
+  });
+  globalThis.document = undefined;
+  let active = true;
+  window.navigator.userActivation = { get isActive() { return active; } };
+  const bundle = { recording: { recording_id: 7 }, data: "x".repeat(742000) };
+  const expected = JSON.stringify(bundle);
+  let copiedText = "";
+  let fetches = 0;
+  let opened = 0;
+  window.navigator.clipboard = { writeText: async (text) => {
+    if (!active) throw new Error("expired activation");
+    copiedText = text;
+  } };
+  window.fetch = async () => {
+    fetches += 1;
+    active = false;
+    return { ok: true, json: async () => bundle };
+  };
+  window.open = () => { opened += 1; return null; };
+  const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
+  for (const range of [120, 360, 0]) {
+    for (const copy of [() => copyDebugRecordingBundle(), () => copyDebugRecordingAndOpenAnalyser()]) {
+      setDebugRecordingDownloadRange(range);
+      active = true;
+      copiedText = "";
+      const beforeFetch = fetches;
+      const beforeOpen = opened;
+      assert.equal(await copy(), false);
+      assert.equal(state.debugRecordingError, "");
+      assert.match(state.debugRecordingNotice, /Klik nogmaals/);
+      assert.equal(opened, beforeOpen, "analyser blijft gesloten tot kopiëren lukt");
+      active = true;
+      const copying = copy();
+      assert.equal(copiedText, expected, "schrijft vóór een async onderbreking van de tweede klik");
+      assert.equal(await copying, true);
+      assert.equal(fetches, beforeFetch + 1, "tweede klik haalt de grote export niet opnieuw op");
+      assert.match(state.debugRecordingNotice, /gekopieerd/);
+      assert.equal(await copy(), false, "succesvolle kopie ruimt de voorbereide export op");
+      assert.equal(fetches, beforeFetch + 2);
+    }
+  }
+});
+
+test("voorbereide kopie vervalt bij bereik- of opnamewissel en na een minuut", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalClipboard = window.navigator.clipboard;
+  const originalActivation = window.navigator.userActivation;
+  const originalDocument = globalThis.document;
+  const originalNow = Date.now;
+  t.after(() => {
+    setDebugRecordingDownloadRange(15);
+    window.fetch = originalFetch;
+    window.navigator.clipboard = originalClipboard;
+    window.navigator.userActivation = originalActivation;
+    globalThis.document = originalDocument;
+    Date.now = originalNow;
+    restoreTimers();
+  });
+  globalThis.document = undefined;
+  let active = false;
+  let fetches = 0;
+  let now = originalNow();
+  Date.now = () => now;
+  window.navigator.userActivation = { get isActive() { return active; } };
+  window.navigator.clipboard = { writeText: async () => {
+    if (!active) throw new Error("expired activation");
+  } };
+  window.fetch = async () => {
+    fetches += 1;
+    return { ok: true, json: async () => ({ recording: { recording_id: 7 } }) };
+  };
+  for (const invalidate of [
+    () => setDebugRecordingDownloadRange(360),
+    () => applyDebugRecordingDeviceStatus({ ...state.debugRecordingDeviceStatus, recording_id: 8 }),
+    () => { now += 60001; },
+  ]) {
+    setDebugRecordingDownloadRange(120);
+    active = false;
+    assert.equal(await copyDebugRecordingBundle(), false);
+    const beforeFetch = fetches;
+    invalidate();
+    active = true;
+    assert.equal(await copyDebugRecordingBundle(), true);
+    assert.equal(fetches, beforeFetch + 1, "oude export wordt niet hergebruikt");
+  }
+});

@@ -3976,6 +3976,7 @@ export default {
     exportDone: "Diagnostic file ({range}) {action}.",
     exportCopied: "copied",
     exportDownloaded: "downloaded",
+    exportCopyReady: "Data retrieved. Click Copy data or Copy + analyser again to copy.",
     exportCopyFail: "Copying failed. Try again or download the diagnostic file.",
     exportDownloadFail: "Download failed. Try again or copy the data.",
     stringOverflow: "String storage has overflowed; some text values are missing from the recording.",
