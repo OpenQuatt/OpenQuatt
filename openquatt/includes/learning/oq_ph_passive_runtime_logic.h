@@ -12,6 +12,7 @@
 
 #include "oq_ph_learning_aggregate.h"
 #include "oq_ph_learning_fit.h"
+#include "oq_ph_learning_source_logic.h"
 #include "oq_ph_model_validation.h"
 #include "oq_ph_thermal_aggregate.h"
 #include "oq_ph_thermal_model_logic.h"
@@ -49,6 +50,7 @@ struct PassiveRuntimeDiagnostics {
   uint32_t fit_restart_count = 0;
   LearningStatus last_batch_status = LearningStatus::COLLECTING;
   LearningStatus last_batch_rejection = LearningStatus::OK;
+  SnapshotSourceStatus last_batch_source_status = SnapshotSourceStatus::OK;
   ThermalWindowStatus last_thermal_window_status = ThermalWindowStatus::COLLECTING;
   ThermalUpdateStatus last_thermal_update_status = ThermalUpdateStatus::INVALID_CONFIGURATION;
 };
@@ -131,6 +133,7 @@ struct PassiveTickInput {
   HouseLine active_line;
   bool batch_snapshot_available = false;
   bool may_bridge_daily_gap = false;
+  SnapshotSourceStatus batch_source_status = SnapshotSourceStatus::OK;
   LearningSnapshot batch_snapshot;
   bool dynamic_snapshot_available = false;
   LearningSnapshot dynamic_snapshot;
@@ -207,8 +210,10 @@ inline void cancel_fit(PassiveRuntimeStorage& state) {
 }
 
 inline void clear_transient_collection(PassiveRuntimeStorage& state, LearningStatus rejection = LearningStatus::OK) {
-  if (state.batch_accumulator.active && rejection != LearningStatus::OK)
+  if (state.batch_accumulator.active && rejection != LearningStatus::OK) {
     state.diagnostics.last_batch_rejection = rejection;
+    state.diagnostics.last_batch_source_status = SnapshotSourceStatus::OK;
+  }
   reset_segment(state.batch_accumulator);
   state.thermal_accumulator = {};
   cancel_fit(state);
@@ -446,7 +451,10 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
                                    snapshot_matches_tick(input.batch_snapshot, input) &&
                                    validate_snapshot(input.batch_snapshot, state.config.quality) == LearningStatus::OK;
   if (!input.batch_snapshot_available || !snapshot_matches_tick(input.batch_snapshot, input)) {
-    if (state.batch_accumulator.active) state.diagnostics.last_batch_rejection = LearningStatus::INVALID_MEASUREMENT;
+    if (state.batch_accumulator.active) {
+      state.diagnostics.last_batch_rejection = LearningStatus::INVALID_MEASUREMENT;
+      state.diagnostics.last_batch_source_status = SnapshotSourceStatus::OK;
+    }
     reset_segment(state.batch_accumulator);
     state.diagnostics.last_batch_status = LearningStatus::INVALID_MEASUREMENT;
     if (state.diagnostics.rejected_batch_observations != UINT32_MAX) ++state.diagnostics.rejected_batch_observations;
@@ -454,8 +462,11 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     const bool batch_was_active = state.batch_accumulator.active;
     const ObserveResult observed = observe_snapshot(state.batch_accumulator, input.batch_snapshot, state.config.quality,
                                                     input.may_bridge_daily_gap);
-    if (batch_was_active && observed.status != LearningStatus::COLLECTING && !observed.has_record)
+    if (batch_was_active && observed.status != LearningStatus::COLLECTING && !observed.has_record) {
       state.diagnostics.last_batch_rejection = observed.status;
+      state.diagnostics.last_batch_source_status =
+          observed.status == LearningStatus::INVALID_MEASUREMENT ? input.batch_source_status : SnapshotSourceStatus::OK;
+    }
     state.diagnostics.last_batch_status = observed.status;
     if (observed.has_record) {
       cancel_fit(state);
@@ -465,6 +476,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
       state.record_count = buffer.count;
       state.diagnostics.last_batch_status = append_status;
       state.diagnostics.last_batch_rejection = append_status;
+      state.diagnostics.last_batch_source_status = SnapshotSourceStatus::OK;
       if (append_status == LearningStatus::OK) {
         appended_record = true;
         state.fit_pending = true;

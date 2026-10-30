@@ -94,20 +94,24 @@ void test_last_batch_rejection_survives_collection_and_clears_on_success_or_rese
   tick_passive_runtime(state, tick(11000, epoch + 10U));
   input = tick(21000, epoch + 20U);
   input.batch_snapshot.invalid_reasons = INVALID_SOURCE_STALE;
+  input.batch_source_status = SnapshotSourceStatus::SOURCE_STALE;
   tick_passive_runtime(state, input);
   assert(!state.batch_accumulator.active);
   assert(state.diagnostics.last_batch_rejection == LearningStatus::INVALID_MEASUREMENT);
+  assert(state.diagnostics.last_batch_source_status == SnapshotSourceStatus::SOURCE_STALE);
   for (uint32_t second = 30; second <= 86430U; second += 10U) {
     tick_passive_runtime(state, tick(1000ULL + second * 1000ULL, epoch + second));
     if (second < 86430U) {
       assert(state.record_count == 0);
       assert(state.diagnostics.last_batch_status == LearningStatus::COLLECTING);
       assert(state.diagnostics.last_batch_rejection == LearningStatus::INVALID_MEASUREMENT);
+      assert(state.diagnostics.last_batch_source_status == SnapshotSourceStatus::SOURCE_STALE);
     }
   }
   assert(state.record_count == 1 && state.records[0].start_epoch_s == epoch + 30U);
   assert(state.thermal_state.accepted_samples > 0);
   assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);
+  assert(state.diagnostics.last_batch_source_status == SnapshotSourceStatus::OK);
   assert(!passive_runtime_summary(state, state.last_monotonic_ms).auto_apply_allowed);
 
   // Completed quality rejection remains visible when the next window starts.
@@ -121,6 +125,7 @@ void test_last_batch_rejection_survives_collection_and_clears_on_success_or_rese
   assert(state.batch_accumulator.active);
   assert(state.diagnostics.last_batch_status == LearningStatus::COLLECTING);
   assert(state.diagnostics.last_batch_rejection == LearningStatus::ROOM_UNSTABLE);
+  assert(state.diagnostics.last_batch_source_status == SnapshotSourceStatus::OK);
   reset_passive_runtime(state);
   assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);
 }
@@ -132,6 +137,7 @@ void test_early_collection_exits_replace_the_previous_rejection() {
     constexpr uint32_t epoch = 20000U * 86400U;
     tick_passive_runtime(state, tick(1000, epoch));
     state.diagnostics.last_batch_rejection = LearningStatus::ROOM_UNSTABLE;
+    state.diagnostics.last_batch_source_status = SnapshotSourceStatus::BOILER_ACTIVE;
     auto input = tick(11000, epoch + 10U);
     auto expected = LearningStatus::INVALID_MEASUREMENT;
     switch (scenario) {
@@ -158,6 +164,7 @@ void test_early_collection_exits_replace_the_previous_rejection() {
     if (scenario < 4) tick_passive_runtime(state, input);
     assert(!state.batch_accumulator.active);
     assert(state.diagnostics.last_batch_rejection == expected);
+    assert(state.diagnostics.last_batch_source_status == SnapshotSourceStatus::OK);
   }
 }
 

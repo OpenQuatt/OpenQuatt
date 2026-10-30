@@ -111,6 +111,12 @@ inline const char* snapshot_source_status_name(SnapshotSourceStatus status) {
       return "context_revision_mismatch";
     case SnapshotSourceStatus::FLOW_OUT_OF_RANGE:
       return "flow_out_of_range";
+    case SnapshotSourceStatus::BOILER_UNAVAILABLE:
+      return "boiler_unavailable";
+    case SnapshotSourceStatus::BOILER_COMMAND_STALE:
+      return "boiler_command_stale";
+    case SnapshotSourceStatus::BOILER_COMMAND_ACTIVE:
+      return "boiler_command_active";
   }
   return "unknown";
 }
@@ -406,17 +412,21 @@ inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources
 // enough during startup, a mode transition or a paused/stale dispatcher.
 // This is controller evidence, not a physical heat measurement or a statement
 // about solar, internal or independently controlled heat gains.
-inline PhysicalMeasurement<BoilerHeatState> learning_no_boiler_heat_contract(bool runtime_available, int control_mode,
-                                                                             const oq_boiler::BoilerCommand& command,
-                                                                             bool output_active, bool relay_active,
-                                                                             uint64_t now_ms,
-                                                                             bool applied_ot_command_active) {
+inline PhysicalMeasurement<BoilerHeatState> learning_no_boiler_heat_contract(
+    bool runtime_available, int control_mode, const oq_boiler::BoilerCommand& command, bool output_active,
+    bool relay_active, uint64_t now_ms, bool applied_ot_command_active, SnapshotSourceStatus* status = nullptr) {
   PhysicalMeasurement<BoilerHeatState> result;
   result.value = BoilerHeatState::NO_HEAT;
-  result.valid = runtime_available && (control_mode == 0 || control_mode == 1 || control_mode == 2) && now_ms != 0U &&
-                 oq_boiler::command_is_fresh(command, static_cast<uint32_t>(now_ms), 15000U) &&
-                 command.source == oq_boiler::COMMAND_SOURCE_NONE && !command.demand_present && !command.heat_request &&
-                 !output_active && !relay_active && !applied_ot_command_active;
+  const auto reason = !runtime_available                     ? SnapshotSourceStatus::BOILER_UNAVAILABLE
+                      : control_mode < 0 || control_mode > 2 ? SnapshotSourceStatus::CONTROL_MODE_BLOCKED
+                      : now_ms == 0U || !oq_boiler::command_is_fresh(command, static_cast<uint32_t>(now_ms), 15000U)
+                          ? SnapshotSourceStatus::BOILER_COMMAND_STALE
+                      : command.source != oq_boiler::COMMAND_SOURCE_NONE || command.demand_present ||
+                              command.heat_request || output_active || relay_active || applied_ot_command_active
+                          ? SnapshotSourceStatus::BOILER_COMMAND_ACTIVE
+                          : SnapshotSourceStatus::OK;
+  result.valid = reason == SnapshotSourceStatus::OK;
+  if (status != nullptr) *status = reason;
   result.source = {PhysicalSourceKind::CONTROL_CONTRACT, 2U, PhysicalUnit::SYSTEM};
   result.source_generation = 1U;
   result.received_monotonic_ms = now_ms;
@@ -425,7 +435,7 @@ inline PhysicalMeasurement<BoilerHeatState> learning_no_boiler_heat_contract(boo
   return result;
 }
 
-// A physical OpenTherm Status READ_ACK proves no central-heating/flame activity
+// A physical OpenTherm Status READ_ACK distinguishes CV heat from DHW-only flame
 // only while its owning transport is active. R1 relay commands never enter here.
 inline PhysicalMeasurement<BoilerHeatState> learning_boiler_status(float payload, uint64_t received_ms, bool valid,
                                                                    bool transport_active) {
@@ -433,7 +443,11 @@ inline PhysicalMeasurement<BoilerHeatState> learning_boiler_status(float payload
   const bool payload_valid = valid && transport_active && valid_register_word(payload);
   receipt.observe(payload, received_ms, payload_valid);
   const uint16_t status = payload_valid ? static_cast<uint16_t>(payload) : 0U;
-  const bool heating = (status & 0x000AU) != 0U;  // Slave CH-active or flame-on.
+  const bool ch_active = (status & 0x0022U) != 0U;  // Slave CH or CH2 active.
+  const bool dhw_only = (status & 0x0004U) != 0U && !ch_active && (status & 0x0010U) == 0U;
+  // A flame with no confirmed DHW-only destination remains ambiguous. Never
+  // let DHW mask simultaneous CH/CH2 activity or a contradictory cooling state.
+  const bool heating = ch_active || ((status & 0x0008U) != 0U && !dhw_only);
   return receipt_measurement(receipt, heating ? BoilerHeatState::HEAT_ACTIVE : BoilerHeatState::NO_HEAT,
                              {PhysicalSourceKind::OPENTHERM_FRAME, 0x10000U, PhysicalUnit::SYSTEM}, 1, {10000, 30000});
 }

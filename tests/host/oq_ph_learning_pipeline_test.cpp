@@ -211,6 +211,40 @@ void heating_cycles_keep_idle_time_and_pump_runout(bool interrupt_idle = false) 
   assert(state.thermal_state.accepted_samples == 48);
 }
 
+void daily_dhw_only_preserves_collection_and_restart_eligibility() {
+  for (uint16_t payload : {0x0000U, 0x000CU, 0x000EU, 0x0008U, 0x002CU}) {
+    SegmentAccumulator day;
+    unsigned records = 0;
+    const bool allowed = payload == 0x0000U || payload == 0x000CU;
+    for (uint32_t minute = 0; minute <= 1440U; ++minute) {
+      const uint64_t now = 1000ULL + minute * 60000ULL;
+      auto raw = observation(now, 20000U * 86400U + minute * 60U, 5.0f);
+      const oq_boiler::BoilerCommand off{
+          true, false, false, NAN, NAN, oq_boiler::COMMAND_SOURCE_NONE, static_cast<uint32_t>(now)};
+      const auto contract = learning_no_boiler_heat_contract(true, 2, off, false, false, now, false);
+      const bool during_dhw = minute >= 600U && minute < 610U;
+      const auto telemetry = learning_boiler_status(during_dhw ? payload : 0U, now, true, true);
+      raw.boiler_heat = learning_boiler_heat(true, contract, telemetry);
+      const bool interrupted = during_dhw && !allowed;
+      const auto event = observe_source_input(day, raw, QualityConfig{});
+      assert(event.source.measurement_valid == !interrupted);
+      const auto thermal = build_learning_snapshot(raw, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
+      assert(thermal.measurement_valid == !interrupted);
+      if (during_dhw) {
+        // Live and pre-SNTP/boot recovery share the same physical classifier.
+        assert(known_daily_restart_interruption(raw, telemetry.value == BoilerHeatState::HEAT_ACTIVE) == !allowed);
+        assert(event.source.may_bridge_daily_gap == false);
+      }
+      if (event.aggregate.has_record) {
+        ++records;
+        assert(event.aggregate.record.duration_s == 86400U);
+        assert(fabsf(event.aggregate.record.mean_heat_w - 2200.0f) < 0.1f);
+      }
+    }
+    assert(records == (allowed ? 1U : 0U));
+  }
+}
+
 // A host-side size guard for the pure data only. This is not an ESP32 footprint
 // or a substitute for the future strict-PSRAM and internal-heap HIL checks.
 static_assert(sizeof(SegmentRecord) * kMaxSegmentRecords + sizeof(AdviceFitWorkspace) + sizeof(SegmentAccumulator) <
@@ -218,6 +252,7 @@ static_assert(sizeof(SegmentRecord) * kMaxSegmentRecords + sizeof(AdviceFitWorks
 }  // namespace
 
 int main() {
+  daily_dhw_only_preserves_collection_and_restart_eligibility();
   raw_series_observations_to_advice();
   raw_daily_profiles_cross_zero_power_temperature();
   heating_cycles_keep_idle_time_and_pump_runout();
