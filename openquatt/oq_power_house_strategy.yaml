@@ -365,7 +365,7 @@ text_sensor:
       char buf[640]{};
       int n = snprintf(
           buf, sizeof(buf),
-          "{\"availableModels\":{\"v2Thermal\":\"oq-v2-heating-r1\","
+          "{\"availableModels\":{\"v2Thermal\":\"oq-v2-heating-r2\","
           "\"v2Input\":\"oq-v2-input-r1\"},"
           "\"hp1\":{\"valid\":%s,\"count\":%u,\"hash\":%u,\"hz\":%s},\"hp2\":%s,"
           "\"house\":{\"cold\":%s,\"zero\":%s,\"rated\":%s,\"kp\":%s,\"cbBelow\":%s,\"cbAbove\":%s,"

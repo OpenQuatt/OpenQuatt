@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -49,7 +50,7 @@ inline Blend bracket(const double (&axis)[N], double value) {
 
 inline double reference_frequency_hz(int level) {
   if (level <= 0) return 0.0;
-  return data::FREQUENCY_HZ[level > 10 ? 9 : level - 1];
+  return data::REFERENCE_FREQUENCY_HZ[level > 10 ? 9 : level - 1];
 }
 
 inline Prediction predict_heating(double frequency_hz, double ambient_c, double supply_c) {
@@ -57,8 +58,9 @@ inline Prediction predict_heating(double frequency_hz, double ambient_c, double 
   // OFF is an incremental optimizer point, not whole-ODU standby power.
   if (frequency_hz == 0.0) return {0.0f, UNAVAILABLE, 0.0f, Status::OFF, false};
   if (!std::isfinite(ambient_c) || !std::isfinite(supply_c)) return {};
-  if (frequency_hz < data::FREQUENCY_HZ[0] || frequency_hz > data::FREQUENCY_HZ[9] || ambient_c < data::AMBIENT_C[0] ||
-      ambient_c > data::AMBIENT_C[16] || supply_c < data::SUPPLY_C[0] || supply_c > data::SUPPLY_C[7]) {
+  if (frequency_hz < data::FREQUENCY_HZ[0] || frequency_hz > data::FREQUENCY_HZ[data::N_FREQUENCY - 1] ||
+      ambient_c < data::AMBIENT_C[0] || ambient_c > data::AMBIENT_C[data::N_AMBIENT - 1] ||
+      supply_c < data::SUPPLY_C[0] || supply_c > data::SUPPLY_C[data::N_SUPPLY - 1]) {
     return {UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, Status::OUTSIDE_DOMAIN, false};
   }
 
@@ -67,15 +69,17 @@ inline Prediction predict_heating(double frequency_hz, double ambient_c, double 
   const Blend frequency = bracket(data::FREQUENCY_HZ, frequency_hz);
   double pth_w = 0.0;
   double cop = 0.0;
-  for (size_t supply_side = 0; supply_side < 2; ++supply_side) {
-    const double supply_weight = supply_side ? supply.weight : 1.0 - supply.weight;
-    if (supply_weight == 0.0) continue;
-    for (size_t ambient_side = 0; ambient_side < 2; ++ambient_side) {
-      const double ambient_weight = ambient_side ? ambient.weight : 1.0 - ambient.weight;
-      if (ambient_weight == 0.0) continue;
-      for (size_t frequency_side = 0; frequency_side < 2; ++frequency_side) {
-        const double frequency_weight = frequency_side ? frequency.weight : 1.0 - frequency.weight;
-        if (frequency_weight == 0.0) continue;
+  for (size_t frequency_side = 0; frequency_side < 2; ++frequency_side) {
+    const double frequency_weight = frequency_side ? frequency.weight : 1.0 - frequency.weight;
+    if (frequency_weight == 0.0) continue;
+    double plane_pth_w = 0.0;
+    double plane_cop = 0.0;
+    for (size_t supply_side = 0; supply_side < 2; ++supply_side) {
+      const double supply_weight = supply_side ? supply.weight : 1.0 - supply.weight;
+      if (supply_weight == 0.0) continue;
+      for (size_t ambient_side = 0; ambient_side < 2; ++ambient_side) {
+        const double ambient_weight = ambient_side ? ambient.weight : 1.0 - ambient.weight;
+        if (ambient_weight == 0.0) continue;
         const size_t supply_index = supply_side ? supply.hi : supply.lo;
         const size_t ambient_index = ambient_side ? ambient.hi : ambient.lo;
         const size_t frequency_index = frequency_side ? frequency.hi : frequency.lo;
@@ -84,13 +88,16 @@ inline Prediction predict_heating(double frequency_hz, double ambient_c, double 
         if (!std::isfinite(cell_pth_w) || !std::isfinite(cell_cop) || cell_pth_w <= 0.0f || cell_cop <= 0.0f) {
           return {UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, Status::MASKED, false};
         }
-        const double weight = supply_weight * ambient_weight * frequency_weight;
-        pth_w += weight * cell_pth_w;
-        cop += weight * cell_cop;
+        const double weight = supply_weight * ambient_weight;
+        plane_pth_w += weight * cell_pth_w;
+        plane_cop += weight * cell_cop;
       }
     }
+    // Bound the model output at each table frequency first; custom EEPROM frequencies
+    // interpolate those bounded outputs rather than their unbounded surfaces.
+    pth_w += frequency_weight * std::clamp(plane_pth_w, data::PTH_MIN_W, data::PTH_MAX_W);
+    cop += frequency_weight * std::clamp(plane_cop, data::COP_MIN, data::COP_MAX);
   }
-
   return {static_cast<float>(pth_w), static_cast<float>(cop), static_cast<float>(pth_w / cop), Status::VALID, false};
 }
 
