@@ -1,10 +1,10 @@
 import { invokeActionMap } from "../core/action-router.js";
-import { copyTextToClipboard, downloadTextFile } from "../core/browser-utils.js";
+import { copyTextToClipboard, createCancellationController, downloadTextFile, fetchWithTimeout } from "../core/browser-utils.js";
 import {
   DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS,
   SYSTEM_RECORDER_ANALYSER_URL,
 } from "../core/config.js";
-import { formatNumber, t } from "../i18n/index.js";
+import { formatDateTime, formatNumber, t } from "../i18n/index.js";
 import { updateDebugRecordingState } from "../core/feature-state.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
@@ -17,17 +17,58 @@ let debugRecordingMutationGeneration = 0;
 let debugRecordingMutationInFlight = false;
 let debugRecordingStatusFailureCount = 0;
 let preparedDebugRecordingCopy = null;
-let preparedDebugRecordingCopyTimer = null;
 
-function clearPreparedDebugRecordingCopy() {
-  if (preparedDebugRecordingCopy && state.debugRecordingNotice === preparedDebugRecordingCopy.notice) {
-    state.debugRecordingNotice = "";
-  }
+export function clearPreparedDebugRecordingCopy() {
+  preparedDebugRecordingCopy?.cancel.abort();
   preparedDebugRecordingCopy = null;
-  if (preparedDebugRecordingCopyTimer !== null) {
-    window.clearTimeout(preparedDebugRecordingCopyTimer);
-    preparedDebugRecordingCopyTimer = null;
+}
+
+function getPreparedDebugRecordingCopy(rangeMinutes = getDebugRecordingDownloadRange()) {
+  const prepared = preparedDebugRecordingCopy;
+  return prepared?.range === rangeMinutes && prepared.id === getDebugRecordingId()
+    ? prepared : null;
+}
+
+export function prepareDebugRecordingCopy() {
+  if (state.systemModal !== "debug-recording" || !isSystemRecorderAvailable()
+    || getDebugRecordingSampleCount() === 0 || debugRecordingMutationInFlight) {
+    clearPreparedDebugRecordingCopy();
+    return false;
   }
+  const existing = getPreparedDebugRecordingCopy();
+  if (existing) return existing.promise;
+  clearPreparedDebugRecordingCopy();
+  const prepared = {
+    range: getDebugRecordingDownloadRange(), id: getDebugRecordingId(),
+    cancel: createCancellationController(), loading: true, text: "", failed: false,
+  };
+  preparedDebugRecordingCopy = prepared;
+  prepared.promise = (async () => {
+    try {
+      const bundle = await fetchWithTimeout(getDebugRecordingDownloadEndpoint(prepared.range), {
+        cache: "no-store", headers: { "Cache-Control": "no-store" }, signal: prepared.cancel.signal,
+      }, 60000, "", async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }, { fetch: window.fetch });
+      if (preparedDebugRecordingCopy !== prepared || state.systemModal !== "debug-recording"
+        || getPreparedDebugRecordingCopy() !== prepared) return false;
+      prepared.text = getDebugRecordingCompactJson(bundle);
+      prepared.time = Number(bundle.exported_at_ms) || Date.now();
+      return true;
+    } catch (_error) {
+      if (preparedDebugRecordingCopy === prepared) prepared.failed = true;
+      return false;
+    } finally {
+      prepared.loading = false;
+      if (preparedDebugRecordingCopy === prepared) {
+        if (state.systemModal === "debug-recording") render();
+        else clearPreparedDebugRecordingCopy();
+      }
+    }
+  })();
+  render();
+  return prepared.promise;
 }
 
 export function getDebugRecordingSampleCount() {
@@ -321,9 +362,7 @@ export function getDebugRecordingEndpoint(path) {
 }
 
 export function applyDebugRecordingDeviceStatus(payload) {
-  if (getDebugRecordingId(payload) !== getDebugRecordingId()) {
-    clearPreparedDebugRecordingCopy();
-  }
+  if (getDebugRecordingId(payload) !== getDebugRecordingId()) clearPreparedDebugRecordingCopy();
   const status = payload && typeof payload === "object" ? payload : {};
   state.debugRecordingDeviceStatus = status;
   state.debugRecordingActive = Boolean(status.active);
@@ -390,6 +429,7 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
     await fetchDebugRecordingDeviceStatus();
     if (requestGeneration !== debugRecordingMutationGeneration) return;
     debugRecordingStatusFailureCount = 0;
+    void prepareDebugRecordingCopy();
     if (String(state.debugRecordingError || "").startsWith(t("debugRecording.statusFetchPrefix"))) {
       state.debugRecordingError = "";
     }
@@ -496,6 +536,7 @@ function hasPendingSystemRecorderChange() {
 export async function setSystemRecorderEnabled(enabled) {
   if (state.debugRecordingBusy || debugRecordingMutationInFlight
     || (hasPendingSystemRecorderChange() && state.debugRecordingPendingEnabled !== enabled)) return;
+  clearPreparedDebugRecordingCopy();
   debugRecordingMutationInFlight = true;
   // Only the response to this choice can clear it; runtime polls cannot.
   state.debugRecordingPendingEnabled = enabled;
@@ -580,6 +621,7 @@ export async function restartRollingDebugRecording() {
     return;
   }
   const previousRecordingId = getDebugRecordingId();
+  clearPreparedDebugRecordingCopy();
   debugRecordingMutationInFlight = true;
   debugRecordingMutationGeneration += 1;
   clearDebugRecordingDevicePollTimer();
@@ -644,9 +686,7 @@ export function getSystemRecorderIntroHtml() {
 }
 
 export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRecordingDownloadRange()) {
-  if (state.debugRecordingBusy) {
-    return false;
-  }
+  if (state.debugRecordingBusy) return false;
   if (getDebugRecordingSampleCount() === 0) {
     state.debugRecordingError = t("debugRecording.exportEmpty", { action: mode === "copy" ? t("debugRecording.exportCopy") : t("debugRecording.exportDownload") });
     render();
@@ -658,63 +698,25 @@ export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRe
   const rangeLabel = getDebugRecordingRangeLabel(rangeMinutes);
   render();
   try {
-    const recordingId = getDebugRecordingId();
-    const mutationGeneration = debugRecordingMutationGeneration;
-    const selectedRange = getDebugRecordingDownloadRange();
-    let text;
-    let bundle;
-    const prepared = mode === "copy" && preparedDebugRecordingCopy?.rangeMinutes === rangeMinutes
-      && preparedDebugRecordingCopy.recordingId === recordingId
-      && preparedDebugRecordingCopy.expiresAt > Date.now() ? preparedDebugRecordingCopy : null;
-    if (prepared) {
-      // No fetch/parse await before the clipboard call: preserve this click's
-      // activation, including the legacy copy path on ordinary device HTTP.
-      text = prepared.text;
-    } else {
-      clearPreparedDebugRecordingCopy();
-      const response = await window.fetch(getDebugRecordingDownloadEndpoint(rangeMinutes), {
-        cache: "no-store",
-        headers: { "Cache-Control": "no-store" },
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      bundle = await response.json();
-      text = getDebugRecordingCompactJson(bundle);
-    }
     if (mode === "copy") {
-      const copied = await copyTextToClipboard(text);
-      if (!copied) {
-        // A slow export can outlive transient user activation. Keep the exact
-        // export briefly so the next explicit click copies without fetching it
-        // again. Permanent clipboard denials still report an error on retry.
-        if (!prepared && window.navigator?.userActivation?.isActive === false
-          && mutationGeneration === debugRecordingMutationGeneration
-          && recordingId === getDebugRecordingId()
-          && selectedRange === getDebugRecordingDownloadRange()) {
-          preparedDebugRecordingCopy = {
-            text, rangeMinutes, recordingId, expiresAt: Date.now() + 60000,
-            notice: t("debugRecording.exportCopyReady"),
-          };
-          preparedDebugRecordingCopyTimer = window.setTimeout(() => {
-            clearPreparedDebugRecordingCopy();
-            if (state.systemModal === "debug-recording") {
-              render();
-            }
-          }, 60000);
-          state.debugRecordingNotice = preparedDebugRecordingCopy.notice;
-          return false;
-        }
-        throw new Error(t("debugRecording.copyFailClipboard"));
-      }
-      clearPreparedDebugRecordingCopy();
+      const prepared = getPreparedDebugRecordingCopy(rangeMinutes);
+      // The complete text is available before the click. In particular, no
+      // fetch/parse await may precede the HTTP-compatible clipboard fallback.
+      if (!prepared?.text) throw new Error("copy_not_prepared");
+      const copied = await copyTextToClipboard(prepared.text);
+      if (!copied) throw new Error(t("debugRecording.copyFailClipboard"));
     } else {
-      downloadTextFile(getDebugRecordingFilename(bundle), text, "application/json");
+      const response = await window.fetch(getDebugRecordingDownloadEndpoint(rangeMinutes), {
+        cache: "no-store", headers: { "Cache-Control": "no-store" },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const bundle = await response.json();
+      downloadTextFile(getDebugRecordingFilename(bundle), getDebugRecordingCompactJson(bundle), "application/json");
     }
     const action = mode === "copy" ? t("debugRecording.exportCopied") : t("debugRecording.exportDownloaded");
     state.debugRecordingNotice = t("debugRecording.exportDone", { range: rangeLabel, action });
     return true;
-  } catch (error) {
+  } catch (_error) {
     state.debugRecordingError = mode === "copy"
       ? t("debugRecording.exportCopyFail")
       : t("debugRecording.exportDownloadFail");
@@ -737,7 +739,7 @@ export async function copyDebugRecordingAndOpenAnalyser(rangeMinutes) {
   // Copy first, then open: opening the analyser tab upfront steals document
   // focus, after which browsers refuse the clipboard write. Opening the URL
   // directly needs no window handle, so `noopener` returning null is fine.
-  // A slow export can require a second explicit click using the prepared copy.
+  // The export was prepared before this click, preserving its activation.
   const copied = await exportDebugRecordingBundle("copy", rangeMinutes);
   if (copied && typeof window.open === "function") {
     window.open(SYSTEM_RECORDER_ANALYSER_URL, "_blank", "noopener,noreferrer");
@@ -763,7 +765,10 @@ const debugRecordingActionHandlers = {
   "cancel-disable-system-recorder": () => cancelSystemRecorderDisable(),
   "confirm-disable-system-recorder": () => confirmSystemRecorderDisable(),
   "toggle-recorder-manage": (button, event) => toggleRecorderManage(event, button),
-  "select-debug-recording-range": (button) => setDebugRecordingDownloadRange(button.dataset.lastMinutes || 0),
+  "select-debug-recording-range": (button) => {
+    setDebugRecordingDownloadRange(button.dataset.lastMinutes || 0);
+    return prepareDebugRecordingCopy();
+  },
   "download-debug-recording-range": () => downloadDebugRecordingRange(),
   "copy-debug-recording": () => copyDebugRecordingBundle(),
   "copy-debug-recording-analyser": () => copyDebugRecordingAndOpenAnalyser(),
@@ -783,6 +788,9 @@ export function renderDebugRecordingModal() {
   const retainedMs = getDebugRecordingRetainedDurationMs();
   const downloadRange = getDebugRecordingDownloadRange();
   const hasRecording = sampleCount > 0;
+  const prepared = getPreparedDebugRecordingCopy();
+  const copyReady = Boolean(prepared?.text);
+  const preparing = prepared?.loading === true;
   const deviceUnavailable = !available;
   const intervalS = Math.max(1, Number(state.debugRecordingDeviceStatus?.interval_s || 10));
   const confirmDisable = state.debugRecordingConfirmDisable === true;
@@ -790,11 +798,7 @@ export function renderDebugRecordingModal() {
   const feedback = state.debugRecordingError
     ? { kind: "error", icon: "alert", text: state.debugRecordingError }
     : state.debugRecordingNotice
-      ? {
-        kind: preparedDebugRecordingCopy ? "warning" : "success",
-        icon: preparedDebugRecordingCopy ? "copy" : "check",
-        text: state.debugRecordingNotice,
-      }
+      ? { kind: "success", icon: "check", text: state.debugRecordingNotice }
       : stringOverflow
         ? {
           kind: "warning",
@@ -885,10 +889,17 @@ export function renderDebugRecordingModal() {
           </div>
           <p class="oq-debug-recording-rangelabel"><strong data-oq-recorder-range>${escapeHtml(getDebugRecordingRangeLabel(downloadRange))}</strong></p>
           <div class="oq-debug-recording-exportactions">
-            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}${escapeHtml(t("debugRecording.downloadFile"))}</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}${escapeHtml(t("debugRecording.copyData"))}</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording-analyser" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("external")}${escapeHtml(t("debugRecording.copyAnalyser"))}</button>
+            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy || preparing ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}${escapeHtml(t("debugRecording.downloadFile"))}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!copyReady || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}${escapeHtml(t("debugRecording.copyData"))}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording-analyser" ${!copyReady || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("external")}${escapeHtml(t("debugRecording.copyAnalyser"))}</button>
           </div>
+          ${hasRecording ? `
+            <p class="oq-debug-recording-subtle" role="status">${escapeHtml(prepared?.failed
+              ? t("debugRecording.exportPrepareFailed")
+              : copyReady
+                ? t("debugRecording.exportPreparedAt", { time: formatDateTime(prepared.time, { dateStyle: "short", timeStyle: "medium" }) })
+                : t("debugRecording.exportPreparing"))}</p>
+          ` : ""}
           ${feedback ? `
             <p class="oq-debug-recording-feedback oq-debug-recording-feedback--${feedback.kind}" role="status">
               ${renderDebugRecordingButtonIcon(feedback.icon)}
