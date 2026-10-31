@@ -6,7 +6,7 @@ const HP1_DETECT_BUTTON = 'HIL Detect HP1 ODU generation';
 const HP2_DETECT_BUTTON = 'HIL Detect HP2 ODU generation';
 const EXPECTED_POWER_W = 309.97883;
 const EXPECTED_FIELD_POWER_W = EXPECTED_POWER_W + 30;
-const EXPECTED_PMIN_W = 3072.6185;
+const EXPECTED_PMIN_W = 3071.342;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

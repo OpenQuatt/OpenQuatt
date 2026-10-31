@@ -246,6 +246,28 @@ inline bool better_candidate(const Candidate& a, const Candidate& b) {
     return a.single_on_lead;
   return a.hp1_level != b.hp1_level ? a.hp1_level < b.hp1_level : a.hp2_level < b.hp2_level;
 }
+inline Candidate minimum_active_candidate(const DispatchInput& in, const DispatchTuning& tuning) {
+  Candidate minimum;
+  const int hp1_max = applied_level(in.hp1) > 0 ? kMaxLevel : 0;
+  const int hp2_max = in.duo && applied_level(in.hp2) > 0 ? kMaxLevel : 0;
+  for (int first = 0; first <= hp1_max; ++first) {
+    for (int second = 0; second <= hp2_max; ++second) {
+      // Extension may retain active units, never borrow the minimum of an idle peer.
+      if (in.duo) {
+        const auto retained = oq_hp_candidate::preserve_active_topology_during_suspect(
+            {first, second, sanitized_candidate(in.hp1), sanitized_candidate(in.hp2), true});
+        if (retained.hp1_level != first || retained.hp2_level != second) continue;
+      }
+      const auto candidate = make_candidate(in, tuning, first, second, 0.0f);
+      if (!candidate.valid || candidate.active_count == 0 || candidate.thermal_w <= 0.0f) continue;
+      const int highest_level = std::max(first, second);
+      if (!minimum.valid || candidate.thermal_w < minimum.thermal_w ||
+          (candidate.thermal_w == minimum.thermal_w && highest_level < std::max(minimum.hp1_level, minimum.hp2_level)))
+        minimum = candidate;
+    }
+  }
+  return minimum;
+}
 inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tuning, float target_w, int active_count,
                                float tie_band_w) {
   Candidate chosen;

@@ -608,6 +608,52 @@ test('pre-OTA restore keeps CM0 until normal firmware is confirmed', async () =>
   );
 });
 
+test('schema 3 recovery restores captured fields and leaves uncaptured fields alone', async () => {
+  // Fixed historical field lists: do not derive this fixture from today's settings.
+  const controllerKeys = 'cmOverride cicPolling otEnabled waterSupplySource outsideSource roomSource setpointSource externalSource heatingEnableSource coolingEnableSource coolingDewPointSource manualCooling heatingMode phReaction phRise flowSource outdoorFlowMode flowMode flowSetpoint'.split(' ');
+  const simulatorKeys = 'thermostatRoomSetpoint thermostatRoomTemp hp1Profile hp2Profile hp1Address hp2Address externalFlow hp1NoFlow hp2NoFlow hp1Defrost hp2Defrost hp1ManualTelemetry hp2ManualTelemetry hp1ManualWorkingMode hp2ManualWorkingMode hp1ManualFrequency hp2ManualFrequency hp1ManualVoltage hp2ManualVoltage hp1ManualCurrent hp2ManualCurrent hp1ManualFan hp2ManualFan hp1ManualStatus hp2ManualStatus hp1ManualPumpFeedback hp2ManualPumpFeedback hp1ManualWaterIn hp2ManualWaterIn hp1ManualWaterOut hp2ManualWaterOut hp1ManualFlow hp2ManualFlow'.split(' ');
+  for (const expanded of [false, true]) {
+    const controller = new FakeClient(controllerSettings);
+    const simulator = new FakeClient(simulatorSettings);
+    const full = await snapshotSettings({ controller, simulator, targets: {}, firmware: 'baseline', scenario: 'input-sources' });
+    assert.equal(full.schema, 5);
+    const snapshot = { ...full, schema: 3,
+      controller: Object.fromEntries(controllerKeys.map((key) => [key, full.controller[key]])),
+      simulator: Object.fromEntries(simulatorKeys.map((key) => [key, full.simulator[key]])),
+    };
+    if (expanded) {
+      snapshot.controller.minimumRuntime = 150;
+      snapshot.simulator.hp1WaterIn = 27.9;
+    }
+    validateSnapshot(snapshot);
+    controller.state.set('number:Minimum runtime', 300);
+    simulator.state.set('number:ODU 1 water-in temperature', 35);
+    controller.state.set('select:Room Temperature Source', 'changed');
+    await restoreSettings({ controller, simulator, snapshot, log: () => {} });
+    await verifyRestoredSettings({ controller, simulator, snapshot });
+    assert.equal(await controller.value('select', 'Room Temperature Source'), snapshot.controller.roomSource);
+    assert.equal(await controller.value('number', 'Minimum runtime'), expanded ? 150 : 300);
+    assert.equal(await simulator.value('number', 'ODU 1 water-in temperature'), expanded ? 27.9 : 35);
+    assert.throws(() => validateSnapshot({ ...snapshot, schema: 4 }), /undefined/);
+    delete snapshot.controller.phRise;
+    assert.throws(() => validateSnapshot(snapshot), /unavailable/);
+  }
+});
+
+test('schema 4 recovery does not require or overwrite the later manual-pump setting', async () => {
+  const controller = new FakeClient(controllerSettings);
+  const simulator = new FakeClient(simulatorSettings);
+  const snapshot = await snapshotSettings({ controller, simulator, targets: {}, firmware: 'baseline', scenario: 'run-extension' });
+  snapshot.schema = 4;
+  delete snapshot.controller.manualPwm;
+  controller.state.set('number:Manual iPWM', 400);
+  validateSnapshot(snapshot);
+  await restoreSettings({ controller, simulator, snapshot, log: () => {} });
+  await verifyRestoredSettings({ controller, simulator, snapshot });
+  assert.equal(await controller.value('number', 'Manual iPWM'), 400);
+  assert.throws(() => validateSnapshot({ ...snapshot, schema: 5 }), /unavailable/);
+});
+
 test('failed safe-CM0 restore blocks firmware OTA fail-closed', async () => {
   let flashCalls = 0;
   await assert.rejects(
