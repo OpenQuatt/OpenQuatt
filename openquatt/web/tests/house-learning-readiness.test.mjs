@@ -5,6 +5,7 @@ import { setLocale } from "../js/src/i18n/index.js";
 
 globalThis.__OQ_PREVIEW__ = false;
 const { getHouseLearningReadiness, renderHouseLearningReadiness } = await import("../js/src/settings/house-learning-readiness.js");
+const { normalizeHouseLearningExport, renderHouseLearningChart } = await import("../js/src/settings/house-learning-chart.js");
 
 const records = (temperatures) => temperatures.map((outsideC, index) => ({
   startEpoch: 1700000000 + index * 86400, endEpoch: 1700086400 + index * 86400,
@@ -52,9 +53,45 @@ test("twaalf dagen met vergelijkbaar weer melden temperatuurtekort en geen tekor
   assert.doesNotMatch(html, /Nog [1-9]+ dagmetingen nodig/);
 });
 
-test("oude perioden en onvolledige dagen vullen de dagenteller niet", () => {
+test("firmwaredagmetingen met UTC-afwijkingen tellen mee in aantal, leersplit en spreiding", () => {
+  const temperatures = [11.1, 12.35, 11.1, 8.6, 11.85, 8.4, 9.6, 10.1,
+    10.3, 10, 9.15, 11.7, 10.85, 10.65, 9.3, 8.3];
+  const utcOffsets = [-1, 1, -1, -1, 1, 0, -1, 1, -1, 0, 1, 0, 1, 0, 0, 0];
+  const data = normalizeHouseLearningExport({
+    schema: 1, mode: "passive",
+    record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w", "effective_outside_c", "record_kind"],
+    records: temperatures.map((temperature, index) => {
+      const start = 1700000000 + index * 86410;
+      return [start, start + 86400 + utcOffsets[index], temperature, 1500, temperature, 1];
+    }),
+  });
+  assert.equal(data.filter((record) => record.endEpoch - record.startEpoch === 86400).length, 6);
+  const progress = getHouseLearningReadiness(data);
+  assert.equal(progress.count, 16);
+  assert.equal(progress.trainCount, 13);
+  assert.equal(progress.checkCount, 3);
+  assert.equal(progress.missingDays, 0);
+  assert.equal(progress.p10, 8.6);
+  assert.equal(progress.p90, 11.85);
+  assert.ok(Math.abs(progress.spread - 3.25) < 1e-9);
+  const html = renderHouseLearningChart(data, {}, {});
+  assert.match(html, /16 <span>\/ 9 nodig/);
+  assert.match(html, /Leren: 13 · Controleren: 3/);
+  assert.match(html, /3,25 °C <span>\/ 6 °C nodig/);
+  assert.doesNotMatch(html, /Nog [1-9]+ (?:volledige )?dagmetingen nodig/);
+  assert.doesNotMatch(html, /Geleerde woninglijn beschikbaar/);
+  setLocale("en", config);
+  const en = renderHouseLearningChart(data, {}, {});
+  assert.match(en, /16 <span>\/ 9 needed/);
+  assert.match(en, /Training: 13 · Checking: 3/);
+  assert.match(en, /3\.25 °C <span>\/ 6 °C needed/);
+});
+
+test("perioden zonder firmwaredagmarkering vullen de dagenteller niet", () => {
   const data = records([4, 5, 6, 7]);
-  data.push({ ...data[0], recordKind: 0 }, { ...data[0], endEpoch: data[0].startEpoch + 14400 });
+  data.push({ ...data[0], recordKind: 0 },
+    { ...data[0], recordKind: 0, endEpoch: data[0].startEpoch + 14400 },
+    { ...data[0], recordKind: undefined }, { ...data[0], recordKind: 1, outsideC: NaN });
   const progress = getHouseLearningReadiness(data);
   assert.equal(progress.count, 4);
   assert.equal(progress.missingDays, 5);
