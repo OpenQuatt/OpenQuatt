@@ -1,0 +1,69 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Power House run extension / Q Duo
+# ==============================================================================
+# Uses accelerated HIL-only timers and real ODU feedback. Normal firmware keeps
+# its 300 s runtime / 240 s off-time. The CIC fixture supplies only water temperature.
+substitutions:
+  oq_hp_min_runtime_min_s: "120"
+  oq_hp_min_off_s: "60"
+
+packages:
+  hil_v2_performance: !include v2_performance_duo.yaml
+
+# Keep normal and test build caches independent during automatic recovery.
+esphome:
+  build_path: ../../../../.esphome/build/heatpump_controller_q_duo_run_extension_hil
+
+text_sensor:
+  - id: !extend oq_hil_test_profile
+    lambda: |-
+      return {"run-extension-v2-fast"};
+
+sensor:
+  - platform: template
+    name: "HIL coupled F1 outlet"
+    accuracy_decimals: 3
+    update_interval: 2s
+    lambda: |-
+      const auto model = oq_water_performance::capture(
+          oq_frequency_runtime::capture(), id(oq_system_supply_temp).state,
+          id(hp1_4_way_valve).state || id(hp2_4_way_valve).state || id(hp1_defrost).state || id(hp2_defrost).state);
+      return model.coupled ? model.unit(true, 1).outlet_c : NAN;
+
+  - platform: template
+    name: "HIL HP1 minimum-runtime remaining"
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      const uint32_t started_ms = id(hp1_last_real_heat_start_ms);
+      if (started_ms == 0) return NAN;
+      const uint32_t minimum_ms = 1000UL * oq_request::minimum_runtime_seconds(
+          id(oq_min_runtime_min).has_state(), id(oq_min_runtime_min).state,
+          ${oq_hp_min_runtime_min_s});
+      const uint32_t elapsed_ms = millis() - started_ms;
+      return elapsed_ms < minimum_ms ? (minimum_ms - elapsed_ms) / 1000.0f : 0.0f;
+
+binary_sensor:
+  - platform: template
+    name: "HIL idle HP2 F1 ready"
+    lambda: |-
+      static uint32_t last_sample_ms = 0;
+      const auto now = millis();
+      if (last_sample_ms != 0 && static_cast<uint32_t>(now - last_sample_ms) < 2000) return {};
+      last_sample_ms = now;
+      auto candidate = oq_hp_candidate::candidate_state(
+          id(oq_incident_manager).get_outputs(2U), id(hp2_last_applied_level));
+      candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
+          now, id(hp2_last_stop_ms), 1000UL * ${oq_hp_min_off_s}, id(hp2_last_applied_level));
+      const auto frequency = oq_frequency_runtime::capture();
+      const auto model = oq_water_performance::capture(frequency, id(oq_system_supply_temp).state,
+          id(hp1_4_way_valve).state || id(hp2_4_way_valve).state || id(hp1_defrost).state || id(hp2_defrost).state);
+      const auto policy = oq_perf::predict_candidate(frequency, frequency.performance_variant(false),
+          false, 1, id(outside_temp_selected).state, id(oq_system_supply_temp).state, false);
+      return id(hp2_last_applied_level) == 0 && candidate.available_for_start &&
+          !candidate.must_stop && candidate.minimum_off_ready &&
+          !id(oq_incident_manager).boot_resume_pending(1U, now) &&
+          !id(oq_incident_manager).boot_resume_pending(2U, now) &&
+          frequency.automatic_frequency_hz(false, 2, 1) == 20 &&
+          policy.frequency_policy_allowed && model.unit(false, 1).valid();

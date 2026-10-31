@@ -281,7 +281,13 @@ class Runtime {
       dispatch_input.pair_power = &oq_water_performance::CandidateModel::dispatch;
       dispatch_input.pair_context = &model;
     }
+    const oq_power_house_dispatch::DispatchTuning dispatch_tuning{
+        id(oq_power_limit_soft_w),       id(oq_power_limit_peak_w),        config.optimizer_penalty_per_w,
+        config.topology_power_margin_w,  config.topology_heat_advantage_w, config.defrost_comp_min_f,
+        config.defrost_comp_boost_steps,
+    };
     float minimum_viable_w = NAN;
+    int minimum_viable_level = 0;
     const auto include_minimum = [&](const oq_power_house_dispatch::HpInput& hp) {
       if (!oq_hp_candidate::may_serve_candidate(hp.candidate)) return;
       for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
@@ -289,8 +295,11 @@ class Runtime {
         if (!estimate.allowed || !estimate.thermal_valid || !std::isfinite(estimate.thermal_w) ||
             estimate.thermal_w <= 0.0f)
           continue;
-        minimum_viable_w =
-            std::isfinite(minimum_viable_w) ? std::min(minimum_viable_w, estimate.thermal_w) : estimate.thermal_w;
+        if (!std::isfinite(minimum_viable_w) || estimate.thermal_w < minimum_viable_w ||
+            (estimate.thermal_w == minimum_viable_w && level < minimum_viable_level)) {
+          minimum_viable_w = estimate.thermal_w;
+          minimum_viable_level = level;
+        }
         break;
       }
     };
@@ -401,6 +410,13 @@ class Runtime {
     run_ext_input.setpoint_c = setpoint_c;
     run_ext_input.base_requested_w = base_requested_w;
     run_ext_input.minimum_viable_w = minimum_viable_w;
+    run_ext_input.minimum_viable_level = minimum_viable_level;
+    if (run_ext_enabled && applied_total > 0) {
+      const auto active_minimum = oq_power_house_dispatch::minimum_active_candidate(dispatch_input, dispatch_tuning);
+      run_ext_input.minimum_viable_w = active_minimum.valid ? active_minimum.thermal_w : NAN;
+      run_ext_input.minimum_viable_level =
+          active_minimum.valid ? std::max(active_minimum.hp1_level, active_minimum.hp2_level) : 0;
+    }
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
         run_ext_input, {stop_margin_c, id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c},
@@ -425,10 +441,11 @@ class Runtime {
     // Blocked diagnostic: enabled and armed below Pmin, but water limiter or
     // missing Pmin prevents the floor from being applied.
     this->run_ext_blocked_ = run_ext_enabled && room_inputs_valid && heating_allowed &&
-                             this->run_extension_state_.cycle_armed && std::isfinite(minimum_viable_w) == false &&
+                             this->run_extension_state_.cycle_armed && !std::isfinite(run_ext_input.minimum_viable_w) &&
                              base_requested_w > 0.0f;
     if (run_ext_enabled && room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
-        oq_power_house_run_extension::pmin_valid(minimum_viable_w) && base_requested_w < minimum_viable_w &&
+        oq_power_house_run_extension::pmin_valid(run_ext_input.minimum_viable_w) &&
+        base_requested_w < run_ext_input.minimum_viable_w &&
         !oq_power_house_run_extension::water_floor_allowed(id(oq_water_temp_limit_factor)) && std::isfinite(room_c) &&
         std::isfinite(run_ext_decision.comfort_stop_c) && room_c < run_ext_decision.comfort_stop_c)
       this->run_ext_blocked_ = true;
@@ -470,11 +487,6 @@ class Runtime {
             .set_warmup_power(diagnostics::warmup_log_key(warming, warmup_runtime.intermediate_target(),
                                                           warmup_runtime.offset(), warmup_power.path),
                               warmup_power);
-    const oq_power_house_dispatch::DispatchTuning dispatch_tuning{
-        id(oq_power_limit_soft_w),       id(oq_power_limit_peak_w),        config.optimizer_penalty_per_w,
-        config.topology_power_margin_w,  config.topology_heat_advantage_w, config.defrost_comp_min_f,
-        config.defrost_comp_boost_steps,
-    };
     const auto dispatch =
         oq_power_house_dispatch::decide_dispatch(dispatch_input, dispatch_tuning, this->dispatch_state_);
     if (log_warmup_power) {

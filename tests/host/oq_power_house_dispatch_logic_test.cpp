@@ -146,6 +146,49 @@ void test_timing_and_matrix() {
             expect_safe(decide_dispatch(in, cfg, {}), in, cfg);
           }
 }
+void test_extension_uses_only_active_units() {
+  for (bool first_running : {false, true}) {
+    auto in = input(true);
+    auto& running = first_running ? in.hp1 : in.hp2;
+    auto& idle = first_running ? in.hp2 : in.hp1;
+    running.candidate.previous_applied_level = 3;
+    running.stop_inhibited = true;
+    running.levels[1].allowed = running.levels[2].allowed = false;
+    auto minimum = minimum_active_candidate(in, tuning());
+    assert(minimum.valid && minimum.thermal_w == 3000);
+    assert((first_running ? minimum.hp1_level : minimum.hp2_level) == 3);
+    assert((first_running ? minimum.hp2_level : minimum.hp1_level) == 0);
+    idle.candidate.minimum_off_ready = false;
+    assert(minimum_active_candidate(in, tuning()).thermal_w == 3000);
+    running.stop_inhibited = false;
+    assert(minimum_active_candidate(in, tuning()).thermal_w == 3000);
+    running.fixed_level = 4;
+    assert(minimum_active_candidate(in, tuning()).thermal_w == 4000);
+    running.candidate.must_stop = true;
+    assert(!minimum_active_candidate(in, tuning()).valid);
+  }
+  auto in = input(true);
+  assert(!minimum_active_candidate(in, tuning()).valid);
+  in.hp1.candidate.previous_applied_level = in.hp2.candidate.previous_applied_level = 3;
+  in.hp1.levels[1].allowed = in.hp1.levels[2].allowed = false;
+  in.hp1.stop_inhibited = in.hp2.stop_inhibited = true;
+  assert(minimum_active_candidate(in, tuning()).thermal_w == 4000);
+  in.hp1.stop_inhibited = false;
+  assert(minimum_active_candidate(in, tuning()).thermal_w == 1000);
+  in.hp2.stop_inhibited = false;
+  in.hp1.candidate.link_suspect = true;
+  assert(minimum_active_candidate(in, tuning()).thermal_w == 4000);
+  in.hp1.candidate.must_stop = true;
+  assert(minimum_active_candidate(in, tuning()).thermal_w == 1000);
+  in.hp1.candidate.must_stop = in.hp1.candidate.link_suspect = false;
+  in.hp2.stop_inhibited = true;
+  in.hp1.stop_inhibited = true;
+  in.pair_power = [](const void*, int first, int second) -> std::array<float, 2> {
+    return {1000.0f * first + 800.0f * second, 100.0f * (first + second)};
+  };
+  assert(minimum_active_candidate(in, tuning()).thermal_w == 3800);
+  assert(!minimum_active_candidate(in, {200, 300}).valid);
+}
 void test_performance_supply_fallback() {
   using oq_power_house_dispatch::PerformanceSupplyRoute;
   using oq_power_house_dispatch::select_performance_supply;
@@ -321,6 +364,7 @@ void test_duo_holds_and_boost() {
 }  // namespace
 int main() {
   test_cold_weather_request_reaches_dispatch_and_deficit();
+  test_extension_uses_only_active_units();
   test_actuator_hold_constrains_owner_swap();
   test_timing_and_matrix();
   test_performance_supply_fallback();

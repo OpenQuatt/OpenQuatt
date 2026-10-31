@@ -427,11 +427,22 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     const cooldown = configurable ? numeric("phRunExtensionRestartCooldown") : 0.2;
     const coldEdge = setpoint - numeric("phComfortBelow");
     const warmEdge = setpoint + numeric("phComfortAbove");
-    const stop = Number.isFinite(setpoint) && Number.isFinite(margin) ? setpoint + margin : NaN;
+    const configuredStop = Number.isFinite(setpoint) && Number.isFinite(margin) ? setpoint + margin : NaN;
+    const previewing = useDrafts && ["roomSetpoint", "phRunExtensionStopMargin", "phRunExtensionRestartCooldown", "phComfortBelow"].some((key) => {
+      const entity = state.entities[key];
+      const value = entity?.value ?? entity?.state ?? "";
+      const activeValue = value === "" || value == null ? NaN : Number(value);
+      return !Object.is(numeric(key), activeValue);
+    });
+    const runtimeStop = hasEntity("phRunExtensionComfortStop") ? numeric("phRunExtensionComfortStop") : NaN;
+    const runtimeStatus = String(getEntityValue("phRunExtensionStatus") || "inactive").trim().toLowerCase();
+    const minimumLimited = !previewing && Boolean(getEntityValue("phRunExtension")) && runtimeStatus !== "inactive" &&
+      Number.isFinite(runtimeStop) && Number.isFinite(setpoint) && Math.abs(runtimeStop - setpoint) < 0.01 && runtimeStop < configuredStop;
+    const stop = minimumLimited ? runtimeStop : configuredStop;
     const configuredRestart = stop - cooldown;
     // Older firmware still uses its fixed 0.2 K threshold without the new cold-edge guard.
     const restart = configurable ? Math.max(configuredRestart, coldEdge) : configuredRestart;
-    return { setpoint, margin, cooldown, stop, configuredRestart, coldEdge, warmEdge, restart, limited: restart > configuredRestart };
+    return { setpoint, margin, cooldown, stop, configuredRestart, coldEdge, warmEdge, restart, limited: restart > configuredRestart, minimumLimited };
   }
 
   const RUN_EXTENSION_STATUS_COPY = {
@@ -483,6 +494,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           <div class="oq-run-extension-thresholds">
             ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
           </div>
+          ${thresholdsModel.minimumLimited ? `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.minimumLimited"))}</p>` : ""}
           ${thresholdsModel.limited ? `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.limited", { configured: formatRunExtensionTemp(thresholdsModel.configuredRestart), effective: formatRunExtensionTemp(thresholdsModel.restart) }))}</p>` : ""}
           ${preview ? `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.activeThresholds", { stop: formatRunExtensionTemp(active.stop), restart: formatRunExtensionTemp(active.restart) }))}</p>` : ""}
     `;

@@ -292,8 +292,16 @@ Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer door
 1. De warmtepomp moet eerst vanwege de normale warmtevraag gaan verwarmen. Inschakelen start een stilstaande warmtepomp niet zelfstandig.
 2. Als de woning minder warmte nodig heeft dan het laagste geschikte warmtepompvermogen, mag de run op dat minimumvermogen doorgaan. Dat mag ook wanneer de normale vraag tijdelijk nul is.
 3. Bij **Stopgrens boven gewenste temperatuur** wordt een comfortstop aangevraagd. Dit geldt in de geactiveerde cyclus ook als de gewone vraag nog boven het minimumvermogen ligt. De minimumlooptijd kan de daadwerkelijke stop uitstellen. Restwarmte kan de kamer daarna nog verder opwarmen; dit is geen gegarandeerde maximumtemperatuur.
-4. Daarna wacht de regeling op afkoeling. **Afkoeling na stoppen** wordt gerekend vanaf de ingestelde stopgrens, niet vanaf een eventuele hogere temperatuurpiek door restwarmte.
+4. Daarna wacht de regeling op afkoeling. **Afkoeling na stoppen** wordt gerekend vanaf de geldende stopgrens, niet vanaf een eventuele hogere temperatuurpiek door restwarmte.
 5. Herstart gebeurt alleen als Power House opnieuw warmte vraagt. Wachttijden en beveiligingen kunnen de daadwerkelijke start uitstellen.
+
+De laagste geschikte stand kan veranderen met de bedrijfsomstandigheden. OpenQuatt gebruikt voor V2 old en V2 new dezelfde ruimere V2-new-kaart, omdat beide uitvoeringen dezelfde hardware hebben. Daardoor blijft F1 (20 Hz) ook boven 14 °C buiten beschikbaar bij een wateruitlaat onder 49 °C. Vanaf 49 °C wateruitlaat en bij sommige koude bedrijfsomstandigheden begint het bedrijfsgebied bij 30 Hz. Een gebruikersuitsluiting van lage frequenties kan de minimumstand eveneens verhogen. Doorverwarmen op minimumvermogen betekent dus niet altijd F1. De vermogensbalans noemt het verschil tussen huisvraag en totale aanvraag **Vermogensbijsturing**, omdat daar ook opwarmen en langer doorverwarmen in kunnen zitten.
+
+De modelversie is `oq-v2-heating-r2`. De voorspeltabel bevat de twintig V2-new-frequenties tot 110 Hz; de bestaande automatische frequentielimiet van 90 Hz blijft gelden. De oude F1–F10-referentieas blijft behouden en het vermogen wordt berekend met de werkelijke frequentie uit de unit. De kaart past de modelgrenzen voor vermogen en COP toe na temperatuurinterpolatie en vóór interpolatie naar een afwijkende frequentie.
+
+Is de laagste geschikte stand hoger dan F1 en ligt de huisvraag onder dat minimumvermogen, dan vraagt langer doorverwarmen al bij de gewenste kamertemperatuur een stop aan. De extra stopmarge wordt dan niet op die hogere stand gevuld. Onder het setpoint kan de warmtepomp nog op de hogere minimumstand verwarmen; een huisvraag vanaf het minimumvermogen blijft de gewone stopgrens gebruiken. De minimumlooptijd en beveiligingen blijven gelden.
+
+Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd door **Afkoeling onder gewenste temperatuur**. Deze eerdere grens blijft tijdens uitlopen en wachten behouden, ook als F1 weer beschikbaar wordt of de vermogensvoorspelling tijdelijk ontbreekt. De web-app toont de actuele eerdere grens zodra de firmware die meldt; tijdens bewerken blijven de ingestelde grenzen als voorvertoning zichtbaar.
 
 ### De instellingen
 
@@ -307,6 +315,7 @@ De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden.
 
 ```text
 stopgrens = setpoint + stopmarge
+bij huisvraag onder minimumvermogen en minimumstand hoger dan F1: stopgrens = setpoint
 normale koude grens = setpoint − comfort below
 herstartgrens = max(stopgrens − afkoeling, normale koude grens)
 ```

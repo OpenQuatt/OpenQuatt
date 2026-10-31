@@ -6,10 +6,12 @@ import path from 'node:path';
 import { asBoolean, asFiniteNumber } from './rest-client.mjs';
 import { waitValue } from './wait.mjs';
 
-export const SNAPSHOT_SCHEMA = 3;
+export const SNAPSHOT_SCHEMA = 5;
 
 export const controllerSettings = [
+  { key: 'enabled', domain: 'switch', name: 'OpenQuatt Enabled', kind: 'switch', sinceSchema: 4 },
   { key: 'cmOverride', domain: 'select', name: 'CM Override', kind: 'select' },
+  { key: 'silentMode', domain: 'select', name: 'Silent Mode Override', kind: 'select', sinceSchema: 4 },
   { key: 'cicPolling', domain: 'switch', name: 'CIC - Enable polling', kind: 'switch' },
   { key: 'otEnabled', domain: 'switch', name: 'OpenTherm Enabled', kind: 'switch' },
   { key: 'waterSupplySource', domain: 'select', name: 'Water Supply Source', kind: 'select' },
@@ -24,8 +26,23 @@ export const controllerSettings = [
   { key: 'heatingMode', domain: 'select', name: 'Heating Control Mode', kind: 'select' },
   { key: 'phReaction', domain: 'number', name: 'Power House temperature reaction', kind: 'number' },
   { key: 'phRise', domain: 'number', name: 'Power House demand rise time', kind: 'number' },
+  { key: 'phFall', domain: 'number', name: 'Power House demand fall time', kind: 'number', sinceSchema: 4 },
+  { key: 'phComfortBelow', domain: 'number', name: 'Power House comfort below setpoint', kind: 'number', sinceSchema: 4 },
+  { key: 'phComfortAbove', domain: 'number', name: 'Power House comfort above setpoint', kind: 'number', sinceSchema: 4 },
+  { key: 'phExtension', domain: 'switch', name: 'Power House run extension', kind: 'switch', sinceSchema: 4 },
+  { key: 'controlledWarmup', domain: 'switch', name: 'Controlled warmup enabled', kind: 'switch', sinceSchema: 4 },
+  { key: 'phExtensionStop', domain: 'number', name: 'Power House run extension stop margin', kind: 'number', sinceSchema: 4 },
+  { key: 'phExtensionCooldown', domain: 'number', name: 'Power House run extension restart cooldown', kind: 'number', sinceSchema: 4 },
+  { key: 'minimumRuntime', domain: 'number', name: 'Minimum runtime', kind: 'number', sinceSchema: 4 },
+  { key: 'maximumHeatingOutside', domain: 'number', name: 'Maximum heating outdoor temperature', kind: 'number', sinceSchema: 4 },
+  { key: 'maximumWater', domain: 'number', name: 'Maximum water temperature', kind: 'number', sinceSchema: 4 },
+  { key: 'hp1ExcludeMin', domain: 'number', name: 'HP1 - Excluded frequency minimum', kind: 'number', sinceSchema: 4 },
+  { key: 'hp1ExcludeMax', domain: 'number', name: 'HP1 - Excluded frequency maximum', kind: 'number', sinceSchema: 4 },
+  { key: 'hp2ExcludeMin', domain: 'number', name: 'HP2 - Excluded frequency minimum', kind: 'number', sinceSchema: 4 },
+  { key: 'hp2ExcludeMax', domain: 'number', name: 'HP2 - Excluded frequency maximum', kind: 'number', sinceSchema: 4 },
   { key: 'flowSource', domain: 'select', name: 'Flow Source', kind: 'select' },
   { key: 'outdoorFlowMode', domain: 'select', name: 'Outdoor Unit Flow Mode', kind: 'select' },
+  { key: 'manualPwm', domain: 'number', name: 'Manual iPWM', kind: 'number', sinceSchema: 5 },
   { key: 'flowMode', domain: 'select', name: 'Flow Control Mode', kind: 'select' },
   { key: 'flowSetpoint', domain: 'number', name: 'Flow Setpoint', kind: 'number' },
 ];
@@ -38,6 +55,10 @@ export const simulatorSettings = [
   { key: 'hp1Address', domain: 'number', name: 'ODU 1 Modbus address (pending)', kind: 'number' },
   { key: 'hp2Address', domain: 'number', name: 'ODU 2 Modbus address (pending)', kind: 'number' },
   { key: 'externalFlow', domain: 'switch', name: 'ODU external system pump flow', kind: 'switch' },
+  { key: 'hp1Outside', domain: 'number', name: 'ODU 1 outside temperature', kind: 'number', sinceSchema: 4 },
+  { key: 'hp2Outside', domain: 'number', name: 'ODU 2 outside temperature', kind: 'number', sinceSchema: 4 },
+  { key: 'hp1WaterIn', domain: 'number', name: 'ODU 1 water-in temperature', kind: 'number', sinceSchema: 4 },
+  { key: 'hp2WaterIn', domain: 'number', name: 'ODU 2 water-in temperature', kind: 'number', sinceSchema: 4 },
   { key: 'hp1NoFlow', domain: 'switch', name: 'ODU 1 force no flow', kind: 'switch' },
   { key: 'hp2NoFlow', domain: 'switch', name: 'ODU 2 force no flow', kind: 'switch' },
   { key: 'hp1Defrost', domain: 'switch', name: 'ODU 1 defrost', kind: 'switch' },
@@ -156,8 +177,13 @@ function valuesMatch(setting, actual, expected) {
   }
 }
 
+function settingsForSnapshot(settings, values, schema) {
+  return settings.filter((setting) =>
+    (setting.sinceSchema ?? 3) <= schema || Object.hasOwn(values ?? {}, setting.key));
+}
+
 export function validateSnapshot(snapshot) {
-  if (!snapshot || snapshot.schema !== SNAPSHOT_SCHEMA) {
+  if (!snapshot || ![3, 4, SNAPSHOT_SCHEMA].includes(snapshot.schema)) {
     throw new Error(`unsupported HIL snapshot schema: ${snapshot?.schema ?? 'missing'}`);
   }
   if (typeof snapshot.firmware !== 'string' || snapshot.firmware.length === 0) {
@@ -166,10 +192,10 @@ export function validateSnapshot(snapshot) {
   if (typeof snapshot.scenario !== 'string' || snapshot.scenario.length === 0) {
     throw new Error('HIL snapshot has no scenario identity');
   }
-  for (const setting of controllerSettings) {
+  for (const setting of settingsForSnapshot(controllerSettings, snapshot.controller, snapshot.schema)) {
     normalizeSettingValue(setting, snapshot.controller?.[setting.key]);
   }
-  for (const setting of simulatorSettings) {
+  for (const setting of settingsForSnapshot(simulatorSettings, snapshot.simulator, snapshot.schema)) {
     normalizeSettingValue(setting, snapshot.simulator?.[setting.key]);
   }
   for (const key of ['hp1', 'hp2']) {
@@ -228,7 +254,9 @@ export async function restoreSettings({
   );
   await attempt('wait for safe CM0', () =>
     waitValue(controller, 'text_sensor', 'Control Mode', 'CM0', 'safe CM0 before restore', {
-      timeoutMs: 50000,
+      // A requested CM0 still respects the production minimum runtime and
+      // hydraulic run-down. Do not time out recovery during that safe hold.
+      timeoutMs: 480000,
     }),
   );
 
@@ -269,11 +297,13 @@ export async function restoreSettings({
 
   await restoreGroup(
     controller,
-    controllerSettings.filter((item) => item.key !== 'cmOverride'),
+    settingsForSnapshot(controllerSettings, snapshot.controller, snapshot.schema)
+      .filter((item) => item.key !== 'cmOverride'),
     snapshot.controller,
     'controller settings',
   );
-  await restoreGroup(simulator, simulatorSettings, snapshot.simulator, 'simulator settings');
+  await restoreGroup(simulator, settingsForSnapshot(simulatorSettings, snapshot.simulator, snapshot.schema),
+    snapshot.simulator, 'simulator settings');
   if (restoreCmOverride && errors.length === 0) {
     const cmOverride = controllerSettings.find((item) => item.key === 'cmOverride');
     await restoreGroup(
@@ -310,8 +340,10 @@ export async function verifyRestoredSettings({ controller, simulator, snapshot }
       }
     }
   };
-  await verifyGroup(controller, controllerSettings, snapshot.controller, 'controller settings');
-  await verifyGroup(simulator, simulatorSettings, snapshot.simulator, 'simulator settings');
+  await verifyGroup(controller, settingsForSnapshot(controllerSettings, snapshot.controller, snapshot.schema),
+    snapshot.controller, 'controller settings');
+  await verifyGroup(simulator, settingsForSnapshot(simulatorSettings, snapshot.simulator, snapshot.schema),
+    snapshot.simulator, 'simulator settings');
   if (errors.length > 0) {
     throw new AggregateError(errors, 'one or more HIL settings did not persist');
   }
