@@ -59,6 +59,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
     controlMode: numberOrNull(payload.control_mode),
     storageReady: payload.storage_ready === true,
     status: String(payload.status || "unknown"),
+    batchStatus: String(payload.batch_status || "unknown"),
     sourceStatus: String(payload.source_status || "unknown"),
     modelValidationStatus: String(payload.model_validation_status || "unknown"),
     journalStatus: String(payload.journal_status || "unknown"),
@@ -166,9 +167,10 @@ export function handleHouseLearningAction(action, button, pressNamedButton) {
     return true;
   }
   if (action === "load-house-learning-chart") {
-    if (state.houseLearningChart !== null && !state.houseLearningChartLoading) {
+    if ((state.houseLearningChart !== null || state.houseLearningChartError) && !state.houseLearningChartLoading) {
       state.houseLearningChart = null;
       state.houseLearningChartFetchedAt = 0;
+      state.houseLearningChartError = "";
       render();
       return true;
     }

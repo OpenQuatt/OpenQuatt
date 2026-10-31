@@ -405,14 +405,6 @@
     align-items: stretch;
   }
 
-  .oq-house-learning-chart-head {
-    flex-direction: column;
-  }
-
-  .oq-house-learning-chart-head .oq-helper-button {
-    width: 100%;
-  }
-
   .oq-house-learning-chart-axis {
     font-size: 18px;
   }
