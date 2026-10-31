@@ -90,6 +90,7 @@ struct RuntimeStorage {
   const char* daily_resume_status = "none";
   const char* daily_resume_reason = "none";
   SnapshotSourceStatus batch_source_status = SnapshotSourceStatus::OK;
+  SnapshotSourceStatus boiler_source_status = SnapshotSourceStatus::OK;
   uint32_t thermal_epoch = 0;
   char json[kExportJsonBufferSize]{};
   DiagnosticRow rows[kMaxExportDiagnosticRows];
@@ -287,6 +288,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     tick.active_line_valid = oq_power_house::valid_house_line(tick.active_line);
     tick.batch_snapshot_available = batch.has_snapshot;
     tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
+    tick.batch_source_status = batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT && !input.boiler_heat.valid
+                                   ? state.boiler_source_status
+                                   : batch.status;
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
     tick.dynamic_snapshot = dynamic.snapshot;
@@ -483,7 +487,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
 #endif
     const auto boiler_contract = learning_no_boiler_heat_contract(
         boiler_runtime_available, id(oq_control_mode_code), boiler_command, id(oq_boiler_output_request),
-        id(boiler_relay).state, now_ms, applied_ot_command_active);
+        id(boiler_relay).state, now_ms, applied_ot_command_active, &state.boiler_source_status);
     PhysicalMeasurement<BoilerHeatState> boiler_telemetry;
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     if (opentherm_selected) {
@@ -495,6 +499,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
 #endif
     in.boiler_heat = learning_boiler_heat(opentherm_selected, boiler_contract, boiler_telemetry);
+    if (boiler_contract.valid && !in.boiler_heat.valid)
+      state.boiler_source_status = SnapshotSourceStatus::BOILER_ACTIVE;
     auto& op = in.operation;
     op.captured_monotonic_ms = now_ms;
     const int cm = id(oq_control_mode_code);
@@ -811,6 +817,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
       json.add("null");
     else
       json.add("\"%s\"", learning_status_name(state.learner.diagnostics.last_batch_rejection));
+    json.add(",\"batch_last_source_status\":\"%s\"",
+             snapshot_source_status_name(state.learner.diagnostics.last_batch_source_status));
     json.add(
         ",\"batch_restore_pending\":%s,\"batch_resume_status\":\"%s\","
         "\"batch_source_status\":\"%s\",\"batch_resume_reason\":\"%s\","

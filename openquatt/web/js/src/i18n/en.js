@@ -153,6 +153,13 @@ export default {
       lastStablePeriodRejection: "Last interrupted or rejected heat demand period: {reason}. Current status above.",
     },
     collectionRejections: {
+      boilerUnavailable: "the boiler state was unknown",
+      boilerCommandStale: "the boiler command was missing or stale",
+      boilerCommandActive: "the boiler command or outputs were still active",
+      boilerHeat: "central heating or flame without confirmed DHW-only operation",
+      missingMeasurement: "a measurement or operating status was missing",
+      sourceStale: "a measurement or operating status was stale",
+      timeSkew: "measurements or operating statuses were out of sync",
       invalidMeasurement: "a measurement value was invalid",
       mixedContext: "the measurement conditions changed",
       timeDiscontinuity: "the measurement series had a time jump or interruption",

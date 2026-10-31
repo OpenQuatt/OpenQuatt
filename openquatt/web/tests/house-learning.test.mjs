@@ -1002,6 +1002,37 @@ test("bekende collectieredenen worden vertaald en onbekende waarden blijven inte
 });
 
 
+test("concrete bronafwijzing blijft vertaald, optioneel en gekoppeld aan de laatste meetafwijzing", () => {
+  const examples = {
+    boiler_unavailable: ["cv-keteltoestand", "boiler state"],
+    boiler_command_stale: ["cv-ketelcommando ontbrak of was verouderd", "boiler command was missing or stale"],
+    boiler_command_active: ["cv-ketelaansturing was nog actief", "outputs were still active"],
+    boiler_active: ["cv-activiteit", "central heating"],
+    missing_measurement: ["bedrijfsstatus ontbrak", "operating status was missing"],
+    source_stale: ["bedrijfsstatus was verouderd", "operating status was stale"],
+    time_skew: ["te ver uiteen", "out of sync"],
+  };
+  for (const [locale, index] of [["nl", 0], ["en", 1]]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const [source, text] of Object.entries(examples)) {
+      const status = normalizeHouseLearningStatus(statusPayload({
+        collection: { ...statusPayload().collection, batch_active: true, batch_last_rejection: "invalid_measurement", batch_last_source_status: source },
+      }));
+      assert.equal(status.collection.batchLastSourceStatus, source);
+      assert.ok(renderHouseLearningStatusMarkup(status).includes(text[index]));
+      assert.ok(!renderHouseLearningStatusMarkup({ ...status, collection: { ...status.collection, batchLastRejection: "room_unstable" } }).includes(text[index]));
+    }
+    for (const value of [undefined, null, "", 17, {}, "toString", "__proto__", "<img src=x onerror=alert(1)>"]) {
+      const status = normalizeHouseLearningStatus(statusPayload({
+        collection: { ...statusPayload().collection, batch_last_rejection: "invalid_measurement", batch_last_source_status: value },
+      }));
+      const markup = renderHouseLearningStatusMarkup(status);
+      assert.ok(markup.includes(locale === "nl" ? "een meetwaarde was ongeldig" : "a measurement value was invalid"));
+      assert.doesNotMatch(markup, /onerror=|undefined/);
+    }
+  }
+});
+
 test("dagtelling blijft onbekend bij oude firmware en legacyhistorie blijft zichtbaar", () => {
   const old = normalizeHouseLearningStatus(statusPayload());
   assert.equal(old.dailyRecordCount, null);

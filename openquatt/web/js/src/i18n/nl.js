@@ -154,6 +154,13 @@ export default {
       lastStablePeriodRejection: "Laatste onderbroken of afgewezen woninglijnperiode: {reason}. Actuele status hierboven.",
     },
     collectionRejections: {
+      boilerUnavailable: "de cv-keteltoestand was onbekend",
+      boilerCommandStale: "het cv-ketelcommando ontbrak of was verouderd",
+      boilerCommandActive: "de cv-ketelaansturing was nog actief",
+      boilerHeat: "cv-activiteit of vlam zonder bevestigd tapwaterbedrijf",
+      missingMeasurement: "een meetwaarde of bedrijfsstatus ontbrak",
+      sourceStale: "een meetwaarde of bedrijfsstatus was verouderd",
+      timeSkew: "meetwaarden of bedrijfsstatussen liepen te ver uiteen",
       invalidMeasurement: "een meetwaarde was ongeldig",
       mixedContext: "de meetomstandigheden veranderden",
       timeDiscontinuity: "de meetreeks had een tijdsprong of onderbreking",

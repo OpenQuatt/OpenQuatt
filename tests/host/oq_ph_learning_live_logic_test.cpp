@@ -147,6 +147,28 @@ void test_hp_decode_and_boiler_bits_fail_closed() {
   assert(!learning_boiler_status(2.5f, kNowMs, true, true).valid);
 }
 
+void test_dhw_only_does_not_hide_cv_heat_or_ambiguous_flame() {
+  const uint16_t allowed[]{0x0000U, 0x0004U, 0x000CU};
+  const uint16_t blocked[]{0x0002U, 0x0006U, 0x0008U, 0x000AU, 0x000EU, 0x0020U, 0x0024U, 0x002CU, 0x001CU};
+  for (uint16_t payload : allowed)
+    assert(learning_boiler_status(payload, kNowMs, true, true).value == BoilerHeatState::NO_HEAT);
+  for (uint16_t payload : blocked)
+    assert(learning_boiler_status(payload, kNowMs, true, true).value == BoilerHeatState::HEAT_ACTIVE);
+  const oq_boiler::BoilerCommand off{
+      true, false, false, NAN, NAN, oq_boiler::COMMAND_SOURCE_NONE, static_cast<uint32_t>(kNowMs)};
+  SnapshotSourceStatus reason;
+  auto contract = learning_no_boiler_heat_contract(true, 2, off, false, false, kNowMs, false, &reason);
+  assert(reason == SnapshotSourceStatus::OK);
+  assert(learning_boiler_heat(true, contract, learning_boiler_status(0x000CU, kNowMs, true, true)).valid);
+  contract = learning_no_boiler_heat_contract(false, 2, off, false, false, kNowMs, false, &reason);
+  assert(reason == SnapshotSourceStatus::BOILER_UNAVAILABLE);
+  assert(!learning_boiler_heat(true, contract, learning_boiler_status(0x000CU, kNowMs, true, true)).valid);
+  learning_no_boiler_heat_contract(true, 2, off, false, false, kNowMs + 15001U, false, &reason);
+  assert(reason == SnapshotSourceStatus::BOILER_COMMAND_STALE);
+  learning_no_boiler_heat_contract(true, 2, off, true, false, kNowMs, false, &reason);
+  assert(reason == SnapshotSourceStatus::BOILER_COMMAND_ACTIVE);
+}
+
 void test_strategy_output_requires_current_matching_owner() {
   assert(learning_strategy_output_current(true, 3U, 3U, 20000U, 10000U));
   assert(!learning_strategy_output_current(true, 2U, 3U, 20000U, 10000U));
@@ -680,6 +702,7 @@ int main() {
   test_selected_hold_uses_the_selected_value();
   test_missing_selection_is_not_a_learning_measurement();
   test_hp_decode_and_boiler_bits_fail_closed();
+  test_dhw_only_does_not_hide_cv_heat_or_ambiguous_flame();
   test_strategy_output_requires_current_matching_owner();
   test_diagnostic_coverage_never_crosses_invalid_gap_or_generation_edge();
   test_diagnostic_capture_requires_opt_in_and_breaks_pause_continuity();

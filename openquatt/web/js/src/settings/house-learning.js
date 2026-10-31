@@ -52,6 +52,20 @@ const COLLECTION_REJECTION_KEYS = {
   invalid_configuration: "houseLearning.collectionRejections.invalidConfiguration",
   stale_data: "houseLearning.collectionRejections.staleData",
 };
+const SOURCE_REJECTION_KEYS = {
+  boiler_unavailable: "houseLearning.collectionRejections.boilerUnavailable",
+  boiler_command_stale: "houseLearning.collectionRejections.boilerCommandStale",
+  boiler_command_active: "houseLearning.collectionRejections.boilerCommandActive",
+  boiler_active: "houseLearning.collectionRejections.boilerHeat",
+  boiler_unknown: "houseLearning.collectionRejections.boilerUnavailable",
+  missing_measurement: "houseLearning.collectionRejections.missingMeasurement",
+  source_stale: "houseLearning.collectionRejections.sourceStale",
+  time_skew: "houseLearning.collectionRejections.timeSkew",
+  invalid_value: "houseLearning.collectionRejections.invalidMeasurement",
+  cooling_active: "houseLearning.reasons.cooling",
+  control_mode_blocked: "houseLearning.reasons.controlMode",
+  service_or_ota_active: "houseLearning.reasons.serviceOrOta",
+};
 const MODEL_REASONS = ["model_context_mismatch", "insufficient_shared_temperature_range", "model_disagreement", "thermal_storage_not_stationary"];
 const reasons = (values, fallback) => {
   const unique = [...new Set((values || []).map((value) => t(REASON_LABEL_KEYS[value] || "houseLearning.reasons.unknownBlock")))];
@@ -196,11 +210,14 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     : status.invalidReasons.includes("setpoint_recovery") ? t("houseLearning.status.waitStableAfterSetpoint")
     : t("houseLearning.status.waitStableHeatingMeasurement");
   const lastRejection = status.collection?.batchLastRejection;
+  const sourceRejection = lastRejection === "invalid_measurement" ? status.collection?.batchLastSourceStatus : null;
+  const rejectionKey = Object.hasOwn(SOURCE_REJECTION_KEYS, sourceRejection)
+    ? SOURCE_REJECTION_KEYS[sourceRejection]
+    : Object.hasOwn(COLLECTION_REJECTION_KEYS, lastRejection)
+      ? COLLECTION_REJECTION_KEYS[lastRejection] : "houseLearning.collectionRejections.unknown";
   const rejectionNote = lastRejection
     ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.status.lastStablePeriodRejection", {
-      reason: t(Object.hasOwn(COLLECTION_REJECTION_KEYS, lastRejection)
-        ? COLLECTION_REJECTION_KEYS[lastRejection]
-        : "houseLearning.collectionRejections.unknown"),
+      reason: t(rejectionKey),
     }))}</p>`
     : "";
   const daily = collectionCard(t(dailyCollection ? "houseLearning.cards.houseLine" : "houseLearning.cards.legacyHouseLine"), status.collection?.batch, status, batchWaiting);

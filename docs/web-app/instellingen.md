@@ -248,10 +248,15 @@ Een korte meetonderbreking kan tot maximaal 2 minuten worden overbrugd als de
 bedrijfstoestand bekend is. De dagkaart toont dan **Wacht kort op meetwaarde** met
 behouden voortgang; er worden op dat moment geen geldige meetwaarden verzameld.
 Een langere onderbreking, onbekende bedrijfstoestand of herstart begint het
-onvoltooide 24-uursvenster opnieuw. Ketelwarmte, koelen en service onderbreken de
-dagmeting ook. Eerder opgeslagen, afgeronde metingen en modelschattingen blijven behouden. De laatste onderbreking of afwijzing
+onvoltooide 24-uursvenster opnieuw. Cv-ketelwarmte, koelen en service onderbreken de
+dagmeting ook. Bevestigd uitsluitend OpenTherm-tapwaterbedrijf onderbreekt de meting
+niet; cv-activiteit en vlam zonder duidelijke bestemming blijven uitgesloten.
+Eerder opgeslagen, afgeronde metingen en modelschattingen blijven behouden.
+De laatste onderbreking of afwijzing
 blijft zichtbaar totdat een nieuwe woninglijnperiode is opgeslagen; deze melding
-wordt niet over een herstart bewaard. Oude stabiele vieruursperioden blijven als
+wordt niet over een herstart bewaard. Bij een meetafwijzing toont nieuwe firmware
+ook de concrete bron- of ketelreden, bijvoorbeeld een verouderd ketelcommando.
+Oude stabiele vieruursperioden blijven als
 oude metingen beschikbaar in de grafiek en de export.
 Veel korte meetperioden betekenen dus niet automatisch dat er ook dagmetingen voor
 de woninglijn zijn. Beide schattingen hebben eigen kwaliteitscontroles; een voltooide
