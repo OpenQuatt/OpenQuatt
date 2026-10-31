@@ -14,3 +14,4 @@ packages:
     vars:
       flow_secondary_enabled: "${flow_secondary_enabled}"
       flow_mismatch_internal: "${flow_mismatch_internal}"
+  oq_flow_delta_t: !include ../oq_flow_delta_t.yaml
