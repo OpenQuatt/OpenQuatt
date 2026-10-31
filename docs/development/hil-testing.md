@@ -249,6 +249,47 @@ config-validaties controleren respectievelijk de testoverlay en de canonieke
 HIL-entrypoint tegen de actuele firmwarecompositie. De Duo HIL-config wordt ook
 automatisch in CI gevalideerd.
 
+## Power House: langer doorverwarmen bij een hogere minimumstand
+
+De gerichte stage `extension` gebruikt HP1 als V2 old en HP2 als V2 new.
+Gewone frequentie-uitsluitingen kiezen de geteste pomp; bij de Duo-controle blijft
+de tweede pomp beschikbaar maar uitgeschakeld. De simulator blijft dynamisch;
+de echte Modbus-frequentie en werkmodus bewijzen de start en stop. De bestaande
+CIC-fixture levert uitsluitend de geselecteerde aanvoertemperatuur.
+
+```bash
+node scripts/hil/run-run-extension.mjs \
+  --controller http://openquatt-test.local \
+  --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config scripts/hil/configs/run_extension_duo.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage extension \
+  --apply
+```
+
+De stage controleert inschakelen tijdens stilstand en doorverwarmen op F1 bij
+13,5, 14,6 en 20 °C buiten met de gedeelde V2-new-kaart. Een gewone uitsluiting
+van 20–26 Hz maakt F3 het minimum voor de eerdere stop, ook als de stilstaande
+tweede pomp wel op F1 kan draaien. De stage controleert ook F1 met een berekende
+uitlaattemperatuur vlak onder 49 °C, afkoel-/herstartgrenzen en echte warmtevraag
+boven het minimumvermogen. Daarna wordt ook HP2 op F1 getest.
+De gewone stand `Manual PWM` op 50 iPWM levert in dit lab circa 900 l/h;
+de watergrensproef gebruikt 47,0 °C inlet en controleert circa 48,944 °C uitlaat.
+De overlay `run-extension-v2-fast` verlaagt uitsluitend op HIL de runtimevloer
+naar 120 seconden en de minimale stilstand naar 60 seconden. Het scenario stelt
+180 seconden minimumlooptijd in zodat de kaartmetingen en de Duo-controle binnen
+het bewaakte looptijdvenster vallen; beide timers worden bewaakt.
+Na de bewezen minimumlooptijd gebruikt het scenario voor de vervolgruns de
+HIL-vloer van 120 seconden om herhaling en herstel te versnellen.
+Normale firmware behoudt 300 en 240 seconden. De gedeelde snapshot en recovery
+bewaren ook de geraakte comfort-, extension-, warmup-, frequentie- en
+simulatortemperatuurinstellingen. Nieuwe snapshots gebruiken schema 5. Herstel
+blijft schema 3 en 4 accepteren en herstelt daar alleen de werkelijk opgeslagen velden.
+Recovery wacht in veilige CM0-aanvraag op de minimumlooptijd en hydraulische
+uitloop voordat OTA mag beginnen. Na herstel van de simulatorprofielen herstart
+het scenario de normale controller en bevestigt het ook beide ODU-varianten.
+
 ## Issue #667: V2 performance en Power Input
 
 Dit afzonderlijke scenario gebruikt het volledige V2-model van simulator

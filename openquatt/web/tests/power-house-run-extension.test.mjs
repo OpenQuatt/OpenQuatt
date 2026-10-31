@@ -48,6 +48,43 @@ function numberEntity(value, uom = "", extra = {}) {
   };
 }
 
+test("firmware's earlier stop is shown in both locales without changing a settings draft", () => {
+  resetSettingsState({
+    roomSetpoint: numberEntity(19.5, "°C"),
+    phComfortBelow: numberEntity(0.1, "°C"),
+    phRunExtension: switchEntity(true),
+    phRunExtensionStopMargin: numberEntity(0.4, "°C"),
+    phRunExtensionRestartCooldown: numberEntity(0.2, "°C"),
+    phRunExtensionStatus: { value: "wait_warm_restart", state: "wait_warm_restart" },
+    phRunExtensionComfortStop: numberEntity(19.5, "°C"),
+  });
+  try {
+    for (const locale of ["nl", "en"]) {
+      setLocale(locale, { persist: false });
+      const model = getRunExtensionThresholds();
+      assert.equal(model.stop, 19.5);
+      assert.equal(model.restart, 19.4);
+      assert.equal(model.minimumLimited, true);
+      assert.match(renderPowerHouseRunExtensionField(), locale === "nl" ? /eerdere stopgrens/ : /earlier stop/);
+    }
+    state.inputDrafts.phRunExtensionStopMargin = "0.7";
+    const preview = getRunExtensionThresholds();
+    assert.equal(preview.stop, 20.2);
+    assert.equal(preview.minimumLimited, false);
+    assert.equal(getRunExtensionThresholds(false).stop, 19.5);
+    assert.equal(state.entities.phRunExtensionStopMargin.value, 0.4);
+    delete state.inputDrafts.phRunExtensionStopMargin;
+    state.entities.phRunExtension.value = false;
+    assert.equal(getRunExtensionThresholds().minimumLimited, false);
+    assert.equal(getRunExtensionThresholds().stop, 19.9);
+    state.entities.phRunExtension.value = true;
+    state.entities.phRunExtensionStatus = { value: "inactive", state: "inactive" };
+    assert.equal(getRunExtensionThresholds().minimumLimited, false);
+  } finally {
+    setLocale("nl", { persist: false });
+  }
+});
+
 test("run-extension copy and temperatures follow locale changes without changing thresholds", () => {
   resetSettingsState({
     phRunExtension: switchEntity(true),
