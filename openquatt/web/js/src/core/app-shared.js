@@ -17,11 +17,13 @@ export { hasEntity } from "./entity-store.js";
       parts.push(t("summary.profile", { profile }));
     }
     const flowMode = String(getEntityValue("flowControlMode") || "").trim();
-    if (flowMode) {
+    if (flowMode && flowMode !== "Delta T") {
       parts.push(flowMode === "Manual PWM" ? t("summary.flowManual", { manual: t("summary.manualPwm") }) : t("summary.flowSetpoint", { value: "setpoint" }));
     }
     if (flowMode === "Manual PWM" && hasEntity("manualIpwm")) {
       parts.push(`iPWM ${formatValue("manualIpwm")}`);
+    } else if (flowMode === "Delta T" && hasEntity("flowDeltaTTarget")) {
+      parts.push(t("summary.flowDeltaT", { value: formatValue("flowDeltaTTarget") }));
     } else if (hasEntity("flowSetpoint")) {
       parts.push(t("summary.flowSetpoint", { value: formatValue("flowSetpoint") }));
     }

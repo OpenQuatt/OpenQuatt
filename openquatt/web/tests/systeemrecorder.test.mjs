@@ -17,6 +17,8 @@ globalThis.window = {
 
 const {
   applyDebugRecordingDeviceStatus,
+  prepareDebugRecordingCopy,
+  clearPreparedDebugRecordingCopy,
   copyDebugRecordingBundle,
   downloadDebugRecordingRange,
   exportDebugRecordingBundle,
@@ -323,6 +325,7 @@ test("nieuwe opname starten wist historie zonder browserconfiguratie", async () 
 // ---------------------------------------------------------------------------
 
 function seedFeatureStatus(overrides = {}) {
+  clearPreparedDebugRecordingCopy();
   state.debugRecordingDeviceStatus = {
     ok: true,
     available: true,
@@ -351,6 +354,7 @@ function seedFeatureStatus(overrides = {}) {
   window.setTimeout = () => 0;
   window.clearTimeout = () => {};
   return () => {
+    clearPreparedDebugRecordingCopy();
     window.setTimeout = originalSetTimeout;
     window.clearTimeout = originalClearTimeout;
   };
@@ -376,6 +380,7 @@ test("download- en kopieer-endpoints gebruiken het geselecteerde bereik", async 
 
   setDebugRecordingDownloadRange(30);
   await exportDebugRecordingBundle("download");
+  await prepareDebugRecordingCopy();
   await exportDebugRecordingBundle("copy");
 
   assert.equal(requestedUrls.length, 2);
@@ -582,6 +587,8 @@ test("stille poll rendert de open modal niet opnieuw maar patcht de getallen", a
   });
 
   const { refreshDebugRecordingDeviceStatus } = await import("../js/src/features/debug-recording.js");
+  await prepareDebugRecordingCopy();
+  renders = 0;
   await refreshDebugRecordingDeviceStatus({ silent: true });
 
   assert.equal(renders, 0, "geen volledige re-render bij ongewijzigde toestand");
@@ -962,6 +969,7 @@ test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t
 
   const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
   setDebugRecordingDownloadRange(60);
+  await prepareDebugRecordingCopy();
   const copied = await copyDebugRecordingAndOpenAnalyser();
 
   assert.equal(copied, true);
@@ -1003,9 +1011,115 @@ test("kopieer-en-open opent geen tab bij een mislukte kopie", async (t) => {
   });
 
   const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
+  await prepareDebugRecordingCopy();
   const copied = await copyDebugRecordingAndOpenAnalyser();
 
   assert.equal(copied, false);
   assert.equal(opened, 0);
   assert.match(state.debugRecordingError, /Kopiëren mislukt/);
+});
+
+
+test("grote export wordt vooraf opgehaald en kopieert met één klik zonder fetch of async onderbreking", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalClipboard = window.navigator.clipboard;
+  const originalOpen = window.open;
+  t.after(() => {
+    window.fetch = originalFetch;
+    window.navigator.clipboard = originalClipboard;
+    window.open = originalOpen;
+    restoreTimers();
+  });
+  let fetches = 0;
+  let copiedText = "";
+  let opened = 0;
+  const bundle = { exported_at_ms: 1793356171000, data: "x".repeat(742000) };
+  window.fetch = async () => { fetches += 1; return { ok: true, json: async () => bundle }; };
+  window.navigator.clipboard = { writeText: async (text) => { copiedText = text; } };
+  window.open = () => { opened += 1; };
+  const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
+  for (const range of [120, 360, 0]) {
+    for (const copy of [copyDebugRecordingBundle, copyDebugRecordingAndOpenAnalyser]) {
+      setDebugRecordingDownloadRange(range);
+      assert.match(renderDebugRecordingModal(), /data-oq-action="copy-debug-recording" disabled/);
+      const beforeFetch = fetches;
+      const preparing = prepareDebugRecordingCopy();
+      assert.match(renderDebugRecordingModal(), /Kopie voorbereiden/);
+      await preparing;
+      assert.match(renderDebugRecordingModal(), /Momentopname voor kopiëren/);
+      assert.doesNotMatch(renderDebugRecordingModal(), /data-oq-action="copy-debug-recording" disabled/);
+      copiedText = "";
+      const copying = copy();
+      assert.equal(copiedText, JSON.stringify(bundle), "clipboard wordt vóór de eerste await aangeroepen");
+      assert.equal(await copying, true);
+      assert.equal(fetches, beforeFetch + 1, "kopieerklik haalt niets meer op");
+    }
+  }
+  assert.equal(opened, 3);
+});
+
+test("bereikwissel en sluiten annuleren voorbereiding; late responses kunnen geen verkeerde kopie activeren", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalClipboard = window.navigator.clipboard;
+  t.after(() => { window.fetch = originalFetch; window.navigator.clipboard = originalClipboard; restoreTimers(); });
+  const requests = [];
+  window.fetch = (url, options) => new Promise((resolve) => { requests.push({ url, options, resolve }); });
+  let text = "";
+  window.navigator.clipboard = { writeText: async (value) => { text = value; } };
+  setDebugRecordingDownloadRange(120);
+  const old = prepareDebugRecordingCopy();
+  setDebugRecordingDownloadRange(360);
+  const current = prepareDebugRecordingCopy();
+  assert.equal(requests[0].options.signal.aborted, true);
+  requests[1].resolve({ ok: true, json: async () => ({ window: 360 }) });
+  assert.equal(await current, true);
+  requests[0].resolve({ ok: true, json: async () => ({ window: 120 }) });
+  assert.equal(await old, false);
+  assert.equal(await copyDebugRecordingBundle(), true);
+  assert.equal(text, '{"window":360}');
+  applyDebugRecordingDeviceStatus({ ...state.debugRecordingDeviceStatus, recording_id: 8 });
+  assert.match(renderDebugRecordingModal(), /data-oq-action="copy-debug-recording" disabled/);
+  const closing = prepareDebugRecordingCopy();
+  clearPreparedDebugRecordingCopy();
+  state.systemModal = "";
+  assert.equal(requests[2].options.signal.aborted, true);
+  requests[2].resolve({ ok: true, json: async () => ({ window: "closed" }) });
+  assert.equal(await closing, false);
+});
+
+test("mislukte voorbereiding houdt kopiëren uitgeschakeld en herhaalt niet bij iedere poll", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  t.after(() => { window.fetch = originalFetch; restoreTimers(); });
+  let fetches = 0;
+  window.fetch = async () => { fetches += 1; return { ok: false, status: 503 }; };
+  setDebugRecordingDownloadRange(360);
+  assert.equal(await prepareDebugRecordingCopy(), false);
+  assert.equal(await prepareDebugRecordingCopy(), false);
+  assert.equal(fetches, 1);
+  assert.match(renderDebugRecordingModal(), /Kopie voorbereiden mislukt/);
+  assert.match(renderDebugRecordingModal(), /data-oq-action="copy-debug-recording" disabled/);
+  window.fetch = async () => { fetches += 1; return { ok: true, json: async () => ({ data: "retry" }) }; };
+  assert.equal(await handleDebugRecordingAction("select-debug-recording-range", { dataset: { lastMinutes: "360" } }), true);
+  assert.equal(fetches, 2);
+});
+
+test("voorbereiding afgerond na sluiten via geschiedenis blokkeert heropenen niet", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  t.after(() => { window.fetch = originalFetch; restoreTimers(); });
+  let resolve;
+  window.fetch = () => new Promise((done) => { resolve = done; });
+  setDebugRecordingDownloadRange(360);
+  const preparing = prepareDebugRecordingCopy();
+  state.systemModal = "";
+  resolve({ ok: true, json: async () => ({ data: "old" }) });
+  assert.equal(await preparing, false);
+  state.systemModal = "debug-recording";
+  window.fetch = async () => ({ ok: true, json: async () => ({ exported_at_ms: 1793356171000, data: "new" }) });
+  assert.equal(await prepareDebugRecordingCopy(), true);
+  const { formatDateTime } = await import("../js/src/i18n/index.js");
+  assert.ok(renderDebugRecordingModal().includes(formatDateTime(1793356171000, { dateStyle: "short", timeStyle: "medium" })));
 });

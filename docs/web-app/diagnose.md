@@ -55,6 +55,8 @@ De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opn
 3. Download het diagnosebestand.
 4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue. Via **Open analyser** kun je het bestand zelf alvast bekijken op OpenHeatPumps; er wordt niets automatisch verzonden.
 
+Je kunt de gegevens ook kopiëren met **Kopieer gegevens** of **Kopieer + analyser**. De gegevens worden alvast opgehaald wanneer je de popup opent of een periode kiest. Zodra de kopieerknoppen beschikbaar zijn, volstaat één klik. De popup vermeldt het tijdstip van de momentopname voor kopiëren; kies de periode opnieuw om die te vernieuwen. De analyser opent nadat het kopiëren is gelukt.
+
 De recorder gebruikt een ringbuffer van 2 MiB in PSRAM en neemt elke 10 seconden een sample. Met de volledige standaardveldenset past er minstens 6 uur historie in; de beschikbare duur hangt af van de aanwezige sensoren en staat in de popup. De recorder blijft doorlopen en vervangt de oudste samples zodra de buffer vol is. Uitschakelen bewaart de huidige historie nog tot een herstart van het apparaat; **Nieuwe opname** wist de historie. Na een apparaatherstart begint de historie opnieuw.
 
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.

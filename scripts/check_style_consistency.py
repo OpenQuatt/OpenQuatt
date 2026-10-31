@@ -200,6 +200,7 @@ NESTED_KEY_ORDER_RULES = {
         "oq_thermal_request_control",
         "oq_thermal_actuator",
         "oq_flow_control",
+        "oq_flow_delta_t",
     ),
     ("openquatt/packages/40_service_tasks.yaml", "packages"): (
         "oq_flow_autotune",

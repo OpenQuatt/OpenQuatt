@@ -8,7 +8,7 @@ import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { syncUrlAppView } from "../core/navigation.js";
 import { getRuntimeCounterResetKey } from "./device-context.js";
-import { clearDebugRecordingDevicePollTimer, scheduleDebugRecordingDeviceStatusPoll } from "./debug-recording.js";
+import { clearPreparedDebugRecordingCopy, clearDebugRecordingDevicePollTimer, scheduleDebugRecordingDeviceStatusPoll } from "./debug-recording.js";
 import { refreshAuthStatus, stopLoginAuthStatusPolling } from "./security-actions.js";
 import { clearSettingsBackupDraft } from "./storage-history.js";
 import { t } from "../i18n/index.js";
@@ -35,6 +35,7 @@ function closeSystemModal() {
   }
   clearSettingsBackupDraft();
   if (wasSystemRecorder) {
+    clearPreparedDebugRecordingCopy();
     syncUrlAppView("replace");
   }
   render();
