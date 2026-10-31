@@ -4,8 +4,9 @@ import { escapeHtml } from "../core/html.js";
 import { formatDateTime, formatNumber, getIntlLocale, getLocale, t } from "../i18n/index.js";
 import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
-import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
+import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsInfoToggle, renderSettingsSystemRow } from "./controls.js";
 import { renderHouseLearningChart } from "./house-learning-chart.js";
+import { getSettingsSwitchModel } from "./field-models.js";
 
 const metric = (value, unit = "") => value != null && Number.isFinite(Number(value))
   ? `${formatNumber(value, { maximumFractionDigits: 1 })} ${unit}`.trim()
@@ -94,14 +95,14 @@ function duration(seconds) {
   return minutes >= 60 ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${remainder}` : `${minutes}:${remainder}`;
 }
 
-function collectionCard(label, phase, status, waitingNote = "") {
+function collectionCard(label, phase, status, waitingNote = "", showIntervals = true) {
   if (!status.enabled) return [label, t("houseLearning.status.paused"), t("houseLearning.status.passiveLearningOff"), true, ""];
   if (statusIsStale(status)) return [label, t("houseLearning.status.stale"), t("houseLearning.status.waitCurrentController"), true, "orange"];
   if (!phase) return [label, t("houseLearning.status.unknown"), t("houseLearning.status.noProgressFromFirmware"), true, "sky"];
   const elapsed = duration(phase.elapsedSeconds);
   const target = duration(phase.targetSeconds);
   const progress = elapsed && target ? `${elapsed} / ${target}` : elapsed || target || t("houseLearning.status.timeUnknown");
-  const intervals = Number.isFinite(phase.intervals) ? ` · ${t("houseLearning.status.intervalsCompleted", { count: formatNumber(phase.intervals) })}` : "";
+  const intervals = showIntervals && Number.isFinite(phase.intervals) ? ` · ${t("houseLearning.status.intervalsCompleted", { count: formatNumber(phase.intervals) })}` : "";
   if (phase.restorePending) return [label, t("houseLearning.status.restoringDay"), `${progress} · ${t("houseLearning.status.restoringDayCopy")}`, true, "orange"];
   if (phase.gapPending) return [label, t("houseLearning.status.waitShortMeasurement"), `${progress} · ${t("houseLearning.status.dailyGapHeld")}`, true, "orange"];
   if (phase.active) return [label, t("houseLearning.status.collecting"), `${progress}${intervals}${phase.resumeStatus === "restored" ? ` · ${t("houseLearning.status.dayRestored")}` : ""}`, true, "green"];
@@ -177,7 +178,7 @@ function modelStatusNote(status) {
   if (status.adviceReady) return t("houseLearning.model.modelsAgreeCopy");
   if (status.rlsReady && status.batchAdviceReady) return t("houseLearning.model.notJointlyValidated");
   if (status.rlsSamples) {
-    return t(status.rlsSamples === 1 ? "houseLearning.model.acceptedPeriodOne" : "houseLearning.model.acceptedPeriodMany", { count: formatNumber(status.rlsSamples) });
+    return t("houseLearning.layout.moreModelData");
   }
   return status.enabled ? t("houseLearning.model.waitFirstPeriod") : t("houseLearning.model.startToAssess");
 }
@@ -188,7 +189,8 @@ function localizeStateMessage(message) {
   return t(message.translationKey, vars);
 }
 
-export function renderHouseLearningStatusMarkup(status = state.houseLearningStatus) {
+export function renderHouseLearningStatusMarkup(status = state.houseLearningStatus, section = "all") {
+  if (section === "secondary" && (!status || state.houseLearningReset === "pending" || state.houseLearningReset === "error" || state.houseLearningReset === "uncertain")) return "";
   if (state.houseLearningReset === "pending") {
     return `<p class="oq-settings-action-note" role="status">${escapeHtml(t("houseLearning.reset.clearing"))}</p>`;
   }
@@ -200,7 +202,7 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     : state.houseLearningStatusError
     ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>`
     : "";
-  const [activityValue, activityNote, activityTone] = activity(status);
+  const [activityValue, activityNote] = activity(status);
   const invalidSources = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => sourceLabel(key).toLocaleLowerCase(getIntlLocale()));
   const dailyCollection = status.dailyRecordCount != null || status.collection?.batch?.targetSeconds === 86400;
   const batchWaiting = dailyCollection ? t("houseLearning.status.waitDailyMeasurement")
@@ -218,15 +220,14 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
       reason: t(rejectionKey),
     }))}</p>`
     : "";
-  const summaryCards = [
-    [t("houseLearning.cards.learning"), activityValue, activityNote, true, activityTone],
-    collectionCard(t(dailyCollection ? "houseLearning.cards.houseLine" : "houseLearning.cards.legacyHouseLine"), status.collection?.batch, status, batchWaiting),
-    collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, measurementWaitingNote(status)),
-  ];
+  const daily = collectionCard(t(dailyCollection ? "houseLearning.cards.houseLine" : "houseLearning.cards.legacyHouseLine"), status.collection?.batch, status, batchWaiting);
+  const thermal = collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, measurementWaitingNote(status), false);
+  const phase = status.collection?.batch;
+  const current = status.enabled && !statusIsStale(status) && Number.isFinite(phase?.elapsedSeconds) && phase.elapsedSeconds >= 0 && phase.targetSeconds > 0;
+  const fraction = current ? Math.max(0, Math.min(100, phase.elapsedSeconds / phase.targetSeconds * 100)) : 0;
   const modelNote = `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.modelStatus"))}: <strong>${escapeHtml(modelStatus(status))}</strong> · ${escapeHtml(modelStatusNote(status))}</p>`;
   const modelCards = [
     [t("houseLearning.cards.r1rcPeriods"), formatNumber(status.rlsSamples), t("houseLearning.cards.acceptedThirtyMinutePeriods")],
-    [t("houseLearning.cards.dailyPeriods"), status.dailyRecordCount == null ? "—" : formatNumber(status.dailyRecordCount), t(status.dailyRecordCount == null ? "houseLearning.cards.dailyCountUnavailable" : "houseLearning.cards.dailyPeriodsCopy")],
     [t("houseLearning.cards.heatLossU"), metric(status.uRls, "W/K"), estimateNote(status.uRls, status.rlsReady)],
     [t("houseLearning.cards.heatStorageC"), metric(status.cRlsWhPerK, "Wh/K"), status.cRlsWhPerK == null ? t("houseLearning.estimate.none") : t("houseLearning.estimate.provisionalNotValidated")],
   ];
@@ -234,32 +235,60 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   const historyNote = legacyCount > 0
     ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.legacyRecords", { count: formatNumber(legacyCount) }))}</p>`
     : "";
-  const collectionNote = dailyCollection ? `<p class="oq-settings-action-note">${escapeHtml(t(status.collection?.batch?.resumeStatus != null ? "houseLearning.status.dailyRestartWindowCopy" : "houseLearning.status.dailyWindowCopy"))}</p>` : "";
+  const collectionNote = dailyCollection ? t(status.collection?.batch?.resumeStatus != null ? "houseLearning.status.dailyRestartWindowCopy" : "houseLearning.status.dailyWindowCopy") : "";
   const batchDiagnosticCards = [
     [t("houseLearning.cards.batchHeatLossH"), metric(status.hBatch, "W/K"), t(dailyCollection ? "houseLearning.cards.batchHeatLossCopy" : "houseLearning.cards.stableBatchPeriodsCopy")],
     [t("houseLearning.cards.batchStartTemperature"), metric(status.t0Batch, "°C"), t("houseLearning.cards.batchStartTemperatureCopy")],
   ];
-  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${collectionNote}${rejectionNote}<div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}${modelNote}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${historyNote}${renderSettingsAdvancedDisclosure("house-learning-model", t("houseLearning.diagnostics.title"), t(dailyCollection ? "houseLearning.diagnostics.copy" : "houseLearning.diagnostics.legacyCopy"), `<div class="oq-settings-grid">${batchDiagnosticCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
+  const thermalHelp = [
+    t(dailyCollection ? "houseLearning.diagnostics.copy" : "houseLearning.diagnostics.legacyCopy"),
+    collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, measurementWaitingNote(status))[2],
+    status.rlsSamples ? t(status.rlsSamples === 1 ? "houseLearning.model.acceptedPeriodOne" : "houseLearning.model.acceptedPeriodMany", { count: formatNumber(status.rlsSamples) }) : "",
+  ].filter(Boolean).join("\n\n");
+  const primary = `<div class="oq-house-learning-current">
+    <div class="oq-house-learning-current-head"><div><h4>${escapeHtml(daily[0])}</h4><strong>${escapeHtml(daily[1])}</strong>${renderSettingsInfoToggle("house-learning-window", daily[0], collectionNote)}</div><div class="oq-house-learning-count"><span>${escapeHtml(t("houseLearning.cards.dailyPeriods"))}</span><strong>${status.dailyRecordCount == null ? "—" : formatNumber(status.dailyRecordCount)}</strong>${status.dailyRecordCount == null ? `<small>${escapeHtml(t("houseLearning.cards.dailyCountUnavailable"))}</small>` : ""}</div></div>
+    ${status.enabled ? `<p class="oq-house-learning-current-time">${escapeHtml(daily[2])}</p>` : ""}
+    ${current ? `<div class="oq-house-learning-readiness-track" aria-hidden="true"><span style="width:${fraction}%"></span></div>` : ""}
+    <p class="oq-house-learning-current-note">${activityValue !== daily[1] ? `<strong>${escapeHtml(activityValue)}</strong> · ` : ""}${escapeHtml(activityNote)}</p>
+    ${rejectionNote}
+  </div>${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
+  if (section === "primary") return primary;
+  const secondary = `<section class="oq-house-learning-thermal"><div class="oq-house-learning-section-head"><h4>${escapeHtml(t("houseLearning.cards.heatingCooling"))}</h4>${renderSettingsInfoToggle("house-learning-thermal", t("houseLearning.cards.heatingCooling"), thermalHelp)}</div><p class="oq-house-learning-thermal-progress"><strong>${escapeHtml(thermal[1])}</strong> · ${escapeHtml(thermal[2])}</p>${modelNote}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note]) => renderStatCard({ label, value, note })).join("")}</div></section>
+    ${renderSettingsAdvancedDisclosure("house-learning-technical", t("houseLearning.layout.technical"), "", `<div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}<div class="oq-settings-grid oq-house-learning-parameters">${batchDiagnosticCards.map(([label, value, note]) => renderStatCard({ label, value, note })).join("")}</div>${historyNote}`)}`;
+  return section === "secondary" ? secondary : primary + secondary;
 }
 
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
     state.houseLearningChartLoading, state.houseLearningChartError,
     state.houseLearningStatus?.hBatch, state.houseLearningStatus?.t0Batch, state.houseLearningStatus?.batchAdviceReady, state.houseLearningStatus?.referenceRoomC,
+    state.houseLearningStatus?.batchStatus,
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
+function renderHouseLearningDataActions(busy) {
+  const resetting = state.busyAction === "houseLearningReset" || state.houseLearningReset === "pending";
+  const reset = hasEntity("houseLearningReset")
+    ? renderNamedActionButton("houseLearningReset", t(resetting ? "houseLearning.reset.clearingButton" : "houseLearning.reset.button"), "oq-helper-button oq-helper-button--ghost", busy)
+    : "";
+  return `<div class="oq-helper-actions oq-house-learning-actions"><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${escapeHtml(t(state.busyAction === "houseLearningExport" ? "houseLearning.export.downloading" : "houseLearning.export.button"))}</button>${reset}</div>`;
+}
+
 function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
-  const chart = state.houseLearningChart === null ? "" : renderHouseLearningChart(
+  const open = state.houseLearningChart !== null || Boolean(state.houseLearningChartError);
+  const chart = state.houseLearningChart !== null ? renderHouseLearningChart(
     state.houseLearningChart,
     { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
-    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: state.houseLearningStatus?.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC },
-  );
-  return `
-        <div class="oq-house-learning-chart-head"><div><h5>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h5><p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p></div><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" aria-expanded="${state.houseLearningChart !== null}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : state.houseLearningChart !== null ? "houseLearning.chart.hide" : "houseLearning.chart.show"))}</button></div>
-        ${state.houseLearningChartError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningChartError))}</p>` : ""}
-        ${chart}${state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">${escapeHtml(t("houseLearning.chart.loadedAt", { date: formatDateTime(state.houseLearningChartFetchedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }))}</p>` : ""}
-`;
+    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: state.houseLearningStatus?.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC, batchStatus: state.houseLearningStatus?.batchStatus },
+  ) : "";
+  const actionLabel = t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : open ? "houseLearning.chart.hide" : "houseLearning.chart.show");
+  return `<button class="oq-house-learning-chart-head" type="button" data-oq-action="load-house-learning-chart" aria-label="${escapeHtml(actionLabel)}" aria-expanded="${open}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>
+    <span class="oq-house-learning-disclosure-copy"><strong>${escapeHtml(t("houseLearning.chart.panelTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.panelCopy"))}</span></span>
+    <span class="oq-house-learning-disclosure-action">${escapeHtml(t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : open ? "houseLearning.layout.close" : "houseLearning.layout.open"))}<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span>
+  </button>
+  ${state.houseLearningChartError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningChartError))}</p>` : ""}
+  ${chart}${open && state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">${escapeHtml(t("houseLearning.chart.loadedAt", { date: formatDateTime(state.houseLearningChartFetchedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }))}</p>` : ""}
+  ${open ? `<div data-oq-house-learning-secondary>${renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary")}</div>${renderHouseLearningDataActions(busy)}` : ""}`;
 }
 
 export function renderHouseLearningSettings() {
@@ -267,10 +296,7 @@ export function renderHouseLearningSettings() {
   if (!hasEntity("houseLearningEnabled") || (!state.houseLearningEndpointAvailable && !initialCapabilityCheck)) return "";
   const resetting = state.busyAction === "houseLearningReset" || state.houseLearningReset === "pending";
   const busy = Boolean(state.busyAction) || resetting;
-  const exporting = state.busyAction === "houseLearningExport";
-  const reset = hasEntity("houseLearningReset")
-    ? renderNamedActionButton("houseLearningReset", t(resetting ? "houseLearning.reset.clearingButton" : "houseLearning.reset.button"), "oq-helper-button oq-helper-button--ghost", busy)
-    : "";
+  const learningSwitch = getSettingsSwitchModel("houseLearningEnabled");
   return `
     <section class="oq-settings-section" data-oq-house-learning>
       <div class="oq-settings-section-head">
@@ -278,20 +304,12 @@ export function renderHouseLearningSettings() {
           <p class="oq-helper-label">${escapeHtml(t("houseLearning.panel.eyebrow"))}</p>
           <span class="oq-settings-section-badge oq-settings-section-badge--experimental">${escapeHtml(t("houseLearning.panel.experimental"))}</span>
         </div>
-        <h3>${escapeHtml(t("houseLearning.panel.title"))}</h3>
+        <div class="oq-house-learning-heading"><h3>${escapeHtml(t("houseLearning.panel.title"))}</h3>${renderSettingsCompactSwitchControl("houseLearningEnabled", t("houseLearning.switch.label"), learningSwitch.enabled, busy || learningSwitch.busy, t("common.on"), t("common.off"))}</div>
         <p>${escapeHtml(t("houseLearning.panel.copy"))}</p>
       </div>
       <div class="oq-settings-section-body">
-        <div class="oq-settings-grid">
-          ${renderSettingsSwitchField("houseLearningEnabled", t("houseLearning.switch.label"), t("houseLearning.switch.copy"), t("houseLearning.switch.on"), t("houseLearning.switch.off"))}
-        </div>
-        ${renderSettingsAdvancedDisclosure("house-learning-details", t("houseLearning.panel.details"), "", `
-        <div data-oq-house-learning-status>${renderHouseLearningStatusMarkup()}</div>
+        <div data-oq-house-learning-status>${renderHouseLearningStatusMarkup(state.houseLearningStatus, "primary")}</div>
         <div class="oq-house-learning-chart-panel" data-oq-house-learning-chart-panel data-oq-chart-signature="${escapeHtml(houseLearningChartSignature(busy))}">${renderHouseLearningChartPanel(busy)}</div>
-        <div class="oq-helper-actions">
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${escapeHtml(t(exporting ? "houseLearning.export.downloading" : "houseLearning.export.button"))}</button>${reset}
-        </div>
-        `)}
       </div>
     </section>`;
 }
@@ -313,7 +331,12 @@ export function patchHouseLearningSettingsStatus() {
       chartNode.setAttribute("data-oq-chart-signature", signature);
     }
   }
-  const markup = renderHouseLearningStatusMarkup();
+  const markup = renderHouseLearningStatusMarkup(state.houseLearningStatus, "primary");
   if (node.innerHTML !== markup) node.innerHTML = markup;
+  const secondary = panel?.querySelector("[data-oq-house-learning-secondary]");
+  if (secondary) {
+    const secondaryMarkup = renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary");
+    if (secondary.innerHTML !== secondaryMarkup) secondary.innerHTML = secondaryMarkup;
+  }
   return true;
 }

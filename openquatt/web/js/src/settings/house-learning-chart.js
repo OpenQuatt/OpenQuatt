@@ -1,5 +1,7 @@
 import { escapeHtml } from "../core/html.js";
 import { formatDateTime, formatNumber, t } from "../i18n/index.js";
+import { renderHouseLearningReadiness } from "./house-learning-readiness.js";
+import { renderSettingsInfoToggle } from "./controls.js";
 
 const REQUIRED_COLUMNS = ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"];
 const WIDTH = 720;
@@ -82,8 +84,9 @@ function chartTooltip(record) {
 export function renderHouseLearningChart(records, configured, learned) {
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH);
-  if (!records.length && !model.configuredValid && !model.learnedValid) return `<div class="oq-house-learning-chart-empty"><strong>${escapeHtml(t("houseLearning.chart.emptyTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.emptyCopy"))}</span></div>`;
   const dailyFit = records.some((record) => record.referenceRoomC != null) || finite(learned?.referenceRoomC) != null;
+  const readiness = dailyFit ? renderHouseLearningReadiness(records, learned) : "";
+  if (!records.length && !model.configuredValid && !model.learnedValid) return `${readiness}<div class="oq-house-learning-chart-empty"><strong>${escapeHtml(t("houseLearning.chart.emptyTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.emptyCopy"))}</span></div>`;
   const fitRecords = dailyFit ? records.filter((record) => record.recordKind === 1) : records;
   const measuredMin = fitRecords.length ? Math.min(...fitRecords.map((record) => record.outsideC)) : null;
   const measuredMax = fitRecords.length ? Math.max(...fitRecords.map((record) => record.outsideC)) : null;
@@ -115,9 +118,9 @@ export function renderHouseLearningChart(records, configured, learned) {
         : fitRecords.length === 1 ? "houseLearning.chart.periodCountOne" : "houseLearning.chart.periodCountMany", { count: formatNumber(fitRecords.length) }),
     visibleRecords.length < records.length ? t("houseLearning.chart.outsideAxis", { count: formatNumber(records.length - visibleRecords.length) }) : "",
     !model.configuredValid ? t("houseLearning.chart.configuredLineIncomplete") : "",
-    !model.learnedValid ? t("houseLearning.chart.noBatchEstimate") : !model.ready ? t("houseLearning.chart.provisionalLine") : "",
+    !model.learnedValid ? dailyFit ? "" : t("houseLearning.chart.noBatchEstimate") : !model.ready ? t("houseLearning.chart.provisionalLine") : "",
   ].filter(Boolean);
-  return `
+  return `${readiness}
     <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${model.learnedValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}</div>
     <div class="oq-house-learning-chart-wrap">
       <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="${escapeHtml(t("houseLearning.chart.ariaLabel"))}">
@@ -133,7 +136,7 @@ export function renderHouseLearningChart(records, configured, learned) {
       <div class="oq-house-learning-chart-tooltip" aria-hidden="true"></div>
     </div>
 
-    ${notes.map((note) => `<p class="oq-house-learning-chart-note">${escapeHtml(note)}</p>`).join("")}
+    <div class="oq-house-learning-chart-footer"><span>${escapeHtml(t(dailyFit ? "houseLearning.chart.compactDailySummary" : "houseLearning.chart.compactSummary", { count: formatNumber(fitRecords.length), temperature: format(finite(learned?.referenceRoomC) ?? 20) }))}</span>${renderSettingsInfoToggle("house-learning-chart", t("houseLearning.chart.panelTitle"), notes.join("\n\n"))}</div>
   `;
 }
 

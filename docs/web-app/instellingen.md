@@ -218,8 +218,15 @@ van de actuele buitenmeting.
 #### Huismodel volgen en passief leren
 
 Bij Power House op Heatpump Controller Q Single en Duo staat onderaan **Verwarmen**
-het experimentele blok `Huismodel volgen`. Open `Leerstatus en meetgegevens` voor
-voortgang, bronnen en schattingen. Passief leren verandert geen regelinstellingen.
+het experimentele blok `Huismodel volgen`. Standaard zie je alleen de schakelaar,
+de lopende dagmeting en het aantal afgeronde dagmetingen. Bij uitgeschakeld leren
+blijven lege voortgangsbalken weg. Passief leren verandert geen regelinstellingen.
+
+Open **Meetgegevens → Bekijken** voor de grafiek, de voorwaarden voor een geleerde
+woninglijn en het model uit opwarmen en afkoelen. **Sluiten** verbergt al deze
+gegevens, inclusief de download- en wisknoppen. Bronstatus, watertemperaturen en
+woninglijnparameters staan daarbinnen onder **Bronnen en technische details**.
+Een bron die het verzamelen blokkeert, wordt ook in de hoofdstatus genoemd.
 
 De functie gebruikt dezelfde geselecteerde bronwaarden als de regeling.
 OpenTherm-telemetrie is hiervoor niet vereist.
@@ -271,7 +278,7 @@ geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../development/po
 
 #### Woninglijn en meetresultaten
 
-De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
+De grafiek onder **Meetgegevens** vergelijkt de ingestelde woninglijn (blauw) met
 de afgeronde dagmetingen van 24 uur (punten). De korte perioden voor
 opwarmen en afkoelen zijn geen punten in deze grafiek. Een beschikbare geleerde woninglijn wordt
 groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
@@ -283,7 +290,18 @@ zijn in de puntinformatie gemarkeerd als oude meting.
 De leerstatus, grafiek, meldingen en bediening volgen de gekozen app-taal (Nederlands of Engels).
 Getallen en datums gebruiken de bijbehorende notatie; de JSON-export behoudt zijn vaste formaat.
 
-Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
+Met **Bekijken** haal je de bewaarde meetpunten op. Het voortgangsblok toont hoeveel
+volledige dagmetingen beschikbaar zijn en welke temperatuurspreiding nog ontbreekt.
+De huidige standaardgrenzen zijn minimaal negen dagmetingen: zes om te leren en de
+laatste drie voor onafhankelijke controle. De leerdagen moeten minimaal 6 °C
+spreiding tussen P10 en P90 hebben, omgerekend naar 20 °C in huis. Elk van de drie
+temperatuurgebieden moet minstens twee leerdagen bevatten; geen gebied mag meer
+dan 67% van de leerdagen bevatten. Oude vieruursmetingen tellen hiervoor niet mee.
+De getallen worden afgeleid uit de opgehaalde meetgegevens; de controller beoordeelt
+ook meetkwaliteit, stabiliteit en validatie. Afwijzingen zoals een instabiele lijn
+worden apart toegelicht. Opnieuw ophalen maakt nieuw opgeslagen dagen zichtbaar.
+
+Bij een meetpunt kun je datum, meetduur,
 gemiddelde buitentemperatuur, de naar 20 °C omgerekende buitenwaarde en het
 gemiddelde warmtevermogen bekijken. Zonder voldoende gegevens blijft
 de geleerde lijn weg; de grafiek verandert geen instellingen. `H` beschrijft hoeveel

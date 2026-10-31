@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getHouseLearningChartModel, normalizeHouseLearningExport, renderHouseLearningChart } from "../js/src/settings/house-learning-chart.js";
 import { setLocale } from "../js/src/i18n/index.js";
+
+globalThis.__OQ_PREVIEW__ = false;
+const { getHouseLearningChartModel, normalizeHouseLearningExport, renderHouseLearningChart } = await import("../js/src/settings/house-learning-chart.js");
 
 const payload = {
   schema: 1,
