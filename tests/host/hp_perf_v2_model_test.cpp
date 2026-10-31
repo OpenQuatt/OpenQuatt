@@ -1,6 +1,7 @@
 #include <assert.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -18,16 +19,16 @@ void test_axes_and_all_source_nodes() {
   using namespace oq_v2_model;
   static_assert(sizeof(data::PTH_W) + sizeof(data::COP) + sizeof(data::FREQUENCY_HZ) + sizeof(data::AMBIENT_C) +
                     sizeof(data::SUPPLY_C) ==
-                11160U);
-  for (size_t i = 1; i < 10; ++i) assert(data::FREQUENCY_HZ[i] > data::FREQUENCY_HZ[i - 1]);
-  for (size_t i = 1; i < 17; ++i) assert(data::AMBIENT_C[i] > data::AMBIENT_C[i - 1]);
-  for (size_t i = 1; i < 8; ++i) assert(data::SUPPLY_C[i] > data::SUPPLY_C[i - 1]);
+                38816U);
+  for (size_t i = 1; i < data::N_FREQUENCY; ++i) assert(data::FREQUENCY_HZ[i] > data::FREQUENCY_HZ[i - 1]);
+  for (size_t i = 1; i < data::N_AMBIENT; ++i) assert(data::AMBIENT_C[i] > data::AMBIENT_C[i - 1]);
+  for (size_t i = 1; i < data::N_SUPPLY; ++i) assert(data::SUPPLY_C[i] > data::SUPPLY_C[i - 1]);
 
   size_t valid_nodes = 0;
   size_t masked_nodes = 0;
-  for (size_t supply = 0; supply < 8; ++supply) {
-    for (size_t ambient = 0; ambient < 17; ++ambient) {
-      for (size_t frequency = 0; frequency < 10; ++frequency) {
+  for (size_t supply = 0; supply < data::N_SUPPLY; ++supply) {
+    for (size_t ambient = 0; ambient < data::N_AMBIENT; ++ambient) {
+      for (size_t frequency = 0; frequency < data::N_FREQUENCY; ++frequency) {
         const float expected_pth = data::PTH_W[supply][ambient][frequency];
         const float expected_cop = data::COP[supply][ambient][frequency];
         assert(std::isfinite(expected_pth) == std::isfinite(expected_cop));
@@ -39,43 +40,47 @@ void test_axes_and_all_source_nodes() {
           continue;
         }
         assert(prediction.status == Status::VALID);
-        assert(prediction.pth_w == expected_pth);
-        assert(prediction.cop == expected_cop);
-        assert(near(prediction.pel_w, expected_pth / expected_cop, 0.001f));
+        const float bounded_pth =
+            std::clamp(expected_pth, static_cast<float>(data::PTH_MIN_W), static_cast<float>(data::PTH_MAX_W));
+        const float bounded_cop =
+            std::clamp(expected_cop, static_cast<float>(data::COP_MIN), static_cast<float>(data::COP_MAX));
+        assert(prediction.pth_w == bounded_pth);
+        assert(prediction.cop == bounded_cop);
+        assert(near(prediction.pel_w, bounded_pth / bounded_cop, 0.001f));
         ++valid_nodes;
       }
     }
   }
-  assert(valid_nodes == 590U);
-  assert(masked_nodes == 770U);
+  assert(valid_nodes == 2362U);
+  assert(masked_nodes == 2438U);
 }
 
 void test_reference_and_boundary_points() {
   using namespace oq_v2_model;
   const auto issue_point = predict_heating(20.0, 12.6, 22.5);
   assert(issue_point.status == Status::VALID);
-  assert(near(issue_point.pth_w, 3072.6185f, 0.02f));
-  assert(near(issue_point.cop, 7.064095f, 0.0002f));
-  assert(near(issue_point.pel_w, 434.9601f, 0.02f));
+  assert(near(issue_point.pth_w, 3071.342f, 0.02f));
+  assert(near(issue_point.cop, 7.05536f, 0.0002f));
+  assert(near(issue_point.pel_w, 435.3204f, 0.02f));
 
   const auto hp1_slot_four = predict_heating(43.0, 12.6, 22.5);
   const auto hp2_slot_four = predict_heating(48.0, 12.6, 22.5);
   assert(hp1_slot_four.status == Status::VALID && hp2_slot_four.status == Status::VALID);
-  assert(near(hp1_slot_four.pth_w, 5761.47f, 0.05f));
-  assert(near(hp2_slot_four.pth_w, 6346.00f, 0.05f));
+  assert(near(hp1_slot_four.pth_w, 5757.673f, 0.05f));
+  assert(near(hp2_slot_four.pth_w, 6341.658f, 0.05f));
 
-  assert(predict_heating(20.0, 12.6, 54.999999).status == Status::VALID);
-  assert(predict_heating(20.0, 12.6, 55.0).status == Status::MASKED);
+  assert(predict_heating(20.0, 12.6, 48.999999).status == Status::VALID);
+  assert(predict_heating(20.0, 12.6, 49.0).status == Status::MASKED);
   assert(predict_heating(20.0, 12.6, 65.0).status == Status::MASKED);
   const auto high_supply = predict_heating(30.0, 12.6, 65.0);
   assert(high_supply.status == Status::VALID);
-  assert(near(high_supply.pth_w, 2126.80f, 0.05f));
+  assert(near(high_supply.pth_w, 2119.922f, 0.05f));
 
   assert(predict_heating(0.0, NAN, NAN).status == Status::OFF);
   assert(predict_heating(-1.0, 12.6, 22.5).status == Status::INVALID_INPUT);
   assert(predict_heating(INFINITY, 12.6, 22.5).status == Status::INVALID_INPUT);
   assert(predict_heating(19.99, 12.6, 22.5).status == Status::OUTSIDE_DOMAIN);
-  assert(predict_heating(90.01, 12.6, 22.5).status == Status::OUTSIDE_DOMAIN);
+  assert(predict_heating(110.01, 12.6, 22.5).status == Status::OUTSIDE_DOMAIN);
   assert(predict_heating(20.0, -15.01, 22.5).status == Status::OUTSIDE_DOMAIN);
   assert(predict_heating(20.0, 12.6, 70.01).status == Status::OUTSIDE_DOMAIN);
 
@@ -87,10 +92,44 @@ void test_reference_and_boundary_points() {
   assert(cold_boundary.pth_w == exact_boundary.pth_w);
 }
 
+void test_v2_new_operating_boundaries_and_native_oracle() {
+  using namespace oq_v2_model;
+  // Independent reference outputs for V2-new performance predictions.
+  const auto warm_f1 = predict_heating(20.0, 14.6, 30.66);
+  assert(warm_f1.status == Status::VALID);
+  assert(near(warm_f1.pth_w, 2875.44352f, 0.02f));
+  assert(near(warm_f1.cop, 6.4005264f, 0.0002f));
+  assert(near(predict_heating(26.0, 14.6, 30.66).pth_w, 3569.24152f, 0.02f));
+  assert(near(predict_heating(30.0, 14.6, 30.66).pth_w, 4031.77352f, 0.02f));
+  assert(near(predict_heating(20.0, 20.0, 30.66).pth_w, 3302.00152f, 0.02f));
+  assert(predict_heating(20.0, 14.6, 48.999).status == Status::VALID);
+  assert(predict_heating(20.0, 14.6, 49.0).status == Status::MASKED);
+  assert(predict_heating(30.0, 14.6, 49.0).status == Status::VALID);
+  assert(predict_heating(20.0, -0.001, 25.0).status == Status::MASKED);
+  assert(predict_heating(20.0, 0.0, 25.0).status == Status::VALID);
+  assert(predict_heating(110.0, -5.0, 34.999).status == Status::VALID);
+  assert(predict_heating(110.0, -5.0, 35.0).status == Status::MASKED);
+  assert(predict_heating(102.0, -12.000001, 25.0).status == Status::MASKED);
+  assert(predict_heating(102.0, -12.0, 25.0).status == Status::VALID);
+  assert(near(predict_heating(45.0, 36.107, 23.638).pth_w, 9172.15f, 0.02f));
+  assert(near(predict_heating(60.0, 16.632, 18.495).pth_w, 8738.62253f, 0.02f));
+  assert(near(predict_heating(30.0, -15.0, 70.0).pth_w, 577.14f, 0.02f));
+  assert(near(predict_heating(20.0, 44.99, 18.0).cop, 13.24f, 0.0002f));
+  assert(near(predict_heating(42.5, 35.1216, 21.1135).pth_w, 8827.48223f, 0.02f));
+  for (const auto point : {std::array<double, 2>{2, 85}, {7, 72}, {14.6, 60}, {20, 55}, {25, 48}, {30, 45}}) {
+    assert(predict_heating(point[1], point[0], 25.0).status == Status::VALID);
+    assert(predict_heating(point[1] + 1, point[0], 25.0).status == Status::MASKED);
+  }
+  // The complete prediction axis must not renumber the existing legacy levels.
+  constexpr double legacy[] = {20, 26, 30, 48, 55, 61, 72, 80, 85, 90};
+  for (int level = 1; level <= 10; ++level) assert(reference_frequency_hz(level) == legacy[level - 1]);
+}
+
 }  // namespace
 
 int main() {
   test_axes_and_all_source_nodes();
   test_reference_and_boundary_points();
+  test_v2_new_operating_boundaries_and_native_oracle();
   return 0;
 }

@@ -118,7 +118,7 @@ test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", (
   assert.match(powerHouse, /2166136261U/);
   assert.match(powerHouse, /availableModels/);
   assert.match(powerHouse, /v2Thermal/);
-  assert.match(powerHouse, /oq-v2-heating-r1/);
+  assert.match(powerHouse, /oq-v2-heating-r2/);
   assert.match(powerHouse, /oq-v2-input-r1/);
 });
 

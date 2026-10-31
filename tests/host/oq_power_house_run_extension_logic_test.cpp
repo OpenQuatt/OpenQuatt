@@ -18,6 +18,7 @@ Input base_input() {
   in.setpoint_c = 20.5f;
   in.base_requested_w = 900.0f;
   in.minimum_viable_w = 1700.0f;
+  in.minimum_viable_level = 1;
   in.water_limit_factor = 1.0f;
   return in;
 }
@@ -644,9 +645,144 @@ void test_same_logic_with_three_emitter_lags() {
     }
   }
 }
+
+void test_elevated_minimum_stops_optional_extension_at_setpoint() {
+  Input in = base_input();
+  in.setpoint_c = 19.5f;
+  in.room_c = 19.82f;
+  in.base_requested_w = 999.0f;
+  in.minimum_viable_w = 2936.72f;
+  State state;
+  state.phase = Phase::EXTENDING;
+  state.cycle_armed = true;
+  state.last_setpoint_c = in.setpoint_c;
+  const Tuning settings{0.4f, 0.2f, 0.1f};
+  const auto f1 = evaluate(in, settings, state);
+  assert(f1.next.phase == Phase::EXTENDING && f1.floor_active);
+  assert(fabsf(f1.comfort_stop_c - 19.9f) < 0.001f);
+
+  in.minimum_viable_level = 3;
+  in.minimum_viable_w = 4058.0f;
+  const auto f3 = evaluate(in, settings, f1.next);
+  assert(f3.next.phase == Phase::COMFORT_STOP && f3.force_comfort_stop);
+  assert(!f3.floor_active && !f3.warm_restart_intent && f3.next.stop_at_setpoint);
+  assert(fabsf(f3.comfort_stop_c - 19.5f) < 0.001f);
+  assert(fabsf(f3.warm_restart_c - 19.4f) < 0.001f);
+
+  // A falling room reading, missing model or F1 becoming available must not
+  // cancel the pending stop or restart above the reduced restart threshold.
+  state = f3.next;
+  in.room_c = 19.45f;
+  for (int level : {0, 1, 3}) {
+    in.minimum_viable_level = level;
+    in.minimum_viable_w = level == 0 ? NAN : 2936.72f;
+    const auto spinning = evaluate(in, settings, state);
+    assert(spinning.force_comfort_stop && !spinning.floor_active);
+    assert(fabsf(spinning.warm_restart_c - 19.4f) < 0.001f);
+    in.cycle_active = in.actual_heating_active = false;
+    const auto stopped = evaluate(in, settings, spinning.next);
+    const auto waiting = evaluate(in, settings, stopped.next);
+    assert(waiting.next.phase == Phase::WAIT_WARM_RESTART && waiting.force_comfort_stop);
+    assert(!waiting.floor_active && !waiting.warm_restart_intent);
+    in.cycle_active = in.actual_heating_active = true;
+  }
+
+  in.minimum_viable_level = 3;
+  in.minimum_viable_w = 4058.0f;
+  in.cycle_active = in.actual_heating_active = false;
+  auto stopped = evaluate(in, settings, state);
+  in.room_c = 19.39f;
+  const auto restart = evaluate(in, settings, stopped.next);
+  assert(restart.next.phase == Phase::WARM_RESTART && restart.warm_restart_intent);
+  assert(restart.floor_active && restart.floor_w == 4058.0f);
+  in.cycle_active = in.actual_heating_active = true;
+  const auto running = evaluate(in, settings, restart.next);
+  assert(running.next.phase == Phase::EXTENDING && running.floor_active);
+  in.room_c = 19.5f;
+  assert(evaluate(in, settings, running.next).force_comfort_stop);
+}
+
+void test_elevated_minimum_preserves_real_demand_and_guards() {
+  for (int level : {2, 3, 10}) {
+    Input in = base_input();
+    in.minimum_viable_level = level;
+    in.room_c = 20.6f;
+    in.base_requested_w = in.minimum_viable_w;
+    State state{Phase::RUNNING, 20.5f, true};
+    const auto real_demand = evaluate(in, tuning(), state);
+    assert(!real_demand.force_comfort_stop && !real_demand.floor_active);
+    assert(real_demand.comfort_stop_c == 21.0f);
+
+    in.base_requested_w = 900.0f;
+    in.room_c = 20.49f;
+    const auto below = evaluate(in, tuning(), state);
+    assert(below.floor_active && !below.force_comfort_stop);
+    in.room_c = 20.5f;
+    assert(evaluate(in, tuning(), below.next).force_comfort_stop);
+
+    in.enabled = false;
+    const auto disabled = evaluate(in, tuning(), below.next);
+    assert(!disabled.force_comfort_stop && !disabled.floor_active && !disabled.next.stop_at_setpoint);
+    in.enabled = true;
+    in.cycle_active = in.actual_heating_active = false;
+    const auto idle = evaluate(in, tuning(), {});
+    assert(!idle.force_comfort_stop && !idle.floor_active && !idle.warm_restart_intent);
+    in.cycle_active = in.actual_heating_active = true;
+    in.room_c = 20.4f;
+    in.water_limit_factor = 0.8f;
+    assert(!evaluate(in, tuning(), state).floor_active);
+  }
+}
+
+void test_elevated_stop_survives_input_loss_during_pending_restart() {
+  Input in = base_input();
+  in.setpoint_c = 19.5f;
+  in.room_c = 19.39f;
+  in.cycle_active = in.actual_heating_active = false;
+  in.minimum_viable_level = 3;
+  State wait{Phase::WAIT_WARM_RESTART, 19.5f, true, true};
+  const Tuning settings{0.4f, 0.2f, 0.1f};
+  const auto restart = evaluate(in, settings, wait);
+  assert(restart.warm_restart_intent);
+  for (bool heating_allowed : {false, true}) {
+    auto lost = in;
+    lost.inputs_valid = heating_allowed;
+    lost.heating_allowed = !heating_allowed;
+    const auto outage = evaluate(lost, settings, restart.next);
+    assert(outage.next.phase == Phase::WAIT_WARM_RESTART);
+    assert(outage.force_comfort_stop && !outage.warm_restart_intent && !outage.floor_active);
+    assert(!outage.next.cycle_armed && outage.next.stop_at_setpoint);
+    auto recovered = in;
+    recovered.minimum_viable_level = 1;
+    recovered.room_c = 19.45f;
+    recovered.base_requested_w = 5000.0f;
+    const auto held = evaluate(recovered, settings, outage.next);
+    assert(held.force_comfort_stop && !held.warm_restart_intent && !held.floor_active);
+    assert(fabsf(held.warm_restart_c - 19.4f) < 0.001f);
+    recovered.room_c = 19.39f;
+    const auto cold = evaluate(recovered, settings, held.next);
+    assert(cold.next.phase == Phase::INACTIVE && !cold.force_comfort_stop);
+    assert(!cold.warm_restart_intent && !cold.floor_active);
+  }
+
+  // A zero cold margin makes restart and stop meet at the setpoint. The
+  // existing idle stop gate must win at equality; a cold reading releases it.
+  in.room_c = 19.5f;
+  const Tuning zero_margin{0.4f, 0.2f, 0.0f};
+  for (int tick = 0; tick < 4; ++tick) {
+    const auto held = evaluate(in, zero_margin, wait);
+    assert(held.force_comfort_stop && !held.warm_restart_intent && !held.floor_active);
+    wait = held.next;
+  }
+  in.room_c = 19.49f;
+  assert(evaluate(in, zero_margin, wait).warm_restart_intent);
+}
 }  // namespace
 
 int main() {
+  test_elevated_minimum_stops_optional_extension_at_setpoint();
+  test_elevated_minimum_preserves_real_demand_and_guards();
+  test_elevated_stop_survives_input_loss_during_pending_restart();
   test_configurable_restart_and_cold_edge();
   test_cold_room_intent_releases_wait();
   test_restart_setting_changes_and_failure_boundaries();

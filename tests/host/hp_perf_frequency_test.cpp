@@ -80,7 +80,7 @@ int main() {
 
   const auto issue_point = oq_perf::predict_heating_hz(20.0f, 12.6f, 22.5f);
   assert(issue_point.available);
-  assert(std::fabs(issue_point.pth_w - 3072.6185f) < 0.02f);
+  assert(std::fabs(issue_point.pth_w - 3071.342f) < 0.02f);
   assert(std::fabs(issue_point.pth_w / issue_point.cop - issue_point.pel_w) < 0.01f);
 
   FakeFrequencyContext frequency;
@@ -111,6 +111,14 @@ int main() {
       !oq_perf::predict_candidate(frequency, oq_odu::Variant::UNKNOWN, true, 4, 12.6f, 22.5f).runtime_frequency_known);
 
   frequency.allowed = true;
+  frequency.hp1_hz = 20;
+  for (const auto variant : {oq_odu::Variant::V2_OLD_MODEL, oq_odu::Variant::V2_NEW_MODEL}) {
+    const auto warm_f1 = oq_perf::predict_candidate(frequency, variant, true, 1, 14.6f, 30.66f);
+    assert(warm_f1.usable_for_running_optimization());
+    assert(std::fabs(warm_f1.performance.pth_w - 2875.44352f) < 0.02f);
+    assert(!oq_perf::predict_candidate(frequency, variant, true, 1, 14.6f, 49.0f).usable_for_running_optimization());
+  }
+  frequency.hp1_hz = 43;
   const auto confirmed_v1 = oq_perf::predict_candidate(frequency, oq_odu::Variant::V1_5, true, 4, 12.6f, 22.5f);
   assert(confirmed_v1.runtime_frequency_known);
   assert(confirmed_v1.performance.available);

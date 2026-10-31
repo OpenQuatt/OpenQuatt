@@ -311,7 +311,7 @@ void test_warmup_handoff_to_adjustable_run_extension() {
     assert(sim.compressor);
     extension::State state;
     const extension::Tuning tuning{0.7f, cooldown, sim.input.comfort_below_c};
-    extension::Input in{true, true, true, true, true, 20.0f, 22.0f, sim.requested_w, kMinimumW, 1.0f};
+    extension::Input in{true, true, true, true, true, 20.0f, 22.0f, sim.requested_w, kMinimumW, 1, 1.0f};
     auto result = extension::evaluate(in, tuning, state);
     state = result.next;
     for (float room : {20.05f, 20.1f, 20.2f, 21.0f}) {

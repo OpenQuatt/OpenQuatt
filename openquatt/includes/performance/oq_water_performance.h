@@ -34,16 +34,32 @@ inline Prediction solve(oq_odu::Variant variant, float hz, float outside_c, floa
   float low_residual = capacity * (low - inlet_c) - initial.thermal_w;
   if (std::fabs(low_residual) <= 1) return initial;
   if (low_residual > 0) return {};  // The root would lie below the supported outlet domain.
-  const float maximum_outlet = v2 ? static_cast<float>(oq_v2_model::data::SUPPLY_C[7]) : INFINITY;
+  const float maximum_outlet =
+      v2 ? static_cast<float>(oq_v2_model::data::SUPPLY_C[oq_v2_model::data::N_SUPPLY - 1]) : INFINITY;
+  const auto upper_prediction = [&](float target) {
+    auto result = observed(variant, hz, outside_c, target, boundary);
+    if (result.valid() || !v2) return result;
+    // A first guess may cross a frequency-specific water boundary while the
+    // energy-balance root still lies below it. Try the valid side of each edge.
+    for (size_t index = oq_v2_model::data::N_SUPPLY; index > 0; --index) {
+      const float edge = std::nextafter(static_cast<float>(oq_v2_model::data::SUPPLY_C[index - 1]), -INFINITY);
+      if (edge <= low || edge >= target) continue;
+      result = observed(variant, hz, outside_c, edge, boundary);
+      if (result.valid()) return result;
+    }
+    return Prediction{};
+  };
   float high = std::min(maximum_outlet, inlet_c + initial.thermal_w / capacity);
-  auto p = observed(variant, hz, outside_c, high, boundary);
+  auto p = upper_prediction(high);
   if (!p.valid()) return {};
+  high = p.outlet_c;
   float high_residual = capacity * (high - inlet_c) - p.thermal_w;
   // V1 capacity can rise with Tout; extend the bracket within supported map points.
   for (unsigned step = 0; high_residual < -1.0f && step < 4; ++step) {
     high = std::min(maximum_outlet, inlet_c + 2 * (high - inlet_c));
-    p = observed(variant, hz, outside_c, high, boundary);
+    p = upper_prediction(high);
     if (!p.valid()) return {};
+    high = p.outlet_c;
     high_residual = capacity * (high - inlet_c) - p.thermal_w;
   }
   if (high_residual < -1.0f) return {};
