@@ -22,12 +22,16 @@ export const WEB_BUNDLE_BUDGETS = [
     // Plus the unchanged 13,452 B allowance for warmup controls and diagnostics.
     // dev 9b8dfa57 raw budget 1,363,500 B; relative gzip limits stay unchanged.
     // Measured raw: dev 1,363,238 B, PR 1,375,748 B (Node 24.14.1); gzip +3,779 B (+0.99%).
-    // Preparing recorder copies: +1,676 B raw / +557 B gzip versus dev 16fa6aba (Node 24.14.1).
-    // Reserve +2 kB raw; the relative gzip growth limits stay unchanged.
-    raw: 1_378_952,
+    // Passive-learning progress, readiness and both locales: +10,701 B raw / ~3.1 kB gzip
+    // versus dev 388f6f9d on Node 24.14.1; preserves the existing 1,204 B raw headroom.
+    // Shared allowance for recorder copy preparation (+2,000 B) and DHW-only diagnostics (+1,161 B).
+    // Keep PRs #897 and #899 compatible in either merge order; relative gzip limits stay unchanged.
+    raw: 1_390_814,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
-  { file: "css/openquatt-app.css", raw: 213_515 },
+  // Passive-learning layout: +2,969 B raw / +493 B gzip versus dev 388f6f9d
+  // on Node 24.14.1; preserves the existing 1,581 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 216_484 },
 ];
