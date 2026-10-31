@@ -14,3 +14,8 @@ import { getBasePath } from "./url-path.js";
     return String(value || "").toLowerCase().includes("manual");
   }
 
+  // Delta T flow control, the third Flow Control Mode option.
+  export function isDeltaTFlowMode(value = getEntityValue("flowControlMode")) {
+    return String(value || "").trim() === "Delta T";
+  }
+

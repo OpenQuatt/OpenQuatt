@@ -156,6 +156,8 @@ select:
     options:
       - Flow Setpoint
       - Manual PWM
+      # Index 2, read by oq_flow_delta_t_runtime.h. See oq_flow_delta_t.yaml.
+      - Delta T
     initial_option: Flow Setpoint
     restore_value: true
     optimistic: true

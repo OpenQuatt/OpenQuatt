@@ -1,13 +1,13 @@
 import { getEntityNumericValue, hasEntity } from "../core/app-shared.js";
 import { STRATEGY_OPTION_CURVE, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
-import { isCurveMode, isManualFlowMode } from "../core/domain-helpers.js";
+import { isCurveMode, isDeltaTFlowMode, isManualFlowMode } from "../core/domain-helpers.js";
 import { getCurveFallbackSuggestion, getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { state } from "../core/state.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
-import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsSwitchCopy, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
+import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsSwitchCopy, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsStaticField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { formatNumber, t } from "../i18n/index.js";
@@ -175,9 +175,23 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   }
 
   export function renderFlowSettingsFields(className = "oq-settings-grid") {
+    // Delta T mode keeps the fixed setpoints as its start and fallback flow,
+    // and adds its own target and band.
+    const deltaT = isDeltaTFlowMode();
     const autoFields = [
-      renderSettingsNumberField("flowSetpoint", t("settingsHeating.flowHeatTitle"), t("settingsHeating.flowHeatCopy")),
+      renderSettingsNumberField("flowSetpoint", t("settingsHeating.flowHeatTitle"), t(deltaT ? "settingsHeating.flowHeatDeltaTCopy" : "settingsHeating.flowHeatCopy")),
       renderSettingsNumberField("coolingFlowSetpoint", t("settingsHeating.flowCoolTitle"), t("settingsHeating.flowCoolCopy")),
+      ...(deltaT ? [
+        renderSettingsNumberField("flowDeltaTTarget", t("settingsHeating.flowDeltaTTargetTitle"), t("settingsHeating.flowDeltaTTargetCopy")),
+        renderSettingsNumberField("flowDeltaTMinFlow", t("settingsHeating.flowDeltaTMinTitle"), t("settingsHeating.flowDeltaTMinCopy")),
+        renderSettingsNumberField("flowDeltaTMaxFlow", t("settingsHeating.flowDeltaTMaxTitle"), t("settingsHeating.flowDeltaTMaxCopy")),
+        renderSettingsNumberField("flowDeltaTStepInterval", t("settingsHeating.flowDeltaTIntervalTitle"), t("settingsHeating.flowDeltaTIntervalCopy")),
+        renderSettingsNumberField("flowDeltaTMaxStep", t("settingsHeating.flowDeltaTStepTitle"), t("settingsHeating.flowDeltaTStepCopy")),
+        renderSettingsNumberField("flowDeltaTDeadband", t("settingsHeating.flowDeltaTDeadbandTitle"), t("settingsHeating.flowDeltaTDeadbandCopy")),
+        hasEntity("flowDeltaTStatus")
+          ? renderSettingsStaticField("flowDeltaTStatus", t("settingsHeating.flowDeltaTStatusTitle"), t("settingsHeating.flowDeltaTStatusCopy"), getSettingsTextStatValue("flowDeltaTStatus"))
+          : "",
+      ] : []),
     ].filter(Boolean).join("");
     return `
       <div class="${escapeHtml(className)}">

@@ -24,7 +24,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Measured raw: dev 1,363,238 B, PR 1,375,748 B (Node 24.14.1); gzip +3,779 B (+0.99%).
     // Passive-learning progress, readiness and both locales: +10,701 B raw / ~3.1 kB gzip
     // versus dev 388f6f9d on Node 24.14.1; preserves the existing 1,204 B raw headroom.
-    raw: 1_387_653,
+    // Delta T flow control settings, status and copy in both locales:
+    // measured raw dev 1,375,784 B, PR 1,379,267 B (+3,483 B; gzip +1,275 B, Node 24.19.0).
+    raw: 1_391_136,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
