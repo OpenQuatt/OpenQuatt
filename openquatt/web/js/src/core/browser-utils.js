@@ -11,17 +11,26 @@ export async function fetchWithTimeout(input, options = {}, timeoutMs = 0, timeo
   }
 
   const controller = new AbortController();
-  const timeoutId = timerHost.setTimeout(() => controller.abort(), timeoutMs);
+  const callerSignal = options.signal;
+  const cancel = () => controller.abort(callerSignal.reason);
+  if (callerSignal?.aborted) cancel();
+  else callerSignal?.addEventListener("abort", cancel, { once: true });
+  let timedOut = false;
+  const timeoutId = timerHost.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     const response = await fetchImplementation(input, { ...options, signal: controller.signal });
     return typeof consumeResponse === "function" ? await consumeResponse(response) : response;
   } catch (error) {
-    if (controller.signal.aborted) {
+    if (timedOut) {
       throw new Error(timeoutMessage || `request timed out after ${timeoutMs}ms`);
     }
     throw error;
   } finally {
     timerHost.clearTimeout(timeoutId);
+    callerSignal?.removeEventListener("abort", cancel);
   }
 }
 

@@ -117,3 +117,45 @@ test("rejected clipboard API falls back to execCommand instead of failing", asyn
   assert.equal(await copyTextToClipboard("OpenQuatt"), true);
   assert.equal(apiCalls, 1);
 });
+
+test("fetchWithTimeout forwards caller cancellation without reporting a timeout", async () => {
+  const caller = new AbortController();
+  const reason = new Error("caller closed view");
+  let forwarded;
+  const pending = fetchWithTimeout("/test", { signal: caller.signal }, 10000, "timed out", null, {
+    timerHost: globalThis,
+    fetch: (_url, { signal }) => {
+      forwarded = signal;
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    },
+  });
+  caller.abort(reason);
+  await assert.rejects(pending, (error) => error === reason);
+  assert.equal(forwarded.aborted, true);
+});
+
+test("fetchWithTimeout preserves cancellation during response consumption", async () => {
+  const caller = new AbortController();
+  let startConsumption;
+  const consuming = new Promise((resolve) => { startConsumption = resolve; });
+  const reason = new Error("period changed");
+  const pending = fetchWithTimeout("/test", { signal: caller.signal }, 10000, "timed out", (response) => response.json(), {
+    timerHost: globalThis,
+    fetch: async (_url, { signal }) => ({ json: () => {
+      startConsumption();
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    } }),
+  });
+  await consuming;
+  caller.abort(reason);
+  await assert.rejects(pending, (error) => error === reason);
+});
+
+test("fetchWithTimeout forwards an already cancelled signal", async () => {
+  const caller = new AbortController();
+  caller.abort(new Error("already closed"));
+  await assert.rejects(fetchWithTimeout("/test", { signal: caller.signal }, 10000, "timed out", null, {
+    timerHost: globalThis,
+    fetch: async (_url, { signal }) => { signal.throwIfAborted(); },
+  }), /already closed/);
+});

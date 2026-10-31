@@ -6,7 +6,7 @@ export { DEFAULT_TREND_WINDOW_HOURS, TREND_WINDOW_HOURS_OPTIONS, state } from ".
 import { handleChange, handleClick, handleFocusChange, handleInput, handleKeyDown, handlePointerDown, handlePointerMove, handlePointerUp, handleSettingsInteractionEnd, handleSettingsInteractionStart, handleWheel } from "./event-handlers.js";
 import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUrlControlReplayTab, getUrlControlReplayWindow, getUrlSettingsGroup, getUrlSystemModal, SYSTEM_RECORDER_MODAL_ID, setAppView, syncUrlAppView } from "./navigation.js";
 import { primeEntities, syncEntities } from "./entity-sync.js";
-import { refreshDebugRecordingDeviceStatus } from "../features/debug-recording.js";
+import { clearPreparedDebugRecordingCopy, refreshDebugRecordingDeviceStatus } from "../features/debug-recording.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
 import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "./motion.js";
 import { render } from "./render-scheduler.js";
@@ -260,6 +260,7 @@ import { t } from "../i18n/index.js";
       state.debugRecordingConfirmDisable = false;
       state.debugRecordingManageOpen = false;
     } else if (state.systemModal === SYSTEM_RECORDER_MODAL_ID) {
+      clearPreparedDebugRecordingCopy();
       state.systemModal = "";
     }
     render();
