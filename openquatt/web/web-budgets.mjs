@@ -22,8 +22,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Plus the unchanged 13,452 B allowance for warmup controls and diagnostics.
     // dev 9b8dfa57 raw budget 1,363,500 B; relative gzip limits stay unchanged.
     // Measured raw: dev 1,363,238 B, PR 1,375,748 B (Node 24.14.1); gzip +3,779 B (+0.99%).
-    // Preparing recorder copies before the click, with cancellation and snapshot time: +1 KiB allowance.
-    raw: 1_377_952,
+    // Preparing recorder copies: +1,676 B raw / +557 B gzip versus dev 16fa6aba (Node 24.14.1).
+    // Reserve +2 kB raw; the relative gzip growth limits stay unchanged.
+    raw: 1_378_952,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
