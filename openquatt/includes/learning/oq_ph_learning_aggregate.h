@@ -318,6 +318,7 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
 
   const uint64_t boundary_ms = state.start_monotonic_ms + kSegmentDurationMs - state.carried_duration_ms;
   double remaining_uncertainty_ws = 0.0;
+  bool discard_next_day_remainder = false;
   if (state.source_gap_pending) {
     // Conditional bound on missing signed heat, assuming |heat| remains below
     // max_abs_heat_w. Temperature interpolation has no such error guarantee.
@@ -325,12 +326,13 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
     const uint64_t end_ms = snapshot.monotonic_ms < boundary_ms ? snapshot.monotonic_ms : boundary_ms;
     const double uncertainty_ws = bound_w * (end_ms - state.last_monotonic_ms) / 1000.0;
     remaining_uncertainty_ws = bound_w * (snapshot.monotonic_ms - end_ms) / 1000.0;
-    if (state.missing_energy_uncertainty_ws + uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0 ||
-        remaining_uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0) {
+    if (state.missing_energy_uncertainty_ws + uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0) {
       detail::seed_segment(state, snapshot);
       result.status = LearningStatus::SEGMENT_INELIGIBLE;
       return result;
     }
+    // A new day's remainder cannot invalidate an independently eligible old day.
+    discard_next_day_remainder = remaining_uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0;
     state.missing_energy_uncertainty_ws += uncertainty_ws;
     state.source_gap_pending = false;
     state.last_gap_observation_ms = 0;
@@ -345,6 +347,10 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
   result.status = validate_segment_record(result.record, config);
   result.has_record = result.status == LearningStatus::OK;
   if (result.has_record) result.status = LearningStatus::SEGMENT_READY;
+  if (discard_next_day_remainder) {
+    detail::seed_segment(state, snapshot);
+    return result;
+  }
   // Reuse the endpoint and carry any remainder into the next day: no heat or
   // time is lost when the sample interval straddles the 24-hour boundary.
   detail::seed_segment(state, boundary);
