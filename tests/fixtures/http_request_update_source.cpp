@@ -1,6 +1,7 @@
 // The Python regression inserts the generated ESPHome class, update() and URL
 // resolution code here. Only platform dependencies and scheduling are stubbed.
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <string>
 
