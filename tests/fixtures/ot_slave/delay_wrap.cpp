@@ -91,14 +91,18 @@ OpenTherm delayed(uint32_t start) {
   assert(ot.status == OpenThermStatus::DELAY);
   return ot;
 }
-void boundary(uint32_t start) {
-  auto ot = delayed(start);
+void boundary(OpenTherm& ot, uint32_t start) {
+  assert(ot.status == OpenThermStatus::DELAY);
   for (uint32_t elapsed : {0U, 1U, kDelayCycles - 1U, kDelayCycles}) {
     poll(ot, start, elapsed);
     assert(ot.status == OpenThermStatus::DELAY && "DELAY released before its existing strict 100ms boundary");
   }
   poll(ot, start, kDelayCycles + 1U);
   assert(ot.status == OpenThermStatus::READY && "completed DELAY did not release");
+}
+void boundary(uint32_t start) {
+  auto ot = delayed(start);
+  boundary(ot, start);
 }
 struct Callback {
   OpenTherm* ot;
@@ -132,11 +136,7 @@ void rx_overwrite(bool transmit) {
     poll(ot, rx_at, 10000U * kCyclesPerUs);
     assert(ot.status == OpenThermStatus::READY && ot.idle_calls == 1);
   } else {
-    assert(ot.status == OpenThermStatus::DELAY);
-    poll(ot, rx_at, kDelayCycles);
-    assert(ot.status == OpenThermStatus::DELAY);
-    poll(ot, rx_at, kDelayCycles + 1U);
-    assert(ot.status == OpenThermStatus::READY);
+    boundary(ot, rx_at);
     assert(capture.calls == 1);
   }
 }

@@ -68,33 +68,22 @@ class OtSlaveDelayWrapRuntimeTest(unittest.TestCase):
         if result.returncode != 0:
             raise AssertionError(result.stdout + result.stderr)
 
-    def scenario(self, name):
-        result = run_process(
-            [str(self.binary), name], timeout=RUN_TIMEOUT_SECONDS,
-            capture_output=True, text=True,
-        )
-        self.assertEqual(result.returncode, 0, f"{name}: {result.stdout}{result.stderr}")
-
-    def test_normal_delay_keeps_the_existing_strict_boundary(self):
-        self.scenario("normal")
-
-    def test_wrapped_deadline_does_not_release_before_100ms(self):
-        self.scenario("deadline_wrap")
-
-    def test_completed_delay_releases_after_poll_crosses_wrap(self):
-        self.scenario("poll_wrap")
-
-    def test_zero_is_a_valid_saved_start_not_an_uninitialized_sentinel(self):
-        self.scenario("zero_start")
-
-    def test_exact_cycle_zero_boundary_does_not_release_early(self):
-        self.scenario("zero_boundary")
-
-    def test_new_valid_rx_still_overwrites_delay_and_restarts_its_own_delay(self):
-        self.scenario("rx_overwrite")
-
-    def test_success_callback_can_still_send_response_and_complete_tx(self):
-        self.scenario("callback_tx")
+    def test_delay_boundaries_and_rx_transitions(self):
+        for scenario in (
+            "normal",
+            "deadline_wrap",
+            "poll_wrap",
+            "zero_start",
+            "zero_boundary",
+            "rx_overwrite",
+            "callback_tx",
+        ):
+            with self.subTest(scenario=scenario):
+                result = run_process(
+                    [str(self.binary), scenario], timeout=RUN_TIMEOUT_SECONDS,
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
