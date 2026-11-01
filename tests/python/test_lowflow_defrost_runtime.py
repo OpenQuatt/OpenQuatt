@@ -26,6 +26,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
         request = (CONTROL / "oq_thermal_request_runtime.h").read_text()
         actuator = (CONTROL / "oq_thermal_actuator_runtime.h").read_text()
         request_methods = "\n".join(method(request, name) for name in (
+            "mode_is_cooling_", "target_is_cooling_", "dew_stop_blocks_retained_",
             "defrost_hold_", "minimum_runtime_hold_", "run_inactive_"))
         actuator_methods = "\n".join(method(actuator, name) for name in (
             "defrost_safety_stop_", "apply_level_"))
@@ -36,6 +37,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 #include <vector>
 #include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
+#include "openquatt/includes/control/oq_cooling_limiter_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_hp_boot_resume.h"
 #include "openquatt/includes/control/oq_incident_actuator_logic.h"
@@ -55,9 +57,16 @@ inline Safety capture(bool) { return {false, true}; }
 #define OQ_REQUEST_SECONDARY_ID(x) hp2_##x
 #define OQ_ACTUATOR_SECONDARY_ID(x) hp2_##x
 bool oq_water_temp_hard_trip_active=false, oq_lowflow_fault_active=false;
+int oq_cooling_stop_reason_code=0;
 uint32_t clock_ms=100000;
 uint32_t millis() { return clock_ms; }
 struct Sensor { bool state=true; } hp1_4_way_valve, hp2_4_way_valve;
+struct ModeSensor { float state=2; } hp1_working_mode, hp2_working_mode;
+struct ModeSelect {
+  bool has_state() const { return true; }
+  const std::string& current_option() const { return option; }
+  std::string option="Heating";
+} hp1_set_working_mode, hp2_set_working_mode;
 // F8 is valid in both the dev ten-level model and frequency-native heating.
 int hp1_last_commanded_physical_level=8, hp2_last_commanded_physical_level=8;
 uint32_t hp1_last_real_heat_start_ms=90000, hp2_last_real_heat_start_ms=90000;
@@ -82,8 +91,6 @@ struct RequestRuntime {
   int previous[2]={8,8};
   int selected_level_(bool hp) const { return previous[hp?0:1]; }
   int last_applied_(bool hp) const { return previous[hp?0:1]; }
-  bool mode_is_cooling_(bool) const { return false; }
-  bool target_is_cooling_(bool) const { return false; }
   bool measured_thermal_(bool) const { return true; }
   bool startup_blocked_(bool) const { return false; }
   int hold_mode_(int, int) const { return 2; }
@@ -122,10 +129,9 @@ struct DefrostCycle {
   bool observed_active() const { return active; }
 };
 struct Defrost { DefrostCycle cycle; bool hold=true; bool holding() const { return hold; } } hp1_odu_defrost, hp2_odu_defrost;
-namespace oq_cooling {
-template<class... T> bool cooling_stop_confirmation_blocks_start(T...) { return false; }
-template<class... T> bool global_minimum_off_time_blocks_start(T...) { return false; }
-template<class... T> bool cooling_stop_requires_confirmation(T...) { return false; }
+// All scenarios below are automatic heating, without manual service ownership.
+namespace oq_manual_hp {
+inline bool positive_cooling_request(bool) { return false; }
 }
 namespace openquatt_decision_log {
 enum { REASON_UNKNOWN, REASON_HP_FAULT, REASON_CANDIDATE_UNAVAILABLE, REASON_CANDIDATE_IN_REST,
@@ -184,6 +190,9 @@ oq_frequency_runtime::Context frequency() {
 }
 void reset() {
   events.clear(); oq_water_temp_hard_trip_active=oq_lowflow_fault_active=false;
+  oq_cooling_stop_reason_code=0;
+  hp1_working_mode={}; hp2_working_mode={};
+  hp1_set_working_mode={}; hp2_set_working_mode={};
   oq_incident_manager={}; hp1_odu_defrost={}; hp2_odu_defrost={}; clock_ms=100000;
 }
 int main() {
