@@ -68,3 +68,24 @@ qualification; power-off cold starts and full worst-case overlap remain open.
 Remove `core_four_decimals.py` and its `to_code()` call after upgrading to and
 validating an ESPHome release that contains #20800. Review the other local
 web-server compatibility changes independently during that upgrade.
+
+## Runtime manifest URL ownership
+
+The same version-gated `web_server_base` override applies
+`http_request_update_source.py` to the generated `http_request/update` header
+and source. ESPHome 2026.10.0 stores `set_source_url()` as a borrowed pointer to
+a codegen literal, while the PR installer also passes temporary runtime strings.
+The compatibility patch restores owned URL storage and takes a separate snapshot
+on the main loop before starting each manifest worker. The worker uses only this
+immutable snapshot for HTTP requests, error logs and relative firmware URLs.
+Changing the pending source or editing the PR text cannot invalidate an active
+request. The existing in-flight guard retains the snapshot until the worker's
+deferred completion; a failed task creation reports an error and permits retry.
+
+Both URL strings retain their capacity between checks. This adds two small
+component-owned strings and their URL allocations; it does not add worker-stack
+buffers or change heap-placement policy. Baseline/candidate heap margins and OTA
+under concurrent web/API/MQTT load still require hardware validation before
+release. The installed ESPHome package is untouched. Unexpected or partially
+patched source pairs stop generation; repeated generation and unrelated configs
+remain isolated. Review/remove this patch when upgrading ESPHome.
