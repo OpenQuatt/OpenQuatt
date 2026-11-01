@@ -130,6 +130,7 @@ int oq_commissioning_state_since_ms{};
 std::string oq_commissioning_status_value{};
 int oq_commissioning_task_code{};
 int oq_control_mode_code{};
+int oq_cooling_stop_reason_code{};
 FakeSensor oq_day_max_frequency_hz{};
 struct FakeSwitch {
   bool state{true};
@@ -219,7 +220,9 @@ void reset() {
   test_now_ms = 1000;
   oq_water_temp_hard_trip_active = oq_lowflow_fault_active = false;
   oq_commissioning_active = oq_manual_hp_active = false;
+  oq_manual_hp_stop_requested = false;
   oq_control_mode_code = 2;
+  oq_cooling_stop_reason_code = 0;
   oq_commissioning_task_code = oq_commissioning::TASK_NONE;
   oq_incident_manager = {};
   hp1_odu_defrost = {};
@@ -668,9 +671,52 @@ void queued_heating_mode_rechecks_user_frequency_constraints() {
   assert(queued(true, 1999, 20));
 }
 
+void confirmed_dew_stop_revalidates_queued_cooling_without_changing_heating_or_manual() {
+  for (const bool first : {true, false}) {
+    if (!OQ_TOPOLOGY_DUO && !first) continue;
+    reset();
+    auto& mode = first ? hp1_set_working_mode : hp2_set_working_mode;
+    auto& service = first ? hp1_odu_defrost : hp2_odu_defrost;
+    mode.option = "Cooling";
+    assert(queued(first, 3999, 1) && queued(first, 1999, 17));
+    oq_cooling_stop_reason_code = oq_cooling::WATER_STOP_DEW;
+    assert(!queued(first, 3999, 1) && !queued(first, 1999, 17));
+    assert(!oq_command_runtime::guarded_write(first, 3999, 1));
+    assert(!oq_command_runtime::guarded_write(first, 1999, 17));
+    // The actuator commits STOPPING before its zero write. Dispatch must not
+    // mutate queues while rejecting old positive frames or accepting retries.
+    oq_incident_manager.outputs[first ? 0 : 1].run_state = oq_incidents::RunState::STOPPING;
+    service.hold = true;
+    const auto clears = service.queue_clear_calls;
+    assert(queued(first, 3999, 0) && queued(first, 1999, 0));
+    assert(service.queue_clear_calls == clears);
+    reset();
+    oq_cooling_stop_reason_code = oq_cooling::WATER_STOP_DEW;
+    assert(queued(first, 3999, 2) && queued(first, 1999, 17));
+    mode.option = "Cooling";
+    oq_manual_hp_active = true;
+    oq_control_mode_code = 100;
+    oq_commissioning_task_code = oq_commissioning::TASK_MANUAL_HP;
+    (first ? oq_manual_hp1_mode_code : oq_manual_hp2_mode_code) = 1;
+    (first ? oq_manual_hp1_level : oq_manual_hp2_level).state = 17;
+    assert(queued(first, 3999, 1) && queued(first, 1999, 17));
+    oq_manual_hp_stop_requested = true;
+    assert(!queued(first, 3999, 1) && !queued(first, 1999, 17));
+    oq_manual_hp_stop_requested = false;
+    (first ? oq_manual_hp1_mode_code : oq_manual_hp2_mode_code) = 0;
+    assert(!queued(first, 3999, 1) && !queued(first, 1999, 17));
+    (first ? oq_manual_hp1_mode_code : oq_manual_hp2_mode_code) = 1;
+    (first ? oq_manual_hp1_level : oq_manual_hp2_level).state = 0.1f;
+    assert(!queued(first, 3999, 1) && !queued(first, 1999, 17));
+    (first ? oq_manual_hp1_level : oq_manual_hp2_level).state = NAN;
+    assert(!queued(first, 3999, 1) && !queued(first, 1999, 17));
+  }
+}
+
 }  // namespace
 
 int main() {
+  confirmed_dew_stop_revalidates_queued_cooling_without_changing_heating_or_manual();
   boot_reads_hold_all_writes_and_abort_on_safety_loss();
   boot_adoption_requires_live_safety_and_comfort();
   ota_hold_blocks_writes_but_keeps_reads_and_releases_for_safety();

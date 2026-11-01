@@ -38,6 +38,7 @@ HARNESS = r'''
 #include "openquatt/includes/control/oq_hp_candidate_logic.h"
 #include "openquatt/includes/control/oq_hp_boot_resume.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
+#include "openquatt/includes/control/oq_cooling_limiter_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_incident_actuator_logic.h"
 #include "openquatt/includes/incidents/oq_hp_incident_engine.h"
@@ -54,6 +55,8 @@ uint32_t clock_ms=100000;
 uint32_t millis() { return clock_ms; }
 struct Sensor { float state=0; };
 int oq_control_mode_code=2, oq_heat_mode_code=1;
+int oq_cooling_stop_reason_code=0;
+bool manual_positive_intent=false;
 int hp1_last_applied_level=0, hp1_last_commanded_physical_level=0, hp1_minutes=100;
 uint32_t hp1_last_stop_ms=0, hp1_last_start_ms=0;
 uint32_t hp1_last_real_heat_start_ms=0, hp1_last_level_change_ms=0;
@@ -146,7 +149,7 @@ Context capture() {
   Context f; f.table.variant=oq_odu::Variant::V2_NEW_MODEL;
   f.table.heating.valid=true; f.table.heating.level_count=21;
   f.table.heating.hz.fill(110); f.table.heating.hz[0]=0;
-  f.table.heating.hz[1]=20; f.table.heating.hz[2]=40;
+  f.table.heating.hz[1]=20; f.table.heating.hz[2]=40; f.table.cooling=f.table.heating;
   return f;
 }
 }
@@ -181,19 +184,15 @@ struct CurveRuntime {
   // CURVE_METHODS
 };
 struct DefrostCycle {
-  bool observed_active() const { return false; }
-  bool fresh(uint32_t) const { return true; }
+  bool active=false,fresh_value=true;
+  bool observed_active() const { return active; }
+  bool fresh(uint32_t) const { return fresh_value; }
   bool telemetry_fault(uint32_t) const { return false; }
 };
-struct Defrost { DefrostCycle cycle; bool holding() const { return false; } } hp1_odu_defrost;
+struct Defrost { DefrostCycle cycle; bool hold=false; bool holding() const { return hold; } } hp1_odu_defrost;
 #if OQ_TOPOLOGY_DUO
 Defrost hp2_odu_defrost;
 #endif
-namespace oq_cooling {
-template<class... T> bool cooling_stop_confirmation_blocks_start(T...) { return false; }
-template<class... T> bool global_minimum_off_time_blocks_start(T...) { return false; }
-template<class... T> bool cooling_stop_requires_confirmation(T...) { return false; }
-}
 namespace openquatt_decision_log {
 enum { REASON_UNKNOWN, REASON_HP_FAULT, REASON_CANDIDATE_UNAVAILABLE, REASON_CANDIDATE_IN_REST,
        REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE };
@@ -207,8 +206,12 @@ struct Cycle {
   struct { bool confirmation_pending=false; uint32_t remaining_ms=0; } cooling;
   std::string request_mode_option="Heating";
 };
+namespace oq_manual_hp {
+inline bool positive_cooling_request(bool) { return manual_positive_intent; }
+}
 struct ActuatorRuntime {
   uint32_t safe_write[2]={0,0}; bool confirmation[2]={false,false}; std::string guard;
+  bool retained=false;
   struct Limit { uint32_t remaining_ms(uint32_t) const { return 0; } } start_limits_[2];
   int previous_applied_(bool hp1) const {
 #if OQ_TOPOLOGY_DUO
@@ -221,14 +224,14 @@ struct ActuatorRuntime {
     return oq_water_temp_hard_trip_active || oq_lowflow_fault_active || oq_incident_manager.hp[hp1?0:1].must_stop;
   }
   uint32_t& last_safe_stop_write_ms(bool hp1) { return safe_write[hp1?0:1]; }
-  void clear_retained_level(bool) {}
-  oq_odu::RetainedLevel retained_level(bool,const oq_frequency_runtime::Context&) { return {}; }
+  void clear_retained_level(bool) { retained=false; }
+  oq_odu::RetainedLevel retained_level(bool,const oq_frequency_runtime::Context&) { return retained?oq_odu::RetainedLevel{1,1}:oq_odu::RetainedLevel{}; }
   int requested_mode_code(bool,bool,int mode,bool,bool) { return mode; }
   std::string& service_guard_(Cycle&,bool) { return guard; }
   uint16_t cap_seconds_(uint32_t value) { return static_cast<uint16_t>(value); }
   template<class... T> void log_block_change(T...) {}
   template<class... T> void publish_defrost_hold_start(T...) {}
-  template<class... T> void apply_active_mode_hold(T...) { assert(false); }
+  void apply_active_mode_hold(bool hp1,const oq_odu::RetainedLevel& level,const std::string&) { physical[hp1?0:1]=level.control_level; }
   template<class... T> void publish_optimizer_reason(T...) {}
   bool& cooling_confirmation_pending_(bool hp1) { return confirmation[hp1?0:1]; }
   template<class... T> void set_mode(T...) {}
@@ -244,6 +247,10 @@ void seed_boot(int slot,uint32_t started_ms) {
 }
 void reset(bool hp1_running) {
   clock_ms=100000; oq_incident_manager={};
+  oq_cooling_stop_reason_code=0; manual_positive_intent=false; hp1_odu_defrost={};
+#if OQ_TOPOLOGY_DUO
+  hp2_odu_defrost={};
+#endif
   hp1_last_applied_level=hp1_last_commanded_physical_level=0;
 #if OQ_TOPOLOGY_DUO
   hp2_last_applied_level=hp2_last_commanded_physical_level=0;
@@ -277,6 +284,45 @@ void actuator_tick(ActuatorRuntime& actuator) {
 #endif
 }
 int main() {
+  for(bool first:{true,false}) {
+    if(!OQ_TOPOLOGY_DUO && !first) continue;
+    for(bool manual:{false,true}) for(int context:{0,1,2}) for(int ownership:{0,1,2,3}) {
+      reset(first); ActuatorRuntime actuator; actuator.retained=true;
+      oq_incident_manager.boot[first?0:1]={};
+#if OQ_TOPOLOGY_DUO
+      (first?hp1_last_applied_level:hp2_last_applied_level)=1;
+      auto& service=first?hp1_odu_defrost:hp2_odu_defrost;
+#else
+      hp1_last_applied_level=1;
+      auto& service=hp1_odu_defrost;
+#endif
+      service.hold=ownership==0; service.cycle.active=ownership==1;
+      service.cycle.fresh_value=ownership!=2;
+      Cycle cycle; cycle.request_mode_code=context==0?0:1; cycle.request_mode_option=context==0?"Standby":"Cooling";
+      cycle.manual_service_active=manual;
+      oq_cooling_stop_reason_code=oq_cooling::WATER_STOP_DEW;
+      const int stopped=actuator.apply_level_(first,manual?1:0,context!=1,cycle);
+      assert(stopped==0 && physical[first?0:1]==0 && !actuator.retained);
+    }
+    // A stale DEW marker does not revoke an explicit positive manual cooling
+    // request or a known Heating output without retained cooling context.
+    for(bool manual:{false,true}) {
+      reset(first); ActuatorRuntime actuator; actuator.retained=true;
+      oq_incident_manager.boot[first?0:1]={};
+#if OQ_TOPOLOGY_DUO
+      (first?hp1_last_applied_level:hp2_last_applied_level)=1;
+      auto& service=first?hp1_odu_defrost:hp2_odu_defrost;
+#else
+      hp1_last_applied_level=1;
+      auto& service=hp1_odu_defrost;
+#endif
+      service.hold=true;manual_positive_intent=manual;
+      oq_cooling_stop_reason_code=oq_cooling::WATER_STOP_DEW;
+      Cycle cycle;cycle.manual_service_active=manual;
+      cycle.request_mode_code=manual?1:2;cycle.request_mode_option=manual?"Cooling":"Heating";
+      assert(actuator.apply_level_(first,1,manual,cycle)==1 && physical[first?0:1]==1);
+    }
+  }
   for(bool running_hp1:{true,false}) {
     if(!OQ_TOPOLOGY_DUO && !running_hp1) continue;
     const int slot=running_hp1?0:1,peer=1-slot;

@@ -35,6 +35,11 @@ enum WaterStopReasonCode {
   WATER_STOP_CORE_PERMISSION_LOST = 7,
 };
 
+// A confirmed indoor dew stop also vetoes downstream automatic cooling holds.
+inline bool confirmed_dew_stop_requires_off(int stop_reason, bool cooling_output) {
+  return cooling_output && stop_reason == WATER_STOP_DEW;
+}
+
 struct WaterCycleState {
   bool active = false;
   float stop_buffer_gap_c = 0.0f;
@@ -302,7 +307,10 @@ inline WaterRestartDecision evaluate_water_restart(bool restart_by_minimum_off_t
   if (state.active) return {state, false, limiter.reason_code};
   if (state.stop_reason_code == WATER_STOP_REQUEST_CLEARED) state.stop_reason_code = WATER_STOP_NONE;
   const bool safety_stop = limiter.reason_code == REASON_DEW_STOP || limiter.reason_code == REASON_FALLBACK_FLOOR;
-  if (state.stop_reason_code == WATER_STOP_PROJECTED_FLOOR && safety_stop) {
+  // Confirmation while already stopped is still a safety latch. Otherwise a
+  // previous soft-stop marker could allow oil return to bypass dew hysteresis.
+  if ((limiter.reason_code == REASON_DEW_STOP && state.stop_reason_code != WATER_STOP_DEW) ||
+      (state.stop_reason_code == WATER_STOP_PROJECTED_FLOOR && safety_stop)) {
     state.stop_reason_code = limiter.reason_code == REASON_DEW_STOP ? WATER_STOP_DEW : WATER_STOP_FALLBACK;
     state.stop_buffer_gap_c = conditions.filtered_gap_c;
   }
@@ -311,15 +319,23 @@ inline WaterRestartDecision evaluate_water_restart(bool restart_by_minimum_off_t
   const bool projected_floor_recovered = !projected_floor_pause || !limiter_state.projection_brake_active ||
                                          limiter.projected_gap_c >= tuning.projected_floor_release_gap_c ||
                                          conditions.gap_rate_c_per_min >= 0.0f;
+  // This confirmed safety marker also survives inactive/invalid intervals.
+  // Neither oil return nor normal restart may treat missing dew data as proof
+  // of recovery. Ordinary soft-stop restart behavior remains unchanged.
+  const bool confirmed_dew_recovered =
+      state.stop_reason_code != WATER_STOP_DEW || (conditions.dew_mode && finite_float(conditions.dew_gap_c) &&
+                                                   conditions.dew_gap_c > hard_dew_restart_gap(conditions, tuning));
   const bool recovered =
-      conditions.oil_return_mask_active ||
-      ((restart_by_minimum_off_time ? !minimum_off_stop_pending
-                                    : water_restart_gap_recovered(state, conditions.filtered_gap_c, restart_delta_c)) &&
-       (!conditions.dew_mode || !finite_float(conditions.dew_gap_c) ||
-        conditions.dew_gap_c > hard_dew_restart_gap(conditions, tuning)) &&
-       (restart_by_minimum_off_time || !conditions.fallback_mode || !restart_after_water_stop ||
-        projected_floor_pause || conditions.filtered_gap_c > state.stop_buffer_gap_c + restart_delta_c) &&
-       projected_floor_recovered);
+      confirmed_dew_recovered &&
+      (conditions.oil_return_mask_active ||
+       ((restart_by_minimum_off_time
+             ? !minimum_off_stop_pending
+             : water_restart_gap_recovered(state, conditions.filtered_gap_c, restart_delta_c)) &&
+        (!conditions.dew_mode || !finite_float(conditions.dew_gap_c) ||
+         conditions.dew_gap_c > hard_dew_restart_gap(conditions, tuning)) &&
+        (restart_by_minimum_off_time || !conditions.fallback_mode || !restart_after_water_stop ||
+         projected_floor_pause || conditions.filtered_gap_c > state.stop_buffer_gap_c + restart_delta_c) &&
+        projected_floor_recovered));
   if (recovered && limiter.allowed_max > 0) {
     state.active = true;
     state.stop_reason_code = WATER_STOP_NONE;
@@ -477,8 +493,7 @@ inline LimiterOutput update_limiter(const LimiterInput& in, const LimiterTuning&
   else if (in.filtered_gap_c < tuning.simmer_disable_gap_c)
     state.simmer_allowed = false;
 
-  const bool dew_hard_stop_candidate =
-      !in.oil_return_mask_active && in.dew_mode && finite_float(in.dew_gap_c) && in.dew_gap_c <= hard_dew_stop_gap_c;
+  const bool dew_hard_stop_candidate = in.dew_mode && finite_float(in.dew_gap_c) && in.dew_gap_c <= hard_dew_stop_gap_c;
   bool dew_hard_stop = false;
   if (dew_hard_stop_candidate) {
     if (state.dew_stop_candidate_since_ms == 0) state.dew_stop_candidate_since_ms = nonzero_timestamp_ms(in.now_ms);
@@ -517,7 +532,8 @@ inline LimiterOutput update_limiter(const LimiterInput& in, const LimiterTuning&
 
   update_hysteretic_capacity_cap(in, tuning, hard_dew_restart_gap_c, state, out);
 
-  if (in.oil_return_mask_active) {
+  // A confirmed indoor dew stop takes precedence over the level-one oil-return hold.
+  if (in.oil_return_mask_active && !dew_hard_stop) {
     out.allowed_max = std::min(out.allowed_max, 1);
     if (out.allowed_max <= 0) {
       out.allowed_max = 1;

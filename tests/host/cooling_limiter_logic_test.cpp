@@ -196,7 +196,82 @@ void test_oil_return_and_limiter_safety() {
   in.now_ms = 9;
   assert(update_limiter(in, limiter_tuning, limiter_state).allowed_max == 2);
 }
+void test_confirmed_indoor_dew_stop_dominates_oil_return_and_its_restart_bypass() {
+  LimiterTuning tuning;
+  LimiterState state;
+  auto in = safe_conditions(1000);
+  in.dew_mode = in.oil_return_mask_active = true;
+  in.safety_margin_c = 1;
+  in.dew_gap_c = 5;
+  assert(update_limiter(in, tuning, state).reason_code == REASON_OIL_RETURN_HOLD);
+  // The selected indoor dew point rises from 15 to 20 C at 6 s while
+  // supply stays at 20 C. An oil-return hold must not suppress confirmation.
+  in.now_ms = 6000;
+  in.dew_gap_c = 0;
+  in.buffer_gap_c = -1;
+  in.filtered_gap_c = 3;  // The water-gap EMA still remembers a warm buffer.
+  assert(update_limiter(in, tuning, state).allowed_max == 1);
+  in.now_ms = 35999;
+  assert(update_limiter(in, tuning, state).allowed_max == 1);
+  for (uint32_t now : {36000U, 60000U, 180000U}) {
+    in.now_ms = now;
+    const auto stopped = update_limiter(in, tuning, state);
+    assert(stopped.allowed_max == 0 && stopped.reason_code == REASON_DEW_STOP);
+  }
+  // After a confirmed dew stop, the oil mask cannot skip dew restart
+  // hysteresis. Its bypass for ordinary soft limiter stops remains intact.
+  const float restart_gap = hard_dew_restart_gap(in, tuning);
+  WaterCycleState water{false, 3, WATER_STOP_DEW};
+  LimiterState restart_limiter;
+  LimiterOutput allowed;
+  allowed.allowed_max = 1;
+  allowed.projected_gap_c = 3;
+  in.dew_gap_c = restart_gap;
+  assert(!evaluate_water_restart(false, false, 1, in, allowed, tuning, restart_limiter, water).state.active);
+  in.dew_gap_c += 0.001f;
+  assert(evaluate_water_restart(false, false, 1, in, allowed, tuning, restart_limiter, water).state.active);
+  for (const bool oil : {false, true}) {
+    in.oil_return_mask_active = oil;
+    in.filtered_gap_c = 10;
+    for (const float missing : {NAN, INFINITY, -INFINITY}) {
+      in.dew_gap_c = missing;
+      assert(!evaluate_water_restart(false, false, 1, in, allowed, tuning, restart_limiter, water).state.active);
+    }
+    in.dew_mode = false;
+    in.dew_gap_c = 10;
+    assert(!evaluate_water_restart(false, false, 1, in, allowed, tuning, restart_limiter, water).state.active);
+    in.dew_mode = true;
+  }
+  in.oil_return_mask_active = true;
+  water.stop_reason_code = WATER_STOP_LIMITER;
+  in.dew_gap_c = 0;
+  assert(evaluate_water_restart(false, false, 1, in, allowed, tuning, restart_limiter, water).state.active);
+}
 int main() {
+  // Confirmation must upgrade every inactive stop marker, not just a previous
+  // projected-floor stop. A later oil-return hold cannot revoke this latch.
+  for (const int previous : {WATER_STOP_NONE, WATER_STOP_LIMITER, WATER_STOP_FALLBACK, WATER_STOP_PROJECTED_FLOOR,
+                             WATER_STOP_REQUEST_CLEARED}) {
+    auto conditions = safe_conditions(1000);
+    conditions.dew_mode = true;
+    conditions.safety_margin_c = 1;
+    conditions.dew_gap_c = 0;
+    LimiterOutput stop;
+    stop.allowed_max = 0;
+    stop.reason_code = REASON_DEW_STOP;
+    LimiterState limiter;
+    const auto confirmed = evaluate_water_restart(true, true, 1, conditions, stop, {}, limiter, {false, 3, previous});
+    assert(!confirmed.state.active && confirmed.state.stop_reason_code == WATER_STOP_DEW);
+    conditions.filtered_gap_c += 10;
+    const auto repeated = evaluate_water_restart(true, true, 1, conditions, stop, {}, limiter, confirmed.state);
+    assert(repeated.state.stop_buffer_gap_c == confirmed.state.stop_buffer_gap_c);
+    conditions.oil_return_mask_active = true;
+    conditions.dew_gap_c = hard_dew_restart_gap(conditions, {}) - 0.01f;
+    stop.allowed_max = 1;
+    stop.reason_code = REASON_OIL_RETURN_HOLD;
+    assert(!evaluate_water_restart(true, false, 1, conditions, stop, {}, limiter, confirmed.state).state.active);
+  }
+  test_confirmed_indoor_dew_stop_dominates_oil_return_and_its_restart_bypass();
   test_existing_water_and_minimum_off_contracts();
   test_stop_reason_and_water_restart_matrix();
   test_oil_return_and_limiter_safety();

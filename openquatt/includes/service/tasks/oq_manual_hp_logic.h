@@ -13,6 +13,15 @@ inline bool owns_control() {
          id(oq_commissioning_task_code) == oq_commissioning::TASK_MANUAL_HP;
 }
 
+// Ownership includes the stop tail; only a current positive cooling intent
+// may bypass an automatic dew latch during explicit manual service.
+inline bool positive_cooling_request(bool hp1) {
+  if (!owns_control() || id(oq_manual_hp_stop_requested)) return false;
+  const int mode = hp1 ? id(oq_manual_hp1_mode_code) : id(oq_manual_hp2_mode_code);
+  const float level = hp1 ? id(oq_manual_hp1_level).state : id(oq_manual_hp2_level).state;
+  return mode == 1 && isfinite(level) && roundf(level) > 0.0f;
+}
+
 class ManualHpRuntime {
  public:
   void set_mode(int hp_index, const std::string& option, float min_flow_lph) {
