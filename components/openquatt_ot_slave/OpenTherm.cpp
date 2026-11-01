@@ -591,17 +591,19 @@ bool OpenTherm::process() {
     }
     status = OpenThermStatus::DELAY;
     responseStatus = current_status;
-    delay_until_ts_ = now_cycles() + (OT_FRAME_DELAY_US * cycles_per_us_);
+    // The legacy-named member now holds the start cycle, not a deadline.
+    // Every DELAY entry initializes it here; zero is also a valid start tick.
+    delay_until_ts_ = now_cycles();
 
     if (processResponseCallback != NULL) {
       processResponseCallback(current_response, current_status, pCallbackUser);
       bDidProcessMessage = true;
     }
   } else if (st == OpenThermStatus::DELAY) {
-    if (delay_until_ts_ == 0) {
-      delay_until_ts_ = static_cast<uint32_t>(ts) + (OT_FRAME_DELAY_US * cycles_per_us_);
-    }
-    if (newTs > delay_until_ts_) {
+    const uint32_t delay_started_cycles = delay_until_ts_;
+    // Unsigned elapsed time preserves the existing strict 100ms boundary
+    // even when either the start or this poll straddles the cycle-counter wrap.
+    if (static_cast<uint32_t>(newTs - delay_started_cycles) > (OT_FRAME_DELAY_US * cycles_per_us_)) {
       status = OpenThermStatus::READY;
       delay_until_ts_ = 0;
     }
