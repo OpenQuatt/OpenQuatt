@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <initializer_list>
 
 #include "../../openquatt/includes/control/oq_ph_daily_collection_json.h"
 #include "../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
@@ -11,6 +12,45 @@ using namespace oq_power_house::learning;
 constexpr uint32_t kEpoch = 20000U * 86400U;
 constexpr uint64_t kStartMs = 1000ULL;
 constexpr uint8_t kContext[] = {1, 7, 4, 9, 2, 6};
+
+template <typename Value>
+void assert_value_equal(Value a, Value b) {
+  assert(a == b || (isnan(static_cast<double>(a)) && isnan(static_cast<double>(b))));
+}
+
+template <typename State, typename Value>
+void assert_fields_equal(const State& a, const State& b, std::initializer_list<Value State::*> fields) {
+  for (const auto field : fields) assert_value_equal(a.*field, b.*field);
+}
+
+// Padding bytes are not state. Compare every field, including NaN sentinels.
+void assert_same(const SegmentAccumulator& a, const SegmentAccumulator& b) {
+  using S = SegmentAccumulator;
+  assert_fields_equal(a, b, {&S::active, &S::source_gap_pending, &S::restart_pending});
+  assert_fields_equal(
+      a, b, {&S::carried_duration_ms, &S::last_gap_observation_ms, &S::start_monotonic_ms, &S::last_monotonic_ms});
+  assert_fields_equal(a, b, {&S::start_epoch_s, &S::last_epoch_s, &S::context_revision});
+  assert_fields_equal(
+      a, b,
+      {&S::room_start_c, &S::last_room_c, &S::last_setpoint_c, &S::last_outside_c, &S::last_heat_w, &S::water_start_c,
+       &S::water_end_c, &S::room_min_c, &S::room_max_c, &S::setpoint_min_c, &S::setpoint_max_c});
+  assert_fields_equal(a, b,
+                      {&S::missing_energy_uncertainty_ws, &S::integrated_duration_s, &S::room_integral,
+                       &S::setpoint_integral, &S::outside_integral, &S::heat_integral, &S::hour_effective_integral,
+                       &S::trend_w, &S::trend_wt, &S::trend_wtt, &S::trend_wr, &S::trend_wtr});
+  for (size_t i = 0; i < 24; ++i) assert_value_equal(a.hourly_effective_outside_c[i], b.hourly_effective_outside_c[i]);
+}
+
+void assert_same(const SegmentRecord& a, const SegmentRecord& b) {
+  using S = SegmentRecord;
+  assert_fields_equal(a, b, {&S::start_epoch_s, &S::end_epoch_s, &S::duration_s, &S::context_revision});
+  assert_fields_equal(
+      a, b,
+      {&S::mean_room_c, &S::mean_setpoint_c, &S::mean_outside_c, &S::mean_heat_w, &S::room_trend_k_per_h,
+       &S::room_range_k, &S::setpoint_range_c, &S::water_start_c, &S::water_end_c});
+  for (size_t i = 0; i < kDailyTemperatureProfileSize; ++i)
+    assert_value_equal(a.effective_outside_profile_centi[i], b.effective_outside_profile_centi[i]);
+}
 
 LearningSnapshot snapshot(uint32_t second, float heat = 5000.0f) {
   LearningSnapshot value;
@@ -45,7 +85,7 @@ void test_day_boundary_replay_preserves_records_and_remainder() {
     const auto expected = observe_snapshot(plain, value, QualityConfig{}, true);
     const auto actual = observe(diagnostics, instrumented, value);
     assert(expected.status == actual.status && expected.has_record == actual.has_record);
-    assert(memcmp(&plain, &instrumented, sizeof(plain)) == 0);
+    assert_same(plain, instrumented);
   }
   const auto gap = missing(86400);
   observe_snapshot(plain, gap, QualityConfig{}, true);
@@ -54,8 +94,8 @@ void test_day_boundary_replay_preserves_records_and_remainder() {
   const auto expected = observe_snapshot(plain, value, QualityConfig{}, true);
   const auto actual = observe(diagnostics, instrumented, value);
   assert(expected.has_record && actual.has_record);
-  assert(memcmp(&expected.record, &actual.record, sizeof(expected.record)) == 0);
-  assert(memcmp(&plain, &instrumented, sizeof(plain)) == 0);
+  assert_same(expected.record, actual.record);
+  assert_same(plain, instrumented);
   assert(diagnostics.interrupted_periods == 0 && diagnostics.completed_quality_rejections == 0);
   assert(diagnostics.bridged_gaps == 1);
   assert(diagnostics.pending_source_status == SnapshotSourceStatus::OK);
@@ -124,8 +164,8 @@ void test_budget_captures_old_progress_and_both_day_charges() {
     const auto expected = observe_snapshot(plain, value, QualityConfig{}, true);
     const auto actual = observe(diagnostics, state, value, true, source);
     assert(expected.status == actual.status && expected.has_record == actual.has_record);
-    assert(memcmp(&plain, &state, sizeof(state)) == 0);
-    if (actual.has_record) assert(memcmp(&expected.record, &actual.record, sizeof(actual.record)) == 0);
+    assert_same(plain, state);
+    if (actual.has_record) assert_same(expected.record, actual.record);
     return actual;
   };
   for (uint32_t second = 0; second < 86380; second += 60) replay(snapshot(second, 50000));
@@ -242,7 +282,8 @@ void test_runtime_lifecycle_counts_once_and_preserves_history() {
     // A new runtime revision relabels retained evidence with identical context
     // bytes. Its measured values remain unchanged by the pause/watch sequence.
     expected_record.context_revision = state.context_revision;
-    assert(state.record_count == 1 && memcmp(&expected_record, &state.records[0], sizeof(retained)) == 0);
+    assert(state.record_count == 1);
+    assert_same(expected_record, state.records[0]);
     assert(!passive_runtime_summary(state, input.now_monotonic_ms).auto_apply_allowed);
   }
 }
@@ -262,7 +303,8 @@ void test_runtime_append_refusal_does_not_count_as_quality_or_partial_loss() {
   state.records[0] = retained;
   state.record_count = 1;
   tick_passive_runtime(state, tick(86400));
-  assert(state.record_count == 1 && memcmp(&retained, &state.records[0], sizeof(retained)) == 0);
+  assert(state.record_count == 1);
+  assert_same(retained, state.records[0]);
   assert(state.daily_diagnostics.append_rejections == 1);
   assert(state.daily_diagnostics.completed_quality_rejections == 0 && state.daily_diagnostics.interrupted_periods == 0);
   assert(state.daily_diagnostics.last_loss.cause == DailyCollectionCause::APPEND_REJECTED);
