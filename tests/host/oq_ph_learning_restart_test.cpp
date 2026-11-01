@@ -125,6 +125,45 @@ void test_restart_does_not_reset_existing_uncertainty_or_hide_omitted_ticks() {
   assert(state.start_epoch_s == kEpoch + 3770U);
 }
 
+void test_verified_checkpoint_and_remaining_gap_budget_are_distinct_gates() {
+  constexpr uint8_t bytes_context[]{1, 7, 4, 9};
+  const PassiveContextView saved_context{bytes_context, sizeof(bytes_context), 1};
+  constexpr uint32_t saved_second = 23340;
+  for (uint32_t gap_s : {27U, 28U}) {
+    SegmentAccumulator original;
+    collect(original, 0, saved_second);
+    // Match the observed HIL debt, with this fixture's known 2 kW endpoints.
+    original.missing_energy_uncertainty_ws = 2001.49 * 3600.0;
+    uint8_t bytes[kLearningJournalMaxBytes];
+    size_t size = 0;
+    assert(encode_learning_journal({nullptr, 0, saved_context}, QualityConfig{}, 1, kEpoch + saved_second, bytes,
+                                   sizeof(bytes), size, nullptr, 0, &original) == LearningJournalStatus::OK);
+    const auto metadata = inspect_learning_journal({bytes, size}, bytes_context, sizeof(bytes_context),
+                                                   kEpoch + saved_second + gap_s, QualityConfig{});
+    assert(metadata.status == LearningJournalStatus::OK);
+    LearningJournalRecords records{{bytes, size}, metadata.context_size, 0};
+    SegmentAccumulator restored;
+    DailyCheckpointRestoreStatus status = DailyCheckpointRestoreStatus::MISSING;
+    assert(records.restore_daily(restored, saved_context, QualityConfig{}, &status));
+    assert(status == DailyCheckpointRestoreStatus::OK);
+    assert(restored.heat_integral == original.heat_integral);
+    assert(restored.integrated_duration_s == original.integrated_duration_s);
+    assert(restored.missing_energy_uncertainty_ws == original.missing_energy_uncertainty_ws);
+    const auto result = observe_snapshot(restored, snapshot(saved_second + gap_s, 30000), QualityConfig{});
+    if (gap_s == 27) {
+      assert(result.status == LearningStatus::COLLECTING && result.cause == DailyCollectionCause::NONE);
+      assert(restored.start_epoch_s == kEpoch && restored.integrated_duration_s == saved_second + gap_s);
+      assert(restored.heat_integral == original.heat_integral + gap_s * 2000.0);
+      assert(restored.missing_energy_uncertainty_ws == original.missing_energy_uncertainty_ws + gap_s * 52000.0);
+    } else {
+      assert(result.status == LearningStatus::SEGMENT_INELIGIBLE);
+      assert(result.cause == DailyCollectionCause::UNCERTAINTY_BUDGET && !result.has_record);
+      assert(restored.start_epoch_s == kEpoch + saved_second + gap_s);
+      assert(restored.integrated_duration_s == 0.0);
+    }
+  }
+}
+
 void test_corrupt_checkpoint_is_not_resumed() {
   SegmentAccumulator state;
   collect(state, 0, 3600);
@@ -349,6 +388,7 @@ int main() {
   test_restart_crossing_day_boundary_keeps_remainder_and_budget();
   test_restart_rejects_unknown_state_and_long_or_backward_time();
   test_restart_does_not_reset_existing_uncertainty_or_hide_omitted_ticks();
+  test_verified_checkpoint_and_remaining_gap_budget_are_distinct_gates();
   test_corrupt_checkpoint_is_not_resumed();
   test_restore_waits_for_real_clock_and_fresh_sources();
   test_boot_waits_for_initial_operating_receipts();

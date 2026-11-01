@@ -21,6 +21,7 @@
 #include "../learning/oq_ph_learning_live_logic.h"
 #include "../learning/oq_ph_learning_persistence_logic.h"
 #include "oq_ph_learning_json.h"
+#include "oq_ph_daily_collection_state_json.h"
 #include "oq_sensor_source_runtime.h"
 
 namespace oq_ph_learning {
@@ -303,15 +304,16 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
           state.pending_daily.daily_checkpoint_epoch(),
           batch.may_bridge_daily_gap || daily_boot_sources_pending(input, batch, state.config.quality));
       if (decision != DailyResumeDecision::WAIT) {
-        const bool restored =
-            decision == DailyResumeDecision::RESTORE &&
-            state.pending_daily.restore_daily(state.learner.batch_accumulator, context, state.config.quality);
+        DailyCheckpointRestoreStatus restore_status = DailyCheckpointRestoreStatus::MISSING;
+        const bool restored = decision == DailyResumeDecision::RESTORE &&
+                              state.pending_daily.restore_daily(state.learner.batch_accumulator, context,
+                                                                state.config.quality, &restore_status);
         state.daily_resume_status = restored ? "resuming" : "discarded";
         if (restored)
           state.daily_resume_reason = "none";
         else if (state.daily_restore_allowed)
           state.daily_resume_reason =
-              decision == DailyResumeDecision::RESTORE ? "checkpoint_invalid"
+              decision == DailyResumeDecision::RESTORE ? daily_checkpoint_restore_reason(restore_status)
               : epoch < state.pending_daily.daily_checkpoint_epoch() ||
                       epoch - state.pending_daily.daily_checkpoint_epoch() > kDailyMaximumGapMs / 1000U
                   ? "checkpoint_expired"
@@ -332,6 +334,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.learner.batch_accumulator.restart_pending = true;
         state.daily_resume_status = "resuming";
       } else {
+        diagnose_daily_discard(state.learner.daily_diagnostics, state.learner.batch_accumulator,
+                               DailyCollectionCause::RESTART_DISCARDED, LearningStatus::TIME_DISCONTINUITY, epoch);
         reset_segment(state.learner.batch_accumulator);
       }
     }
@@ -826,6 +830,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.daily_restore_pending ? "true" : "false", state.daily_resume_status,
         snapshot_source_status_name(state.batch_source_status), state.daily_resume_reason);
     json.number(state.daily_restore_pending ? NAN : batch_window.missing_energy_uncertainty_ws / 3600.0);
+    json.add(",\"batch_missing_energy_budget_wh\":");
+    json.number(kDailyMissingHeatBudgetW * 24.0);
     json.add(
         "},\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
         "\"model_validation_status\":\"%s\",\"sources\":{",
@@ -872,7 +878,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   static void publish_paused_status_(RuntimeStorage& state) {
     state.summary = passive_runtime_summary(state.learner, oq_sources::monotonic_ms());
     const auto clock = id(oq_time).now();
-    publish_status_(state, false, clock.is_valid() ? clock.timestamp : 0U);
+    publish_(state, false, clock.is_valid() ? clock.timestamp : 0U);
   }
 
   static void publish_reset_pending_export_() {
@@ -883,10 +889,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
 
   static void publish_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
     publish_status_(state, enabled, epoch);
-    publish_export_(state);
+    publish_export_(state, enabled, epoch);
   }
 
-  static void publish_export_(RuntimeStorage& state) {
+  static void publish_export_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
     JsonWriter json(state.json, sizeof(state.json));
     json.add("%s", kExportRecordsPrefix);
     for (size_t i = 0; i < state.learner.record_count; ++i) {
@@ -926,7 +932,34 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                r.boiler_known ? "true" : "false", r.protection_active ? "true" : "false",
                r.protection_known ? "true" : "false", r.context_revision);
     }
-    json.add("%s", kExportSuffix);
+    json.add("%s", kExportDailyCollectionPrefix);
+    write_daily_collection_json(json, state.learner.daily_diagnostics);
+    const auto& window = state.learner.batch_accumulator;
+    const bool collecting = enabled && state.learner.initialized && state.learner.opted_in && !state.learner.blocked &&
+                            state.learner.status != PassiveRuntimeStatus::PAUSED;
+    DailyCollectionState collection;
+    collection.tick_epoch = epoch;
+    collection.context_revision = state.input.context_revision;
+    collection.uptime_s = oq_sources::monotonic_ms() / 1000ULL;
+    collection.reset_reason = static_cast<int>(esp_reset_reason());
+    collection.enabled = enabled;
+    collection.active = collecting && state.tick.batch_snapshot_available &&
+                        passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
+                        validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+    collection.gap_pending = collecting && window.source_gap_pending;
+    collection.restore_pending = state.daily_restore_pending;
+    collection.elapsed_s = state.daily_restore_pending   ? state.pending_daily.daily_checkpoint_elapsed_s()
+                           : collecting && window.active ? segment_elapsed_ms(window) / 1000ULL
+                                                         : 0ULL;
+    collection.resume_status = state.daily_resume_status;
+    collection.resume_reason = state.daily_resume_reason;
+    collection.source_status = state.batch_source_status;
+    collection.last_source_status = state.learner.diagnostics.last_batch_source_status;
+    collection.last_rejection = state.learner.diagnostics.last_batch_rejection;
+    collection.uncertainty_wh = state.daily_restore_pending ? NAN : window.missing_energy_uncertainty_ws / 3600.0;
+    json.add("%s", kExportDailyCollectionStatePrefix);
+    write_daily_collection_state_json(json, collection);
+    json.add("}");
     const size_t length = json.size();
     if (length == 0U || !id(oq_ph_learning_status_endpoint).publish_export_json(state.json, length)) {
       publish_export_error_();

@@ -595,9 +595,66 @@ void test_daily_checkpoint_elapsed_reads_saved_progress_and_bounds_conversion() 
   assert(view.daily_checkpoint_elapsed_s() == 0);
 }
 
+void test_daily_restore_diagnostics_preserve_output_and_history() {
+  constexpr uint32_t now = 20000U * 86400U + 4200U;
+  const auto completed = record(now - 4200U - 4U * 3600U, -5);
+  const auto daily = daily_checkpoint(now - 4200U);
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({&completed, 1, context()}, config().quality, 2, now, bytes, sizeof(bytes), size,
+                                 nullptr, 0, &daily) == LearningJournalStatus::OK);
+  LearningJournalRecords view{{bytes, size}, sizeof(kContext), 1};
+  SegmentAccumulator output = daily;
+  // Rejection must never partially replace the caller's live accumulator.
+  uint8_t unchanged[sizeof(output)];
+  memcpy(unchanged, &output, sizeof(output));
+  DailyCheckpointRestoreStatus status = DailyCheckpointRestoreStatus::OK;
+  auto reject = [&](PassiveContextView expected, const QualityConfig& quality, DailyCheckpointRestoreStatus reason) {
+    assert(!view.restore_daily(output, expected, quality, &status));
+    assert(status == reason);
+    assert(memcmp(&output, unchanged, sizeof(output)) == 0);
+    assert(view[0].mean_heat_w == completed.mean_heat_w);
+    assert(strcmp(daily_checkpoint_restore_reason(status), "none") != 0);
+  };
+  reject({nullptr, 0, 1}, config().quality, DailyCheckpointRestoreStatus::CONTEXT_UNAVAILABLE);
+  reject(context(0), config().quality, DailyCheckpointRestoreStatus::CONTEXT_UNAVAILABLE);
+  constexpr uint8_t changed[] = {1};
+  reject({changed, sizeof(changed), 1}, config().quality, DailyCheckpointRestoreStatus::CONTEXT_MISMATCH);
+  auto strict = config().quality;
+  strict.max_abs_heat_w = 4100;
+  reject(context(), strict, DailyCheckpointRestoreStatus::QUALITY_INVALID);
+  // Deliberately fault-inject into the otherwise immutable validated view to
+  // exercise defensive decode failure; ordinary owners may not mutate it.
+  const size_t duration_offset = size - kLearningJournalCrcBytes - kLearningJournalDailyBytes + 68U;
+  learning_journal_detail::Writer writer{bytes, size};
+  writer.position = duration_offset;
+  learning_journal_detail::write_double(writer, NAN);
+  reject(context(), config().quality, DailyCheckpointRestoreStatus::DECODE_FAILED);
+  writer.position = duration_offset;
+  learning_journal_detail::write_double(writer, daily.integrated_duration_s);
+  assert(view.restore_daily(output, context(7), config().quality, &status));
+  assert(status == DailyCheckpointRestoreStatus::OK && output.context_revision == 7);
+  assert(strcmp(daily_checkpoint_restore_reason(status), "none") == 0);
+  // No sums or saved hours change on a successful round trip, only local clocks.
+  auto expected = daily;
+  expected.context_revision = 7;
+  uint8_t expected_bytes[kLearningJournalDailyBytes], actual_bytes[kLearningJournalDailyBytes];
+  learning_journal_detail::Writer expected_writer{expected_bytes, sizeof(expected_bytes)};
+  learning_journal_detail::Writer actual_writer{actual_bytes, sizeof(actual_bytes)};
+  learning_journal_detail::write_daily(expected_writer, &expected);
+  learning_journal_detail::write_daily(actual_writer, &output);
+  assert(expected_writer.ok && actual_writer.ok && memcmp(expected_bytes, actual_bytes, sizeof(actual_bytes)) == 0);
+  assert(segment_elapsed_ms(output) == 4200000ULL);
+  assert(encode_learning_journal({&completed, 1, context()}, config().quality, 3, now, bytes, sizeof(bytes), size) ==
+         LearningJournalStatus::OK);
+  memcpy(&output, unchanged, sizeof(output));
+  reject(context(), config().quality, DailyCheckpointRestoreStatus::MISSING);
+}
+
 }  // namespace
 
 int main() {
+  test_daily_restore_diagnostics_preserve_output_and_history();
   test_daily_checkpoint_elapsed_reads_saved_progress_and_bounds_conversion();
   test_current_quality_can_reject_day_without_discarding_records_or_thermal();
   test_daily_checkpoint_round_trip_requires_exact_context_and_remaps_clocks();

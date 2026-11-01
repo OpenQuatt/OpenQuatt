@@ -256,6 +256,11 @@ De laatste onderbreking of afwijzing
 blijft zichtbaar totdat een nieuwe woninglijnperiode is opgeslagen; deze melding
 wordt niet over een herstart bewaard. Bij een meetafwijzing toont nieuwe firmware
 ook de concrete bron- of ketelreden, bijvoorbeeld een verouderd ketelcommando.
+Na geweigerd dagherstel toont de kaart de herstelreden. Nieuwe firmware toont
+ook de conditionele onzekerheidslast door meetgaten ten opzichte van het
+bestaande dagbudget; dit is geen gemeten energiefout. De export bewaart bovendien
+de laatste verloren voortgang en oorzaak sinds initialiseren of resetten van
+de collector. Die diagnostiek wordt niet over een herstart bewaard.
 Oude stabiele vieruursperioden blijven als
 oude metingen beschikbaar in de grafiek en de export.
 Veel korte meetperioden betekenen dus niet automatisch dat er ook dagmetingen voor

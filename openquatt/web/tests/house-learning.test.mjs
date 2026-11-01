@@ -176,6 +176,42 @@ test("dagherstel toont opgeslagen voortgang en ondersteunt beide talen", () => {
   }
 });
 
+test("dagherstelreden en werkelijk firmwarebudget zijn optioneel, vertaald en vers", () => {
+  const payload = statusPayload({ enabled: true, daily_record_count: 0,
+    collection: { batch_active: true, batch_elapsed_s: 3600, batch_target_s: 86400,
+      batch_resume_status: "discarded", batch_resume_reason: "checkpoint_context_mismatch",
+      batch_source_status: "ok", batch_missing_energy_uncertainty_wh: 1500,
+      batch_missing_energy_budget_wh: 2400 },
+  });
+  const status = normalizeHouseLearningStatus(payload);
+  assert.equal(status.collection.batch.resumeReason, "checkpoint_context_mismatch");
+  assert.equal(status.collection.batch.sourceStatus, "ok");
+  assert.equal(status.collection.batch.missingEnergyBudgetWh, 2400);
+  const nl = renderHouseLearningStatusMarkup(status);
+  assert.match(nl, /Dagherstel afgewezen: de opgeslagen meetcontext/);
+  assert.match(nl, /Conditionele onzekerheidslast door meetgaten: 1\.500 \/ 2\.400 Wh/);
+  assert.match(nl, /Dit is geen gemeten energiefout/);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const en = renderHouseLearningStatusMarkup(status);
+  assert.match(en, /Daily recovery rejected: the saved measurement context/);
+  assert.match(en, /1,500 \/ 2,400 Wh/);
+  for (const override of [{ enabled: false }, { tick_epoch: 1 }]) {
+    const hidden = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...payload, ...override }));
+    assert.doesNotMatch(hidden, /Daily recovery rejected|Conditional uncertainty allowance/);
+  }
+  const unknown = normalizeHouseLearningStatus({ ...payload,
+    collection: { ...payload.collection, batch_resume_reason: '<img src=x onerror="bad()">',
+      batch_missing_energy_uncertainty_wh: null },
+  });
+  const unknownHtml = renderHouseLearningStatusMarkup(unknown);
+  assert.match(unknownHtml, /no known recovery reason/);
+  assert.doesNotMatch(unknownHtml, /<img|Conditional uncertainty allowance/);
+  const old = normalizeHouseLearningStatus(statusPayload());
+  assert.equal(old.collection.batch.resumeReason, undefined);
+  assert.equal(old.collection.batch.missingEnergyBudgetWh, undefined);
+  assert.doesNotMatch(renderHouseLearningStatusMarkup(old), /Daily recovery rejected|Conditional uncertainty allowance/);
+});
+
 test("oude wachtstatus zonder meetgat claimt geen behouden dag en actuele status blijft nodig", () => {
   const payload = statusPayload({
     enabled: true, status: "blocked", daily_record_count: 0,

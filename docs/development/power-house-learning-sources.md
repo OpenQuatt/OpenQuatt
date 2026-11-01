@@ -148,3 +148,22 @@ meetgaten (onbekend zolang het checkpoint nog niet hersteld is).
 De gecombineerde `source_status` kan daarnaast een beperking van het 1R1C-model tonen.
 Een bronroute verklaart welke bestaande controlwaarde is gebruikt;
 zij is geen extra meetinstelling.
+
+De export bevat naast de laatste 60 meetregels een optioneel `daily_collection`:
+verloren dagvoortgang, bronreden, meetgatduur en onzekerheidslast vóór afbreken.
+Gemiste ticks, te lange gaten, klokbreuken en budgetoverschrijding hebben eigen
+oorzaken. De tellers gelden sinds initialiseren/resetten van de collector en
+worden niet over een herstart bewaard. Wachten zonder actieve dag telt geen
+verloren dag. Een onbekende last of duur is `null`, niet nul.
+
+`collection_state` bewaart in dezelfde export de actuele dagvoortgang,
+`tick_epoch`, uptime, numerieke ESP-IDF `boot_reset_reason`, laatste afwijzing,
+bronstatus en herstelreden. De bootreden beschrijft de controllerherstart;
+`batch_resume_reason` verklaart afzonderlijk waarom dagherstel werd geweigerd.
+Context-, decode- en kwaliteitsweigeringen zijn uitgesplitst. Een vóór import
+afgewezen bootcheckpoint valt buiten de actieve-dagtellers.
+
+De status en export publiceren `batch_missing_energy_budget_wh`. De bestaande
+2400 Wh is een conditionele bovengrens voor ontbrekende warmte, geen gemeten
+energiefout. Kwaliteitsgrenzen, journalformaat, bewaarbeleid en automatische toepassing
+veranderen niet.
