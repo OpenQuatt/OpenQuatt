@@ -11,8 +11,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
     steps:
       - name: Checkout
@@ -24,6 +24,11 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # jeroen85 has no write access. The action only accepts allowed_non_write_users
+          # with its own github_token, so his reviews run on GITHUB_TOKEN; everyone else
+          # keeps the Claude GitHub App token.
+          allowed_non_write_users: jeroen85
+          github_token: ${{ github.event.comment.user.login == 'jeroen85' && secrets.GITHUB_TOKEN || '' }}
           prompt: |
             Review PR #${{ github.event.issue.number }} van ${{ github.repository }}. Schrijf in het Nederlands.
 
