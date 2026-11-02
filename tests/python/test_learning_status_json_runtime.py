@@ -33,7 +33,16 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="oq-learning-status-json-") as directory:
             temporary = Path(directory)
             source = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
-            body = production_function(source, "static void publish_status_(")
+            body = "\n".join(production_function(source, signature) for signature in (
+                "static void clear_daily_resume_status_(", "static void update_daily_resume_status_(",
+                "void pause(LearningStatus", "static void publish_status_(",
+            ))
+            for name, flag, signature in (
+                ("context_change", "context_changed", "if (context_changed) {"),
+                ("reset", "reset_processed", "if (reset_processed) {\n      state.daily_restore_pending"),
+            ):
+                branch = production_function(source, signature)
+                body += f"\nstatic void {name}(RuntimeStorage& state) {{ const bool {flag} = true; {branch} }}"
             (temporary / "production_learning_status.inc").write_text(body)
             binary = temporary / "status-json"
             built = run_process(

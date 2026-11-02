@@ -113,8 +113,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     auto& state = storage_[0];
     state.boot_restart_ticket = {};
     state.daily_restore_pending = false;
-    if (state.daily_restore_allowed)
-      state.daily_resume_reason = rejection == LearningStatus::MIXED_CONTEXT ? "context_changed" : "paused";
+    clear_daily_resume_status_(state);
     state.daily_restore_allowed = false;
     state.restart_prepared = false;
     pause_diagnostic_capture(state.diagnostic_capture);
@@ -217,7 +216,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.learner.initialized && (state.measurement_context_changed || context_bytes_changed);
     if (context_changed) {
       state.daily_restore_pending = false;
-      if (state.daily_restore_allowed) state.daily_resume_reason = "context_changed";
+      clear_daily_resume_status_(state);
       state.daily_restore_allowed = false;
     }
     if (context_changed && ++state.context_revision == 0) state.context_revision = 1;
@@ -227,6 +226,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const bool reset_processed = state.reset_requested;
     if (reset_processed) {
       state.daily_restore_pending = false;
+      clear_daily_resume_status_(state);
       reset_passive_runtime(state.learner);
       state.journal.reset(
           [&state]() { return erase_slots_(state.partition); },
@@ -344,15 +344,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const uint32_t thermal_samples_before = state.learner.thermal_state.accepted_samples;
     // The paused tick still prunes expired records before checkpointing.
     if (state.learner.initialized) tick_passive_runtime(state.learner, tick);
-    if (resume_attempt) {
-      const auto result = state.learner.diagnostics.last_batch_status;
-      state.daily_resume_status = daily_resume_succeeded(result) ? "restored" : "discarded";
-      if (!daily_resume_succeeded(result) && strcmp(state.daily_resume_reason, "none") == 0)
-        state.daily_resume_reason = learning_status_name(result);
-    } else if (strcmp(state.daily_resume_status, "restored") == 0 &&
-               daily_start_before != state.learner.batch_accumulator.start_epoch_s) {
-      state.daily_resume_status = "none";
-    }
+    update_daily_resume_status_(state, resume_attempt, daily_start_before);
     if (state.learner.thermal_state.accepted_samples > thermal_samples_before) state.thermal_epoch = epoch;
     const auto diagnostic_capture = diagnostic_capture_decision(state.diagnostic_capture, enabled && !reset_processed);
     if (diagnostic_capture.capture)
@@ -368,6 +360,25 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   }
 
  private:
+  static void clear_daily_resume_status_(RuntimeStorage& state) {
+    state.daily_resume_status = state.daily_resume_reason = "none";
+  }
+
+  static void update_daily_resume_status_(RuntimeStorage& state, bool resume_attempt, uint32_t daily_start_before) {
+    if (resume_attempt) {
+      const auto result = state.learner.diagnostics.last_batch_status;
+      state.daily_resume_status = daily_resume_succeeded(result) ? "restored" : "discarded";
+      if (!daily_resume_succeeded(result) && strcmp(state.daily_resume_reason, "none") == 0)
+        state.daily_resume_reason = learning_status_name(result);
+    } else if ((strcmp(state.daily_resume_status, "restored") == 0 ||
+                (strcmp(state.daily_resume_status, "discarded") == 0 && daily_start_before != 0)) &&
+               daily_start_before != state.learner.batch_accumulator.start_epoch_s) {
+      // Keep a rejected boot recovery visible during its first replacement day,
+      // then expire it when that day completes, restarts or is discarded.
+      clear_daily_resume_status_(state);
+    }
+  }
+
   esphome::openquatt_common::PsramObjectArray<RuntimeStorage, 1> storage_;
   bool allocation_attempted_ = false;
 

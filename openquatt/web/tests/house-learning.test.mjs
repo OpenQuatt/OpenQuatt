@@ -189,6 +189,11 @@ test("dagherstelreden en werkelijk firmwarebudget zijn optioneel, vertaald en ve
   assert.equal(status.collection.batch.missingEnergyBudgetWh, 2400);
   const nl = renderHouseLearningStatusMarkup(status);
   assert.match(nl, /Dagherstel afgewezen: de opgeslagen meetcontext/);
+  const nextDay = normalizeHouseLearningStatus({ ...payload, daily_record_count: 1,
+    collection: { ...payload.collection, batch_elapsed_s: 10,
+      batch_resume_status: "none", batch_resume_reason: "none" },
+  });
+  assert.doesNotMatch(renderHouseLearningStatusMarkup(nextDay), /Dagherstel afgewezen/);
   assert.match(nl, /Conditionele onzekerheidslast door meetgaten: 1\.500 \/ 2\.400 Wh/);
   assert.match(nl, /Dit is geen gemeten energiefout/);
   setLocale("en", { persist: false, applyDocument: false, notify: false });
