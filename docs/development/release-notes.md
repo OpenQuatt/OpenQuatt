@@ -29,9 +29,10 @@ important discussions and relevant diffs before making user-facing claims.
   the same physical controller remains identifiable after a factory reset.
 - No GitHub logo by default. Tweakers may use the established logo; verify its
   path exists in the release tree. A logo announcement is not recurring news.
-- Derive hardware support from the release's target matrix. Q Single/Duo are
-  currently active; Waveshare/Heatpump Listener remain on v0.50.0. That cutoff
-  is not a new breaking change in each release.
+- No recurring availability or hardware-support section. Mention hardware
+  support only when it changes, derived from the release's target matrix. Q
+  Single/Duo are currently active; Waveshare/Heatpump Listener remain on
+  v0.50.0. That cutoff is not a new breaking change in each release.
 - Use a real compare link. Draft release links are prospective until publication.
 
 Save working files under `.tmp/releases/vX.Y.Z-{notes.md,tweakers.txt,discord.txt}`.
@@ -89,10 +90,6 @@ Deliver raw UBB in `.txt`, not Markdown. Use closed `[h1]`, `[h2]`, `[h3]`,
 [h2]🔧 Kleinere verbeteringen[/h2]
 
 • [Wijziging.]
-
-[h2]🧱 Beschikbaarheid[/h2]
-
-[Ondersteunde hardware en relevante beperkingen.]
 
 [url=https://github.com/OpenQuatt/OpenQuatt/releases/tag/vX.Y.Z][b]Release notes en download[/b][/url]
 [url=https://github.com/OpenQuatt/OpenQuatt/compare/vBASE...vX.Y.Z]Volledige changelog: vBASE → vX.Y.Z[/url]
