@@ -111,7 +111,6 @@ export async function prepareRunExtension(controller, simulator, interrupted, sn
   await controller.setSwitch('api_input_heating_enable', false);
   await controller.setSwitch('api_input_cooling_enable', false);
   await controller.setSwitch('Manual Cooling Enable', false);
-  await controller.setSwitch('Power House run extension', false);
   await controller.setSwitch('Controlled warmup enabled', false);
   await waitValue(controller, 'text_sensor', 'Control Mode', 'CM0', 'safe CM0', { timeoutMs: 480000, interrupted });
   await simulator.setSelect('ODU 1 profile (pending)', 'V2 old');
@@ -189,10 +188,9 @@ export async function testRunExtension({ controller, simulator, interrupted }) {
   const result = {};
   const maximumWater = asFiniteNumber(await controller.value('number', 'Maximum water temperature'));
   assert(maximumWater !== null, 'water-temperature limit must be captured before the hot-water case');
-  await controller.setSwitch('Power House run extension', true);
   result.idle = await holdState(controller, interrupted,
     (s) => close(s.roomC, 19.82) && s.frequency === 0 && s.floorW === 0 && s.phase === 'inactive',
-    'enabling extension above setpoint does not start the idle compressor', 20000);
+    'run extension above setpoint does not start the idle compressor', 20000);
 
   await controller.setNumber('api_input_room_temperature', 19.0);
   result.started = await waitState(controller, interrupted,

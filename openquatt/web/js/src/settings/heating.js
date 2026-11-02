@@ -397,7 +397,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
       renderPowerHouseResponseProfilesField(),
     ].filter(Boolean);
 
-    if (!fields.length && !hasEntity("phComfortBelow") && !hasEntity("phComfortAbove") && !hasEntity("phRunExtension")) {
+    if (!fields.length && !hasEntity("phComfortBelow") && !hasEntity("phComfortAbove") && !hasEntity("phRunExtensionStopMargin")) {
       return "";
     }
 
@@ -459,7 +459,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     });
     const runtimeStop = hasEntity("phRunExtensionComfortStop") ? numeric("phRunExtensionComfortStop") : NaN;
     const runtimeStatus = String(getEntityValue("phRunExtensionStatus") || "inactive").trim().toLowerCase();
-    const minimumLimited = !previewing && Boolean(getEntityValue("phRunExtension")) && runtimeStatus !== "inactive" &&
+    const minimumLimited = !previewing && runtimeStatus !== "inactive" &&
       Number.isFinite(runtimeStop) && Number.isFinite(setpoint) && Math.abs(runtimeStop - setpoint) < 0.01 && runtimeStop < configuredStop;
     const stop = minimumLimited ? runtimeStop : configuredStop;
     const configuredRestart = stop - cooldown;
@@ -482,7 +482,6 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   }
 
   function getRunExtensionCurrentStatus() {
-    if (!getEntityValue("phRunExtension")) return t("runExtension.disabled");
     const status = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
     return status === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(status);
   }
@@ -533,8 +532,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   }
 
   export function renderPowerHouseRunExtensionField() {
-    if (!hasEntity("phRunExtension")) return "";
-    const enabled = Boolean(getEntityValue("phRunExtension"));
+    if (!hasEntity("phRunExtensionStopMargin")) return "";
     return `
       <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="${escapeHtml(t("runExtension.title"))}">
         <div class="oq-run-extension-intro">
@@ -545,15 +543,11 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           <span class="oq-run-extension-status" data-oq-run-extension-status>${escapeHtml(getRunExtensionCurrentStatus())}</span>
         </div>
         <div class="oq-settings-grid">
-          ${renderSettingsSwitchField("phRunExtension", t("runExtension.allow"), t("runExtension.allowCopy"), t("runExtension.on"), t("runExtension.off"))}
-          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.marginDirection"))}</p>` }) : ""}
-          ${enabled ? renderSettingsNumberField("phRunExtensionRestartCooldown", t("runExtension.cooldown"), t("runExtension.cooldownCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.cooldownDirection"))}</p>` }) : ""}
+          ${renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.marginDirection"))}</p>` })}
+          ${renderSettingsNumberField("phRunExtensionRestartCooldown", t("runExtension.cooldown"), t("runExtension.cooldownCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.cooldownDirection"))}</p>` })}
         </div>
-        ${enabled ? `
-          <div class="oq-run-extension-summary" data-oq-run-extension-thresholds>${renderRunExtensionThresholds()}</div>
-          <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
-        ` : ""}
-        <p class="oq-run-extension-note">${escapeHtml(t("runExtension.disableCopy"))}</p>
+        <div class="oq-run-extension-summary" data-oq-run-extension-thresholds>${renderRunExtensionThresholds()}</div>
+        <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
       </section>
     `;
   }

@@ -106,11 +106,12 @@ laagste geschikte vermogen vragen terwijl de gewone wattsvraag nog oploopt.
 Kamerherstel kan die minimumondersteuning tot het setpoint voortzetten.
 Flow-, water-, incident- en minimum-uit-tijdguards blijven gelden.
 
-**Langer doorverwarmen** is een aparte, optionele toestandmachine. Een reeds
-bevestigde verwarmingsrun kan bij lage vraag minimumvermogen blijven vragen
-tot zijn comfortstopgrens. Inschakelen terwijl alles stilstaat start geen run.
+**Langer doorverwarmen** is een aparte toestandmachine die altijd actief is. Een
+reeds bevestigde verwarmingsrun kan bij lage vraag minimumvermogen blijven vragen
+tot zijn comfortstopgrens. Een stilstaande warmtepomp wordt niet gestart.
 Waterbegrenzing kan de minimumondersteuning intrekken; een latere herstartintentie
-blijft afhankelijk van de gemeenschappelijke startvoorwaarden.
+blijft afhankelijk van de gemeenschappelijke startvoorwaarden. Na een comfortstop
+en na een gewone stopperiode geldt dezelfde herstarttemperatuur.
 
 **Passief leren** observeert meetdata en past actieve model- of regelparameters
 niet automatisch aan. De [learning-roadmap](power-house-autotuning-development.md)

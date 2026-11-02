@@ -268,7 +268,7 @@ node scripts/hil/run-run-extension.mjs \
   --apply
 ```
 
-De stage controleert inschakelen tijdens stilstand en doorverwarmen op F1 bij
+De stage controleert dat stilstand geen run start en doorverwarmen op F1 bij
 13,5, 14,6 en 20 °C buiten met de gedeelde V2-new-kaart. Een gewone uitsluiting
 van 20–26 Hz maakt F3 het minimum voor de eerdere stop, ook als de stilstaande
 tweede pomp wel op F1 kan draaien. De stage controleert ook F1 met een berekende

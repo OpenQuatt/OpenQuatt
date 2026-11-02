@@ -21,7 +21,6 @@ constexpr float kRestartHysteresisC = 0.2f;
 constexpr float kWaterLimitFloorGate = 0.999f;
 
 struct Input {
-  bool enabled = false;
   bool cycle_active = false;
   bool actual_heating_active = false;
   bool inputs_valid = false;
@@ -121,7 +120,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
 
   const bool room_finite = std::isfinite(in.room_c) && std::isfinite(in.setpoint_c);
   const bool thresholds_finite = std::isfinite(comfort_stop_c) && std::isfinite(warm_restart_c);
-  const bool usable = in.enabled && in.inputs_valid && in.heating_allowed && room_finite && thresholds_finite;
+  const bool usable = in.inputs_valid && in.heating_allowed && room_finite && thresholds_finite;
 
   // Setpoint tracking: a relevant drop cancels a pending warm restart intent.
   const bool setpoint_drop = std::isfinite(in.setpoint_c) && std::isfinite(state.last_setpoint_c) &&
@@ -129,17 +128,8 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   State next = state;
   next.stop_at_setpoint = stop_at_setpoint;
 
-  if (!in.enabled) {
-    next.phase = Phase::INACTIVE;
-    next.cycle_armed = false;
-    next.stop_at_setpoint = false;
-    if (std::isfinite(in.setpoint_c)) next.last_setpoint_c = in.setpoint_c;
-    out.next = next;
-    return out;
-  }
-
   // Arming: only a confirmed normal heating run arms a #608 cycle.
-  // Enabling while idle must not start anything.
+  // An idle heat pump must not be started by run extension.
   const bool phase_can_arm =
       state.phase == Phase::INACTIVE || state.phase == Phase::RUNNING || state.phase == Phase::EXTENDING;
   if (phase_can_arm && in.cycle_active && in.actual_heating_active && in.inputs_valid && in.heating_allowed) {
@@ -201,8 +191,12 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
     }
     case Phase::RUNNING: {
       if (!in.cycle_active) {
-        next.phase = Phase::INACTIVE;
+        // A stopped run must cool to the same restart temperature before normal
+        // demand may start again, regardless of whether it stopped at the
+        // comfort threshold or for an ordinary drop in house demand.
+        next.phase = Phase::WAIT_WARM_RESTART;
         next.cycle_armed = false;
+        out.force_comfort_stop = true;
         break;
       }
       if (room_at_stop) {
@@ -222,8 +216,9 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
     }
     case Phase::EXTENDING: {
       if (!in.cycle_active) {
-        next.phase = Phase::INACTIVE;
+        next.phase = Phase::WAIT_WARM_RESTART;
         next.cycle_armed = false;
+        out.force_comfort_stop = true;
         break;
       }
       if (room_at_stop) {
@@ -379,8 +374,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   return out;
 }
 
-inline const char* status_value(const Decision& decision, bool enabled, bool blocked) {
-  if (!enabled) return "inactive";
+inline const char* status_value(const Decision& decision, bool blocked) {
   if (blocked) return "blocked";
   return phase_name(decision.next.phase);
 }
