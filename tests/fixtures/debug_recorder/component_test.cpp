@@ -461,13 +461,15 @@ void cooperative_export() {
   env.dispatch(text_reference);
   emit("text-reference", text_reference.response);
   recorder_test::clock_step_ms = 1;
+  // Send time advances independently of probes, including inside one string.
+  recorder_test::chunk_time_ms = 6;
   recorder_test::max_work_ms = 0;
   recorder_test::last_delay_ms = recorder_test::now_ms;
   const auto delays = recorder_test::delay_calls;
   auto text = env.request("download", HTTP_GET);
   env.dispatch(text);
   assert(text.response.finished && recorder_test::delay_calls > delays + 100);
-  assert(recorder_test::max_work_ms <= 10 && !recorder.export_in_progress_);
+  assert(recorder_test::max_work_ms <= 16 && !recorder.export_in_progress_);
   emit("text", text.response);
 
   // A send error after pausing releases the export slot for a fresh request.
