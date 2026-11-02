@@ -193,4 +193,121 @@ void test_stops() {
   assert(out.pi_zero_stop && out.arm_minimum_off_stop && !zero.water_cycle.active && zero.limited_demand == 0 &&
          zero.water_cycle.stop_reason_code == WATER_STOP_LIMITER && zero.limiter_reason_code == REASON_BUFFER_STOP);
 }
-int main() { return (test_timing(), test_pi(), test_invalid(), test_stops(), 0); }
+void test_confirmed_dew_stop_survives_invalid_inputs_room_off_and_wrap() {
+  for (const uint32_t base : {0U, UINT32_MAX - 10000U}) {
+    for (const bool room_off : {false, true}) {
+      DemandState state;
+      auto in = active_input(base + 1000U);
+      in.guard_mode = GUARD_DEW;
+      in.dew_mode = true;
+      in.oil_return_active = true;
+      in.supply_c = 20;
+      in.target_c = 16;
+      in.dew_point_c = 15;
+      in.safety_margin_c = 1;
+      update_demand(in, {}, state);
+      in.now_ms = base + 6000U;
+      in.target_c = 21;
+      in.dew_point_c = 20;
+      update_demand(in, {}, state);
+      in.now_ms = base + 36000U;
+      update_demand(in, {}, state);
+      assert(state.limited_demand == 0 && state.water_cycle.stop_reason_code == WATER_STOP_DEW);
+      for (const uint32_t interruption : {41000U, 51000U}) {
+        auto interrupted = in;
+        interrupted.now_ms = base + interruption;
+        interrupted.control_active = false;
+        interrupted.cycle_was_active = true;
+        interrupted.request_cleared = room_off;
+        if (!room_off) {
+          interrupted.guard_mode = GUARD_NONE;
+          interrupted.dew_mode = false;
+          interrupted.sensor_valid = false;
+          interrupted.dew_point_c = NAN;
+        }
+        update_demand(interrupted, {}, state);
+        assert(state.limited_demand == 0 && state.water_cycle.stop_reason_code == WATER_STOP_DEW);
+        in.now_ms = base + interruption + 5000U;
+        update_demand(in, {}, state);
+        assert(state.limited_demand == 0 && !state.water_cycle.active &&
+               state.water_cycle.stop_reason_code == WATER_STOP_DEW);
+      }
+      in.now_ms = base + 61000U;
+      in.supply_c = 22;
+      update_demand(in, {}, state);
+      assert(state.limited_demand > 0 && state.water_cycle.stop_reason_code == WATER_STOP_NONE);
+      // A later ordinary room-off stop must retain its existing semantics.
+      in.now_ms += 5000U;
+      in.control_active = false;
+      in.cycle_was_active = in.request_cleared = true;
+      update_demand(in, {}, state);
+      assert(state.limited_demand == 0 && state.water_cycle.stop_reason_code == WATER_STOP_REQUEST_CLEARED);
+    }
+  }
+}
+void test_only_a_different_valid_guard_may_replace_a_confirmed_dew_stop() {
+  for (const auto next : {GUARD_USER_RESPONSIBILITY, GUARD_FALLBACK}) {
+    DemandState state;
+    auto in = active_input(1000);
+    in.guard_mode = GUARD_DEW;
+    in.dew_mode = true;
+    in.dew_point_c = 15;
+    in.safety_margin_c = 1;
+    in.oil_return_active = true;
+    update_demand(in, {}, state);
+    state.water_cycle = {false, 0, WATER_STOP_DEW};
+    in.now_ms = 6000;
+    in.guard_mode = next;
+    in.dew_mode = false;
+    in.fallback_mode = next != GUARD_USER_RESPONSIBILITY;
+    in.sensor_valid = false;
+    update_demand(in, {}, state);
+    assert(state.water_cycle.stop_reason_code == WATER_STOP_DEW && state.last_guard_mode == GUARD_DEW);
+    in.now_ms = 11000;
+    in.sensor_valid = true;
+    in.supply_c = 24;
+    in.target_c = 19;
+    const auto out = update_demand(in, {}, state);
+    assert(out.guard_changed && state.last_guard_mode == next && state.limited_demand > 0 &&
+           state.water_cycle.stop_reason_code == WATER_STOP_NONE);
+  }
+}
+int main() {
+  for (const bool oil : {false, true}) {
+    DemandState state;
+    auto in = active_input(1000);
+    in.guard_mode = GUARD_DEW;
+    in.dew_mode = true;
+    in.dew_point_c = 15;
+    in.safety_margin_c = 1;
+    update_demand(in, {}, state);
+    assert(state.water_cycle.active);
+    in.target_c = 30;  // Ordinary water stop, while dew remains safely below supply.
+    for (uint32_t now = 6000; now <= 60000; now += 5000) {
+      in.now_ms = now;
+      update_demand(in, {}, state);
+    }
+    assert(!state.water_cycle.active && state.water_cycle.stop_reason_code == WATER_STOP_LIMITER);
+    in.restart_by_minimum_off_time = in.minimum_off_stop_pending = true;
+    in.dew_point_c = 20;
+    in.target_c = 21;
+    for (uint32_t now = 65000; now <= 100000; now += 5000) {
+      in.now_ms = now;
+      update_demand(in, {}, state);
+    }
+    assert(!state.water_cycle.active && state.water_cycle.stop_reason_code == WATER_STOP_DEW);
+    // Above the 0.45 C stop floor, but below the 0.65 C restart threshold.
+    in.supply_c = 20.55f;
+    in.minimum_off_stop_pending = false;
+    in.oil_return_active = oil;
+    for (uint32_t now = 105000; now <= 140000; now += 5000) {
+      in.now_ms = now;
+      update_demand(in, {}, state);
+      assert(state.limited_demand == 0 && !state.water_cycle.active &&
+             state.water_cycle.stop_reason_code == WATER_STOP_DEW);
+    }
+  }
+  test_confirmed_dew_stop_survives_invalid_inputs_room_off_and_wrap();
+  test_only_a_different_valid_guard_may_replace_a_confirmed_dew_stop();
+  return (test_timing(), test_pi(), test_invalid(), test_stops(), 0);
+}

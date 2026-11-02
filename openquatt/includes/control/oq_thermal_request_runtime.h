@@ -7,6 +7,7 @@
 #include <string>
 
 #include "oq_compressor_frequency_runtime.h"
+#include "oq_cooling_limiter_logic.h"
 #include "oq_heating_curve_logic.h"
 #include "oq_power_house_dispatch_logic.h"
 #include "oq_thermal_request_logic.h"
@@ -176,6 +177,17 @@ class Runtime {
                                                   OQ_REQUEST_SECONDARY_ID(set_working_mode).current_option(), 1);
   }
 
+  bool dew_stop_blocks_retained_(bool is_hp1) const {
+    const float raw = is_hp1 ? id(hp1_working_mode).state : OQ_REQUEST_SECONDARY_ID(working_mode).state;
+    const auto& target = is_hp1 ? id(hp1_set_working_mode) : OQ_REQUEST_SECONDARY_ID(set_working_mode);
+    const bool known_heating = oq_request::thermal_mode_matches(raw, 2) ||
+                               oq_request::target_option_matches_mode(target.has_state(), target.current_option(), 2);
+    // A missing/Standby mode cannot relabel an old cooling tail as a heating hold.
+    return oq_cooling::confirmed_dew_stop_requires_off(
+        id(oq_cooling_stop_reason_code),
+        this->mode_is_cooling_(is_hp1) || this->target_is_cooling_(is_hp1) || !known_heating);
+  }
+
   bool cooling_hold_(bool is_hp1, int level) const {
     return level > 0 && (this->mode_is_cooling_(is_hp1) || this->target_is_cooling_(is_hp1));
   }
@@ -193,7 +205,8 @@ class Runtime {
   int defrost_hold_(bool is_hp1, const oq_frequency_runtime::Context& frequency) const {
     // A global safety stop must not turn an inactive request back into a
     // positive defrost hold after the minimum-runtime hold was rejected.
-    if (id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active)) return 0;
+    if (id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) || this->dew_stop_blocks_retained_(is_hp1))
+      return 0;
     const bool defrost = is_hp1 ? id(hp1_4_way_valve).state : OQ_REQUEST_SECONDARY_ID(4_way_valve).state;
     const int previous_physical =
         is_hp1 ? id(hp1_last_commanded_physical_level) : OQ_REQUEST_SECONDARY_ID(last_commanded_physical_level);
@@ -205,7 +218,8 @@ class Runtime {
 
   int minimum_runtime_hold_(bool is_hp1, uint32_t now_ms, uint32_t minimum_runtime_ms, bool startup_inhibit) const {
     const uint32_t last_start = is_hp1 ? id(hp1_last_real_heat_start_ms) : id(hp2_last_real_heat_start_ms);
-    const bool blocked = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) || startup_inhibit;
+    const bool blocked = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) || startup_inhibit ||
+                         this->dew_stop_blocks_retained_(is_hp1);
     return oq_request::min_runtime_hold_required(
                0, blocked, oq_request::min_runtime_window_active(now_ms, last_start, minimum_runtime_ms),
                this->last_applied_(is_hp1), this->measured_thermal_(is_hp1))
@@ -480,6 +494,7 @@ class Runtime {
     }
 
     const bool hard_stop = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
+                           oq_cooling::confirmed_dew_stop_requires_off(id(oq_cooling_stop_reason_code), mode.cooling) ||
                            (!mode.cooling && id(oq_cold_start_hp_blocked));
     if (hard_stop) hp1_level = hp2_level = 0;
     this->update_startup_event_(config.now_ms, config.minimum_off_s, id(oq_control_mode_code), startup_inhibit,
@@ -508,8 +523,9 @@ class Runtime {
                               const oq_frequency_runtime::Context& frequency) {
     const uint32_t last_start = is_hp1 ? id(hp1_last_real_heat_start_ms) : id(hp2_last_real_heat_start_ms);
     const bool active = oq_request::min_runtime_window_active(now_ms, last_start, minimum_runtime_ms);
-    const bool hold = oq_request::min_runtime_hold_required(level, blocked, active, this->last_applied_(is_hp1),
-                                                            this->measured_thermal_(is_hp1));
+    const bool hold =
+        oq_request::min_runtime_hold_required(level, blocked || this->dew_stop_blocks_retained_(is_hp1), active,
+                                              this->last_applied_(is_hp1), this->measured_thermal_(is_hp1));
     if (hold) level = this->allowed_(is_hp1, mode_code, 1, frequency);
     bool& last_hold = is_hp1 ? this->last_hp1_min_runtime_hold_ : this->last_hp2_min_runtime_hold_;
     if (hold == last_hold) return;

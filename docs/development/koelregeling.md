@@ -111,6 +111,15 @@ request-/actuatorguards blijven afzonderlijke grenzen. De exacte maskerings-
 en herstelvoorwaarden staan in `update_oil_return()` en `update_limiter()`;
 wijzig die samen met hun regressies en passende HIL-dekking.
 
+Een bevestigde stop op het gemeten dauwpunt heeft bij automatische koeling
+voorrang op olieherstel en de minimale looptijd. Ook behouden ODU-opdrachten
+en nog gequeueude positieve koelframes mogen de nulopdracht niet herstellen.
+Een ontbrekende bron of weggevallen kamervraag wist de stop niet: herstel
+vereist een verse, eindige dauwpuntmarge boven de herstartgrens, of de bestaande
+overgang naar een andere geldige bewakingsmodus. Expliciet positieve handmatige
+serviceopdrachten behouden hun bestaande beleid; handmatig stoppen en Standby
+geven geen vrijstelling voor een oude positieve koelopdracht.
+
 ## Single/Duo: één automatische koeleigenaar
 
 De [dispatcher](../../openquatt/includes/control/oq_cooling_dispatch_logic.h)

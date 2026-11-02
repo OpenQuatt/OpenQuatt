@@ -73,8 +73,11 @@ inline DemandOutput reset_inactive_demand(const DemandInput& in, const DemandTun
   state.base_demand = state.limited_demand = state.allowed_max = 0;
   state.limiter_reason_code = REASON_INACTIVE;
   state.water_cycle.active = false;
-  state.water_cycle.stop_reason_code = inactive_stop_reason(in.cycle_was_active, in.request_cleared, !inputs_valid,
-                                                            in.flow_permission_lost, in.core_permission_lost);
+  // Keep a confirmed indoor dew stop through missing inputs and room-off.
+  // Only fresh recovery evidence or a different valid guard can replace it.
+  if (state.water_cycle.stop_reason_code != WATER_STOP_DEW)
+    state.water_cycle.stop_reason_code = inactive_stop_reason(in.cycle_was_active, in.request_cleared, !inputs_valid,
+                                                              in.flow_permission_lost, in.core_permission_lost);
   state.filter = {};
   state.dew_gap_c = state.projected_gap_c = NAN;
   state.demand_change_seen = false;

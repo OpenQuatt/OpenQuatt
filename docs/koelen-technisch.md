@@ -31,7 +31,7 @@ De starttijd hoort bij het venster, de eindtijd niet: `08:00-20:00` is actief va
 
 Het schema gebruikt de lokale klok van de controller. Na een herstart zonder geldige netwerktijd blijft de schematoestemming veilig uit. Zodra SNTP de tijd heeft gesynchroniseerd, loopt de lokale klok op de controller door en wordt het venster automatisch opnieuw beoordeeld.
 
-Aan het einde van het venster trekt OpenQuatt de koeltoestemming gecontroleerd in. Een nog lopende minimale compressortijd kan de compressor kort na de eindtijd laten doorlopen; daarna kan de pomp voor de normale postflow actief blijven. Een harde veiligheidsingreep mag de minimale looptijd wel doorbreken.
+Aan het einde van het venster trekt OpenQuatt de koeltoestemming gecontroleerd in. Een nog lopende minimale compressortijd kan de compressor kort na de eindtijd laten doorlopen; daarna kan de pomp voor de normale postflow actief blijven. Een harde veiligheidsingreep mag de minimale looptijd wel doorbreken. Bij automatische koeling heeft een bevestigde dauwpuntstop ook voorrang op het herstelvenster voor olieretour.
 
 Wil je de exacte koelinstellingen, marges en begrenzingen begrijpen of wijzigen? Gebruik dan de technische naslag [Instellingen en meetwaarden](instellingen-en-meetwaarden.md).
 

@@ -501,7 +501,11 @@ class Runtime {
                            !defrost->cycle.observed_active() && !defrost->holding() && !oil_return;
     const auto boot_safety = boot_hold ? oq_boot_resume_runtime::capture(is_hp1) : oq_boot_resume_runtime::Safety{};
     const bool safety_stop =
-        stop_pending || this->defrost_safety_stop_(is_hp1) || (boot_hold && (boot_safety.abort || !boot_safety.ready));
+        stop_pending || this->defrost_safety_stop_(is_hp1) ||
+        (!(cycle.manual_service_active && requested > 0 && oq_manual_hp::positive_cooling_request(is_hp1)) &&
+         oq_cooling::confirmed_dew_stop_requires_off(id(oq_cooling_stop_reason_code),
+                                                     cycle.request_mode_code == 1 || was_cooling)) ||
+        (boot_hold && (boot_safety.abort || !boot_safety.ready));
     // Unknown defrost/oil-return tails are reconstructed as a conservative
     // three-minute hold. Safety/permission loss always ends this hold.
     if (boot_hold && previous > 0 && !safety_stop && cycle.frequency.frequency_allowed(is_hp1, 2, previous))
