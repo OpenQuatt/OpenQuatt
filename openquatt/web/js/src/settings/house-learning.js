@@ -67,6 +67,21 @@ const SOURCE_REJECTION_KEYS = {
   service_or_ota_active: "houseLearning.reasons.serviceOrOta",
 };
 const MODEL_REASONS = ["model_context_mismatch", "insufficient_shared_temperature_range", "model_disagreement", "thermal_storage_not_stationary"];
+const RESUME_REASON_KEYS = {
+  ...COLLECTION_REJECTION_KEYS,
+  ...SOURCE_REJECTION_KEYS,
+  checkpoint_missing: "houseLearning.resumeReasons.missing",
+  checkpoint_expired: "houseLearning.resumeReasons.expired",
+  checkpoint_invalid: "houseLearning.resumeReasons.invalid",
+  checkpoint_context_unavailable: "houseLearning.resumeReasons.context",
+  checkpoint_context_mismatch: "houseLearning.resumeReasons.context",
+  checkpoint_decode_failed: "houseLearning.resumeReasons.decode",
+  checkpoint_quality_invalid: "houseLearning.resumeReasons.quality",
+  context_changed: "houseLearning.collectionRejections.mixedContext",
+  restart_unconfirmed: "houseLearning.resumeReasons.unconfirmed",
+  unexpected_restart: "houseLearning.resumeReasons.unconfirmed",
+  paused: "houseLearning.resumeReasons.paused",
+};
 const reasons = (values, fallback) => {
   const unique = [...new Set((values || []).map((value) => t(REASON_LABEL_KEYS[value] || "houseLearning.reasons.unknownBlock")))];
   return unique.length ? unique.join(" · ") : fallback;
@@ -224,6 +239,18 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   const thermal = collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, measurementWaitingNote(status), false);
   const phase = status.collection?.batch;
   const current = status.enabled && !statusIsStale(status) && Number.isFinite(phase?.elapsedSeconds) && phase.elapsedSeconds >= 0 && phase.targetSeconds > 0;
+  const resumeReason = phase?.resumeReason;
+  const resumeNote = current && phase.resumeStatus === "discarded"
+    ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.status.dayDiscarded", {
+      reason: t(Object.hasOwn(RESUME_REASON_KEYS, resumeReason) ? RESUME_REASON_KEYS[resumeReason] : "houseLearning.resumeReasons.unknown"),
+    }))}</p>` : "";
+  const uncertaintyNote = current && phase.missingEnergyUncertaintyWh >= 0
+    && Number.isFinite(phase.missingEnergyUncertaintyWh) && phase.missingEnergyBudgetWh > 0
+    && Number.isFinite(phase.missingEnergyBudgetWh)
+    ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.status.gapBudget", {
+      used: formatNumber(phase.missingEnergyUncertaintyWh, { maximumFractionDigits: 1 }),
+      budget: formatNumber(phase.missingEnergyBudgetWh, { maximumFractionDigits: 1 }),
+    }))}</p>` : "";
   const fraction = current ? Math.max(0, Math.min(100, phase.elapsedSeconds / phase.targetSeconds * 100)) : 0;
   const modelNote = `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.modelStatus"))}: <strong>${escapeHtml(modelStatus(status))}</strong> · ${escapeHtml(modelStatusNote(status))}</p>`;
   const modelCards = [
@@ -250,7 +277,7 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     ${status.enabled ? `<p class="oq-house-learning-current-time">${escapeHtml(daily[2])}</p>` : ""}
     ${current ? `<div class="oq-house-learning-readiness-track" aria-hidden="true"><span style="width:${fraction}%"></span></div>` : ""}
     <p class="oq-house-learning-current-note">${activityValue !== daily[1] ? `<strong>${escapeHtml(activityValue)}</strong> · ` : ""}${escapeHtml(activityNote)}</p>
-    ${rejectionNote}
+    ${rejectionNote}${resumeNote}${uncertaintyNote}
   </div>${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
   if (section === "primary") return primary;
   const secondary = `<section class="oq-house-learning-thermal"><div class="oq-house-learning-section-head"><h4>${escapeHtml(t("houseLearning.cards.heatingCooling"))}</h4>${renderSettingsInfoToggle("house-learning-thermal", t("houseLearning.cards.heatingCooling"), thermalHelp)}</div><p class="oq-house-learning-thermal-progress"><strong>${escapeHtml(thermal[1])}</strong> · ${escapeHtml(thermal[2])}</p>${modelNote}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note]) => renderStatCard({ label, value, note })).join("")}</div></section>

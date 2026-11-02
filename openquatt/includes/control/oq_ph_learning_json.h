@@ -11,6 +11,10 @@ constexpr size_t kStatusJsonBufferSize = 4U * 1024U;
 constexpr size_t kExportJsonBufferSize = 32U * 1024U;
 constexpr size_t kMaxExportRecordRows = 128U;
 constexpr size_t kMaxExportDiagnosticRows = 60U;
+constexpr size_t kMaxDailyCollectionJsonBytes = 1536U;
+constexpr size_t kMaxDailyCollectionStateJsonBytes = 1024U;
+static constexpr char kExportDailyCollectionStatePrefix[] = ",\"collection_state\":";
+static constexpr char kExportDailyCollectionPrefix[] = "],\"daily_collection\":";
 
 // %.6g needs at most 12 characters for any finite IEEE-754 float, including
 // its sign and exponent. JSON null is shorter and is used for non-finite data.
@@ -40,10 +44,15 @@ constexpr size_t kExportRecordRowMaxBytes =
     2U + 9U + 3U * kMaxSerializedUint32Chars + 6U * kMaxSerializedFloatChars + 1U;
 constexpr size_t kExportDiagnosticRowMaxBytes = 2U + 25U + 4U * kMaxSerializedUint32Chars + kMaxSerializedInt32Chars +
                                                 8U * kMaxSerializedFloatChars + 13U * kMaxSerializedBoolChars;
-constexpr size_t kMaxExportJsonBytes =
+constexpr size_t kMaxExportBaseJsonBytes =
     sizeof(kExportRecordsPrefix) - 1U + delimited_rows_max(kExportRecordRowMaxBytes, kMaxExportRecordRows) +
     sizeof(kExportDiagnosticsPrefix) - 1U + delimited_rows_max(kExportDiagnosticRowMaxBytes, kMaxExportDiagnosticRows) +
     sizeof(kExportSuffix) - 1U;
+// The optional L1 object is export-only: the separate 4 KiB status endpoint is
+// unchanged. Keep its worst-case body bounded along with all retained rows.
+constexpr size_t kMaxExportJsonBytes = kMaxExportBaseJsonBytes + sizeof(kExportDailyCollectionPrefix) - 1U +
+                                       kMaxDailyCollectionJsonBytes + sizeof(kExportDailyCollectionStatePrefix) - 1U +
+                                       kMaxDailyCollectionStateJsonBytes;
 
 static_assert(kMaxExportJsonBytes < kExportJsonBufferSize,
               "Worst-case house-learning export must leave room for its terminating NUL");

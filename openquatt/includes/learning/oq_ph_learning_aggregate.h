@@ -49,9 +49,31 @@ struct SegmentAccumulator {
   double trend_wtr = 0.0;
 };
 
+// Diagnostic only: these causes do not change eligibility, thresholds or the
+// persisted accumulator/record formats.
+enum class DailyCollectionCause : uint8_t {
+  NONE = 0,
+  INVALID_MEASUREMENT,
+  MISSED_TICK,
+  GAP_TOO_LONG,
+  CLOCK_DISCONTINUITY,
+  CONTEXT_CHANGED,
+  UNCERTAINTY_BUDGET,
+  COMPLETED_QUALITY,
+  RESTART_DISCARDED,
+  APPEND_REJECTED,
+  PAUSED,
+  DISABLED,
+  INVALID_INPUT,
+  INVALID_CONFIGURATION,
+  EVIDENCE_REPLACED,
+  COUNT,
+};
+
 struct ObserveResult {
   LearningStatus status = LearningStatus::COLLECTING;
   bool has_record = false;
+  DailyCollectionCause cause = DailyCollectionCause::NONE;
   SegmentRecord record;
 };
 
@@ -285,9 +307,15 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
       state.source_gap_pending ? state.last_gap_observation_ms : state.last_monotonic_ms;
   // Only explicit observations with a known operating state can hold a day.
   // A completely missing tick still obeys the normal interval limit.
-  if (!timestamp_valid || snapshot.monotonic_ms <= last_observation_ms ||
-      (!resuming_restart && snapshot.monotonic_ms - last_observation_ms > config.max_interval_ms) ||
-      !detail::coherent_time(state, snapshot, config, state.source_gap_pending ? kDailyMaximumGapMs : 0)) {
+  if (!timestamp_valid || snapshot.monotonic_ms <= last_observation_ms)
+    result.cause = DailyCollectionCause::CLOCK_DISCONTINUITY;
+  else if (!resuming_restart && snapshot.monotonic_ms - last_observation_ms > config.max_interval_ms)
+    result.cause = DailyCollectionCause::MISSED_TICK;
+  else if (state.source_gap_pending && snapshot.monotonic_ms - state.last_monotonic_ms > kDailyMaximumGapMs)
+    result.cause = DailyCollectionCause::GAP_TOO_LONG;
+  else if (!detail::coherent_time(state, snapshot, config, state.source_gap_pending ? kDailyMaximumGapMs : 0))
+    result.cause = DailyCollectionCause::CLOCK_DISCONTINUITY;
+  if (result.cause != DailyCollectionCause::NONE) {
     reset_segment(state);
     if (measurement_status == LearningStatus::OK) detail::seed_segment(state, snapshot);
     result.status = LearningStatus::TIME_DISCONTINUITY;
@@ -297,6 +325,7 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
     reset_segment(state);
     if (measurement_status == LearningStatus::OK) detail::seed_segment(state, snapshot);
     result.status = LearningStatus::MIXED_CONTEXT;
+    result.cause = DailyCollectionCause::CONTEXT_CHANGED;
     return result;
   }
 
@@ -313,6 +342,7 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
     }
     reset_segment(state);
     result.status = measurement_status;
+    result.cause = DailyCollectionCause::INVALID_MEASUREMENT;
     return result;
   }
 
@@ -329,6 +359,7 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
     if (state.missing_energy_uncertainty_ws + uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0) {
       detail::seed_segment(state, snapshot);
       result.status = LearningStatus::SEGMENT_INELIGIBLE;
+      result.cause = DailyCollectionCause::UNCERTAINTY_BUDGET;
       return result;
     }
     // A new day's remainder cannot invalidate an independently eligible old day.
@@ -346,6 +377,7 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
   result.record = detail::make_record(state);
   result.status = validate_segment_record(result.record, config);
   result.has_record = result.status == LearningStatus::OK;
+  if (!result.has_record) result.cause = DailyCollectionCause::COMPLETED_QUALITY;
   if (result.has_record) result.status = LearningStatus::SEGMENT_READY;
   if (discard_next_day_remainder) {
     detail::seed_segment(state, snapshot);
@@ -373,6 +405,7 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
     reset_segment(state);
     auto result = detail::observe_snapshot_core(state, snapshot, config, false);
     result.status = LearningStatus::TIME_DISCONTINUITY;
+    result.cause = DailyCollectionCause::RESTART_DISCARDED;
     return result;
   }
   LearningSnapshot resumed = snapshot;
