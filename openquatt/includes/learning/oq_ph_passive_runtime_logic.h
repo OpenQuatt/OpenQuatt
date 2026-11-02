@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "oq_ph_learning_aggregate.h"
+#include "oq_ph_daily_collection_diagnostics.h"
 #include "oq_ph_learning_fit.h"
 #include "oq_ph_learning_source_logic.h"
 #include "oq_ph_model_validation.h"
@@ -166,6 +167,7 @@ struct PassiveRuntimeStorage {
   AdviceResult batch_result;
   ThermalModelState thermal_state;
   PassiveRuntimeDiagnostics diagnostics;
+  DailyCollectionDiagnostics daily_diagnostics;
   PassiveRuntimeStatus status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
 };
 
@@ -209,11 +211,13 @@ inline void cancel_fit(PassiveRuntimeStorage& state) {
   state.batch_result = {};
 }
 
-inline void clear_transient_collection(PassiveRuntimeStorage& state, LearningStatus rejection = LearningStatus::OK) {
+inline void clear_transient_collection(PassiveRuntimeStorage& state, LearningStatus rejection = LearningStatus::OK,
+                                       DailyCollectionCause cause = DailyCollectionCause::EVIDENCE_REPLACED) {
   if (state.batch_accumulator.active && rejection != LearningStatus::OK) {
     state.diagnostics.last_batch_rejection = rejection;
     state.diagnostics.last_batch_source_status = SnapshotSourceStatus::OK;
   }
+  diagnose_daily_discard(state.daily_diagnostics, state.batch_accumulator, cause, rejection, state.last_epoch_s);
   reset_segment(state.batch_accumulator);
   state.thermal_accumulator = {};
   cancel_fit(state);
@@ -285,7 +289,10 @@ inline PassiveRuntimeStatus initialize_passive_runtime(PassiveRuntimeStorage& st
 // These are the only entry points, besides tick(), that change learner state.
 inline void pause_passive_runtime(PassiveRuntimeStorage& state, uint64_t now_ms,
                                   LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
-  passive_runtime_detail::clear_transient_collection(state, rejection);
+  passive_runtime_detail::clear_transient_collection(state, rejection,
+                                                     rejection == LearningStatus::MIXED_CONTEXT
+                                                         ? DailyCollectionCause::CONTEXT_CHANGED
+                                                         : DailyCollectionCause::PAUSED);
   passive_runtime_detail::invalidate_dynamic(state, now_ms);
   state.opted_in = false;
   state.status = PassiveRuntimeStatus::PAUSED;
@@ -295,7 +302,8 @@ inline void pause_passive_runtime(PassiveRuntimeStorage& state, uint64_t now_ms,
 inline void refresh_passive_evaluation(PassiveRuntimeStorage& state, const PassiveRuntimeConfig& config) {
   state.config = config;
   if (!passive_runtime_detail::valid_runtime_config(config)) {
-    passive_runtime_detail::clear_transient_collection(state, LearningStatus::INVALID_CONFIGURATION);
+    passive_runtime_detail::clear_transient_collection(state, LearningStatus::INVALID_CONFIGURATION,
+                                                       DailyCollectionCause::INVALID_CONFIGURATION);
     state.status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
     return;
   }
@@ -358,7 +366,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   if (state.diagnostics.tick_count != UINT32_MAX) ++state.diagnostics.tick_count;
   if (!valid_context(input.context)) {
-    clear_transient_collection(state, LearningStatus::INVALID_MEASUREMENT);
+    clear_transient_collection(state, LearningStatus::INVALID_MEASUREMENT, DailyCollectionCause::INVALID_INPUT);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::INVALID_INPUT;
@@ -368,13 +376,13 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   // this function, but an early call still pauses safely instead of permanently
   // blocking the owner or assigning synthetic wall-clock time to records.
   if (input.now_monotonic_ms == 0 || input.now_epoch_s == 0) {
-    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY);
+    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY, DailyCollectionCause::CLOCK_DISCONTINUITY);
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
   const bool generation_decreased = input.context.context_revision < state.context_revision;
   if (generation_decreased) {
-    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT);
+    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT, DailyCollectionCause::CONTEXT_CHANGED);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::STALE_CONTEXT;
@@ -382,7 +390,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   const bool generations_changed = input.context.context_revision != state.context_revision;
   if (!generations_changed && !same_context_bytes(state, input.context)) {
-    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT);
+    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT, DailyCollectionCause::CONTEXT_CHANGED);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::STALE_CONTEXT;
@@ -395,7 +403,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   const LearningStatus prune_status = prune_expired_records(buffer, input.now_epoch_s);
   state.record_count = buffer.count;
   if (prune_status != LearningStatus::OK) {
-    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY);
+    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY, DailyCollectionCause::CLOCK_DISCONTINUITY);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::TIME_DISCONTINUITY;
@@ -404,7 +412,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   if (oldest_record_expired) state.fit_pending = state.record_count > 0;
 
   if (generations_changed) {
-    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT);
+    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT, DailyCollectionCause::CONTEXT_CHANGED);
     bind_context(state, input.context);
     // Revision separates unfinished intervals, not the retained house history.
     for (size_t i = 0; i < state.record_count; ++i) state.records[i].context_revision = state.context_revision;
@@ -418,7 +426,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   if ((state.last_monotonic_ms != 0 && input.now_monotonic_ms <= state.last_monotonic_ms) ||
       (state.last_epoch_s != 0 && input.now_epoch_s < state.last_epoch_s)) {
-    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY);
+    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY, DailyCollectionCause::CLOCK_DISCONTINUITY);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::TIME_DISCONTINUITY;
@@ -429,13 +437,13 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   state.opted_in = input.opted_in;
 
   if (!input.opted_in) {
-    clear_transient_collection(state, LearningStatus::SEGMENT_INELIGIBLE);
+    clear_transient_collection(state, LearningStatus::SEGMENT_INELIGIBLE, DailyCollectionCause::DISABLED);
     invalidate_dynamic(state, input.now_monotonic_ms);
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
   if (!input.context_valid || !input.active_line_valid || !valid_house_line(input.active_line)) {
-    clear_transient_collection(state, LearningStatus::INVALID_MEASUREMENT);
+    clear_transient_collection(state, LearningStatus::INVALID_MEASUREMENT, DailyCollectionCause::INVALID_INPUT);
     invalidate_dynamic(state, input.now_monotonic_ms);
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
@@ -455,13 +463,16 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
       state.diagnostics.last_batch_rejection = LearningStatus::INVALID_MEASUREMENT;
       state.diagnostics.last_batch_source_status = SnapshotSourceStatus::OK;
     }
+    diagnose_daily_discard(state.daily_diagnostics, state.batch_accumulator, DailyCollectionCause::INVALID_INPUT,
+                           LearningStatus::INVALID_MEASUREMENT, input.now_epoch_s);
     reset_segment(state.batch_accumulator);
     state.diagnostics.last_batch_status = LearningStatus::INVALID_MEASUREMENT;
     if (state.diagnostics.rejected_batch_observations != UINT32_MAX) ++state.diagnostics.rejected_batch_observations;
   } else {
     const bool batch_was_active = state.batch_accumulator.active;
-    const ObserveResult observed = observe_snapshot(state.batch_accumulator, input.batch_snapshot, state.config.quality,
-                                                    input.may_bridge_daily_gap);
+    const ObserveResult observed =
+        observe_daily_with_diagnostics(state.daily_diagnostics, state.batch_accumulator, input.batch_snapshot,
+                                       state.config.quality, input.may_bridge_daily_gap, input.batch_source_status);
     if (batch_was_active && observed.status != LearningStatus::COLLECTING && !observed.has_record) {
       state.diagnostics.last_batch_rejection = observed.status;
       state.diagnostics.last_batch_source_status =
@@ -482,8 +493,10 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
         state.fit_pending = true;
         state.restored_records = false;
         if (state.diagnostics.accepted_batch_records != UINT32_MAX) ++state.diagnostics.accepted_batch_records;
-      } else if (state.diagnostics.rejected_batch_observations != UINT32_MAX) {
-        ++state.diagnostics.rejected_batch_observations;
+      } else {
+        diagnose_daily_append_rejection(state.daily_diagnostics, observed.record, append_status);
+        if (state.diagnostics.rejected_batch_observations != UINT32_MAX)
+          ++state.diagnostics.rejected_batch_observations;
       }
     } else if (observed.status != LearningStatus::COLLECTING &&
                state.diagnostics.rejected_batch_observations != UINT32_MAX) {

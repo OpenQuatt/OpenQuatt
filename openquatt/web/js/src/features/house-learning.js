@@ -40,6 +40,15 @@ const collectionPhase = (collection, prefix) => {
       resumeStatus: typeof collection.batch_resume_status === "string" ? collection.batch_resume_status : "unknown",
       missingEnergyUncertaintyWh: numberOrNull(collection.batch_missing_energy_uncertainty_wh),
     } : {}),
+    ...(prefix === "batch" && Object.hasOwn(collection, "batch_resume_reason") ? {
+      resumeReason: typeof collection.batch_resume_reason === "string" ? collection.batch_resume_reason : "unknown",
+    } : {}),
+    ...(prefix === "batch" && Object.hasOwn(collection, "batch_source_status") ? {
+      sourceStatus: typeof collection.batch_source_status === "string" ? collection.batch_source_status : "unknown",
+    } : {}),
+    ...(prefix === "batch" && Object.hasOwn(collection, "batch_missing_energy_budget_wh") ? {
+      missingEnergyBudgetWh: numberOrNull(collection.batch_missing_energy_budget_wh),
+    } : {}),
     elapsedSeconds: numberOrNull(collection[`${prefix}_elapsed_s`]),
     targetSeconds: numberOrNull(collection[`${prefix}_target_s`]),
     intervals: numberOrNull(collection[`${prefix}_intervals`]),

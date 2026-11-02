@@ -112,6 +112,23 @@ class RecorderComponentRuntimeTest(unittest.TestCase):
                 self.assertAlmostEqual(rows[3]["supplyTemp"], 24.3, places=4)
                 self.assertEqual(rows[3]["waterSupplyTempEffectiveSource"], "Local - PT1000")
 
+    def test_export_pauses_outside_mutex_preserves_snapshot_and_recovers_after_abort(self):
+        for duo in self.binaries:
+            with self.subTest(duo=duo):
+                output = self.scenario("cooperative-export", duo)
+                reference = json.loads(output["reference"])
+                cooperative = json.loads(output["cooperative"])
+                for key in ["columns", "units", "initial", "samples", "events"]:
+                    self.assertEqual(cooperative[key], reference[key])
+                self.assertEqual(cooperative["recording"]["recording_id"], reference["recording"]["recording_id"])
+                self.assertEqual(cooperative["recording"]["sample_count"], reference["recording"]["sample_count"])
+                text_reference = json.loads(output["text-reference"])
+                for name in ["text", "retry"]:
+                    payload = json.loads(output[name])
+                    for key in ["columns", "units", "initial", "samples", "events"]:
+                        self.assertEqual(payload[key], text_reference[key])
+                    self.assertEqual(payload["recording"]["sample_count"], 2)
+
     def test_real_default_schema_long_retention_snapshot_interleavings_and_http_failures(self):
         for duo in self.binaries:
             with self.subTest(duo=duo):

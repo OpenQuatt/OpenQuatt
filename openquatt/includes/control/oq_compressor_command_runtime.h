@@ -1,5 +1,6 @@
 #pragma once
 #include "oq_compressor_command_guard.h"
+#include "oq_cooling_limiter_logic.h"
 #include "oq_boot_resume_runtime.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
@@ -74,7 +75,11 @@ inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = f
   if (address == 3999 && queued && value != mode_code) return false;
   const int active_mode = address == 3999 ? value : mode_code;
   if (active_mode != 1 && active_mode != 2) return false;
-  if (active_mode == 1) return true;  // Cooling has its own existing safety path.
+  // Revalidate queued positive cooling frames after a confirmed dew stop.
+  // This callback only reads state; queue invalidation remains with the actuator.
+  if (active_mode == 1)
+    return oq_manual_hp::positive_cooling_request(hp1) ||
+           !oq_cooling::confirmed_dew_stop_requires_off(id(oq_cooling_stop_reason_code), true);
   const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(
       hp1 ? id(hp1_runtime_frequency_snapshot_storage) : OQ_COMMAND_SECONDARY_ID(runtime_frequency_snapshot_storage));
   // Preserve mapping/identity validation independently of any temperature model.

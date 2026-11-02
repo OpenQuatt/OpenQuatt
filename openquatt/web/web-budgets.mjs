@@ -28,7 +28,12 @@ export const WEB_BUNDLE_BUDGETS = [
     // measured raw dev 1,375,784 B, PR 1,379,267 B (+3,483 B; gzip +1,275 B, Node 24.19.0).
     // Shared allowance for recorder copy preparation (+2,000 B) and DHW-only diagnostics (+1,161 B).
     // Keep PRs #897 and #899 compatible in either merge order; relative gzip limits stay unchanged.
-    raw: 1_394_538,    gzipBaselineCeiling: 362_000,
+    // Daily recovery reasons and conditional gap-budget copy in both locales:
+    // +2,378 B raw / +702 B gzip versus dev 5ae3951f (Node 24.14.1).
+    // Power house memory max c (+241 B)
+    // Preserve the existing 411 B raw headroom and unchanged relative gzip limits.
+    raw: 1_397_116,
+    gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.

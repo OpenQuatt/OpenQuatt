@@ -53,8 +53,11 @@ async def to_code(config: ConfigType) -> None:
     from esphome import writer
 
     from .core_four_decimals import install_four_decimal_patch
+    from .http_request_update_source import install_update_source_patch
 
     install_four_decimal_patch(CORE, writer)
+    if "update/http_request" in CORE.loaded_platforms:
+        install_update_source_patch(CORE, writer)
     var = cg.new_Pvariable(config[CONF_ID])
     cg.add(cg.RawExpression(f"{web_server_base_ns}::global_web_server_base = {var}"))
 

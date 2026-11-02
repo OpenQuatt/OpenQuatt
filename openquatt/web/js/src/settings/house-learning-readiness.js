@@ -12,8 +12,8 @@ const MAX_BIN_FRACTION = 0.67;
 const number = (value) => formatNumber(value, { maximumFractionDigits: 2 });
 
 export function getHouseLearningReadiness(records) {
-  const days = records.filter((record) => record.recordKind === 1
-    && record.endEpoch - record.startEpoch === 86400 && Number.isFinite(record.outsideC))
+  // The firmware marks full days from monotonic duration; UTC timestamps may differ.
+  const days = records.filter((record) => record.recordKind === 1 && Number.isFinite(record.outsideC))
     .slice().sort((a, b) => a.startEpoch - b.startEpoch);
   const checkCount = Math.min(CHECK_DAYS, days.length);
   const train = days.slice(0, days.length - checkCount);

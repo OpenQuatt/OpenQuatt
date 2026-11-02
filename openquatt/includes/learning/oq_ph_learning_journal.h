@@ -49,6 +49,35 @@ enum class LearningJournalStatus : uint8_t {
   AMBIGUOUS_SEQUENCE,
 };
 
+// Diagnose the consumer boundary separately from slot integrity. A readable
+// journal can retain completed records while its unfinished day is ineligible.
+enum class DailyCheckpointRestoreStatus : uint8_t {
+  OK = 0,
+  MISSING,
+  CONTEXT_UNAVAILABLE,
+  CONTEXT_MISMATCH,
+  DECODE_FAILED,
+  QUALITY_INVALID,
+};
+
+inline const char* daily_checkpoint_restore_reason(DailyCheckpointRestoreStatus status) {
+  switch (status) {
+    case DailyCheckpointRestoreStatus::OK:
+      return "none";
+    case DailyCheckpointRestoreStatus::MISSING:
+      return "checkpoint_missing";
+    case DailyCheckpointRestoreStatus::CONTEXT_UNAVAILABLE:
+      return "checkpoint_context_unavailable";
+    case DailyCheckpointRestoreStatus::CONTEXT_MISMATCH:
+      return "checkpoint_context_mismatch";
+    case DailyCheckpointRestoreStatus::DECODE_FAILED:
+      return "checkpoint_decode_failed";
+    case DailyCheckpointRestoreStatus::QUALITY_INVALID:
+      return "checkpoint_quality_invalid";
+  }
+  return "checkpoint_invalid";
+}
+
 struct LearningJournalMetadata {
   LearningJournalStatus status = LearningJournalStatus::INVALID_ARGUMENT;
   uint32_t sequence = 0;
@@ -645,20 +674,27 @@ struct LearningJournalRecords {
     return static_cast<uint32_t>(duration);
   }
 
-  bool restore_daily(SegmentAccumulator& output, const PassiveContextView& context,
-                     const QualityConfig& quality) const {
-    if (!has_daily_checkpoint() || context.context_revision == 0 ||
-        !learning_journal_detail::daily_context_matches(slot.bytes + kLearningJournalHeaderBytes, context_size,
+  bool restore_daily(SegmentAccumulator& output, const PassiveContextView& context, const QualityConfig& quality,
+                     DailyCheckpointRestoreStatus* status = nullptr) const {
+    const auto result = [&](DailyCheckpointRestoreStatus value) {
+      if (status != nullptr) *status = value;
+      return value == DailyCheckpointRestoreStatus::OK;
+    };
+    if (!has_daily_checkpoint()) return result(DailyCheckpointRestoreStatus::MISSING);
+    if (context.bytes == nullptr || context.size == 0 || context.context_revision == 0)
+      return result(DailyCheckpointRestoreStatus::CONTEXT_UNAVAILABLE);
+    if (!learning_journal_detail::daily_context_matches(slot.bytes + kLearningJournalHeaderBytes, context_size,
                                                         context.bytes, context.size))
-      return false;
+      return result(DailyCheckpointRestoreStatus::CONTEXT_MISMATCH);
     learning_journal_detail::Reader reader{slot.bytes, slot.size};
     reader.position = kLearningJournalHeaderBytes + context_size + record_count * kLearningJournalRecordBytes +
                       kLearningJournalThermalBytes;
     SegmentAccumulator state;
-    if (!learning_journal_detail::read_daily(reader, state) || !valid_daily_checkpoint(state, quality)) return false;
+    if (!learning_journal_detail::read_daily(reader, state)) return result(DailyCheckpointRestoreStatus::DECODE_FAILED);
+    if (!valid_daily_checkpoint(state, quality)) return result(DailyCheckpointRestoreStatus::QUALITY_INVALID);
     state.context_revision = context.context_revision;
     output = state;
-    return true;
+    return result(DailyCheckpointRestoreStatus::OK);
   }
 
   bool restore_thermal(ThermalModelState& output, const ThermalModelConfig& config, uint64_t now_ms, uint32_t revision,

@@ -21,6 +21,7 @@
 #include "../learning/oq_ph_learning_live_logic.h"
 #include "../learning/oq_ph_learning_persistence_logic.h"
 #include "oq_ph_learning_json.h"
+#include "oq_ph_daily_collection_state_json.h"
 #include "oq_sensor_source_runtime.h"
 
 namespace oq_ph_learning {
@@ -112,8 +113,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     auto& state = storage_[0];
     state.boot_restart_ticket = {};
     state.daily_restore_pending = false;
-    if (state.daily_restore_allowed)
-      state.daily_resume_reason = rejection == LearningStatus::MIXED_CONTEXT ? "context_changed" : "paused";
+    cancel_daily_resume_status_(state, rejection == LearningStatus::MIXED_CONTEXT ? "context_changed" : "paused");
     state.daily_restore_allowed = false;
     state.restart_prepared = false;
     pause_diagnostic_capture(state.diagnostic_capture);
@@ -216,7 +216,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.learner.initialized && (state.measurement_context_changed || context_bytes_changed);
     if (context_changed) {
       state.daily_restore_pending = false;
-      if (state.daily_restore_allowed) state.daily_resume_reason = "context_changed";
+      cancel_daily_resume_status_(state, "context_changed");
       state.daily_restore_allowed = false;
     }
     if (context_changed && ++state.context_revision == 0) state.context_revision = 1;
@@ -226,6 +226,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const bool reset_processed = state.reset_requested;
     if (reset_processed) {
       state.daily_restore_pending = false;
+      clear_daily_resume_status_(state);
       reset_passive_runtime(state.learner);
       state.journal.reset(
           [&state]() { return erase_slots_(state.partition); },
@@ -303,15 +304,16 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
           state.pending_daily.daily_checkpoint_epoch(),
           batch.may_bridge_daily_gap || daily_boot_sources_pending(input, batch, state.config.quality));
       if (decision != DailyResumeDecision::WAIT) {
-        const bool restored =
-            decision == DailyResumeDecision::RESTORE &&
-            state.pending_daily.restore_daily(state.learner.batch_accumulator, context, state.config.quality);
+        DailyCheckpointRestoreStatus restore_status = DailyCheckpointRestoreStatus::MISSING;
+        const bool restored = decision == DailyResumeDecision::RESTORE &&
+                              state.pending_daily.restore_daily(state.learner.batch_accumulator, context,
+                                                                state.config.quality, &restore_status);
         state.daily_resume_status = restored ? "resuming" : "discarded";
         if (restored)
           state.daily_resume_reason = "none";
         else if (state.daily_restore_allowed)
           state.daily_resume_reason =
-              decision == DailyResumeDecision::RESTORE ? "checkpoint_invalid"
+              decision == DailyResumeDecision::RESTORE ? daily_checkpoint_restore_reason(restore_status)
               : epoch < state.pending_daily.daily_checkpoint_epoch() ||
                       epoch - state.pending_daily.daily_checkpoint_epoch() > kDailyMaximumGapMs / 1000U
                   ? "checkpoint_expired"
@@ -332,6 +334,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.learner.batch_accumulator.restart_pending = true;
         state.daily_resume_status = "resuming";
       } else {
+        diagnose_daily_discard(state.learner.daily_diagnostics, state.learner.batch_accumulator,
+                               DailyCollectionCause::RESTART_DISCARDED, LearningStatus::TIME_DISCONTINUITY, epoch);
         reset_segment(state.learner.batch_accumulator);
       }
     }
@@ -340,15 +344,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const uint32_t thermal_samples_before = state.learner.thermal_state.accepted_samples;
     // The paused tick still prunes expired records before checkpointing.
     if (state.learner.initialized) tick_passive_runtime(state.learner, tick);
-    if (resume_attempt) {
-      const auto result = state.learner.diagnostics.last_batch_status;
-      state.daily_resume_status = daily_resume_succeeded(result) ? "restored" : "discarded";
-      if (!daily_resume_succeeded(result) && strcmp(state.daily_resume_reason, "none") == 0)
-        state.daily_resume_reason = learning_status_name(result);
-    } else if (strcmp(state.daily_resume_status, "restored") == 0 &&
-               daily_start_before != state.learner.batch_accumulator.start_epoch_s) {
-      state.daily_resume_status = "none";
-    }
+    update_daily_resume_status_(state, resume_attempt, daily_start_before);
     if (state.learner.thermal_state.accepted_samples > thermal_samples_before) state.thermal_epoch = epoch;
     const auto diagnostic_capture = diagnostic_capture_decision(state.diagnostic_capture, enabled && !reset_processed);
     if (diagnostic_capture.capture)
@@ -364,6 +360,34 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   }
 
  private:
+  static void clear_daily_resume_status_(RuntimeStorage& state) {
+    state.daily_resume_status = state.daily_resume_reason = "none";
+  }
+
+  // Before the boot journal loads, keep the first cause for its later discard
+  // decision. Afterwards, pause or a context change dismisses the notice.
+  static void cancel_daily_resume_status_(RuntimeStorage& state, const char* reason) {
+    if (!state.journal.available || state.journal.loaded)
+      clear_daily_resume_status_(state);
+    else if (state.daily_restore_allowed)
+      state.daily_resume_reason = reason;
+  }
+
+  static void update_daily_resume_status_(RuntimeStorage& state, bool resume_attempt, uint32_t daily_start_before) {
+    if (resume_attempt) {
+      const auto result = state.learner.diagnostics.last_batch_status;
+      state.daily_resume_status = daily_resume_succeeded(result) ? "restored" : "discarded";
+      if (!daily_resume_succeeded(result) && strcmp(state.daily_resume_reason, "none") == 0)
+        state.daily_resume_reason = learning_status_name(result);
+    } else if ((strcmp(state.daily_resume_status, "restored") == 0 ||
+                (strcmp(state.daily_resume_status, "discarded") == 0 && daily_start_before != 0)) &&
+               daily_start_before != state.learner.batch_accumulator.start_epoch_s) {
+      // Keep a rejected boot recovery visible during its first replacement day,
+      // then expire it when that day completes, restarts or is discarded.
+      clear_daily_resume_status_(state);
+    }
+  }
+
   esphome::openquatt_common::PsramObjectArray<RuntimeStorage, 1> storage_;
   bool allocation_attempted_ = false;
 
@@ -826,6 +850,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.daily_restore_pending ? "true" : "false", state.daily_resume_status,
         snapshot_source_status_name(state.batch_source_status), state.daily_resume_reason);
     json.number(state.daily_restore_pending ? NAN : batch_window.missing_energy_uncertainty_ws / 3600.0);
+    json.add(",\"batch_missing_energy_budget_wh\":");
+    json.number(kDailyMissingHeatBudgetW * 24.0);
     json.add(
         "},\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
         "\"model_validation_status\":\"%s\",\"sources\":{",
@@ -872,7 +898,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   static void publish_paused_status_(RuntimeStorage& state) {
     state.summary = passive_runtime_summary(state.learner, oq_sources::monotonic_ms());
     const auto clock = id(oq_time).now();
-    publish_status_(state, false, clock.is_valid() ? clock.timestamp : 0U);
+    publish_(state, false, clock.is_valid() ? clock.timestamp : 0U);
   }
 
   static void publish_reset_pending_export_() {
@@ -883,10 +909,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
 
   static void publish_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
     publish_status_(state, enabled, epoch);
-    publish_export_(state);
+    publish_export_(state, enabled, epoch);
   }
 
-  static void publish_export_(RuntimeStorage& state) {
+  static void publish_export_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
     JsonWriter json(state.json, sizeof(state.json));
     json.add("%s", kExportRecordsPrefix);
     for (size_t i = 0; i < state.learner.record_count; ++i) {
@@ -926,7 +952,34 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                r.boiler_known ? "true" : "false", r.protection_active ? "true" : "false",
                r.protection_known ? "true" : "false", r.context_revision);
     }
-    json.add("%s", kExportSuffix);
+    json.add("%s", kExportDailyCollectionPrefix);
+    write_daily_collection_json(json, state.learner.daily_diagnostics);
+    const auto& window = state.learner.batch_accumulator;
+    const bool collecting = enabled && state.learner.initialized && state.learner.opted_in && !state.learner.blocked &&
+                            state.learner.status != PassiveRuntimeStatus::PAUSED;
+    DailyCollectionState collection;
+    collection.tick_epoch = epoch;
+    collection.context_revision = state.input.context_revision;
+    collection.uptime_s = oq_sources::monotonic_ms() / 1000ULL;
+    collection.reset_reason = static_cast<int>(esp_reset_reason());
+    collection.enabled = enabled;
+    collection.active = collecting && state.tick.batch_snapshot_available &&
+                        passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
+                        validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+    collection.gap_pending = collecting && window.source_gap_pending;
+    collection.restore_pending = state.daily_restore_pending;
+    collection.elapsed_s = state.daily_restore_pending   ? state.pending_daily.daily_checkpoint_elapsed_s()
+                           : collecting && window.active ? segment_elapsed_ms(window) / 1000ULL
+                                                         : 0ULL;
+    collection.resume_status = state.daily_resume_status;
+    collection.resume_reason = state.daily_resume_reason;
+    collection.source_status = state.batch_source_status;
+    collection.last_source_status = state.learner.diagnostics.last_batch_source_status;
+    collection.last_rejection = state.learner.diagnostics.last_batch_rejection;
+    collection.uncertainty_wh = state.daily_restore_pending ? NAN : window.missing_energy_uncertainty_ws / 3600.0;
+    json.add("%s", kExportDailyCollectionStatePrefix);
+    write_daily_collection_state_json(json, collection);
+    json.add("}");
     const size_t length = json.size();
     if (length == 0U || !id(oq_ph_learning_status_endpoint).publish_export_json(state.json, length)) {
       publish_export_error_();

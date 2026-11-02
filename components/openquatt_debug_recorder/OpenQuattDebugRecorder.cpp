@@ -12,6 +12,7 @@
 
 #include <esp_heap_caps.h>
 #include <esp_random.h>
+#include <freertos/task.h>
 
 #ifdef USE_BINARY_SENSOR
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -169,9 +170,27 @@ std::string base64_encode(const uint8_t* data, size_t length) {
   return out;
 }
 
+// Only used after capture_snapshot_ has released the recorder mutex. Blocking
+// for one tick lets lower-priority loop/idle tasks run; taskYIELD() does not.
+class ExportWorkBudget {
+ public:
+  void pause_if_needed() {
+    if (static_cast<uint32_t>(millis() - this->last_pause_ms_) < MAX_WORK_MS) return;
+    vTaskDelay(1);
+    this->last_pause_ms_ = millis();
+  }
+
+ private:
+  static constexpr uint32_t MAX_WORK_MS = 5;
+  uint32_t last_pause_ms_{millis()};
+};
+
 class ChunkedJsonWriter {
  public:
-  explicit ChunkedJsonWriter(httpd_req_t* req) : req_(req) { this->buffer_.allocate_external(BUFFER_SIZE); }
+  explicit ChunkedJsonWriter(httpd_req_t* req, ExportWorkBudget* work_budget = nullptr)
+      : req_(req), work_budget_(work_budget) {
+    this->buffer_.allocate_external(BUFFER_SIZE);
+  }
 
   bool ready() const { return static_cast<bool>(this->buffer_); }
   bool write_char(char c) { return this->write_bytes_(&c, 1); }
@@ -265,6 +284,7 @@ class ChunkedJsonWriter {
     size_t remaining = length;
     const char* cursor = data;
     while (remaining > 0) {
+      if (this->work_budget_ != nullptr) this->work_budget_->pause_if_needed();
       if (this->used_ == BUFFER_SIZE && !this->flush()) {
         return false;
       }
@@ -278,6 +298,7 @@ class ChunkedJsonWriter {
   }
 
   httpd_req_t* req_;
+  ExportWorkBudget* work_budget_;
   PsramBuffer<char> buffer_{};
   size_t used_{0};
 };
@@ -1864,7 +1885,8 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
     httpd_resp_sendstr(req, R"({"ok":false,"error":"snapshot_unavailable"})");
     return;
   }
-  ChunkedJsonWriter writer(req);
+  ExportWorkBudget work_budget;
+  ChunkedJsonWriter writer(req, &work_budget);
   if (!writer.ready()) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, "application/json; charset=utf-8");
@@ -1962,6 +1984,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
   }
 
   for (size_t index = 0; index < snapshot.field_count; ++index) {
+    work_budget.pause_if_needed();
     if ((index > 0 && !writer.write_char(',')) ||
         !writer.write_json_string(snapshot.fields[index].key, std::strlen(snapshot.fields[index].key))) {
       ok = false;
@@ -1971,6 +1994,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
   ok = ok && writer.write_literal(R"(],"units":[)");
   bool first_unit = true;
   for (size_t index = 0; ok && index < snapshot.field_count; ++index) {
+    work_budget.pause_if_needed();
     const DebugField& field = snapshot.fields[index];
     if (field.unit[0] == '\0') continue;
     ok = (first_unit || writer.write_char(',')) && writer.write_char('[') &&
@@ -1983,6 +2007,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
   bool first_initial = true;
   if (initial != nullptr) {
     for (size_t index = 0; ok && index < snapshot.field_count; ++index) {
+      work_budget.pause_if_needed();
       const uint32_t value = read_value_(initial, snapshot.fields[index]);
       if (value == MISSING_VALUE) continue;
       ok = (first_initial || writer.write_char(',')) && writer.write_char('[') &&
@@ -1994,6 +2019,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
 
   ok = ok && writer.write_literal(R"(],"samples":[)");
   for (size_t sample_index = 0; ok && sample_index < export_count; ++sample_index) {
+    work_budget.pause_if_needed();
     const size_t absolute_index = sample_index;
     const uint8_t* sample = snapshot.sample_at(absolute_index);
     // The first sample of the window carries no deltas: its full state is the
@@ -2003,6 +2029,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
          writer.write_uint32(sample_offset_(sample) - first_offset) && writer.write_literal(",[");
     bool first_delta = true;
     for (size_t field_index = 0; ok && previous != nullptr && field_index < snapshot.field_count; ++field_index) {
+      work_budget.pause_if_needed();
       const DebugField& field = snapshot.fields[field_index];
       const uint32_t value = read_value_(sample, field);
       if (value == read_value_(previous, field)) continue;
