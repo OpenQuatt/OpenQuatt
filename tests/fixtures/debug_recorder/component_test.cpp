@@ -80,7 +80,9 @@ struct Environment {
   std::vector<std::unique_ptr<Entity>> entities;
 
   Environment() {
-    recorder_test::now_ms = 0;
+    recorder_test::now_ms = recorder_test::clock_step_ms = recorder_test::chunk_time_ms = 0;
+    recorder_test::delay_calls = 0;
+    recorder_test::last_delay_ms = recorder_test::max_work_ms = 0;
     recorder_test::allow_entity_reads = false;
     recorder_test::entity_reads = 0;
     recorder_test::held_mutexes = 0;
@@ -103,7 +105,7 @@ struct Environment {
     web_server_base::global_web_server_base = nullptr;
     global_preferences = nullptr;
     App = Application{};
-    recorder_test::allocation_hook = recorder_test::chunk_hook = {};
+    recorder_test::allocation_hook = recorder_test::chunk_hook = recorder_test::delay_hook = {};
   }
   template <typename T>
   void add_to(std::vector<T*>& registry, const char* name) {
@@ -397,6 +399,91 @@ void configuration() {
   assert(recorder.capture_configuration_() == Recorder::MISSING_VALUE);
   assert(recorder.configuration_snapshot_overflow_ && recorder.string_count_ == count);
   recorder_test::allow_entity_reads = false;
+}
+
+void cooperative_export() {
+  Environment env;
+  Recorder recorder;
+  recorder.setup();
+  // Almost every field is unchanged: the budget must also cover comparisons
+  // that skip serialization. The system uptime still changes on every row.
+  for (uint32_t seconds = 0; seconds <= 2 * 3600; seconds += 10) {
+    recorder_test::now_ms = seconds * 1000;
+    recorder_test::allow_entity_reads = true;
+    recorder.loop();
+    recorder_test::allow_entity_reads = false;
+  }
+  const auto count = recorder.count_;
+  const auto recording_id = recorder.recording_id_;
+  auto reference = env.request("download", HTTP_GET);
+  env.dispatch(reference);
+  assert(reference.response.finished && recorder_test::delay_calls == 0);
+  emit("reference", reference.response);
+
+  // Advance the peripheral clock for each budget probe and cross millis wrap.
+  // No host sleep or scheduler emulation: real scheduling still requires HIL.
+  recorder_test::now_ms = UINT32_MAX - 3;
+  recorder_test::last_delay_ms = recorder_test::now_ms;
+  recorder_test::clock_step_ms = 1;
+  bool interleaved = false;
+  recorder_test::delay_hook = [&]() {
+    interleaved = true;
+    env.tick(recorder, recorder_test::now_ms / 1000 + 10);
+    env.restart(recorder);
+    auto overlapping = env.request("download", HTTP_GET);
+    env.dispatch(overlapping);
+    assert(overlapping.response.status == "503 Service Unavailable");
+    recorder_test::now_ms = UINT32_MAX - 2;  // Cross wrap again after the first pause.
+  };
+  auto cooperative = env.request("download-range", HTTP_GET);
+  cooperative.arguments["last_minutes"] = "120";
+  const auto reads = recorder_test::entity_reads;
+  env.dispatch(cooperative);
+  assert(interleaved && cooperative.response.finished && !recorder.export_in_progress_);
+  assert(recorder.recording_id_ != recording_id && recorder.count_ == 1);
+  // With one synthetic millisecond per probe, a sparse recording must offer
+  // pauses proportional to scanned fields, not just to emitted JSON bytes.
+  assert(recorder_test::delay_calls > count * recorder.field_count_ / 10);
+  assert(recorder_test::max_work_ms <= 10);
+  // Entity access is permitted only inside the simulated loop callback.
+  assert(recorder_test::entity_reads > reads && recorder_test::internal_allocations == 0);
+  emit("cooperative", cooperative.response);
+
+  // Serializing one long, escaped string also needs budget checkpoints.
+  recorder_test::clock_step_ms = 0;
+  env.diagnostic().state.assign(4096, '\n');
+  recorder_test::now_ms += 10000;
+  recorder_test::allow_entity_reads = true;
+  recorder.loop();
+  recorder_test::allow_entity_reads = false;
+  assert(recorder.count_ == 2);
+  auto text_reference = env.request("download", HTTP_GET);
+  env.dispatch(text_reference);
+  emit("text-reference", text_reference.response);
+  recorder_test::clock_step_ms = 1;
+  recorder_test::max_work_ms = 0;
+  recorder_test::last_delay_ms = recorder_test::now_ms;
+  const auto delays = recorder_test::delay_calls;
+  auto text = env.request("download", HTTP_GET);
+  env.dispatch(text);
+  assert(text.response.finished && recorder_test::delay_calls > delays + 100);
+  assert(recorder_test::max_work_ms <= 10 && !recorder.export_in_progress_);
+  emit("text", text.response);
+
+  // A send error after pausing releases the export slot for a fresh request.
+  httpd_req_t aborted;
+  aborted.fail_chunk = 1;
+  recorder.write_recording(&aborted, 0);
+  assert(!aborted.finished && !recorder.export_in_progress_);
+  recorder_test::clock_step_ms = 0;
+  recorder_test::chunk_time_ms = 20;
+  const auto before_retry = recorder_test::delay_calls;
+  auto retry = env.request("download-range", HTTP_GET);
+  retry.arguments["last_minutes"] = "120";
+  env.dispatch(retry);
+  assert(retry.response.finished && recorder_test::delay_calls > before_retry);
+  assert(!recorder.export_in_progress_ && recorder_test::held_mutexes == 0);
+  emit("retry", retry.response);
 }
 
 void retention() {
@@ -865,6 +952,8 @@ int main(int argc, char** argv) {
     configuration();
   else if (scenario == "sensor-sources")
     sensor_sources();
+  else if (scenario == "cooperative-export")
+    cooperative_export();
   else if (scenario == "retention")
     retention();
   else if (scenario == "warmup")

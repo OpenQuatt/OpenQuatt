@@ -18,10 +18,11 @@
 #include <sys/types.h>
 
 namespace recorder_test {
-inline uint32_t now_ms{0};
+inline uint32_t now_ms{0}, clock_step_ms{0}, chunk_time_ms{0}, last_delay_ms{0}, max_work_ms{0};
+inline size_t delay_calls{0};
 inline size_t allocation_calls{0}, internal_allocations{0}, fail_allocation_at{0};
 inline bool fail_mutex_creation{false};
-inline std::function<void()> allocation_hook, chunk_hook;
+inline std::function<void()> allocation_hook, chunk_hook, delay_hook;
 inline size_t held_mutexes{0};
 inline size_t entity_reads{0};
 inline bool allow_entity_reads{false};
@@ -66,6 +67,20 @@ inline void xSemaphoreGive(SemaphoreHandle_t semaphore) {
   semaphore->mutex.unlock();
 }
 
+inline void vTaskDelay(TickType_t ticks) {
+  assert(ticks == 1 && recorder_test::held_mutexes == 0);
+  ++recorder_test::delay_calls;
+  const uint32_t elapsed = recorder_test::now_ms - recorder_test::last_delay_ms;
+  if (elapsed > recorder_test::max_work_ms) recorder_test::max_work_ms = elapsed;
+  recorder_test::now_ms += ticks;
+  if (recorder_test::delay_hook) {
+    auto hook = std::move(recorder_test::delay_hook);
+    recorder_test::delay_hook = {};
+    hook();
+  }
+  recorder_test::last_delay_ms = recorder_test::now_ms;
+}
+
 using esp_err_t = int;
 inline constexpr esp_err_t ESP_OK = 0, ESP_FAIL = -1, ESP_ERR_INVALID_ARG = -2;
 inline constexpr const char* HTTPD_200 = "200 OK";
@@ -102,6 +117,7 @@ inline esp_err_t httpd_resp_send_chunk(httpd_req_t* req, const char* data, ssize
     recorder_test::chunk_hook = {};
     hook();
   }
+  recorder_test::now_ms += recorder_test::chunk_time_ms;
   if (req->fail_chunk >= 0 && req->chunks++ >= req->fail_chunk) return ESP_FAIL;
   if (data != nullptr)
     req->response.append(data, static_cast<size_t>(length));
@@ -159,7 +175,11 @@ inline uint32_t esp_random() {
 #define ESP_LOGCONFIG(...) recorder_test::log(__VA_ARGS__)
 
 namespace esphome {
-inline uint32_t millis() { return recorder_test::now_ms; }
+inline uint32_t millis() {
+  const uint32_t now = recorder_test::now_ms;
+  recorder_test::now_ms += recorder_test::clock_step_ms;
+  return now;
+}
 using StringRef = std::string;
 namespace setup_priority {
 inline constexpr float WIFI = 250;
