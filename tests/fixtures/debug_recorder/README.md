@@ -21,6 +21,7 @@ blocking calls are not replaced with unconditional success.
 | `configuration` | Single/Duo capabilities, deduplication, immutable previous values, missing source state, real string-pool pressure, eviction/compaction and scratch failure |
 | `sensor-sources` | Initial CIC fallback with a valid local PT1000, switch to Local, missing PT1000/proxy values, fallback and recovery in real exported delta samples for Single and Duo |
 | `retention` | Six-hour minimum with the real default schema, sixteen-hour ring rollover, timestamp ranges, immutable snapshots, restart/append/retry interleavings, all snapshot/writer allocation failures, overlapping exports, aborted HTTP, empty recording and HH:MM boundaries |
+| `cooperative-export` | Budget pauses outside the mutex, mostly unchanged fields, escaped strings, millis wrap, restart/sampling during a pause, overlapping export rejection, aborted send and slow retry; exported sample data remains identical |
 | `http` | Registered production handler, methods/path boundaries, origin/CSRF rejection before mutation, obsolete timed start, deferred restart, persistence failure and range-argument overflow |
 | `preference-failures` | Both toggle directions, own/other-key write failures, repeated failed HTTP retries, write-free clean idempotency, unchanged history/lifecycle, failed schema compensation, missing storage, PSRAM-unavailable preference loading, one lazy preference handle, pending-first reads and explicit cold reboot |
 
@@ -29,6 +30,11 @@ former configuration/retention source-extraction harnesses. Capacity and column
 indices come from the actual default schema, rather than a reconstructed class
 with a hardcoded stride. Jitter samples respect the production ten-second
 sampling gate; range membership still uses timestamps rather than row counts.
+
+The cooperative-export clock advances deterministically at budget probes and
+can charge time to HTTP sends. Its one-tick delay adapter checks mutex ownership
+and can run a loop/restart callback during a pause. This validates pause placement
+and snapshot/failure behaviour, not physical scheduler latency.
 
 The preference adapter models the pinned ESPHome 2026.9 ESP32 backend:
 `save()` queues by key, `load()` consults pending before durable storage, and
