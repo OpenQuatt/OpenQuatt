@@ -242,6 +242,63 @@ void test_day_boundary_splits_energy_and_uncertainty_budget() {
   assert_seeded_at(state, 86580);
 }
 
+void test_day_boundary_assesses_old_day_and_new_remainder_independently() {
+  struct Case {
+    uint32_t last_valid;
+    float heat_w;
+    bool prior_gap, unstable, record, fresh_start;
+  };
+  for (const auto test : {Case{86380, 49000, false, false, true, true},      // Only new day over budget.
+                          Case{86340, 49000, false, false, true, false},     // Both within budget.
+                          Case{86380, 49000, true, false, false, true},      // Both over budget.
+                          Case{86340, 49000, true, false, false, true},      // Only old day over budget.
+                          Case{86380, 49000, false, true, false, true},      // Old day fails quality.
+                          Case{86370, 46000, false, false, true, false}}) {  // New budget exactly full.
+    for (const bool restart : {false, true}) {
+      SegmentAccumulator state;
+      const QualityConfig quality;
+      const auto sample = [&](uint32_t second) {
+        auto value = snapshot(second, test.heat_w);
+        if (test.unstable) value.room_c += second * (0.004f / 60.0f);
+        return value;
+      };
+      if (test.prior_gap) {
+        observe_snapshot(state, snapshot(0, 21000), quality);
+        observe_snapshot(state, missing(60), quality, true);
+        observe_snapshot(state, snapshot(120, 21000), quality, true);
+        assert(state.missing_energy_uncertainty_ws == 8520000.0);
+      }
+      for (uint32_t second = test.prior_gap ? 180 : 0; second < test.last_valid; second += 60)
+        observe_snapshot(state, sample(second), quality);
+      observe_snapshot(state, sample(test.last_valid), quality);
+      const uint32_t endpoint = test.last_valid + 120;
+      for (uint32_t second = test.last_valid + 40; second < endpoint; second += 40)
+        observe_snapshot(state, missing(second), quality, true);
+      auto value = sample(endpoint);
+      if (restart) {
+        state.restart_pending = true;
+        value.monotonic_ms = 5000;
+      }
+      const auto result = observe_snapshot(state, value, quality, true);
+      assert(result.has_record == test.record);
+      if (test.record) {
+        assert(result.record.start_epoch_s == kEpoch && result.record.end_epoch_s == kEpoch + 86400);
+        assert(result.record.duration_s == 86400);
+      } else {
+        assert(result.status == (test.unstable ? LearningStatus::ROOM_UNSTABLE : LearningStatus::SEGMENT_INELIGIBLE));
+      }
+      assert(state.active && !state.source_gap_pending && state.last_monotonic_ms == value.monotonic_ms);
+      assert(state.start_epoch_s == kEpoch + (test.fresh_start ? endpoint : 86400));
+      assert(segment_elapsed_ms(state) == (test.fresh_start ? 0 : (endpoint - 86400) * 1000ULL));
+      const double uncertainty = test.fresh_start ? 0 : (50000.0 + test.heat_w) * (endpoint - 86400);
+      assert(state.missing_energy_uncertainty_ws == uncertainty);
+      value.epoch_s += 10;
+      value.monotonic_ms += 10000;
+      assert(!observe_snapshot(state, value, quality).has_record);  // No duplicate completed day.
+    }
+  }
+}
+
 void test_hard_faults_and_context_or_clock_changes_reset() {
   QualityConfig quality;
   for (uint32_t reason : {static_cast<uint32_t>(INVALID_COOLING), static_cast<uint32_t>(INVALID_BOILER_HEAT),
@@ -304,5 +361,6 @@ int main() {
   test_repeated_gaps_exhaust_the_daily_budget();
   test_uncertainty_uses_the_maximum_absolute_endpoint();
   test_day_boundary_splits_energy_and_uncertainty_budget();
+  test_day_boundary_assesses_old_day_and_new_remainder_independently();
   test_hard_faults_and_context_or_clock_changes_reset();
 }
