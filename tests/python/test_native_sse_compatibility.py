@@ -18,7 +18,7 @@ class NativeSseCompatibilityTest(unittest.TestCase):
         expected = (ROOT / ".github/requirements-esphome.txt").read_text().strip().removeprefix("esphome==")
         self.assertEqual(__version__, expected)
         modules = {}
-        for name in ["core_four_decimals"]:
+        for name in ["core_four_decimals", "http_request_update_source"]:
             spec = util.spec_from_file_location(name, ROOT / "components/web_server_base" / f"{name}.py")
             modules[name] = util.module_from_spec(spec)
             spec.loader.exec_module(modules[name])
@@ -31,6 +31,11 @@ class NativeSseCompatibilityTest(unittest.TestCase):
         sdk_paths.update({
             ("esphome", "core", name): Path(str(installed.joinpath(name)))
             for name in ["helpers.cpp", "helpers.h"]
+        })
+        installed = resources.files("esphome.components.http_request.update")
+        sdk_paths.update({
+            ("esphome", "components", "http_request", "update", name): Path(str(installed.joinpath(name)))
+            for name in ["http_request_update.cpp", "http_request_update.h"]
         })
         originals = {parts: path.read_bytes() for parts, path in sdk_paths.items()}
         cpp_parts = ("esphome", "components", "web_server_idf", "web_server_idf.cpp")
@@ -62,7 +67,10 @@ class NativeSseCompatibilityTest(unittest.TestCase):
                 return "copied"
 
             writer = SimpleNamespace(copy_src_tree=copy_sources)
-            installers = [modules["core_four_decimals"].install_four_decimal_patch]
+            installers = [
+                modules["core_four_decimals"].install_four_decimal_patch,
+                modules["http_request_update_source"].install_update_source_patch,
+            ]
             for install in installers:
                 install(core, writer)
             hook = writer.copy_src_tree
@@ -76,6 +84,10 @@ class NativeSseCompatibilityTest(unittest.TestCase):
                     expected_source = modules["core_four_decimals"]._transform(
                         name, originals[("esphome", "core", name)].decode())[0]
                     self.assertEqual(source, expected_source)
+                for name in ["http_request_update.cpp", "http_request_update.h"]:
+                    parts = ("esphome", "components", "http_request", "update", name)
+                    expected_source = modules["http_request_update_source"]._transform(name, originals[parts].decode())[0]
+                    self.assertEqual(core.relative_src_path(*parts).read_text(), expected_source)
 
             core.data = {}
             writer.copy_src_tree()
