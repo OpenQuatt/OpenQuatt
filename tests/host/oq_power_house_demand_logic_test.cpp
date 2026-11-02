@@ -8,7 +8,7 @@ namespace {
 using namespace oq_power_house;
 bool near(float actual, float expected) { return fabsf(actual - expected) < 0.01f; }
 DemandInput input() { return {60001U, 3.0f, -10.0f, 16.0f, 6000.0f, 20.0f, 20.0f, NAN, 1.0f, false}; }
-DemandTuning tuning() { return {0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20}; }
+DemandTuning tuning() { return {0.5f, 3000.0f, 0.1f, 0.3f, NAN, 10.0f, 5.0f, 20}; }
 void test_model_and_feedforward() {
   struct ModelCase {
     float outside_c, expected_w;
@@ -199,6 +199,27 @@ void test_comfort_warm_edge_and_recovery_boundary() {
   in.water_limit_factor = 0.5f;
   assert(near(decide_demand(in, cfg, {}).requested_w, 1500.0f));
 }
+void test_memory_max_override_and_fallback() {
+  auto in = input();
+  auto cfg = tuning();
+  in.room_c = in.setpoint_c - cfg.comfort_below_c;
+  cfg.comfort_above_c = 0.3f;
+  // NAN keeps the legacy comfort-band coupling.
+  assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.15f));
+  // An explicit value is used directly instead of being derived from comfort_above.
+  cfg.memory_max_c = 0.10f;
+  assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.10f));
+  cfg.comfort_above_c = 0.0f;
+  cfg.memory_max_c = 0.12f;
+  assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.12f));
+  cfg.memory_max_c = NAN;
+  assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.08f));
+  // The tuning value is bounded to the existing safe memory range.
+  cfg.memory_max_c = 1.0f;
+  assert(near(decide_demand(in, cfg, {3000, 1U, 0.5f}).next.comfort_memory_c, 0.20f));
+  cfg.memory_max_c = 0.01f;
+  assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.08f));
+}
 }  // namespace
 int main() {
   test_model_and_feedforward();
@@ -208,5 +229,6 @@ int main() {
   test_demand_finite_contract();
   test_demand_slew_and_limits();
   test_comfort_warm_edge_and_recovery_boundary();
+  test_memory_max_override_and_fallback();
   return 0;
 }

@@ -1138,6 +1138,8 @@ export default {
     curveStableCopy: "Responds more gradually and adjusts less quickly. Useful if you want as little fluctuation as possible.",
     phKpTitle: "Temperature response",
     phKpCopy: "Sets how strongly Power House adjusts heating output to the room temperature. A higher value means more extra heat when the room is too cold and a stronger reduction when it is too warm.",
+    phMemoryMaxTitle: "Integrating adjustment",
+    phMemoryMaxCopy: "Determines how far Power House may dynamically adjust the room setpoint when the room temperature deviates for a longer time.",
     phComfortBelowTitle: "Cooling below desired temperature",
     phComfortBelowCopy: "Example: you want 21.0 °C and enter 0.2 °C of cooling here. Power House then requests extra heat when the room drops below 20.8 °C. Enter 0.4 °C and this happens below 20.6 °C. If the room has been too cold for a long time, Power House may request extra heat sooner and continue for a while as the room warms up.",
     phComfortAboveTitle: "Reduce heat above desired temperature",

@@ -1138,6 +1138,8 @@ export default {
     curveStableCopy: "Reageert rustiger en stuurt minder snel bij. Fijn als je zo min mogelijk schommelingen wilt.",
     phKpTitle: "Temperatuurreactie",
     phKpCopy: "Bepaalt hoe sterk Power House het verwarmingsvermogen aanpast aan de kamertemperatuur. Een hogere waarde betekent meer extra warmte bij een te koude kamer en sterker terugregelen bij een te warme kamer.",
+    phMemoryMaxTitle: "Integrerend bijregelen",
+    phMemoryMaxCopy: "Bepaalt hoe ver Power House het setpoint van de kamer dynamisch aan mag passen als de kamertemperatuur langere tijd afwijkt.",
     phComfortBelowTitle: "Afkoeling onder gewenste temperatuur",
     phComfortBelowCopy: "Voorbeeld: je wilt 21,0 °C en stelt hier 0,2 °C afkoeling in. Power House vraagt dan extra warmte als de kamer onder 20,8 °C komt. Stel je hier 0,4 °C in, dan gebeurt dat onder 20,6 °C. Was de kamer langere tijd te koud, dan kan Power House al eerder extra warmte vragen en daarmee nog een tijdje doorgaan terwijl de kamer opwarmt.",
     phComfortAboveTitle: "Afremmen boven gewenste temperatuur",

@@ -165,7 +165,7 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
   assert_close(actual.next.last_w, expected.next.last_w, "next.last_w");
 }
 
-ActualTuning tuning() { return {0.15f, 1800.0f, 0.35f, 0.55f, 8.0f, 5.0f, 10}; }
+ActualTuning tuning() { return {0.15f, 1800.0f, 0.35f, 0.55f, NAN, 8.0f, 5.0f, 10}; }
 
 ActualInput input() { return {123456u, 2.0f, -10.0f, 16.0f, 7000.0f, 19.5f, 20.0f, NAN, 1.0f, false}; }
 
