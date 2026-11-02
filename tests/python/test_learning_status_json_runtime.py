@@ -34,7 +34,8 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             temporary = Path(directory)
             source = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
             body = "\n".join(production_function(source, signature) for signature in (
-                "static void clear_daily_resume_status_(", "static void update_daily_resume_status_(",
+                "static void clear_daily_resume_status_(", "static void cancel_daily_resume_status_(",
+                "static void update_daily_resume_status_(",
                 "void pause(LearningStatus", "static void publish_status_(",
             ))
             for name, flag, signature in (

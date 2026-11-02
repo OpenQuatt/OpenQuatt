@@ -36,6 +36,8 @@ struct Endpoint {
   }
 } oq_ph_learning_status_endpoint;
 #define id(value) value
+const char* paused_status = nullptr;
+const char* paused_reason = nullptr;
 
 struct RuntimeStorage {
   PassiveRuntimeStorage learner;
@@ -65,7 +67,8 @@ struct Production {
   static const char* route_name_(int) { return "selected_outside_temperature"; }
   static void publish_status_error_() { assert(false && "production status exceeded its fixed cache"); }
   static void publish_paused_status_(RuntimeStorage& state) {
-    assert(strcmp(state.daily_resume_status, "none") == 0 && strcmp(state.daily_resume_reason, "none") == 0);
+    paused_status = state.daily_resume_status;
+    paused_reason = state.daily_resume_reason;
   }
   static bool erase_slots_(const void*) { return false; }  // Notice clearing must survive a failed flash erase.
   static bool read_slot_(const void*, size_t, uint8_t*, size_t) { return false; }
@@ -112,18 +115,22 @@ void test_daily_resume_notice_lifecycle() {
   }
   Production production;
   production.storage_ = &state;
+  state.journal.available = state.journal.loaded = true;
   for (int entry : {0, 1, 2}) {
     state.daily_resume_status = "discarded";
     state.daily_resume_reason = "restart_unconfirmed";
     state.daily_restore_pending = true;
     state.learner.initialized = state.learner.batch_accumulator.active = true;
     start = 1000;
-    if (entry == 0)
+    if (entry == 0) {
+      paused_status = paused_reason = nullptr;
       production.pause();
-    else if (entry == 1)
+      assert(strcmp(paused_status, "none") == 0 && strcmp(paused_reason, "none") == 0);
+    } else if (entry == 1) {
       Production::context_change(state);
-    else
+    } else {
       Production::reset(state);
+    }
     assert(!state.daily_restore_pending && strcmp(state.daily_resume_status, "none") == 0 &&
            strcmp(state.daily_resume_reason, "none") == 0);
     start = 87400;
@@ -132,8 +139,39 @@ void test_daily_resume_notice_lifecycle() {
   }
 }
 
+// Before the boot journal loads, pause and context changes must leave their own
+// cause for the later discard decision instead of an unconfirmed restart.
+void test_daily_resume_cause_before_journal_load() {
+  Production production;
+  for (int entry : {0, 1, 2, 3}) {
+    RuntimeStorage state;
+    production.storage_ = &state;
+    state.journal.available = true;
+    state.daily_resume_status = state.daily_resume_reason = "none";
+    if (entry == 0)
+      production.pause();
+    else if (entry == 1)
+      production.pause(LearningStatus::MIXED_CONTEXT);
+    else
+      Production::context_change(state);
+    if (entry == 3) production.pause();  // The first cause wins.
+    assert(!state.daily_restore_allowed && strcmp(state.daily_resume_status, "none") == 0);
+    assert(strcmp(state.daily_resume_reason, entry == 0 ? "paused" : "context_changed") == 0);
+    Production::reset(state);  // An explicit reset still clears the cause.
+    assert(strcmp(state.daily_resume_reason, "none") == 0);
+  }
+  // Without persistence no journal decision follows; a shown result is cleared.
+  RuntimeStorage state;
+  production.storage_ = &state;
+  state.daily_resume_status = "discarded";
+  state.daily_resume_reason = "unexpected_restart";
+  production.pause();
+  assert(strcmp(state.daily_resume_status, "none") == 0 && strcmp(state.daily_resume_reason, "none") == 0);
+}
+
 int main() {
   test_daily_resume_notice_lifecycle();
+  test_daily_resume_cause_before_journal_load();
   RuntimeStorage state;
   auto& learner = state.learner;
   auto& summary = state.summary;

@@ -113,7 +113,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     auto& state = storage_[0];
     state.boot_restart_ticket = {};
     state.daily_restore_pending = false;
-    clear_daily_resume_status_(state);
+    cancel_daily_resume_status_(state, rejection == LearningStatus::MIXED_CONTEXT ? "context_changed" : "paused");
     state.daily_restore_allowed = false;
     state.restart_prepared = false;
     pause_diagnostic_capture(state.diagnostic_capture);
@@ -216,7 +216,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.learner.initialized && (state.measurement_context_changed || context_bytes_changed);
     if (context_changed) {
       state.daily_restore_pending = false;
-      clear_daily_resume_status_(state);
+      cancel_daily_resume_status_(state, "context_changed");
       state.daily_restore_allowed = false;
     }
     if (context_changed && ++state.context_revision == 0) state.context_revision = 1;
@@ -362,6 +362,15 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
  private:
   static void clear_daily_resume_status_(RuntimeStorage& state) {
     state.daily_resume_status = state.daily_resume_reason = "none";
+  }
+
+  // Before the boot journal loads, keep the first cause for its later discard
+  // decision. Afterwards, pause or a context change dismisses the notice.
+  static void cancel_daily_resume_status_(RuntimeStorage& state, const char* reason) {
+    if (!state.journal.available || state.journal.loaded)
+      clear_daily_resume_status_(state);
+    else if (state.daily_restore_allowed)
+      state.daily_resume_reason = reason;
   }
 
   static void update_daily_resume_status_(RuntimeStorage& state, bool resume_attempt, uint32_t daily_start_before) {
