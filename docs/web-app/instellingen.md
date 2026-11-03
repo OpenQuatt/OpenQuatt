@@ -160,6 +160,8 @@ Met **Afkoeling onder gewenste temperatuur** kies je hoeveel graden de kamer ond
 
 Met **Afremmen boven gewenste temperatuur** kies je hoeveel opwarming boven je gewenste temperatuur de regeling toestaat voordat ze warmte terugneemt. Voorbeeld: je wilt **20,0 °C** en stelt **0,3 °C** in. Boven **20,3 °C** vraagt Power House minder warmte. Met **1,0 °C** begint dat boven **21,0 °C**. Hoe verder de kamer boven deze grens komt, hoe meer warmte wordt teruggenomen. Het getal bepaalt geen vaste stoptemperatuur of gegarandeerde maximumtemperatuur.
 
+Met **Integrerend bijregelen** kies je hoe ver Power House de interne herstelcorrectie bij langdurige afwijking mag laten oplopen: 0,1–1,0 °C, standaard 0,2 °C. Deze waarde staat los van **Afremmen boven gewenste temperatuur**.
+
 De app toont **Warmte terugnemen boven** naast de gewenste temperatuur en de temperatuur voor extra warmte. Langer doorverwarmen staat altijd aan.
 
 Ook zonder extra opwarming kan de warmtepomp draaien om het warmteverlies van je woning te compenseren. Was de kamer langere tijd te koud, dan kan Power House al eerder extra warmte vragen en daarmee nog een tijdje doorgaan terwijl de kamer opwarmt. De app toont de gewenste temperatuur en **Extra warmte bij afkoeling onder** direct onder het veld.

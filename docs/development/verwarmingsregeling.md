@@ -79,7 +79,9 @@ boven warme grens:         P_room = reactie × (warme grens - kamer)
 `comfort memory` bouwt bij aanhoudende achterstand langzaam op en neemt bij
 herstel af. Daardoor kan dezelfde kamertemperatuur afhankelijk van de
 voorgeschiedenis een andere vraag geven. Het gebruikerssetpoint verandert niet.
-De directe warme correctie begint boven `setpoint + comfort above`.
+Het maximum komt uit `memory_max_c` (0,08–1,0 °C) en is niet gekoppeld aan
+`comfort above`. De directe warme correctie begint boven
+`setpoint + comfort above`.
 
 Voorbeeld zonder comfort memory of verdere begrenzing: modelvraag 2.400 W,
 setpoint 21 °C, ondermarge 0,2 K en reactie 3.000 W/K geven bij 20,7 °C een

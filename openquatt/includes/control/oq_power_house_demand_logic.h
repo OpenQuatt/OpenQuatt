@@ -63,6 +63,7 @@ struct DemandDecision {
   DemandContributions contributions;
 };
 constexpr uint32_t kStartupInputWaitMs = 120000U;
+constexpr float kDefaultMemoryMaxC = 0.20f;
 enum class StartupPhase : uint8_t { WAITING_INPUTS, INPUT_TIMEOUT, READY };
 
 inline StartupPhase update_startup_phase(StartupPhase phase, uint32_t now_ms, bool inputs_valid) {
@@ -153,7 +154,10 @@ inline DemandDecision decide_demand_with_power(const DemandInput& in, const Dema
   const float mid_base_c = low_base_c + 0.5f * (high_base_c - low_base_c);
   const bool warmup_boost = isfinite(boost.baseline_c) && boost.baseline_c < in.setpoint_c &&
                             isfinite(boost.minimum_w) && boost.minimum_w > 0.0f && in.water_limit_factor >= 0.999f;
-  const float memory_max_c = clamp_power(tuning.memory_max_c, 0.08f, 1.00f);
+  // The memory ceiling is only sourced from its own tuning value and stays
+  // finite; it is no longer coupled to the warm comfort margin.
+  const float memory_max_c = isfinite(tuning.memory_max_c) ? clamp_power(tuning.memory_max_c, 0.08f, 1.00f)
+                                                           : kDefaultMemoryMaxC;
   float memory_c = isfinite(state.comfort_memory_c) ? state.comfort_memory_c : 0.0f;
   memory_c = clamp_power(memory_c, 0.0f, memory_max_c);
   // A temporary warmup correction must not build comfort memory, including in

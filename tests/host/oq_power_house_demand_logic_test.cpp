@@ -130,9 +130,9 @@ void test_demand_finite_contract() {
   auto recovered = input();
   recovered.now_ms = stopped.next.last_ms + 60000U;
   assert(near(decide_demand(recovered, tuning(), stopped.next).requested_w, 600.0f));
-  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.1f, 0.3f, 10, 5, 20}, {}).valid);
+  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.1f, 0.3f, NAN, 10, 5, 20}, {}).valid);
   assert(!decide_demand({60001U, 3, -10, 16, 6000, -0x1.fffffep+127f, 0x1.fffffep+127f, NAN, 1, false},
-                        {0.5f, 0, 0.1f, 0.3f, 10, 5, 20}, {})
+                        {0.5f, 0, 0.1f, 0.3f, NAN, 10, 5, 20}, {})
               .valid);
 }
 void test_demand_slew_and_limits() {
@@ -199,26 +199,33 @@ void test_comfort_warm_edge_and_recovery_boundary() {
   in.water_limit_factor = 0.5f;
   assert(near(decide_demand(in, cfg, {}).requested_w, 1500.0f));
 }
-void test_memory_max_override_and_fallback() {
+void test_memory_max_is_independent_and_finite() {
   auto in = input();
   auto cfg = tuning();
   in.room_c = in.setpoint_c - cfg.comfort_below_c;
-  cfg.comfort_above_c = 0.3f;
-  // NAN keeps the legacy comfort-band coupling.
-  assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.15f));
+  // Missing or non-finite tuning falls back to the finite default ceiling.
+  const float invalid[] = {NAN, INFINITY, -INFINITY};
+  for (float value : invalid) {
+    cfg.memory_max_c = value;
+    cfg.comfort_above_c = 0.0f;
+    assert(near(decide_demand(in, cfg, {3000, 1U, 1.0f}).next.comfort_memory_c, kDefaultMemoryMaxC));
+    cfg.comfort_above_c = 1.0f;
+    assert(near(decide_demand(in, cfg, {3000, 1U, 1.0f}).next.comfort_memory_c, kDefaultMemoryMaxC));
+  }
+  // The warm comfort margin no longer limits the memory ceiling.
+  cfg.memory_max_c = 1.0f;
+  cfg.comfort_above_c = 0.0f;
+  assert(near(decide_demand(in, cfg, {3000, 1U, 1.0f}).next.comfort_memory_c, 1.0f));
   // An explicit value is used directly instead of being derived from comfort_above.
   cfg.memory_max_c = 0.10f;
   assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.10f));
-  cfg.comfort_above_c = 0.0f;
   cfg.memory_max_c = 0.12f;
   assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.12f));
-  cfg.memory_max_c = NAN;
-  assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.08f));
-  // The tuning value is bounded to the existing safe memory range.
-  cfg.memory_max_c = 1.0f;
-  assert(near(decide_demand(in, cfg, {3000, 1U, 0.5f}).next.comfort_memory_c, 0.20f));
+  // The tuning value is bounded to the finite memory range.
   cfg.memory_max_c = 0.01f;
   assert(near(decide_demand(in, cfg, {3000, 1U, 0.15f}).next.comfort_memory_c, 0.08f));
+  cfg.memory_max_c = 2.0f;
+  assert(near(decide_demand(in, cfg, {3000, 1U, 1.5f}).next.comfort_memory_c, 1.0f));
 }
 }  // namespace
 int main() {
@@ -229,6 +236,6 @@ int main() {
   test_demand_finite_contract();
   test_demand_slew_and_limits();
   test_comfort_warm_edge_and_recovery_boundary();
-  test_memory_max_override_and_fallback();
+  test_memory_max_is_independent_and_finite();
   return 0;
 }
