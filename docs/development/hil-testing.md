@@ -118,6 +118,36 @@ Het rapport bevat actuele en minimale interne heap, grootste vrije block,
 fragmentatie, vrije PSRAM en beide ODU-diagnoseregels voor zover de entities
 beschikbaar zijn. Ook simulatorcontract en -versie worden vastgelegd.
 
+## Herstarten bij geheugenmetingen
+
+Vergelijk baseline en kandidaat met dezelfde configuratie en meetinstrumentatie
+na een aantoonbare volledige applicatieherstart. Een OTA-reboot is hiervoor
+geldig. Leg de firmware-/config-/artifactbinding en het bootbewijs vast, zoals
+een verse uptime en de resetreden. Alleen een geslaagde upload bewijst geen
+herstart. Neem startup/eerste verbindingen, relevante reconnects en realistische
+gelijktijdige HA/web/API/MQTT/Modbus/OpenTherm/OTA-belasting mee. Verifieer dat
+de bedoelde paden werkelijk zijn geraakt; alleen een steady-state-momentopname
+is onvoldoende. Configureer bijvoorbeeld MQTT vóór de herstart als de eerste
+connect en subscriptions onderdeel van de meting zijn.
+
+Een fysieke power-on-test blijft verplicht bij wijzigingen aan bootloader of
+startup, reset/sleep, platform-/ESP-IDF-versies, PSRAM-initialisatie/configuratie,
+hardware/voeding, initialisatie van externe peripherals of resetafhankelijk
+behouden toestand zoals RTC/`.noinit`. Dat geldt ook bij een concrete onopgeloste
+afhankelijkheid van het resettype in het gewijzigde pad. Leg resterende
+dekkingstekorten vast; een OTA-meting wordt daarmee geen fysieke power-on-test.
+
+De onderbouwing voor ESP32-S3: [`esp_restart()` reset beide CPU's en start de
+applicatie via de bootloader opnieuw](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/api-reference/system/misc_system_api.html#software-reset).
+De [heapallocator initialiseert de heaps bij startup](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/api-reference/system/mem_alloc.html#implementation-notes).
+Een herstart zet dus geen bestaande runtimeheap voort. Software-reset en
+power-on hebben wel verschillende resetredenen en kunnen verschillende
+peripheral-/retentietoestand hebben; daarom blijft fysieke dekking nodig voor
+de genoemde wijzigingen. Dit verandert de vereiste interne heap- en
+stackmarges, allocatiefoutcontrole en
+[PSRAM/cache-/DMA-beperkingen](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/api-guides/external-ram.html#restrictions)
+niet. Onvoldoende aangetoonde marge blijft release-blocking volgens `AGENTS.md`.
+
 ## Volledige input-/bronselectietest
 
 De testconfig is uitsluitend voor HIL en wordt niet als releaseprofiel gebouwd.
