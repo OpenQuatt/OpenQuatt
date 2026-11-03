@@ -665,8 +665,9 @@ void OpenQuattMqttConfig::loop() {
     return;
   }
   this->process_storage_transaction_();
-  if (this->client_reconcile_pending_.load() && !this->client_worker_active_.load() &&
-      (this->mqtt_client_present_.load() || network::is_connected()) &&
+  if ((this->client_reconcile_pending_.load() || this->resubscribe_inputs_.load() ||
+       this->client_requested_generation_.load() != this->client_applied_generation_.load()) &&
+      !this->client_worker_active_.load() && (this->mqtt_client_present_.load() || network::is_connected()) &&
       time_reached_(millis(), this->next_reconcile_attempt_ms_.load())) {
     this->request_client_reconcile_();
   }
@@ -681,7 +682,6 @@ void OpenQuattMqttConfig::loop() {
   }
   this->consume_pending_numeric_payloads_();
   this->consume_pending_binary_payloads_();
-  this->process_pending_input_subscriptions_();
   this->publish_runtime_state_(this->force_publish_.exchange(false));
 }
 
@@ -1379,12 +1379,18 @@ bool OpenQuattMqttConfig::process_permanent_failure_cleanup_() {
   if (this->client_worker_active_.load()) {
     return true;
   }
-  if (!this->stop_client_()) {
+  if (this->mqtt_client_present_.load()) {
+    // Cleanup may only reuse the validated worker. Trying to create one here
+    // would recurse when worker setup itself entered permanent failure.
+    if (!this->notify_client_worker_()) {
+      ESP_LOGE(TAG, "MQTT ingress cleanup awaits its lifecycle worker");
+    }
     this->next_reconcile_attempt_ms_.store(millis() + MQTT_RECONCILE_RETRY_MS);
     this->force_publish_.store(true);
     return true;
   }
-  this->permanent_failure_cleanup_pending_.store(false);
+  // Terminal even after mark_failed(): an already queued notification must
+  // never restart a client whose storage rollback could not be confirmed.
   this->mark_failed();
   return true;
 }
@@ -1399,6 +1405,14 @@ bool OpenQuattMqttConfig::request_client_reconcile_() {
     }
     return false;
   }
+  return this->notify_client_worker_();
+}
+
+bool OpenQuattMqttConfig::notify_client_worker_() {
+  if (this->worker_lock_ == nullptr || !this->client_worker_region_valid_ ||
+      !this->client_worker_task_state_.is_created()) {
+    return false;
+  }
   if (xSemaphoreTake(this->worker_lock_, portMAX_DELAY) != pdTRUE) {
     return false;
   }
@@ -1411,7 +1425,7 @@ bool OpenQuattMqttConfig::request_client_reconcile_() {
   }
   xSemaphoreGive(this->worker_lock_);
   if (notified != pdPASS) {
-    this->client_reconcile_pending_.store(true);
+    this->client_reconcile_pending_.store(!this->permanent_failure_cleanup_pending_.load());
     this->client_worker_active_.store(false);
     this->next_reconcile_attempt_ms_.store(millis() + MQTT_RECONCILE_RETRY_MS);
     ESP_LOGE(TAG, "Failed to notify MQTT ingress lifecycle worker");
@@ -1423,6 +1437,9 @@ bool OpenQuattMqttConfig::request_client_reconcile_() {
 
 OpenQuattMqttConfig::ClientReconcileResult OpenQuattMqttConfig::reconcile_client_(uint32_t requested_generation) {
   while (true) {
+    if (this->permanent_failure_cleanup_pending_.load()) {
+      return ClientReconcileResult::RETRY;
+    }
     const ClientConfig desired = this->get_desired_client_config_();
     const bool client_present = this->mqtt_client_present_.load();
     const bool client_matches = client_present && this->active_client_matches_(requested_generation);
@@ -1455,7 +1472,8 @@ OpenQuattMqttConfig::ClientReconcileResult OpenQuattMqttConfig::reconcile_client
 bool OpenQuattMqttConfig::start_client_(const ClientConfig& config, uint32_t requested_generation,
                                         uint32_t session_generation) {
   this->lock_runtime_();
-  if (this->mqtt_client_ != nullptr || this->client_requested_generation_.load() != requested_generation) {
+  if (this->permanent_failure_cleanup_pending_.load() || this->mqtt_client_ != nullptr ||
+      this->client_requested_generation_.load() != requested_generation) {
     this->unlock_runtime_();
     return false;
   }
@@ -1500,6 +1518,11 @@ bool OpenQuattMqttConfig::start_client_(const ClientConfig& config, uint32_t req
   this->mqtt_transport_connected_.store(false);
   this->callback_session_generation_.store(session_generation);
   this->callback_client_.store(client);
+  if (this->permanent_failure_cleanup_pending_.load() ||
+      this->client_requested_generation_.load() != requested_generation) {
+    this->unlock_runtime_();
+    return false;
+  }
   this->client_events_enabled_.store(true);
 
   esp_err_t error =
@@ -1623,11 +1646,23 @@ void OpenQuattMqttConfig::client_worker_task_(void* arg) {
 
     while (true) {
       if (self->permanent_failure_cleanup_pending_.load()) {
+        while (!self->stop_client_()) {
+          vTaskDelay(pdMS_TO_TICKS(1000U));
+        }
         self->client_reconcile_pending_.store(false);
         break;
       }
       const uint32_t requested_generation = self->client_requested_generation_.load();
       const ClientReconcileResult result = self->reconcile_client_(requested_generation);
+      if (self->permanent_failure_cleanup_pending_.load()) {
+        continue;
+      }
+      if (result == ClientReconcileResult::APPLIED) {
+        self->process_pending_input_subscriptions_();
+      }
+      if (self->permanent_failure_cleanup_pending_.load()) {
+        continue;
+      }
       if (self->client_requested_generation_.load() != requested_generation) {
         continue;
       }
@@ -1885,14 +1920,16 @@ void OpenQuattMqttConfig::process_pending_input_subscriptions_() {
   if (!this->resubscribe_inputs_.exchange(false)) {
     return;
   }
-  if (!this->enabled_.load() || !this->connected_.load() || !this->client_events_enabled_.load() ||
+  if (this->permanent_failure_cleanup_pending_.load() || !this->enabled_.load() || !this->connected_.load() ||
+      !this->client_events_enabled_.load() ||
       this->callback_session_generation_.load() != this->mqtt_session_generation_.load()) {
     return;
   }
 
   this->lock_runtime_();
   esp_mqtt_client_handle_t client = this->mqtt_client_;
-  if (client != nullptr && this->client_events_enabled_.load() && this->callback_client_.load() == client &&
+  if (client != nullptr && !this->permanent_failure_cleanup_pending_.load() && this->client_events_enabled_.load() &&
+      this->callback_client_.load() == client &&
       this->callback_session_generation_.load() == this->mqtt_session_generation_.load()) {
     this->subscribe_inputs_(client);
   }

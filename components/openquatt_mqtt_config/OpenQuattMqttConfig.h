@@ -302,6 +302,7 @@ class OpenQuattMqttConfig : public Component {
   void start_permanent_failure_cleanup_();
   bool process_permanent_failure_cleanup_();
   bool request_client_reconcile_();
+  bool notify_client_worker_();
   enum class ClientReconcileResult : uint8_t {
     APPLIED = 0U,
     WAIT_FOR_NETWORK = 1U,
