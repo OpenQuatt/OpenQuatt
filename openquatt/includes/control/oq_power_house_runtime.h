@@ -431,8 +431,8 @@ class Runtime {
     this->run_ext_floor_w_ = run_ext_decision.floor_active ? run_ext_decision.floor_w : 0.0f;
     this->run_ext_comfort_stop_c_ = run_ext_decision.comfort_stop_c;
     this->run_ext_warm_restart_c_ = run_ext_decision.warm_restart_c;
-    // Blocked diagnostic: enabled and armed below Pmin, but water limiter or
-    // missing Pmin prevents the floor from being applied.
+    // Blocked diagnostic: armed below Pmin, but water limiter or missing Pmin
+    // prevents the floor from being applied.
     this->run_ext_blocked_ = room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
                              !std::isfinite(run_ext_input.minimum_viable_w) && base_requested_w > 0.0f;
     if (room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&

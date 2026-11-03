@@ -186,7 +186,7 @@ void test_stopped_run_waits_for_same_restart_temperature() {
     assert(wait.force_comfort_stop && !wait.floor_active && !wait.warm_restart_intent);
     assert(!wait.next.cycle_armed);
 
-    in.room_c = 20.71f;
+    in.room_c = in.setpoint_c + tuning().stop_margin_c - tuning().restart_cooldown_c + 0.01f;
     const auto held = evaluate(in, tuning(), wait.next);
     assert(held.next.phase == Phase::WAIT_WARM_RESTART);
     assert(held.force_comfort_stop && !held.floor_active && !held.warm_restart_intent);

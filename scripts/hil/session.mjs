@@ -29,7 +29,6 @@ export const controllerSettings = [
   { key: 'phFall', domain: 'number', name: 'Power House demand fall time', kind: 'number', sinceSchema: 4 },
   { key: 'phComfortBelow', domain: 'number', name: 'Power House comfort below setpoint', kind: 'number', sinceSchema: 4 },
   { key: 'phComfortAbove', domain: 'number', name: 'Power House comfort above setpoint', kind: 'number', sinceSchema: 4 },
-  { key: 'phExtension', domain: 'switch', name: 'Power House run extension', kind: 'switch', sinceSchema: 4 },
   { key: 'controlledWarmup', domain: 'switch', name: 'Controlled warmup enabled', kind: 'switch', sinceSchema: 4 },
   { key: 'phExtensionStop', domain: 'number', name: 'Power House run extension stop margin', kind: 'number', sinceSchema: 4 },
   { key: 'phExtensionCooldown', domain: 'number', name: 'Power House run extension restart cooldown', kind: 'number', sinceSchema: 4 },
