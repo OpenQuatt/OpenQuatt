@@ -116,9 +116,10 @@ function resetSettingsState(entities = {}) {
   state.pendingControlModeOverride = "";
 }
 
-test("oude firmware zonder run-extension entities verbergt de card", () => {
+test("oude firmware zonder run-extension entities toont de card", () => {
   resetSettingsState({});
-  assert.equal(renderPowerHouseRunExtensionField(), "");
+  const markup = renderPowerHouseRunExtensionField();
+  assert.match(markup, /Langer doorverwarmen/);
 });
 
 test("run-extension card toont altijd de stopmarge zonder schakelaar", () => {
