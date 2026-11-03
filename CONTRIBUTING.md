@@ -92,7 +92,7 @@ Validate memory-sensitive work with identical baseline and candidate firmware. R
 - relevant task-stack high-watermarks;
 - whether values recover after the tested operation.
 
-Measure during cold boot and realistic combined load, including the applicable HA, web, API, MQTT, Modbus, OpenTherm and OTA/flash paths. Avoid high-frequency diagnostic polling that materially changes the result. The linker RAM summary is useful for static deltas, but does not expose transient task stacks, TLS buffers or allocation peaks.
+Measure after a verified full application restart and during realistic combined load, including the applicable HA, web, API, MQTT, Modbus, OpenTherm and OTA/flash paths. Follow the [HIL restart guidance](docs/development/hil-testing.md#herstarten-bij-geheugenmetingen) for comparable startup conditions and when physical power-on testing is required. Avoid high-frequency diagnostic polling that materially changes the result. The linker RAM summary is useful for static deltas, but does not expose transient task stacks, TLS buffers or allocation peaks.
 
 An unexplained regression, allocation failure, or minimum/largest-block result without measured margin for the worst simultaneous allocation is release-blocking until investigated. Establish healthy HIL baselines per hardware profile and turn those into explicit profile budgets rather than relying on one global magic number. See `docs/development/system-overview.md` for the project memory model.
 

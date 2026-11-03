@@ -66,7 +66,7 @@ De eerste full-validate na een lege of opgeschoonde cache kan tijdelijk sequenti
 
 Een geslaagde compile en het linker-RAM-percentage bewijzen niet dat de runtimeheap veilig is. Meet bij nieuwe runtimefeatures ook de actuele en minimale interne heap, het grootste vrije block, fragmentatie, vrij PSRAM en relevante task-stack-watermarks op representatieve hardware.
 
-Vergelijk dezelfde releaseconfiguratie vóór en na de wijziging, vanaf een koude boot en onder gecombineerde HA-, web-, API-, MQTT-, Modbus-, OpenTherm- en waar relevant OTA/flashbelasting. Zie `CONTRIBUTING.md` en `system-overview.md` voor de allocatieregels, meetmethode en releasecriteria.
+Vergelijk dezelfde releaseconfiguratie vóór en na de wijziging, na een aantoonbare volledige applicatieherstart en onder gecombineerde HA-, web-, API-, MQTT-, Modbus-, OpenTherm- en waar relevant OTA/flashbelasting. Volg de [HIL-herstartrichtlijn](hil-testing.md#herstarten-bij-geheugenmetingen) voor vergelijkbare opstarttoestanden en de verplichte fysieke power-on-tests. Zie `CONTRIBUTING.md` en `system-overview.md` voor de allocatieregels en releasecriteria.
 
 ## Flashen En Hardware
 

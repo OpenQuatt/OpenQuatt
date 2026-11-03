@@ -124,8 +124,10 @@ Vergelijk baseline en kandidaat met dezelfde configuratie en meetinstrumentatie
 na een aantoonbare volledige applicatieherstart. Een OTA-reboot is hiervoor
 geldig. Leg de firmware-/config-/artifactbinding en het bootbewijs vast, zoals
 een verse uptime en de resetreden. Alleen een geslaagde upload bewijst geen
-herstart. Neem startup/eerste verbindingen, relevante reconnects en realistische
-gelijktijdige HA/web/API/MQTT/Modbus/OpenTherm/OTA-belasting mee. Verifieer dat
+herstart. Vergelijk ook dezelfde opstarttoestand, bijvoorbeeld of restart-handoff
+of recovery is gearmd of overgenomen. Neem startup/eerste verbindingen, relevante
+reconnects en realistische gelijktijdige HA/web/API/MQTT/Modbus/OpenTherm/OTA-belasting
+mee. Verifieer dat
 de bedoelde paden werkelijk zijn geraakt; alleen een steady-state-momentopname
 is onvoldoende. Configureer bijvoorbeeld MQTT vóór de herstart als de eerste
 connect en subscriptions onderdeel van de meting zijn.

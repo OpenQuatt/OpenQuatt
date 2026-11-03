@@ -91,8 +91,11 @@ onvoldoende. De profileroute schrijft P276, geen manual `3999=4`.
 ## Geheugen en bewijs
 
 Vergelijk baseline en kandidaat met dezelfde Q Duo labconfig, simulatorprofielen,
-inputs en belasting vanaf cold boot. Meet vóór load, na saves, na restart/reconcile
-en tijdens gelijktijdige normale HA/web/API/MQTT/Modbus/OpenTherm-belasting.
+inputs en belasting na een aantoonbare volledige applicatieherstart. Volg de
+[HIL-herstartrichtlijn](hil-testing.md#herstarten-bij-geheugenmetingen) voor
+vergelijkbare opstarttoestanden en de verplichte fysieke power-on-tests. Meet vóór
+load, na saves, na restart/reconcile en tijdens gelijktijdige normale
+HA/web/API/MQTT/Modbus/OpenTherm-belasting.
 Neem een geautoriseerde OTA-belasting mee waar nodig voor het worst-casebudget.
 De bestaande smoke levert `Heap Free`, `Heap Min Free`, `Heap Max Block`,
 `Heap Fragmentation` en `PSRAM Free`. Verifieer welke daarvan daadwerkelijk
