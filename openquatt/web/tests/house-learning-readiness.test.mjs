@@ -146,3 +146,34 @@ test("voorlopige en goedgekeurde lijn zijn onderscheiden en vertalingen wisselen
   assert.match(html, /Training: 6 · Checking: 3/);
   assert.doesNotMatch(html, /Nog geen|dagmetingen/);
 });
+
+
+test("historische onbekende kwaliteit levert geen fictieve controledagen of groene criteria", () => {
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, config);
+    for (const known of [0, 2, 5]) {
+      const data = records([4, 4, 7, 7, 10, 10, -10, 18, 20]).map((record, index) => ({
+        ...record, quality: {valid: true, heatCoverageBp:index<known ? 10000:null,
+          temperatureCoverageBp:index<known ? 10000:null, heatUncertaintyMeanW:index<known ? 0:null,
+          fitEligible:true,fitWeightBp:index<known ? 10000:5000},
+      }));
+      const html = renderHouseLearningChart(data, {}, {h:200,t0:16,referenceRoomC:20,batchStatus:"insufficient_data",ready:false});
+      assert.match(html, new RegExp(`${locale === "nl" ? "Dagmetingen met bekende meetkwaliteit" : "Daily measurements with known quality"}: ${known}`));
+      assert.doesNotMatch(html, /is-complete|✓|Leren: 6|Checking: 3/);
+      assert.match(html, /9/); // Retained eligible measurements remain visible in the chart summary.
+      assert.doesNotMatch(html, /undefined|NaN/);
+    }
+  }
+});
+
+
+test("legacykwaliteit behoudt de concrete afwijzing van de controller", () => {
+  const data=records([4,4,7,7,10,10,-10,18,20]).map(record=>({...record,quality:{valid:true,
+    heatCoverageBp:null,temperatureCoverageBp:null,heatUncertaintyMeanW:null,fitEligible:true,fitWeightBp:5000}}));
+  for(const locale of ["nl","en"]) {
+    setLocale(locale,config);
+    const html=renderHouseLearningReadiness(data,{batchStatus:"invalid_active_model"});
+    assert.match(html, locale==="nl" ? /De ingestelde woninglijn is ongeldig/ : /The configured heat demand curve is invalid/);
+    assert.doesNotMatch(html,/is-complete|✓|Leren: 6|Checking: 3/);
+  }
+});

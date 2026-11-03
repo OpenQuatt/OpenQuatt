@@ -565,14 +565,22 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
     auto result = failure(input, status, reasons_for_status(status));
     result.may_bridge_daily_gap =
         purpose == SnapshotPurpose::STRUCTURAL_BATCH && !stopping && scalar_gap_status(status);
+    if (result.may_bridge_daily_gap && calorimetry.valid) {
+      result.snapshot.gap_heat_observed_abs_w = fabsf(calorimetry.heat_to_water_w);
+      result.snapshot.partial_heat_to_water_w = calorimetry.heat_to_water_w;
+    }
     return result;
   }
 
   if (stopping) {
     auto result = failure(input, SnapshotSourceStatus::INCONSISTENT_ACTIVITY, INVALID_CONTROL_MODE);
-    // No heat is accepted until consistent telemetry returns. The accumulator
-    // applies its existing 120 s valid-to-valid limit and missing-energy budget.
+    // The full frame stays invalid while mode/frequency disagree. Preserve
+    // independently valid calorimetry; bound only actually missing heat.
     result.may_bridge_daily_gap = purpose == SnapshotPurpose::STRUCTURAL_BATCH;
+    if (result.may_bridge_daily_gap && calorimetry.valid) {
+      result.snapshot.gap_heat_observed_abs_w = fabsf(calorimetry.heat_to_water_w);
+      result.snapshot.partial_heat_to_water_w = calorimetry.heat_to_water_w;
+    }
     return result;
   }
 

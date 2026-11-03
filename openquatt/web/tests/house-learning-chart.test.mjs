@@ -123,6 +123,141 @@ const dailyPayload = {
   ],
 };
 
+const qualityColumns = ["heat_coverage_bp", "temperature_coverage_bp", "heat_uncertainty_mean_w", "fit_eligible", "fit_weight_bp"];
+const qualityPayload = (rows = [[null, null, null, false, 0], [10000, 9800, 80, true, 7500], [10000, 10000, 20, true, 10000]]) => ({
+  ...dailyPayload, record_quality_policy: 1, record_quality_columns: qualityColumns, record_quality: rows,
+});
+
+test("gedeeltelijke of onbekende kwaliteitspolicy kan niet terugvallen op legacygeschiktheid", () => {
+  const variants = [{ ...dailyPayload, record_quality_policy: 1 }];
+  for (const key of ["record_quality_policy", "record_quality_columns", "record_quality"]) {
+    const input = qualityPayload();
+    delete input[key];
+    variants.push(input);
+  }
+  for (const policy of [undefined, null, "1", true, 0, 2, 999]) {
+    variants.push({ ...qualityPayload(), record_quality_policy: policy });
+  }
+  for (const input of variants) {
+    const records = normalizeHouseLearningExport(input);
+    assert.equal(records.length, dailyPayload.records.length);
+    assert.ok(records.every(record => record.quality?.valid === false));
+    const html = renderHouseLearningChart(records, {}, { referenceRoomC: 20 });
+    assert.match(html, /Meetperioden: 3 bewaard · 0 voor modeladvies/);
+    assert.match(html, /Meetkwaliteit ongeldig/);
+    assert.doesNotMatch(html, /is-complete|✓/);
+  }
+  assert.ok(normalizeHouseLearningExport(dailyPayload).every(record => !Object.hasOwn(record, "quality")));
+});
+
+test("recordkwaliteit blijft optioneel, kolomgestuurd en uitgelijnd vóór recordfiltering", () => {
+  assert.ok(normalizeHouseLearningExport(dailyPayload).every(record => !Object.hasOwn(record, "quality")));
+  const input = qualityPayload();
+  input.records = input.records.map(row => [...row]);
+  input.records[0][4] = null;
+  input.record_quality_columns = [...qualityColumns].reverse();
+  input.record_quality = input.record_quality.map(row => [...row].reverse());
+  const before = JSON.stringify(input);
+  const records = normalizeHouseLearningExport(input);
+  assert.equal(records.length, 2);
+  assert.deepEqual(records[0].quality, { valid: true, heatCoverageBp: 10000, temperatureCoverageBp: 9800,
+    heatUncertaintyMeanW: 80, fitEligible: true, fitWeightBp: 7500 });
+  assert.equal(records[1].quality.fitWeightBp, 10000);
+  assert.equal(JSON.stringify(input), before);
+});
+
+test("bewaarde ongeschikte dagen blijven punten maar vergroten fitbereik en voortgang niet", () => {
+  const input = qualityPayload();
+  input.records = input.records.map(row => [...row]);
+  input.records[0][8] = -9;
+  input.records[0][9] = 1;
+  const records = normalizeHouseLearningExport(input);
+  const fit = { h: 200, t0: 16, referenceRoomC: 20 };
+  const model = getHouseLearningChartModel(records, {}, fit);
+  const html = renderHouseLearningChart(records, {}, fit);
+  const range = html.match(/<rect x="([^"]+)"[^>]*width="([^"]+)"/);
+  assert.equal(Number(range[1]), model.x(4));
+  assert.equal(Number(range[2]), model.x(11) - model.x(4));
+  assert.equal((html.match(/data-oq-house-learning-tip=/g) || []).length, 3);
+  assert.match(html, /<dt>Dagmetingen<\/dt><dd>2 /);
+  assert.match(html, /Meetperioden: 3 bewaard · 2 voor modeladvies/);
+  assert.match(html, /Bewaard, niet voor modeladvies/);
+});
+
+test("kwaliteitsmetadata weigert ontbrekende, ambigue en ongeldige waarden zonder puntenverlies", () => {
+  const invalidPayloads = [
+    { ...qualityPayload(), record_quality: undefined },
+    { ...qualityPayload(), record_quality_columns: undefined },
+    { ...qualityPayload(), record_quality_columns: [...qualityColumns, qualityColumns[0]] },
+    { ...qualityPayload(), record_quality_columns: qualityColumns.slice(1) },
+    { ...qualityPayload(), record_quality: qualityPayload().record_quality.slice(1) },
+  ];
+  for (const [column, bad] of [[0, "10000"], [0, -1], [1, 10001], [2, 65534], [2, '<img src=x onerror="bad()">'], [3, 1], [4, "7500"], [4, NaN]]) {
+    const input = qualityPayload();
+    input.record_quality = input.record_quality.map(row => [...row]);
+    input.record_quality[1][column] = bad;
+    invalidPayloads.push(input);
+  }
+  for (const input of invalidPayloads) {
+    const records = normalizeHouseLearningExport(input);
+    assert.equal(records.length, 3);
+    assert.equal(records[1].quality.valid, false);
+    const html = renderHouseLearningChart(records, {}, { referenceRoomC: 20 });
+    assert.match(html, /Meetkwaliteit ongeldig/);
+    assert.doesNotMatch(html, /<img/);
+  }
+  const broken = normalizeHouseLearningExport({ ...qualityPayload(), record_quality: [null, null, null] });
+  const html = renderHouseLearningChart(broken, {}, { h: 200, t0: 16, referenceRoomC: 20 });
+  assert.match(html, /<dt>Dagmetingen<\/dt><dd>0 /);
+  assert.doesNotMatch(html, /<rect |class="oq-house-learning-chart-line oq-house-learning-chart-line--learned"/);
+  assert.match(html, /Geen geladen meetperioden voor modeladvies/);
+  assert.doesNotMatch(html, /Nog geen dagmetingen van 24 uur/);
+});
+
+test("een expliciet nulgewicht telt niet als bruikbaar ook als de server fit_eligible meldt", () => {
+  const records = normalizeHouseLearningExport({ ...qualityPayload([[10000, 10000, 0, true, 0]]),
+    records: [dailyPayload.records[1]] });
+  const html = renderHouseLearningChart(records, {}, { referenceRoomC: 20 });
+  assert.match(html, /Meetperioden: 1 bewaard · 0 voor modeladvies/);
+  assert.match(html, /<dt>Dagmetingen<\/dt><dd>0 /);
+  assert.match(html, /Bewaard, niet voor modeladvies/);
+});
+
+test("dekking, voorwaardelijke energiefout en servergewicht volgen NL en EN zonder statistische claim", () => {
+  const records = normalizeHouseLearningExport(qualityPayload([[null, null, null, false, 0],
+    [10000, 9800, 80, true, 1234], [9500, null, "overflow", false, 0]]));
+  const before = JSON.stringify(records);
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    const html = renderHouseLearningChart(records, {}, { referenceRoomC: 20 });
+    assert.match(html, locale === "nl" ? /Dekking warmte: 100%/ : /Heat coverage: 100%/);
+    assert.match(html, locale === "nl" ? /Dekking temperatuur: 98%/ : /Temperature coverage: 98%/);
+    assert.match(html, locale === "nl" ? /≤ 1,92 kWh/ : /≤ 1\.92 kWh/);
+    assert.match(html, locale === "nl" ? /Modelgewicht: 12,34%/ : /Model weight: 12\.34%/);
+    assert.match(html, locale === "nl" ? /boven de registratielimiet/ : /above the recording limit/);
+    assert.doesNotMatch(html, /NaN|σ|standard deviation|standaardafwijking/);
+  }
+  assert.equal(JSON.stringify(records), before);
+});
+
+test("historische onbekende kwaliteit verzint geen dekking maar behoudt expliciet servergewicht", () => {
+  const records = normalizeHouseLearningExport({ ...qualityPayload([[null, null, null, true, 2700]]),
+    records: [dailyPayload.records[1]] });
+  const html = renderHouseLearningChart(records, {}, { referenceRoomC: 20 });
+  assert.match(html, /Historische meetkwaliteit onbekend/);
+  assert.match(html, /Modelgewicht: 27%/);
+  assert.doesNotMatch(html, /Dekking warmte:|Dekking temperatuur:|Voorwaardelijke warmtefoutgrens:/);
+  assert.match(html, /Dagmetingen met bekende meetkwaliteit: 0/);
+  assert.match(html, /Meetperioden: 1 bewaard · 1 voor modeladvies/);
+  assert.doesNotMatch(html, /<dt>Dagmetingen<\/dt>|is-complete|✓/);
+});
+
+test("de getoonde warmtefoutgrens wordt nooit onder de servergrens afgerond", () => {
+  const records = normalizeHouseLearningExport({ ...qualityPayload([[10000, 10000, 1, true, 10000]]),
+    records: [dailyPayload.records[1]] });
+  assert.match(renderHouseLearningChart(records, {}, { referenceRoomC: 20 }), /≤ 0,03 kWh/);
+});
+
 test("nieuwe export plot effectieve buitenwaarde, oude export behoudt werkelijke buitenwaarde", () => {
   const records = normalizeHouseLearningExport(dailyPayload);
   assert.equal(records[1].outsideC, 4);

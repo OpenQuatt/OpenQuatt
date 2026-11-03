@@ -64,6 +64,22 @@ export function renderHouseLearningReadiness(records, learned = {}) {
   else if (learned.batchStatus === "insufficient_spread" || learned.batchStatus === "day_dominance") copy = t("houseLearning.readiness.controllerNeedsSpread");
   else copy = t("houseLearning.readiness.furtherChecks");
   const title = t(available ? learned.ready ? "houseLearning.readiness.readyTitle" : "houseLearning.readiness.provisionalTitle" : "houseLearning.readiness.waitingTitle");
+  // Legacy quality may train, but cannot supply independent checking days.
+  // Do not reproduce the server's chronology/policy with a naive last-three split.
+  const unknownQuality = records.some(record => record.quality?.valid
+    && [record.quality.heatCoverageBp, record.quality.temperatureCoverageBp, record.quality.heatUncertaintyMeanW].includes(null));
+  if (unknownQuality) {
+    const knownCount = records.filter(record => record.recordKind === 1 && record.quality?.valid
+      && record.quality.heatCoverageBp !== null && record.quality.temperatureCoverageBp !== null
+      && record.quality.heatUncertaintyMeanW !== null).length;
+    const serverCopy = reasonKey ? t(reasonKey) : available
+      ? t(learned.ready ? "houseLearning.readiness.readyCopy" : "houseLearning.readiness.provisionalCopy") : "";
+    return `<section class="oq-house-learning-readiness" aria-label="${escapeHtml(t("houseLearning.readiness.label"))}">
+      <div class="oq-house-learning-readiness-head"><h5>${escapeHtml(title)}</h5></div>
+      ${serverCopy ? `<p>${escapeHtml(serverCopy)}</p>` : ""}
+      <p>${escapeHtml(t("houseLearning.readiness.qualitySplit", { count: number(knownCount) }))}</p>
+    </section>`;
+  }
   const countState = t(progress.missingDays ? "houseLearning.readiness.missingDays" : "houseLearning.readiness.sufficient", { count: number(progress.missingDays) });
   const spreadState = t(progress.spread == null ? "houseLearning.readiness.notAvailable" : progress.missingSpread > 0 ? "houseLearning.readiness.missingSpread" : "houseLearning.readiness.sufficient", { value: number(progress.missingSpread ?? 0) });
   const help = [t("houseLearning.readiness.method"), progress.spread > 0

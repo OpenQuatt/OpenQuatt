@@ -164,79 +164,50 @@ inline ObserveResult observe_daily_with_diagnostics(DailyCollectionDiagnostics& 
   const bool was_active = state.active;
   const bool was_gap = state.source_gap_pending || state.restart_pending;
   const bool checkpoint_valid = !state.restart_pending || valid_daily_checkpoint(state, config);
-  uint64_t next_day_remainder_ms = kUnknownDailyDurationMs;
   auto loss = daily_diagnostics_detail::capture(state, diagnostics, snapshot.epoch_s);
   if (was_active && !state.restart_pending && snapshot.monotonic_ms > state.last_monotonic_ms)
     loss.observed_gap_ms = snapshot.monotonic_ms - state.last_monotonic_ms;
   if (!checkpoint_valid) {
-    // An invalid checkpoint cannot establish either previous progress or a
-    // conditional heat bound, even if some of its fields look plausible.
     loss.collected_ms = kUnknownDailyDurationMs;
     loss.observed_gap_ms = kUnknownDailyDurationMs;
     loss.charged_uncertainty_ws = NAN;
   }
-  if (was_gap && checkpoint_valid) {
-    if (state.restart_pending) {
-      loss.observed_gap_ms = snapshot.epoch_s > state.last_epoch_s
-                                 ? static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL
-                                 : kUnknownDailyDurationMs;
-    } else if (snapshot.monotonic_ms > state.last_monotonic_ms) {
-      loss.observed_gap_ms = snapshot.monotonic_ms - state.last_monotonic_ms;
+  if (was_gap && checkpoint_valid && validate_snapshot(snapshot, config) == LearningStatus::OK) {
+    uint64_t elapsed_ms = 0;
+    if (state.restart_pending && snapshot.epoch_s > state.last_epoch_s) {
+      loss.observed_gap_ms = static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL;
+      elapsed_ms = segment_elapsed_ms(state) + loss.observed_gap_ms;
+    } else if (!state.restart_pending && snapshot.monotonic_ms > state.last_monotonic_ms) {
+      elapsed_ms = state.carried_duration_ms + snapshot.monotonic_ms - state.start_monotonic_ms;
     }
-    if (loss.observed_gap_ms != kUnknownDailyDurationMs && loss.collected_ms != kUnknownDailyDurationMs &&
-        validate_snapshot(snapshot, config) == LearningStatus::OK) {
-      const double bound_w = config.max_abs_heat_w + fmax(fabs(state.last_heat_w), fabs(snapshot.heat_to_water_w));
-      const uint64_t remaining_ms = kSegmentDurationMs - loss.collected_ms;
-      const uint64_t day_gap_ms = loss.observed_gap_ms < remaining_ms ? loss.observed_gap_ms : remaining_ms;
-      loss.attempted_day_uncertainty_ws = bound_w * day_gap_ms / 1000.0;
-      next_day_remainder_ms = loss.observed_gap_ms - day_gap_ms;
-      loss.attempted_next_day_uncertainty_ws = bound_w * next_day_remainder_ms / 1000.0;
+    if (elapsed_ms > 0) {
+      const auto interval = detail::daily_heat_interval(state, snapshot, config, elapsed_ms);
+      if (interval.valid && interval.measured_endpoint) {
+        loss.attempted_day_uncertainty_ws = interval.uncertainty_ws;
+        loss.attempted_next_day_uncertainty_ws = interval.next_uncertainty_ws;
+      }
     }
   }
   const auto result = observe_snapshot(state, snapshot, config, may_bridge);
   const bool completed_day = result.has_record || result.cause == DailyCollectionCause::COMPLETED_QUALITY;
-  // Observe the collector's final decision without adding a control flag to
-  // ObserveResult. A newer collector can retain the old day while rejecting
-  // only its over-budget remainder; an older collector rejects the whole gap.
-  const bool discarded_next_day_remainder =
-      completed_day && was_gap && next_day_remainder_ms != kUnknownDailyDurationMs && next_day_remainder_ms > 0 &&
-      isfinite(loss.attempted_next_day_uncertainty_ws) &&
-      loss.attempted_next_day_uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0 && state.active &&
-      !state.source_gap_pending && !state.restart_pending && state.start_epoch_s == snapshot.epoch_s &&
-      state.last_epoch_s == snapshot.epoch_s && state.start_monotonic_ms == snapshot.monotonic_ms &&
-      state.last_monotonic_ms == snapshot.monotonic_ms && segment_elapsed_ms(state) == 0 &&
-      state.missing_energy_uncertainty_ws == 0.0;
-  if (completed_day) {
-    diagnostics.last_completed_uncertainty_ws = loss.charged_uncertainty_ws;
-    if (was_gap) diagnostics.last_completed_uncertainty_ws += loss.attempted_day_uncertainty_ws;
-  }
+  if (completed_day) diagnostics.last_completed_uncertainty_ws = result.completed_missing_energy_uncertainty_ws;
   if (was_active && result.cause != DailyCollectionCause::NONE) {
     loss.cause = result.cause;
     loss.status = result.status;
     loss.invalid_reasons |= snapshot.invalid_reasons;
     if (source_status != SnapshotSourceStatus::OK) loss.source_status = source_status;
-    if (result.cause == DailyCollectionCause::COMPLETED_QUALITY) {
+    if (completed_day) {
       loss.collected_ms = kSegmentDurationMs;
       loss.charged_uncertainty_ws = diagnostics.last_completed_uncertainty_ws;
-    } else if (result.cause != DailyCollectionCause::UNCERTAINTY_BUDGET) {
-      // An endpoint rejected for time, context or operation cannot establish
-      // the collector's conditional missing-energy uncertainty.
+    } else {
       loss.attempted_day_uncertainty_ws = loss.attempted_next_day_uncertainty_ws = NAN;
     }
     if (result.cause == DailyCollectionCause::CLOCK_DISCONTINUITY) loss.observed_gap_ms = kUnknownDailyDurationMs;
     daily_diagnostics_detail::remember_loss(diagnostics, loss);
   }
-  if (discarded_next_day_remainder) {
-    daily_diagnostics_detail::increment(diagnostics.rejected_next_day_remainders);
-    diagnostics.last_remainder_rejection = {snapshot.epoch_s, next_day_remainder_ms,
-                                            loss.attempted_next_day_uncertainty_ws,
-                                            diagnostics.last_completed_uncertainty_ws};
-  }
-  if (was_gap && !state.source_gap_pending && !discarded_next_day_remainder &&
-      (result.status == LearningStatus::COLLECTING || result.has_record ||
-       result.cause == DailyCollectionCause::COMPLETED_QUALITY)) {
+  if (was_gap && !state.source_gap_pending &&
+      (result.status == LearningStatus::COLLECTING || result.has_record || completed_day))
     daily_diagnostics_detail::increment(diagnostics.bridged_gaps);
-  }
   if (state.source_gap_pending) {
     if (!was_gap || diagnostics.pending_source_status == SnapshotSourceStatus::OK)
       diagnostics.pending_source_status = source_status;

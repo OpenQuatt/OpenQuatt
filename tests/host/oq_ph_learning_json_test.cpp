@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "../../openquatt/includes/control/oq_ph_learning_json.h"
+#include "../../openquatt/includes/control/oq_ph_daily_record_quality_json.h"
 #include "../../openquatt/includes/control/oq_ph_daily_collection_json.h"
 #include "../../openquatt/includes/control/oq_ph_daily_collection_state_json.h"
 
@@ -36,6 +37,9 @@ void test_worst_case_export_fits_fixed_psram_cache() {
   JsonWriter json(buffer, sizeof(buffer));
   json.add("%s", kExportRecordsPrefix);
   for (size_t index = 0; index < kMaxExportRecordRows; ++index) add_record(json, index != 0U);
+  json.add("%s", kExportRecordQualityPrefix);
+  for (size_t index = 0; index < kMaxExportRecordRows; ++index)
+    json.add("%s[10000,10000,\"overflow\",false,10000]", index ? "," : "");
   json.add("%s", kExportDiagnosticsPrefix);
   for (size_t index = 0; index < kMaxExportDiagnosticRows; ++index) add_diagnostic(json, index != 0U);
   json.add("%s", kExportSuffix);
@@ -112,6 +116,9 @@ void test_worst_case_daily_diagnostics_and_all_export_rows_fit() {
   JsonWriter json(buffer, sizeof(buffer));
   json.add("%s", kExportRecordsPrefix);
   for (size_t index = 0; index < kMaxExportRecordRows; ++index) add_record(json, index != 0U);
+  json.add("%s", kExportRecordQualityPrefix);
+  for (size_t index = 0; index < kMaxExportRecordRows; ++index)
+    json.add("%s[10000,10000,\"overflow\",false,10000]", index ? "," : "");
   json.add("%s", kExportDiagnosticsPrefix);
   for (size_t index = 0; index < kMaxExportDiagnosticRows; ++index) add_diagnostic(json, index != 0U);
   json.add("%s", kExportDailyCollectionPrefix);
@@ -125,6 +132,8 @@ void test_worst_case_daily_diagnostics_and_all_export_rows_fit() {
   state.source_status = state.last_source_status = diagnostics.pending_source_status;
   state.last_rejection = diagnostics.last_loss.status;
   state.uncertainty_wh = -std::numeric_limits<float>::max();
+  state.missing_heat_bound_w = 18344.30078125f;
+  state.restart = {1, UINT32_MAX, kDailyMaximumRestartGapMs, true, "restore", "operational_context_unknown"};
   char state_buffer[kMaxDailyCollectionStateJsonBytes];
   JsonWriter state_body(state_buffer, sizeof(state_buffer));
   write_daily_collection_state_json(state_body, state);
@@ -144,14 +153,62 @@ void test_current_collection_unknown_values_are_not_fabricated_measurements() {
   assert(strstr(buffer, "\"batch_last_rejection\":null") != nullptr);
   assert(strstr(buffer, "\"batch_missing_energy_uncertainty_wh\":null") != nullptr);
   assert(strstr(buffer, "\"batch_missing_energy_budget_wh\":2400") != nullptr);
+  assert(strstr(buffer, "\"batch_missing_heat_bound_w\":50000") != nullptr);
   assert(strstr(buffer, "\"batch_maximum_gap_s\":120") != nullptr);
+  assert(strstr(buffer, "\"restart\":null") != nullptr);
+}
+
+void test_restart_timestamps_and_backwards_clock_are_explicit() {
+  char buffer[512];
+  DailyRestartDiagnostics state{1000, 1125, 300000, true, "restore", "ok"};
+  JsonWriter json(buffer, sizeof(buffer));
+  write_daily_restart_json(json, state);
+  assert(json.ok());
+  assert(strstr(buffer, "\"checkpoint_epoch\":1000") != nullptr);
+  assert(strstr(buffer, "\"checked_epoch\":1125") != nullptr);
+  assert(strstr(buffer, "\"gap_s\":125") != nullptr);
+  assert(strstr(buffer, "\"limit_s\":300") != nullptr);
+  assert(strstr(buffer, "\"verified_ticket\":true") != nullptr);
+  state.checked_epoch = 999;
+  JsonWriter backwards(buffer, sizeof(buffer));
+  write_daily_restart_json(backwards, state);
+  assert(backwards.ok() && strstr(buffer, "\"gap_s\":null") != nullptr);
+}
+
+void test_quality_rows_preserve_unknown_and_server_policy() {
+  using namespace oq_power_house::learning;
+  SegmentRecord record;
+  record.duration_s = 86400;
+  record.mean_room_c = record.mean_setpoint_c = 20;
+  record.mean_outside_c = 5;
+  record.mean_heat_w = 2000;
+  record.room_range_k = record.setpoint_range_c = record.room_trend_k_per_h = 0;
+  record.water_start_c = record.water_end_c = 30;
+  char buffer[128];
+  JsonWriter unknown(buffer, sizeof(buffer));
+  write_daily_record_quality_json(unknown, record, {});
+  assert(strcmp(buffer, "[null,null,null,true,5000]") == 0);
+  record.daily_quality = {10000, 9999, 100};
+  JsonWriter weighted(buffer, sizeof(buffer));
+  write_daily_record_quality_json(weighted, record, {});
+  assert(strcmp(buffer, "[10000,9999,100,true,4999]") == 0);
+  record.daily_quality.heat_uncertainty_mean_w = 101;
+  JsonWriter excluded(buffer, sizeof(buffer));
+  write_daily_record_quality_json(excluded, record, {});
+  assert(strcmp(buffer, "[10000,9999,101,false,0]") == 0);
+  record.daily_quality.heat_uncertainty_mean_w = kDailyUncertaintyOverflow;
+  JsonWriter overflow(buffer, sizeof(buffer));
+  write_daily_record_quality_json(overflow, record, {});
+  assert(strcmp(buffer, "[10000,9999,\"overflow\",false,0]") == 0);
 }
 }  // namespace
 
 int main() {
+  test_quality_rows_preserve_unknown_and_server_policy();
   test_worst_case_export_fits_fixed_psram_cache();
   test_writer_bounds_numbers_and_fails_closed_on_overflow();
   test_worst_case_daily_diagnostics_and_all_export_rows_fit();
   test_current_collection_unknown_values_are_not_fabricated_measurements();
+  test_restart_timestamps_and_backwards_clock_are_explicit();
   return 0;
 }

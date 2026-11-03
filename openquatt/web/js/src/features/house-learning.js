@@ -49,6 +49,9 @@ const collectionPhase = (collection, prefix) => {
     ...(prefix === "batch" && Object.hasOwn(collection, "batch_missing_energy_budget_wh") ? {
       missingEnergyBudgetWh: numberOrNull(collection.batch_missing_energy_budget_wh),
     } : {}),
+    ...(prefix === "batch" && Object.hasOwn(collection, "batch_budget_scope") ? {
+      budgetScope: collection.batch_budget_scope === "model_advice_only" ? "model_advice_only" : "unknown",
+    } : {}),
     elapsedSeconds: numberOrNull(collection[`${prefix}_elapsed_s`]),
     targetSeconds: numberOrNull(collection[`${prefix}_target_s`]),
     intervals: numberOrNull(collection[`${prefix}_intervals`]),

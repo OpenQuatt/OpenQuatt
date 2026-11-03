@@ -5,20 +5,48 @@
 #if OQ_PH_LEARNING_CORE_AVAILABLE
 
 #include "oq_ph_learning_quality.h"
+#include "oq_ph_daily_gap_uncertainty.h"
 
 namespace oq_power_house::learning {
 
 constexpr uint32_t kDailyMaximumGapMs = 120000;
+// Only the owner of a verified, one-use software-restart ticket may select
+// this boot/source-startup ceiling. Model-advice quality stays separate.
+constexpr uint32_t kDailyMaximumRestartGapMs = 300000;
 constexpr double kDailyMissingHeatBudgetW = 100.0;
+
+enum class DailyRestartPolicy : uint8_t { STANDARD = 0, VERIFIED_SOFTWARE_RESTART };
+
+inline uint32_t daily_restart_gap_limit_ms(DailyRestartPolicy policy) {
+  return policy == DailyRestartPolicy::VERIFIED_SOFTWARE_RESTART ? kDailyMaximumRestartGapMs : kDailyMaximumGapMs;
+}
+
+// The planned-restart ceiling covers the first source-startup observation only.
+// Once WAIT is observed, every later owner tick must keep the normal cadence.
+inline bool coherent_daily_restart_tick(uint64_t previous_ms, uint64_t now_ms, const QualityConfig& config) {
+  return now_ms != 0 && (previous_ms == 0 || (now_ms > previous_ms && now_ms - previous_ms <= config.max_interval_ms));
+}
 
 struct SegmentAccumulator {
   bool active = false;
   bool source_gap_pending = false;
   bool restart_pending = false;
+  // Boot-local permission, deliberately absent from the journal encoding.
+  DailyRestartPolicy restart_policy = DailyRestartPolicy::STANDARD;
   // Time collected in earlier boots; boot-local clocks are never persisted.
   uint64_t carried_duration_ms = 0;
   uint64_t last_gap_observation_ms = 0;
   double missing_energy_uncertainty_ws = 0.0;
+  // Bound evidence while a total snapshot is incomplete, never an integrated
+  // endpoint. Schema8 persists at least the configured envelope plus this floor.
+  float gap_heat_bound_floor_w = 0.0f;
+  // Independent signed heat cursor; elapsed time is relative to this day's
+  // origin, never a persisted monotonic clock from another boot.
+  float heat_last_w = NAN;
+  uint32_t heat_last_elapsed_ms = 0, heat_last_epoch_s = 0;
+  uint32_t heat_observed_ms = 0, temperature_observed_ms = 0, next_heat_observed_ms = 0;
+  double next_heat_integral_ws = 0.0, next_heat_uncertainty_ws = 0.0;
+  bool heat_gap_pending = false, daily_quality_known = false;
   uint64_t start_monotonic_ms = 0;
   uint64_t last_monotonic_ms = 0;
   uint32_t start_epoch_s = 0;
@@ -74,6 +102,8 @@ struct ObserveResult {
   LearningStatus status = LearningStatus::COLLECTING;
   bool has_record = false;
   DailyCollectionCause cause = DailyCollectionCause::NONE;
+  bool discarded_next_day_remainder = false;
+  double completed_missing_energy_uncertainty_ws = NAN;
   SegmentRecord record;
 };
 
@@ -90,7 +120,23 @@ inline bool valid_daily_checkpoint(const SegmentAccumulator& state, const Qualit
       state.last_epoch_s < state.start_epoch_s || !isfinite(state.integrated_duration_s) ||
       state.integrated_duration_s < 0.0 || state.integrated_duration_s >= 86400.0 ||
       !isfinite(state.missing_energy_uncertainty_ws) || state.missing_energy_uncertainty_ws < 0.0 ||
-      state.missing_energy_uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0)
+      state.missing_energy_uncertainty_ws > 2.0 * config.max_abs_heat_w * 86400.0 ||
+      !isfinite(state.gap_heat_bound_floor_w) || state.gap_heat_bound_floor_w < 0.0f ||
+      state.gap_heat_bound_floor_w > config.max_abs_heat_w)
+    return false;
+  const uint64_t elapsed_ms = segment_elapsed_ms(state);
+  const uint64_t heat_ms = state.heat_last_elapsed_ms;
+  const uint64_t day_ms = kSegmentDurationMs;
+  const uint64_t next_ms = heat_ms > day_ms ? heat_ms - day_ms : 0;
+  if (!isfinite(state.heat_last_w) || fabsf(state.heat_last_w) > config.max_abs_heat_w || heat_ms < elapsed_ms ||
+      heat_ms > day_ms + kDailyMaximumRestartGapMs || state.heat_last_epoch_s < state.last_epoch_s ||
+      state.heat_observed_ms > (heat_ms < day_ms ? heat_ms : day_ms) || state.temperature_observed_ms > elapsed_ms ||
+      state.next_heat_observed_ms > next_ms || !isfinite(state.next_heat_integral_ws) ||
+      !isfinite(state.next_heat_uncertainty_ws) || state.next_heat_uncertainty_ws < 0.0 ||
+      state.next_heat_uncertainty_ws > 2.0 * config.max_abs_heat_w * static_cast<double>(next_ms) / 1000.0 + 1.0 ||
+      fabs(state.next_heat_integral_ws) > config.max_abs_heat_w * static_cast<double>(next_ms) / 1000.0 + 1.0 ||
+      fabs(static_cast<double>(state.heat_last_epoch_s - state.start_epoch_s) * 1000.0 - heat_ms) >
+          (config.utc_tolerance_s + 1U) * 1000.0)
     return false;
   const double utc_span = state.last_epoch_s - state.start_epoch_s;
   if (fabs(utc_span - state.integrated_duration_s) > config.utc_tolerance_s + 1.0) return false;
@@ -146,6 +192,9 @@ inline void seed_segment(SegmentAccumulator& state, const LearningSnapshot& snap
   state.last_setpoint_c = snapshot.setpoint_c;
   state.last_outside_c = snapshot.outside_c;
   state.last_heat_w = snapshot.heat_to_water_w;
+  state.heat_last_w = snapshot.heat_to_water_w;
+  state.heat_last_epoch_s = snapshot.epoch_s;
+  state.daily_quality_known = true;
   state.water_start_c = snapshot.mean_water_c;
   state.water_end_c = snapshot.mean_water_c;
   state.room_min_c = snapshot.room_c;
@@ -189,6 +238,94 @@ inline void update_last(SegmentAccumulator& state, const LearningSnapshot& snaps
   state.setpoint_max_c = fmaxf(state.setpoint_max_c, snapshot.setpoint_c);
 }
 
+struct DailyHeatInterval {
+  bool valid = false, measured_endpoint = false;
+  float endpoint_w = NAN;
+  uint32_t elapsed_ms = 0, observed_ms = 0, next_observed_ms = 0;
+  double energy_ws = 0.0, next_energy_ws = 0.0, uncertainty_ws = 0.0, next_uncertainty_ws = 0.0;
+};
+
+inline double signed_heat_interval_ws(float first, float last, uint32_t total_ms, uint32_t begin_ms, uint32_t end_ms) {
+  if (begin_ms == end_ms) return 0.0;
+  const double midpoint = static_cast<double>(begin_ms + end_ms) / (2.0 * total_ms);
+  return (static_cast<double>(first) + midpoint * (static_cast<double>(last) - first)) * (end_ms - begin_ms) / 1000.0;
+}
+
+inline DailyHeatInterval daily_heat_interval(const SegmentAccumulator& state, const LearningSnapshot& snapshot,
+                                             const QualityConfig& config, uint64_t elapsed_ms, bool force_gap = false) {
+  DailyHeatInterval out;
+  const bool full = validate_snapshot(snapshot, config) == LearningStatus::OK;
+  const float heat = full ? snapshot.heat_to_water_w : snapshot.partial_heat_to_water_w;
+  if (isnan(heat)) {
+    out.valid = true;
+    return out;
+  }
+  if (!isfinite(heat) || fabsf(heat) > config.max_abs_heat_w || !isfinite(state.heat_last_w) ||
+      elapsed_ms <= state.heat_last_elapsed_ms || elapsed_ms > kSegmentDurationMs + kDailyMaximumRestartGapMs)
+    return out;
+  const uint32_t begin = state.heat_last_elapsed_ms;
+  const uint32_t end = static_cast<uint32_t>(elapsed_ms);
+  const uint32_t duration = end - begin;
+  const uint32_t old_end = end < kSegmentDurationMs ? end : static_cast<uint32_t>(kSegmentDurationMs);
+  const uint32_t first_ms = begin < old_end ? old_end - begin : 0U;
+  const uint32_t next_begin = begin > kSegmentDurationMs ? begin : static_cast<uint32_t>(kSegmentDurationMs);
+  const uint32_t next_ms = end > next_begin ? end - next_begin : 0U;
+  const bool missing = state.heat_gap_pending || force_gap;
+  const double bound_w = daily_missing_heat_bound_w(config, state.heat_last_w, heat, state.gap_heat_bound_floor_w);
+  out.energy_ws = signed_heat_interval_ws(state.heat_last_w, heat, duration, 0, first_ms);
+  const uint32_t next_offset = next_ms > 0 ? next_begin - begin : duration;
+  out.next_energy_ws = signed_heat_interval_ws(state.heat_last_w, heat, duration, next_offset, duration);
+  if (missing) {
+    out.uncertainty_ws = daily_gap_uncertainty_ws(bound_w, state.heat_last_w, heat, duration, 0, first_ms);
+    out.next_uncertainty_ws =
+        daily_gap_uncertainty_ws(bound_w, state.heat_last_w, heat, duration, next_offset, duration);
+  } else {
+    out.observed_ms = first_ms;
+    out.next_observed_ms = next_ms;
+  }
+  out.valid = isfinite(out.energy_ws) && isfinite(out.next_energy_ws) && isfinite(out.uncertainty_ws) &&
+              isfinite(out.next_uncertainty_ws);
+  out.measured_endpoint = true;
+  out.endpoint_w = heat;
+  out.elapsed_ms = end;
+  return out;
+}
+
+inline bool observe_daily_heat(SegmentAccumulator& state, const LearningSnapshot& snapshot, const QualityConfig& config,
+                               uint64_t elapsed_ms, bool force_gap = false) {
+  const auto interval = daily_heat_interval(state, snapshot, config, elapsed_ms, force_gap);
+  if (!interval.valid) return false;
+  if (!interval.measured_endpoint) {
+    state.heat_gap_pending = true;
+    return true;
+  }
+  state.heat_integral += interval.energy_ws;
+  state.next_heat_integral_ws += interval.next_energy_ws;
+  state.missing_energy_uncertainty_ws += interval.uncertainty_ws;
+  state.next_heat_uncertainty_ws += interval.next_uncertainty_ws;
+  state.heat_observed_ms += interval.observed_ms;
+  state.next_heat_observed_ms += interval.next_observed_ms;
+  state.heat_last_w = interval.endpoint_w;
+  state.heat_last_elapsed_ms = interval.elapsed_ms;
+  state.heat_last_epoch_s = snapshot.epoch_s;
+  state.heat_gap_pending = false;
+  return true;
+}
+
+// During verified restart WAIT, retain only independently valid heat in a
+// caller-owned copy. The immutable journal and temperature checkpoint stay put.
+inline bool observe_restart_heat_only(SegmentAccumulator& state, const LearningSnapshot& snapshot,
+                                      const QualityConfig& config, uint32_t maximum_gap_ms) {
+  if (!valid_daily_checkpoint(state, config) || snapshot.epoch_s < state.last_epoch_s ||
+      snapshot.epoch_s < state.heat_last_epoch_s ||
+      static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL > maximum_gap_ms)
+    return false;
+  const uint64_t elapsed_ms =
+      segment_elapsed_ms(state) + static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL;
+  if (elapsed_ms == state.heat_last_elapsed_ms) return true;
+  return observe_daily_heat(state, snapshot, config, elapsed_ms);
+}
+
 inline void integrate_interval(SegmentAccumulator& state, const LearningSnapshot& snapshot) {
   const double dt_s = static_cast<double>(snapshot.monotonic_ms - state.last_monotonic_ms) / 1000.0;
   const double start_s = static_cast<double>(segment_elapsed_ms(state)) / 1000.0;
@@ -216,7 +353,8 @@ inline void integrate_interval(SegmentAccumulator& state, const LearningSnapshot
   state.room_integral += room * dt_s;
   state.setpoint_integral += 0.5 * (static_cast<double>(state.last_setpoint_c) + snapshot.setpoint_c) * dt_s;
   state.outside_integral += outside * dt_s;
-  state.heat_integral += 0.5 * (static_cast<double>(state.last_heat_w) + snapshot.heat_to_water_w) * dt_s;
+  // Signed heat is integrated separately, including independently valid heat
+  // while this complete temperature/operation snapshot was unavailable.
   state.trend_w += dt_s;
   state.trend_wt += dt_s * mid_s;
   state.trend_wtt += dt_s * mid_s * mid_s;
@@ -254,6 +392,16 @@ inline SegmentRecord make_record(const SegmentAccumulator& state) {
   record.mean_setpoint_c = static_cast<float>(state.setpoint_integral * inverse_duration);
   record.mean_outside_c = static_cast<float>(state.outside_integral * inverse_duration);
   record.mean_heat_w = static_cast<float>(state.heat_integral * inverse_duration);
+  const double mean_uncertainty_w = ceil(state.missing_energy_uncertainty_ws / 86400.0);
+  record.daily_quality.heat_uncertainty_mean_w = mean_uncertainty_w >= kDailyUncertaintyOverflow
+                                                     ? kDailyUncertaintyOverflow
+                                                     : static_cast<uint16_t>(mean_uncertainty_w);
+  if (state.daily_quality_known) {
+    record.daily_quality.heat_coverage_bp =
+        static_cast<uint16_t>(static_cast<uint64_t>(state.heat_observed_ms) * kDailyCoverageScale / kSegmentDurationMs);
+    record.daily_quality.temperature_coverage_bp = static_cast<uint16_t>(
+        static_cast<uint64_t>(state.temperature_observed_ms) * kDailyCoverageScale / kSegmentDurationMs);
+  }
   record.room_range_k = state.room_max_c - state.room_min_c;
   record.setpoint_range_c = state.setpoint_max_c - state.setpoint_min_c;
   record.water_start_c = state.water_start_c;
@@ -287,8 +435,10 @@ namespace detail {
 
 inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const LearningSnapshot& snapshot,
                                            const QualityConfig& config, bool may_bridge_daily_gap,
-                                           bool resuming_restart = false) {
+                                           bool resuming_restart = false,
+                                           DailyRestartPolicy restart_policy = DailyRestartPolicy::STANDARD) {
   ObserveResult result;
+  const uint32_t maximum_gap_ms = resuming_restart ? daily_restart_gap_limit_ms(restart_policy) : kDailyMaximumGapMs;
   if (!valid_quality_config(config)) {
     result.status = LearningStatus::INVALID_CONFIGURATION;
     return result;
@@ -311,9 +461,9 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
     result.cause = DailyCollectionCause::CLOCK_DISCONTINUITY;
   else if (!resuming_restart && snapshot.monotonic_ms - last_observation_ms > config.max_interval_ms)
     result.cause = DailyCollectionCause::MISSED_TICK;
-  else if (state.source_gap_pending && snapshot.monotonic_ms - state.last_monotonic_ms > kDailyMaximumGapMs)
+  else if (state.source_gap_pending && snapshot.monotonic_ms - state.last_monotonic_ms > maximum_gap_ms)
     result.cause = DailyCollectionCause::GAP_TOO_LONG;
-  else if (!detail::coherent_time(state, snapshot, config, state.source_gap_pending ? kDailyMaximumGapMs : 0))
+  else if (!detail::coherent_time(state, snapshot, config, state.source_gap_pending ? maximum_gap_ms : 0))
     result.cause = DailyCollectionCause::CLOCK_DISCONTINUITY;
   if (result.cause != DailyCollectionCause::NONE) {
     reset_segment(state);
@@ -329,65 +479,80 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
     return result;
   }
 
-  if (measurement_status != LearningStatus::OK) {
-    // The source builder grants this contract only for scalar gaps or a fully
-    // observed OFF/nonzero-frequency stop transition, never unknown operation.
+  const bool full = measurement_status == LearningStatus::OK;
+  if (!full) {
     const bool scalar_gap = snapshot.invalid_reasons != INVALID_NONE &&
                             (snapshot.invalid_reasons & ~(INVALID_ESSENTIAL_SOURCE | INVALID_SOURCE_STALE)) == 0;
     const bool stop_transition = snapshot.invalid_reasons == INVALID_CONTROL_MODE;
-    if (may_bridge_daily_gap && (scalar_gap || stop_transition)) {
-      state.source_gap_pending = true;
-      state.last_gap_observation_ms = snapshot.monotonic_ms;
-      return result;  // Do not integrate missing values or advance the valid endpoint.
+    if (!may_bridge_daily_gap || (!scalar_gap && !stop_transition) || !isfinite(snapshot.gap_heat_observed_abs_w) ||
+        snapshot.gap_heat_observed_abs_w < 0.0f || snapshot.gap_heat_observed_abs_w > config.max_abs_heat_w) {
+      reset_segment(state);
+      result.status = measurement_status;
+      result.cause = DailyCollectionCause::INVALID_MEASUREMENT;
+      return result;
     }
+    state.gap_heat_bound_floor_w = fmaxf(state.gap_heat_bound_floor_w, snapshot.gap_heat_observed_abs_w);
+  }
+  const uint64_t elapsed_ms = state.carried_duration_ms + snapshot.monotonic_ms - state.start_monotonic_ms;
+  if (!observe_daily_heat(state, snapshot, config, elapsed_ms)) {
     reset_segment(state);
-    result.status = measurement_status;
-    result.cause = DailyCollectionCause::INVALID_MEASUREMENT;
+    if (full) detail::seed_segment(state, snapshot);
+    result.status = LearningStatus::INVALID_MEASUREMENT;
+    result.cause = DailyCollectionCause::INVALID_INPUT;
+    return result;
+  }
+  if (!full) {
+    state.source_gap_pending = true;
+    state.last_gap_observation_ms = snapshot.monotonic_ms;
     return result;
   }
 
+  // Retention is independent of the model-advice budget. Temperature intervals
+  // spanning any incomplete total frame remain explicitly interpolated.
+  const bool temperature_measured = !state.source_gap_pending && !resuming_restart;
   const uint64_t boundary_ms = state.start_monotonic_ms + kSegmentDurationMs - state.carried_duration_ms;
-  double remaining_uncertainty_ws = 0.0;
-  bool discard_next_day_remainder = false;
-  if (state.source_gap_pending) {
-    // Conditional bound on missing signed heat, assuming |heat| remains below
-    // max_abs_heat_w. Temperature interpolation has no such error guarantee.
-    const double bound_w = config.max_abs_heat_w + fmax(fabs(state.last_heat_w), fabs(snapshot.heat_to_water_w));
-    const uint64_t end_ms = snapshot.monotonic_ms < boundary_ms ? snapshot.monotonic_ms : boundary_ms;
-    const double uncertainty_ws = bound_w * (end_ms - state.last_monotonic_ms) / 1000.0;
-    remaining_uncertainty_ws = bound_w * (snapshot.monotonic_ms - end_ms) / 1000.0;
-    if (state.missing_energy_uncertainty_ws + uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0) {
-      detail::seed_segment(state, snapshot);
-      result.status = LearningStatus::SEGMENT_INELIGIBLE;
-      result.cause = DailyCollectionCause::UNCERTAINTY_BUDGET;
-      return result;
-    }
-    // A new day's remainder cannot invalidate an independently eligible old day.
-    discard_next_day_remainder = remaining_uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0;
-    state.missing_energy_uncertainty_ws += uncertainty_ws;
+  if (snapshot.monotonic_ms < boundary_ms) {
+    if (temperature_measured)
+      state.temperature_observed_ms += static_cast<uint32_t>(snapshot.monotonic_ms - state.last_monotonic_ms);
+    detail::integrate_interval(state, snapshot);
     state.source_gap_pending = false;
     state.last_gap_observation_ms = 0;
-  }
-  if (snapshot.monotonic_ms < boundary_ms) {
-    detail::integrate_interval(state, snapshot);
+    state.gap_heat_bound_floor_w = 0.0f;
     return result;
   }
+  if (temperature_measured)
+    state.temperature_observed_ms += static_cast<uint32_t>(boundary_ms - state.last_monotonic_ms);
   const LearningSnapshot boundary = detail::interpolate_boundary(state, snapshot, boundary_ms);
   detail::integrate_interval(state, boundary);
   result.record = detail::make_record(state);
-  result.status = validate_segment_record(result.record, config);
+  result.completed_missing_energy_uncertainty_ws = state.missing_energy_uncertainty_ws;
+  result.status = validate_segment_record_structure(result.record, config);
   result.has_record = result.status == LearningStatus::OK;
-  if (!result.has_record) result.cause = DailyCollectionCause::COMPLETED_QUALITY;
-  if (result.has_record) result.status = LearningStatus::SEGMENT_READY;
-  if (discard_next_day_remainder) {
-    detail::seed_segment(state, snapshot);
-    return result;
-  }
-  // Reuse the endpoint and carry any remainder into the next day: no heat or
-  // time is lost when the sample interval straddles the 24-hour boundary.
+  if (result.has_record)
+    result.status = LearningStatus::SEGMENT_READY;
+  else
+    result.cause = DailyCollectionCause::COMPLETED_QUALITY;
+
+  // Q can have advanced through the boundary while temperature was missing.
+  // Transfer only the already split next-day bucket, never integrate it twice.
+  const double next_heat_ws = state.next_heat_integral_ws;
+  const double next_uncertainty_ws = state.next_heat_uncertainty_ws;
+  const uint32_t next_heat_observed_ms = state.next_heat_observed_ms;
+  const uint32_t heat_phase = state.heat_last_elapsed_ms - static_cast<uint32_t>(kSegmentDurationMs);
+  const float heat_last_w = state.heat_last_w;
+  const uint32_t heat_epoch = state.heat_last_epoch_s;
   detail::seed_segment(state, boundary);
-  state.missing_energy_uncertainty_ws = remaining_uncertainty_ws;
-  if (snapshot.monotonic_ms > boundary_ms) detail::integrate_interval(state, snapshot);
+  if (snapshot.monotonic_ms > boundary_ms) {
+    if (temperature_measured)
+      state.temperature_observed_ms = static_cast<uint32_t>(snapshot.monotonic_ms - boundary_ms);
+    detail::integrate_interval(state, snapshot);
+  }
+  state.heat_integral = next_heat_ws;
+  state.missing_energy_uncertainty_ws = next_uncertainty_ws;
+  state.heat_observed_ms = next_heat_observed_ms;
+  state.heat_last_elapsed_ms = heat_phase;
+  state.heat_last_w = heat_last_w;
+  state.heat_last_epoch_s = heat_epoch;
   return result;
 }
 
@@ -396,12 +561,15 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
 inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningSnapshot& snapshot,
                                       const QualityConfig& config, bool may_bridge_daily_gap = false) {
   if (!state.restart_pending) return detail::observe_snapshot_core(state, snapshot, config, may_bridge_daily_gap);
+  const auto restart_policy = state.restart_policy;
   state.restart_pending = false;
+  state.restart_policy = DailyRestartPolicy::STANDARD;
   // The first fully valid post-boot observation bounds the *whole* interval
   // since the saved endpoint, including upload, reboot and source warm-up.
   if (!valid_daily_checkpoint(state, config) || validate_snapshot(snapshot, config) != LearningStatus::OK ||
       snapshot.epoch_s <= state.last_epoch_s ||
-      static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL > kDailyMaximumGapMs) {
+      static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL >
+          daily_restart_gap_limit_ms(restart_policy)) {
     reset_segment(state);
     auto result = detail::observe_snapshot_core(state, snapshot, config, false);
     result.status = LearningStatus::TIME_DISCONTINUITY;
@@ -413,7 +581,7 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
       state.last_monotonic_ms + static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL;
   state.source_gap_pending = true;
   state.last_gap_observation_ms = state.last_monotonic_ms;
-  auto result = detail::observe_snapshot_core(state, resumed, config, false, true);
+  auto result = detail::observe_snapshot_core(state, resumed, config, false, true, restart_policy);
   if (state.active) {
     state.carried_duration_ms = segment_elapsed_ms(state);
     state.start_monotonic_ms = state.last_monotonic_ms = snapshot.monotonic_ms;
@@ -475,7 +643,7 @@ inline size_t representative_record_to_evict(const RecordBuffer& buffer) {
 
 inline LearningStatus append_record(RecordBuffer& buffer, const SegmentRecord& record, uint32_t now_epoch_s,
                                     const QualityConfig& config) {
-  const LearningStatus record_status = validate_segment_record(record, config);
+  const LearningStatus record_status = validate_segment_record_structure(record, config);
   if (record_status != LearningStatus::OK) return record_status;
   if (record.end_epoch_s > now_epoch_s || now_epoch_s - record.end_epoch_s > kMaxRecordAgeS)
     return LearningStatus::STALE_DATA;

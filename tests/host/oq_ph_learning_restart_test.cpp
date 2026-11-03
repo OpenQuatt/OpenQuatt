@@ -37,6 +37,7 @@ void boot(SegmentAccumulator& state) {
   state.carried_duration_ms = static_cast<uint64_t>(llround(state.integrated_duration_s * 1000.0));
   state.start_monotonic_ms = state.last_monotonic_ms = 1;
   state.source_gap_pending = state.restart_pending = true;
+  state.heat_gap_pending = true;  // The v9 decoder marks heat since the saved endpoint unobserved.
   state.last_gap_observation_ms = 1;
 }
 
@@ -59,6 +60,9 @@ void test_restart_keeps_eighteen_hours_and_finishes_same_day() {
   assert(completed.has_record && completed.record.duration_s == 86400U);
   assert(completed.record.start_epoch_s == kEpoch && completed.record.end_epoch_s == kEpoch + 86400U);
   assert(fabs(completed.record.mean_heat_w - 2000.0f) < 0.001);
+  assert(completed.record.daily_quality.heat_uncertainty_mean_w == 55);
+  assert(completed.record.daily_quality.heat_coverage_bp == 9989);
+  assert(completed.record.daily_quality.temperature_coverage_bp == 9989);
   for (int16_t point : completed.record.effective_outside_profile_centi) assert(point == 500);
   assert(segment_elapsed_ms(state) == 0 && state.integrated_duration_s == 0.0);
 }
@@ -77,7 +81,7 @@ void test_two_restarts_preserve_sums_and_charge_each_gap_once() {
   assert(segment_elapsed_ms(state) == 7260000ULL);
 }
 
-void test_restart_crossing_day_boundary_keeps_remainder_and_budget() {
+void test_restart_crossing_day_boundary_keeps_remainder_and_uncertainty() {
   SegmentAccumulator state;
   collect(state, 0, 86340);
   boot(state);
@@ -115,9 +119,11 @@ void test_restart_does_not_reset_existing_uncertainty_or_hide_omitted_ticks() {
   collect(state, 0, 3600);
   state.missing_energy_uncertainty_ws = 8.0e6;
   boot(state);
-  const auto exhausted = observe_snapshot(state, snapshot(3660, 30000), QualityConfig{});
-  assert(exhausted.status == LearningStatus::SEGMENT_INELIGIBLE && !exhausted.has_record);
-  assert(state.start_epoch_s == kEpoch + 3660U && segment_elapsed_ms(state) == 0);
+  const auto retained = observe_snapshot(state, snapshot(3660, 30000), QualityConfig{});
+  assert(retained.status == LearningStatus::COLLECTING && !retained.has_record);
+  assert(retained.cause == DailyCollectionCause::NONE && state.start_epoch_s == kEpoch);
+  assert(segment_elapsed_ms(state) == 3660000 && state.integrated_duration_s == 3660.0);
+  assert(state.missing_energy_uncertainty_ws == 8.0e6 + 60.0 * 52000.0);
 
   collect(state, 3670, 3700, 40000);
   const auto omitted = observe_snapshot(state, snapshot(3770, 140000), QualityConfig{}, true);
@@ -125,11 +131,11 @@ void test_restart_does_not_reset_existing_uncertainty_or_hide_omitted_ticks() {
   assert(state.start_epoch_s == kEpoch + 3770U);
 }
 
-void test_verified_checkpoint_and_remaining_gap_budget_are_distinct_gates() {
+void test_verified_checkpoint_keeps_quality_debt_but_obeys_hard_gap_limit() {
   constexpr uint8_t bytes_context[]{1, 7, 4, 9};
   const PassiveContextView saved_context{bytes_context, sizeof(bytes_context), 1};
   constexpr uint32_t saved_second = 23340;
-  for (uint32_t gap_s : {27U, 28U}) {
+  for (uint32_t gap_s : {27U, 28U, 120U, 121U}) {
     SegmentAccumulator original;
     collect(original, 0, saved_second);
     // Match the observed HIL debt, with this fixture's known 2 kW endpoints.
@@ -150,14 +156,14 @@ void test_verified_checkpoint_and_remaining_gap_budget_are_distinct_gates() {
     assert(restored.integrated_duration_s == original.integrated_duration_s);
     assert(restored.missing_energy_uncertainty_ws == original.missing_energy_uncertainty_ws);
     const auto result = observe_snapshot(restored, snapshot(saved_second + gap_s, 30000), QualityConfig{});
-    if (gap_s == 27) {
+    if (gap_s <= 120) {
       assert(result.status == LearningStatus::COLLECTING && result.cause == DailyCollectionCause::NONE);
       assert(restored.start_epoch_s == kEpoch && restored.integrated_duration_s == saved_second + gap_s);
       assert(restored.heat_integral == original.heat_integral + gap_s * 2000.0);
       assert(restored.missing_energy_uncertainty_ws == original.missing_energy_uncertainty_ws + gap_s * 52000.0);
     } else {
-      assert(result.status == LearningStatus::SEGMENT_INELIGIBLE);
-      assert(result.cause == DailyCollectionCause::UNCERTAINTY_BUDGET && !result.has_record);
+      assert(result.status == LearningStatus::TIME_DISCONTINUITY);
+      assert(result.cause == DailyCollectionCause::RESTART_DISCARDED && !result.has_record);
       assert(restored.start_epoch_s == kEpoch + saved_second + gap_s);
       assert(restored.integrated_duration_s == 0.0);
     }
@@ -385,10 +391,10 @@ int main() {
   test_runtime_journal_restart_preserves_day_history_and_thermal_only_after_valid_recovery();
   test_restart_keeps_eighteen_hours_and_finishes_same_day();
   test_two_restarts_preserve_sums_and_charge_each_gap_once();
-  test_restart_crossing_day_boundary_keeps_remainder_and_budget();
+  test_restart_crossing_day_boundary_keeps_remainder_and_uncertainty();
   test_restart_rejects_unknown_state_and_long_or_backward_time();
   test_restart_does_not_reset_existing_uncertainty_or_hide_omitted_ticks();
-  test_verified_checkpoint_and_remaining_gap_budget_are_distinct_gates();
+  test_verified_checkpoint_keeps_quality_debt_but_obeys_hard_gap_limit();
   test_corrupt_checkpoint_is_not_resumed();
   test_restore_waits_for_real_clock_and_fresh_sources();
   test_boot_waits_for_initial_operating_receipts();

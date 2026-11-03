@@ -6,6 +6,33 @@
 
 namespace oq_ph_learning {
 
+struct DailyRestartDiagnostics {
+  uint32_t checkpoint_epoch = 0, checked_epoch = 0;
+  uint32_t limit_ms = oq_power_house::learning::kDailyMaximumGapMs;
+  bool verified_ticket = false;
+  const char* time_decision = "discard";
+  const char* source_status = nullptr;
+};
+
+inline void write_daily_restart_json(JsonWriter& json, const DailyRestartDiagnostics& state) {
+  if (state.checkpoint_epoch == 0) {
+    json.add("null");
+    return;
+  }
+  json.add("{\"checkpoint_epoch\":%u,\"checked_epoch\":%u,\"gap_s\":", state.checkpoint_epoch, state.checked_epoch);
+  if (state.checked_epoch >= state.checkpoint_epoch)
+    json.add("%u", state.checked_epoch - state.checkpoint_epoch);
+  else
+    json.add("null");
+  json.add(",\"limit_s\":%u,\"verified_ticket\":%s,\"time_decision\":\"%s\",\"source_status\":", state.limit_ms / 1000U,
+           state.verified_ticket ? "true" : "false", state.time_decision);
+  if (state.source_status == nullptr)
+    json.add("null");
+  else
+    json.add("\"%s\"", state.source_status);
+  json.add("}");
+}
+
 // Main-loop scalars only. HTTP readers still receive the immutable JSON cache.
 struct DailyCollectionState {
   uint32_t tick_epoch = 0, context_revision = 0;
@@ -19,6 +46,8 @@ struct DailyCollectionState {
   oq_power_house::learning::SnapshotSourceStatus last_source_status =
       oq_power_house::learning::SnapshotSourceStatus::OK;
   float uncertainty_wh = NAN;
+  float missing_heat_bound_w = oq_power_house::learning::QualityConfig{}.max_abs_heat_w;
+  DailyRestartDiagnostics restart;
 };
 
 inline void write_daily_collection_state_json(JsonWriter& json, const DailyCollectionState& state) {
@@ -40,9 +69,14 @@ inline void write_daily_collection_state_json(JsonWriter& json, const DailyColle
     json.add("\"%s\"", learning_status_name(state.last_rejection));
   json.add(",\"batch_missing_energy_uncertainty_wh\":");
   json.number(state.uncertainty_wh);
+  json.add(",\"batch_missing_heat_bound_w\":");
+  json.number(state.missing_heat_bound_w);
   json.add(",\"batch_missing_energy_budget_wh\":");
   json.number(kDailyMissingHeatBudgetW * 24.0);
-  json.add(",\"batch_maximum_gap_s\":%u}", kDailyMaximumGapMs / 1000U);
+  json.add(",\"batch_budget_scope\":\"model_advice_only\"");
+  json.add(",\"batch_maximum_gap_s\":%u,\"restart\":", kDailyMaximumGapMs / 1000U);
+  write_daily_restart_json(json, state.restart);
+  json.add("}");
 }
 
 }  // namespace oq_ph_learning

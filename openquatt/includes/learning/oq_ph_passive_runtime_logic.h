@@ -83,11 +83,12 @@ struct PassiveRuntimeSummary {
 enum class DailyResumeDecision { WAIT, RESTORE, DISCARD };
 
 inline DailyResumeDecision daily_resume_decision(bool enabled, bool valid_observation, uint32_t now_epoch_s,
-                                                 uint32_t checkpoint_epoch_s, bool may_wait_for_source = false) {
+                                                 uint32_t checkpoint_epoch_s, bool may_wait_for_source = false,
+                                                 DailyRestartPolicy restart_policy = DailyRestartPolicy::STANDARD) {
   if (!enabled || checkpoint_epoch_s == 0) return DailyResumeDecision::DISCARD;
   if (now_epoch_s == 0) return DailyResumeDecision::WAIT;
   if (now_epoch_s < checkpoint_epoch_s ||
-      static_cast<uint64_t>(now_epoch_s - checkpoint_epoch_s) * 1000ULL > kDailyMaximumGapMs)
+      static_cast<uint64_t>(now_epoch_s - checkpoint_epoch_s) * 1000ULL > daily_restart_gap_limit_ms(restart_policy))
     return DailyResumeDecision::DISCARD;
   if (!valid_observation && !may_wait_for_source) return DailyResumeDecision::DISCARD;
   return valid_observation ? DailyResumeDecision::RESTORE : DailyResumeDecision::WAIT;

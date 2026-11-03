@@ -70,6 +70,18 @@ static constexpr float COP[N_AMB][N_SUP][N_LVL] = {
     },
 };
 
+// Full reference envelope, independent of the current compressor level or weather.
+// Missing cells contribute no evidence. This is a model envelope, not a measured
+// guarantee about instantaneous water-side heat during defrost or transients.
+static constexpr float maximum_reference_power_th_w() {
+  float maximum = 0.0f;
+  for (int ambient = 0; ambient < N_AMB; ++ambient)
+    for (int supply = 0; supply < N_SUP; ++supply)
+      for (int level = 0; level < N_LVL; ++level)
+        if (P_th_W[ambient][supply][level] > maximum) maximum = P_th_W[ambient][supply][level];
+  return maximum;
+}
+
 static inline int find_interval(const float* bp, int n, float x) {
   if (x <= bp[0]) return 0;
   if (x >= bp[n - 1]) return n - 2;

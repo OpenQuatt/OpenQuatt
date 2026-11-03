@@ -120,3 +120,14 @@ Voor normaal gebruik begin je bij [Dagelijkse controle](dagelijks/controleren.md
 ## Bij problemen
 
 Ga naar [Problemen oplossen](problemen-oplossen.md). Voor een eerste Home Assistant-koppeling zie [OpenQuatt koppelen](dashboard/koppelen.md).
+
+## Meetkwaliteit bij passief leren
+
+Onder `Instellingen` → `Verwarming` laat de leergrafiek bewaarde dagmetingen
+zien, ook als hun meetkwaliteit onvoldoende is voor modeladvies. De tooltip
+toont warmtedekking, temperatuurdekking, warmte-onzekerheid en modelgewicht.
+Historische kwaliteit blijft onbekend. Alleen door de controller geschikte
+metingen tellen mee voor de adviesvoortgang; ongeschikte dagen worden niet gewist.
+Bij oudere firmware zonder kwaliteitsgegevens blijft de bestaande weergave gelden.
+Passief leren past geen regelparameters automatisch toe. Zie het
+[meetbron- en kwaliteitscontract](development/power-house-learning-sources.md).
