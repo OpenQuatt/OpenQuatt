@@ -124,8 +124,10 @@ Vergelijk baseline en kandidaat met dezelfde configuratie en meetinstrumentatie
 na een aantoonbare volledige applicatieherstart. Een OTA-reboot is hiervoor
 geldig. Leg de firmware-/config-/artifactbinding en het bootbewijs vast, zoals
 een verse uptime en de resetreden. Alleen een geslaagde upload bewijst geen
-herstart. Leg ook de opstarttoestand vast en vergelijk dezelfde toestand,
-bijvoorbeeld of restart-handoff of recovery is gearmd of overgenomen. Neem
+herstart. Gebruik bij beide hetzelfde resetpad en dezelfde resetreden,
+OTA-imagestatus (eerste boot na OTA of latere boot) en restart-handoff-/recoverytoestand
+(gearmd of overgenomen). Leg deze gegevens vast; vergelijk geen power-on-baseline
+met een OTA-reboot-kandidaat. Neem
 startup/eerste verbindingen, relevante
 reconnects en realistische gelijktijdige HA/web/API/MQTT/Modbus/OpenTherm/OTA-belasting
 mee. Verifieer dat
