@@ -31,8 +31,17 @@ class LowflowDefrostWriteGatesTest(unittest.TestCase):
         runtime = (ROOT / "openquatt/includes/control/oq_thermal_actuator_runtime.h").read_text()
         safety = re.search(r"  bool defrost_safety_stop_\(.*?\n  }", runtime, re.S)
         self.assertIsNotNone(safety)
-        gates = "\n".join("std::optional<int> gate%d(int value) {\n%s\n}" % (i, body)
-                          for i, body in enumerate(lambdas))
+        writer = """
+struct GateWriter {
+  std::optional<int> sent;
+  bool write_single_register(uint16_t, uint16_t value) { sent=value; return true; }
+  void publish_state(size_t) {}
+};
+"""
+        gates = writer + "\n".join(
+            "std::optional<int> gate%d(int value) { GateWriter writer; auto* item=&writer; "
+            "auto result=[&]() -> std::optional<int> {\n%s\n}(); return writer.sent ? writer.sent : result; }" % (i, body)
+            for i, body in enumerate(lambdas))
         main = r'''
 int main() {
   using Gate=std::optional<int> (*)(int);
