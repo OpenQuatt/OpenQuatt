@@ -19,6 +19,8 @@ struct QualityConfig {
   float setpoint_max_c = 35.0f;
   float water_min_c = -10.0f;
   float water_max_c = 95.0f;
+  // Historical structural ceiling. Lower live limits must not invalidate stored
+  // records, RLS history, checkpoint endpoints or previously accrued uncertainty.
   float max_abs_heat_w = 50000.0f;
   float max_setpoint_range_c = 0.05f;
   float max_abs_room_trend_k_per_h = 0.05f;  // Legacy four-hour records.
@@ -28,6 +30,9 @@ struct QualityConfig {
   // Daily gap policy only. Zero retains the broad measurement-validation bound.
   // Never use this envelope to reject or clamp otherwise valid measured heat.
   float max_daily_missing_heat_w = 0.0f;
+  // Live observations only; the production adapter always binds this to the
+  // configured reference plus margin. Zero keeps pure/legacy callers compatible.
+  float max_observed_heat_w = 0.0f;
 };
 
 inline bool valid_quality_config(const QualityConfig& config) {
@@ -50,7 +55,14 @@ inline bool valid_quality_config(const QualityConfig& config) {
          isfinite(config.max_abs_water_endpoint_delta_c) && config.max_abs_water_endpoint_delta_c >= 0.0f &&
          config.max_abs_water_endpoint_delta_c <= 20.0f && isfinite(config.max_daily_missing_heat_w) &&
          (config.max_daily_missing_heat_w == 0.0f || config.max_daily_missing_heat_w >= 1000.0f) &&
-         config.max_daily_missing_heat_w <= config.max_abs_heat_w;
+         config.max_daily_missing_heat_w <= config.max_abs_heat_w && isfinite(config.max_observed_heat_w) &&
+         (config.max_observed_heat_w == 0.0f || config.max_observed_heat_w >= 1000.0f) &&
+         config.max_observed_heat_w <= config.max_abs_heat_w &&
+         (config.max_observed_heat_w == 0.0f || config.max_daily_missing_heat_w <= config.max_observed_heat_w);
+}
+
+inline float configured_measurement_heat_limit_w(const QualityConfig& config) {
+  return config.max_observed_heat_w > 0.0f ? config.max_observed_heat_w : config.max_abs_heat_w;
 }
 
 inline float configured_daily_missing_heat_bound_w(const QualityConfig& config) {
@@ -70,7 +82,7 @@ inline double daily_missing_heat_bound_w(const QualityConfig& config, float firs
               fmax(fabs(first_heat_w), fabs(last_heat_w)));
 }
 
-inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const QualityConfig& config) {
+inline LearningStatus validate_snapshot_structure(const LearningSnapshot& snapshot, const QualityConfig& config) {
   if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
   if (snapshot.monotonic_ms == 0 || snapshot.epoch_s == 0 || snapshot.context_revision == 0 ||
       snapshot.invalid_reasons != INVALID_NONE)
@@ -83,6 +95,15 @@ inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const 
       snapshot.mean_water_c > config.water_max_c || fabsf(snapshot.heat_to_water_w) > config.max_abs_heat_w)
     return LearningStatus::INVALID_MEASUREMENT;
   return LearningStatus::OK;
+}
+
+inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const QualityConfig& config) {
+  if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
+  const auto structural = validate_snapshot_structure(snapshot, config);
+  if (structural != LearningStatus::OK) return structural;
+  return fabsf(snapshot.heat_to_water_w) <= configured_measurement_heat_limit_w(config)
+             ? LearningStatus::OK
+             : LearningStatus::INVALID_MEASUREMENT;
 }
 
 inline LearningStatus evaluate_segment_quality(const SegmentRecord& record, const QualityConfig& config) {

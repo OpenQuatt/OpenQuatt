@@ -117,6 +117,8 @@ inline const char* snapshot_source_status_name(SnapshotSourceStatus status) {
       return "boiler_command_stale";
     case SnapshotSourceStatus::BOILER_COMMAND_ACTIVE:
       return "boiler_command_active";
+    case SnapshotSourceStatus::HEAT_OUT_OF_RANGE:
+      return "heat_out_of_range";
   }
   return "unknown";
 }
@@ -186,10 +188,15 @@ inline bool boot_scalar_receipts_invalid(const LearningSourceInput& input, const
       return true;
   }
   const auto calorimetry = evaluate_calorimetry(input, quality);
+  // Before UTC/journal restore there is no pending accumulator in which to
+  // retain a rejected peak. Do not silently lose that evidence on later SNTP.
+  if (calorimetry.status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE && input.epoch_s == 0U) return true;
   // Startup can lack topology/receipts; only an observed hard calorimetry error
-  // is sticky. Missing/stale/skewed samples may still recover normally.
+  // is sticky. Missing/stale/skewed samples may still recover normally. A
+  // separately verified heat plausibility outlier may wait too; the original
+  // one-use ticket, elapsed-time and tick guards still require a valid sample.
   return !calorimetry.valid && calorimetry.status != SnapshotSourceStatus::INVALID_CONFIGURATION &&
-         !source_detail::scalar_gap_status(calorimetry.status);
+         !source_detail::daily_measurement_gap_status(calorimetry.status);
 }
 
 // Positive operating or scalar evidence invalidates boot recovery even before SNTP.
@@ -227,7 +234,7 @@ inline bool known_daily_restart_interruption(const LearningSourceInput& input, b
 // The caller still requires a complete valid snapshot within the original deadline.
 inline bool daily_boot_sources_pending(const LearningSourceInput& input, const SnapshotBuildResult& batch,
                                        const QualityConfig& quality = QualityConfig{}) {
-  if (!valid_quality_config(quality) || !source_detail::scalar_gap_status(batch.status) ||
+  if (!valid_quality_config(quality) || !source_detail::daily_measurement_gap_status(batch.status) ||
       known_daily_restart_interruption(input,
                                        live_measurement_fresh(input.boiler_heat, input.monotonic_ms) &&
                                            input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE,
@@ -259,7 +266,7 @@ inline bool daily_boot_sources_pending(const LearningSourceInput& input, const S
       return false;
   }
   const auto calorimetry = evaluate_calorimetry(input, quality);
-  if (!calorimetry.valid && !source_detail::scalar_gap_status(calorimetry.status)) return false;
+  if (!calorimetry.valid && !source_detail::daily_measurement_gap_status(calorimetry.status)) return false;
   const auto skew = source_detail::validate_skew(metadata, count);
   return skew == SnapshotSourceStatus::OK || skew == SnapshotSourceStatus::TIME_SKEW;
 }

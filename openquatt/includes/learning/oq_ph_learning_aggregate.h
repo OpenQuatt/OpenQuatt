@@ -149,7 +149,7 @@ inline bool valid_daily_checkpoint(const SegmentAccumulator& state, const Qualit
   endpoint.outside_c = state.last_outside_c;
   endpoint.heat_to_water_w = state.last_heat_w;
   endpoint.mean_water_c = state.water_end_c;
-  if (validate_snapshot(endpoint, config) != LearningStatus::OK || !isfinite(state.room_start_c) ||
+  if (validate_snapshot_structure(endpoint, config) != LearningStatus::OK || !isfinite(state.room_start_c) ||
       state.room_start_c < config.room_min_c || state.room_start_c > config.room_max_c ||
       !isfinite(state.water_start_c) || state.water_start_c < config.water_min_c ||
       state.water_start_c > config.water_max_c || !isfinite(state.room_min_c) || !isfinite(state.room_max_c) ||
@@ -260,7 +260,7 @@ inline DailyHeatInterval daily_heat_interval(const SegmentAccumulator& state, co
     out.valid = true;
     return out;
   }
-  if (!isfinite(heat) || fabsf(heat) > config.max_abs_heat_w || !isfinite(state.heat_last_w) ||
+  if (!isfinite(heat) || fabsf(heat) > configured_measurement_heat_limit_w(config) || !isfinite(state.heat_last_w) ||
       elapsed_ms <= state.heat_last_elapsed_ms || elapsed_ms > kSegmentDurationMs + kDailyMaximumRestartGapMs)
     return out;
   const uint32_t begin = state.heat_last_elapsed_ms;
@@ -317,12 +317,20 @@ inline bool observe_daily_heat(SegmentAccumulator& state, const LearningSnapshot
 inline bool observe_restart_heat_only(SegmentAccumulator& state, const LearningSnapshot& snapshot,
                                       const QualityConfig& config, uint32_t maximum_gap_ms) {
   if (!valid_daily_checkpoint(state, config) || snapshot.epoch_s < state.last_epoch_s ||
-      snapshot.epoch_s < state.heat_last_epoch_s ||
+      snapshot.epoch_s < state.heat_last_epoch_s || !isfinite(snapshot.gap_heat_observed_abs_w) ||
+      snapshot.gap_heat_observed_abs_w < 0.0f || snapshot.gap_heat_observed_abs_w > config.max_abs_heat_w ||
       static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL > maximum_gap_ms)
     return false;
   const uint64_t elapsed_ms =
       segment_elapsed_ms(state) + static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL;
-  if (elapsed_ms == state.heat_last_elapsed_ms) return true;
+  state.gap_heat_bound_floor_w = fmaxf(state.gap_heat_bound_floor_w, snapshot.gap_heat_observed_abs_w);
+  if (elapsed_ms == state.heat_last_elapsed_ms) {
+    // Repeated UTC must not hide a missing/rejected heat receipt. Keep the
+    // cursor and measured energy unchanged, but bound the next interval.
+    if (isnan(snapshot.partial_heat_to_water_w) && validate_snapshot(snapshot, config) != LearningStatus::OK)
+      state.heat_gap_pending = true;
+    return true;
+  }
   return observe_daily_heat(state, snapshot, config, elapsed_ms);
 }
 

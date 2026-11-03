@@ -252,7 +252,7 @@ int main() {
   // Enumerate names so later enum additions cannot silently defeat the budget.
   for (unsigned status = 0; status <= static_cast<unsigned>(LearningStatus::UNSTABLE_FIT); ++status) {
     summary.batch.status = learner.diagnostics.last_batch_rejection = static_cast<LearningStatus>(status);
-    for (unsigned source = 0; source <= static_cast<unsigned>(SnapshotSourceStatus::BOILER_COMMAND_ACTIVE); ++source) {
+    for (unsigned source = 0; source <= static_cast<unsigned>(SnapshotSourceStatus::HEAT_OUT_OF_RANGE); ++source) {
       state.source_diagnostics.status = state.batch_source_status = learner.diagnostics.last_batch_source_status =
           static_cast<SnapshotSourceStatus>(source);
       state.daily_restart.source_status = snapshot_source_status_name(static_cast<SnapshotSourceStatus>(source));

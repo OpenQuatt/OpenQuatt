@@ -24,4 +24,18 @@ inline constexpr float reference_maximum_heating_w(ReferenceGeneration generatio
   return single * (duo ? 2.0f : 1.0f);
 }
 
+// Until generation is known, use the largest supported reference for the same
+// installed topology. This is an explicit plausibility policy, not a physical
+// guarantee for unrecognised future heat pumps.
+inline constexpr float configured_reference_maximum_heating_w(ReferenceGeneration generation, bool duo) {
+  const float known = reference_maximum_heating_w(generation, duo);
+  const float largest = kV1ReferenceMaximumW > kV2ReferenceMaximumW ? kV1ReferenceMaximumW : kV2ReferenceMaximumW;
+  return known > 0.0f ? known : largest * (duo ? 2.0f : 1.0f);
+}
+
+inline constexpr float kHeatMeasurementMargin = 1.20f;
+inline constexpr float measurement_maximum_heating_w(ReferenceGeneration generation, bool duo) {
+  return kHeatMeasurementMargin * configured_reference_maximum_heating_w(generation, duo);
+}
+
 }  // namespace oq_perf

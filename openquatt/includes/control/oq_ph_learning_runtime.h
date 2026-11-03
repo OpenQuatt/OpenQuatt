@@ -559,12 +559,15 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                    : option == "V2"   ? ReferenceGeneration::V2
                                       : ReferenceGeneration::UNKNOWN;
     }
-    const float bound_w = oq_perf::reference_maximum_heating_w(generation, OQ_TOPOLOGY_DUO);
+    const float bound_w = oq_perf::configured_reference_maximum_heating_w(generation, OQ_TOPOLOGY_DUO);
+    const float observed_limit_w = oq_perf::measurement_maximum_heating_w(generation, OQ_TOPOLOGY_DUO);
     state.config.quality.max_daily_missing_heat_w = bound_w;
+    state.config.quality.max_observed_heat_w = observed_limit_w;
     // The owner copied config at initialization. Keep this one derived policy
     // current on startup and hardware changes; context handling still discards
     // unfinished intervals on generation changes and retains completed history.
     state.learner.config.quality.max_daily_missing_heat_w = bound_w;
+    state.learner.config.quality.max_observed_heat_w = observed_limit_w;
   }
 
   void capture_(RuntimeStorage& state, uint64_t now_ms, uint32_t epoch) {
@@ -949,6 +952,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.number(state.daily_restore_pending ? NAN : batch_window.missing_energy_uncertainty_ws / 3600.0);
     json.add(",\"batch_missing_heat_bound_w\":");
     json.number(configured_daily_missing_heat_bound_w(state.config.quality));
+    json.add(",\"batch_heat_measurement_limit_w\":");
+    json.number(configured_measurement_heat_limit_w(state.config.quality));
     json.add(",\"batch_budget_scope\":\"model_advice_only\"");
     json.add(",\"batch_missing_energy_budget_wh\":");
     json.number(kDailyMissingHeatBudgetW * 24.0);

@@ -218,8 +218,34 @@ V1/V1.5 Single 6115,28 W / Duo 12230,56 W; V2 Single 9172,15 W / Duo 18344,30 W.
 De effectieve grens is het maximum van tabelbasis, geldige absolute eindvermogens
 en waargenomen piekvloer. Voor een gat is U begrensd met `B × duur + integraal(abs(Q))`;
 negatieve warmte mag onzekerheid niet wegstrepen. De tabel is geen bewezen maximum
-van alle werkelijke thermische/defrostpieken. Onbekende hardware en oude schema7-
-checkpoints zonder opgeslagen piekvloer behouden de conservatieve 50 kW-terugval.
+van alle werkelijke thermische/defrostpieken. Bij onbekende generatie gebruikt de
+runtime de hoogste ondersteunde tabelbasis voor dezelfde Single/Duo-topologie.
+Alleen oude schema7-checkpoints zonder opgeslagen piekvloer behouden voor de
+eerste overbrugging de conservatieve 50 kW-terugval; reeds opgeslagen U wordt
+nooit achteraf verlaagd.
+
+Het plausibiliteitsfilter voor nieuwe, getekende warmtemetingen gebruikt
+`tabelmaximum × 1,20`: V1/V1.5 Single 7338,34 W / Duo 14676,67 W en V2 Single
+11006,58 W / Duo 22013,16 W. Exact de grens is toegestaan; positief en negatief
+worden symmetrisch behandeld. Dit is een engineeringmarge, geen gemeten bewijs
+dat iedere werkelijke waterzijdige piek binnen 20% blijft. Onbekende generatie
+gebruikt ook hier de hoogste ondersteunde generatie voor de ingestelde topologie.
+De status publiceert de actieve grens als `collection.batch_heat_measurement_limit_w`.
+
+Een eindige uitschieter boven deze grens wordt pas na bron-/unit-/tijdcontroles
+`heat_out_of_range`. Hij telt niet als warmte of RLS-meting en wordt niet naar
+nul of de grens afgeknipt. Een kort gat mag onder dezelfde bedrijfsvoorwaarden
+overbruggen; de afgekeurde absolute piek vergroot daarbij conservatief de
+onzekerheidsvloer. Langdurige gaten en harde bedrijfs-/bronfouten blijven blokkeren.
+Bij geverifieerd bootherstel kan zo'n uitschieter wachten binnen de bestaande
+300 s-totaalgrens en 60 s-tickgrens; ticket, klok en andere veto's blijven gelden.
+Een uitschieter vóór geldige UTC/journalherstel blijft een hard bootveto: er is
+dan nog geen herstelaccumulator waarin zijn piekevidence behouden kan worden.
+
+De oude structurele 50 kW-grens blijft uitsluitend voor compatibiliteit met
+eerder opgeslagen records, checkpoints, piekvloeren en U. Daardoor wist een
+lagere nieuwe meetgrens geen echte historie of RLS. Waarden buiten dat oude
+domein blijven hard ongeldig; ze leveren geen bruikbare piekevidence.
 
 De webgrafiek bewaart alle punten en toont de kwaliteit in de tooltip. Alleen
 servergeschikte punten beïnvloeden de adviesvoortgang; historische kwaliteit blijft
