@@ -532,7 +532,6 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   }
 
   export function renderPowerHouseRunExtensionField() {
-    if (!hasEntity("phRunExtensionStopMargin")) return "";
     return `
       <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="${escapeHtml(t("runExtension.title"))}">
         <div class="oq-run-extension-intro">
