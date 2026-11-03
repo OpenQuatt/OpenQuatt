@@ -29,14 +29,16 @@ const restoreFocusedSettingsField = (focusState) => restoreSettingsFocusContinui
 
 export function renderSettingsView() {
     return `
-      <section class="oq-helper-panel">
-        <p class="oq-helper-label">${escapeHtml(t("shell.settingsLabel"))}</p>
-        <h2 class="oq-helper-section-title">${escapeHtml(t("shell.settingsTitle"))}</h2>
-        <p class="oq-helper-section-copy">${escapeHtml(t("shell.settingsCopy"))}</p>
-        ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
-        ${state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
-        ${renderSettingsGroupNav()}
-        ${renderSettingsGroupContent()}
+      <section class="oq-settings-view">
+        <aside class="oq-settings-view-aside">
+          ${renderSettingsGroupNav()}
+          <p class="oq-settings-view-note">${escapeHtml(t("shell.settingsNote"))}</p>
+        </aside>
+        <div class="oq-settings-view-main">
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          ${state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
+          ${renderSettingsGroupContent()}
+        </div>
       </section>
     `;
   }
@@ -179,6 +181,25 @@ export function renderSettingsView() {
     });
   }
 
+  // A full render resets the horizontally scrolling tab bars on narrow screens.
+  function revealActiveNavItems() {
+    for (const [navSelector, itemSelector] of [
+      [".oq-helper-app-nav", ".oq-helper-app-tab.is-active"],
+      [".oq-settings-group-nav", ".oq-settings-group-button.is-active"],
+    ]) {
+      const nav = state.root.querySelector(navSelector);
+      const item = nav?.querySelector(itemSelector);
+      if (!item || nav.scrollWidth <= nav.clientWidth) {
+        continue;
+      }
+      const navBox = nav.getBoundingClientRect();
+      const itemBox = item.getBoundingClientRect();
+      if (itemBox.left < navBox.left || itemBox.right > navBox.right) {
+        nav.scrollLeft += itemBox.left - navBox.left - (navBox.width - itemBox.width) / 2;
+      }
+    }
+  }
+
   export function render() {
     if (!state.root) {
       return;
@@ -250,13 +271,10 @@ export function renderSettingsView() {
     const mainContent = state.loadingEntities
       ? `${currentViewContent}${renderInitialLoadingView()}`
       : currentViewContent;
-    const wideFlushCard = state.appView === "overview" || state.appView === "control" || state.appView === "energy" ||
-      state.appView === "diagnosis" || state.appView === "results";
-
     state.root.innerHTML = `
       ${renderDevPanel()}
       <div class="oq-helper-shell${state.overviewTheme === "dark" ? " oq-helper-shell--dark" : ""}">
-        <div class="oq-helper-card${wideFlushCard ? " oq-helper-card--wide-flush" : ""}">
+        <div class="oq-helper-card">
           <div class="oq-helper-head">
             <div class="oq-helper-brand">
               <div class="oq-helper-logo-lockup">
@@ -298,6 +316,7 @@ export function renderSettingsView() {
     startMotionLoop();
     syncOverviewTrendInteractions();
     syncNativeVisibility();
+    revealActiveNavItems();
     bindHeaderDevControls();
     syncDocumentTheme();
     syncDocumentTitle();

@@ -52,19 +52,9 @@ body.oq-surface-native {
   --oq-helper-shadow: 0 1px 2px rgba(15, 23, 42, 0.16), 0 24px 56px rgba(2, 6, 23, 0.2);
 }
 
+/* The page itself is the surface: header, tabs and view content share one left edge. */
 .oq-helper-card {
   position: relative;
-  border: 1px solid var(--oq-helper-line);
-  border-radius: var(--oq-helper-radius-lg);
-  background: var(--oq-helper-bg);
-  box-shadow: var(--oq-helper-shadow);
-  padding: 24px;
-}
-
-.oq-helper-shell--dark .oq-helper-card {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    0 18px 44px rgba(2, 6, 23, 0.2);
 }
 
 .oq-control-mode-override-banner {
@@ -110,8 +100,6 @@ body.oq-surface-native {
   display: block;
   min-height: 0;
   padding-right: 72px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--oq-helper-line);
 }
 
 .oq-helper-brand {

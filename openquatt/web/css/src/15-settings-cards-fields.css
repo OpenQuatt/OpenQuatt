@@ -330,18 +330,23 @@
   line-height: 1.55;
 }
 
+/* Subpanels divide a section with a rule; only advice keeps its own box. */
 .oq-settings-subpanel {
-  margin-top: 18px;
-  padding: 18px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-helper-card-muted);
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--oq-helper-line);
 }
 
 .oq-settings-subpanel--nested {
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--oq-settings-subpanel-background);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.oq-settings-subpanel--advice {
+  padding: 18px;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-lg);
+  background: var(--oq-helper-card-muted);
 }
 
 .oq-ph-comfort .oq-settings-info-popover {
@@ -448,16 +453,6 @@
   .oq-run-extension-thresholds,
   .oq-run-extension-thresholds.oq-warmup-readings {
     grid-template-columns: 1fr;
-  }
-
-  .oq-ph-comfort {
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-
-  .oq-ph-comfort > .oq-settings-subpanel {
-    padding: 12px;
   }
 }
 
@@ -712,6 +707,23 @@
 .oq-settings-field--compact {
   gap: 12px;
   padding: 14px;
+}
+
+/* Inside a settings section a field is a label and a control, not another card. */
+.oq-settings-view .oq-settings-field.oq-helper-surface {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.oq-settings-view :is(.oq-settings-grid, .oq-settings-hp-group-grid) {
+  gap: 22px 28px;
+  margin-top: 20px;
 }
 
 .oq-settings-field--compact .oq-settings-field-head h3 {

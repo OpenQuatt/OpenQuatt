@@ -1,5 +1,5 @@
 .oq-settings-section {
-  padding: 22px;
+  padding: 24px;
   border-radius: var(--oq-helper-radius-lg);
   border: 1px solid var(--oq-helper-line);
   background: var(--oq-settings-section-background);
@@ -94,47 +94,71 @@
   box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.05);
 }
 
+.oq-settings-view {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+/* The negative inset lines the group icons up with the page edge. */
+.oq-settings-view-aside {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 16px;
+  margin-left: -12px;
+}
+
+.oq-settings-view-note {
+  margin: 0;
+  padding: 0 12px;
+  color: var(--oq-helper-faint);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.oq-settings-view-main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
 .oq-settings-group-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--oq-helper-line);
+  display: grid;
+  gap: 2px;
 }
 
 .oq-settings-group-button {
   appearance: none;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 9px;
-  min-width: min(100%, 156px);
-  min-height: 52px;
-  padding: 12px 16px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-settings-group-border);
-  background: var(--oq-settings-group-background);
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--oq-helper-radius-sm);
+  background: transparent;
   color: var(--oq-settings-group-ink);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  transition: background 160ms ease, color 160ms ease;
 }
 
-.oq-settings-group-button:hover,
+.oq-settings-group-button:hover {
+  background: var(--oq-settings-group-hover-background);
+}
+
 .oq-settings-group-button:focus-visible {
-  border-color: rgba(234, 88, 12, 0.18);
+  outline: 2px solid var(--oq-helper-accent);
+  outline-offset: -2px;
 }
 
 .oq-settings-group-button.is-active {
-  border-color: var(--oq-settings-group-active-border);
   background: var(--oq-settings-group-active-background);
   color: var(--oq-settings-group-active-ink);
-  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.06);
-}
-
-.oq-settings-group-button[data-group-id="integrations"] {
-  min-width: min(100%, 236px);
 }
 
 .oq-settings-group-button-icon {
@@ -149,16 +173,14 @@
 }
 
 .oq-settings-group-button-label {
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 600;
   line-height: 1.2;
-  letter-spacing: -0.01em;
 }
 
 .oq-settings-group-stack {
   display: grid;
-  gap: 18px;
-  margin-top: 18px;
+  gap: 16px;
 }
 
 .oq-settings-callout {

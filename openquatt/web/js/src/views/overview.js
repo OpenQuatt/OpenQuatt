@@ -1,5 +1,5 @@
 import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
-import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
+import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, renderOqIcon, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes, parseLooseNumber } from "../core/entity-store.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
@@ -52,11 +52,11 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
-  export function renderOverviewShell({ className, title, copy, body, signature = "" }) {
+  export function renderOverviewShell({ className, title, copy = "", body, signature = "" }) {
     const signatureAttr = signature ? ` data-render-signature="${escapeHtml(signature)}"` : "";
     return `
       <section class="${escapeHtml(className)}"${signatureAttr}>
-        ${title ? `<div class="oq-overview-system-copy"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(copy)}</p></div>` : ""}
+        ${title ? `<div class="oq-overview-system-copy"><h3>${escapeHtml(title)}</h3>${copy ? `<p>${escapeHtml(copy)}</p>` : ""}</div>` : ""}
         ${body}
       </section>
     `;
@@ -449,9 +449,7 @@ import { renderStatCard } from "./stat-card.js";
       const fallbackMode = guardMode.includes("fallback");
       return {
         title: t("overview.strategyCoolingTitle"),
-        copy: unguardedMode
-          ? t("overview.strategyCoolingUnguardedCopy")
-          : t("overview.strategyCoolingCopy"),
+        copy: unguardedMode ? t("overview.strategyCoolingUnguardedCopy") : "",
         focusLabel: t("overview.strategyCoolingFocus"),
         focusValue: model.targetText,
         focusCopy: model.statusCopy,
@@ -474,7 +472,6 @@ import { renderStatCard } from "./stat-card.js";
       const model = getCurveOverviewModel();
       return {
         title: t("overview.strategyCurveTitle"),
-        copy: t("overview.strategyCurveCopy"),
         focusLabel: t("overview.strategyCurveFocus"),
         focusValue: model.targetText,
         focusCopy: model.targetCopy,
@@ -489,7 +486,6 @@ import { renderStatCard } from "./stat-card.js";
     const model = getPowerHouseOverviewModel();
     return {
       title: t("overview.strategyPhTitle"),
-      copy: t("overview.strategyPhCopy"),
       focusLabel: t("overview.strategyPhFocus"),
       focusValue: model.requestedText,
       focusCopy: t("overview.strategyPhFocusCopy"),
@@ -619,24 +615,27 @@ import { renderStatCard } from "./stat-card.js";
     };
   }
 
-  export function getOverviewStatusCards(strategyLabel, controlModeLabel) {
-    const primary = getOverviewPrimarySignal();
-    const system = getOverviewSystemSignal();
+  export function getOverviewStatusRows(strategyLabel, controlModeLabel) {
     return [
-      { label: t("overview.cardStrategy"), value: strategyLabel, tone: "orange", note: t("overview.cardStrategyNote") },
-      { label: t("overview.cardControlMode"), value: controlModeLabel, tone: "orange", note: t("overview.cardControlModeNote") },
-      { label: t("overview.cardControl"), value: primary.value, tone: "orange", note: t("overview.cardControlNote") },
-      { label: t("overview.cardSystem"), value: system.value, tone: "orange", note: t("overview.cardSystemNote") },
+      { label: t("overview.cardStrategy"), value: strategyLabel },
+      { label: t("overview.cardControlMode"), value: controlModeLabel },
+      { label: t("overview.cardControl"), value: getOverviewPrimarySignal().value },
+      { label: t("overview.cardSystem"), value: getOverviewSystemSignal().value },
     ];
   }
 
   export function renderOverviewStatusPanel(strategyLabel, controlModeLabel) {
-    const cards = getOverviewStatusCards(strategyLabel, controlModeLabel);
+    const rows = getOverviewStatusRows(strategyLabel, controlModeLabel);
     return `
-      <section class="oq-overview-statuspanel" aria-label="${escapeHtml(t("overview.statusPanelLabel"))}" data-render-signature="${escapeHtml(getRenderSignature(cards))}">
+      <section class="oq-overview-statuspanel" aria-label="${escapeHtml(t("overview.statusPanelLabel"))}" data-render-signature="${escapeHtml(getRenderSignature(rows))}">
         ${renderOverviewSectionHead(t("overview.statusPanelLabel"))}
-        <div class="oq-overview-statusgrid">
-          ${renderOverviewStatCards(cards, true)}
+        <div class="oq-overview-statuslist">
+          ${rows.map((row) => `
+            <div class="oq-overview-row">
+              <span>${escapeHtml(row.label)}</span>
+              <strong>${escapeHtml(row.value)}</strong>
+            </div>
+          `).join("")}
         </div>
       </section>
     `;
@@ -645,10 +644,10 @@ import { renderStatCard } from "./stat-card.js";
   export function getOverviewTopCards() {
     const coolingActive = isCoolingOverviewActive();
     return [
-      { key: "totalPower", label: t("overview.topPower"), tone: "blue", note: t("overview.topPowerNote") },
-      { key: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "orange", note: t("overview.topThermalNote") },
-      { key: coolingActive ? "totalEer" : "totalCop", label: coolingActive ? t("overview.topCopEer") : t("overview.topCop"), tone: "green", note: t("overview.topEfficiencyNote") },
-      { key: "flowSelected", label: t("overview.topFlow"), tone: "sky", note: t("overview.topFlowNote") },
+      { key: "totalPower", label: t("overview.topPower"), tone: "blue" },
+      { key: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "orange" },
+      { key: coolingActive ? "totalEer" : "totalCop", label: coolingActive ? t("overview.topCopEer") : t("overview.topCop"), tone: "green" },
+      { key: "flowSelected", label: t("overview.topFlow"), tone: "sky" },
     ];
   }
 
@@ -762,7 +761,7 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   function renderOverviewControlSettingsButton(card) {
-    return !card.settingsAction ? "" : `<button class="oq-overview-controlpanel-icon" type="button" data-oq-action="${escapeHtml(card.settingsAction)}" aria-label="${escapeHtml(card.settingsLabel)}" title="${escapeHtml(card.settingsLabel)}">⚙</button>`;
+    return !card.settingsAction ? "" : `<button class="oq-overview-controlpanel-icon" type="button" data-oq-action="${escapeHtml(card.settingsAction)}" aria-label="${escapeHtml(card.settingsLabel)}" title="${escapeHtml(card.settingsLabel)}">${renderOqIcon("settings")}</button>`;
   }
 
   export function renderOverviewControlActions(card) {
@@ -829,7 +828,7 @@ import { renderStatCard } from "./stat-card.js";
               <span>${escapeHtml(card.label)}</span>
               <strong class="oq-overview-controlpanel-state oq-overview-controlpanel-state--${escapeHtml(card.tone)}">${escapeHtml(card.status)}</strong>
             </div>
-            <p>${escapeHtml(card.copy)}</p>
+            ${card.copy && card.tone !== "neutral" && card.tone !== "green" ? `<p>${escapeHtml(card.copy)}</p>` : ""}
             ${renderOverviewControlMeta(card.meta)}
             ${renderOverviewControlActions(card)}
           </article>
@@ -843,27 +842,16 @@ import { renderStatCard } from "./stat-card.js";
     const warmupProgress = getWarmupProgressText();
     return `
       <section class="oq-overview-summary-shell">
-        <div class="oq-overview-head">
-          <div>
-            <p class="oq-helper-label">${escapeHtml(t("overview.summaryKicker"))}</p>
-            <h2 class="oq-helper-section-title">${escapeHtml(t("overview.summaryTitle"))}</h2>
-            <p class="oq-helper-section-copy">${escapeHtml(t("overview.summaryCopy"))}</p>
-            <p class="oq-helper-section-copy" data-oq-overview-warmup ${warmupProgress ? "" : "hidden"}>${escapeHtml(warmupProgress)}</p>
+        <p class="oq-overview-warmup" data-oq-overview-warmup ${warmupProgress ? "" : "hidden"}>${escapeHtml(warmupProgress)}</p>
+        <section class="oq-overview-kpis" aria-label="${escapeHtml(t("overview.summaryKpis"))}">
+          <div class="oq-overview-top">
+            ${renderOverviewStatCards(getOverviewTopCards())}
           </div>
-        </div>
+        </section>
         <div class="oq-overview-summary-layout">
-          <div class="oq-overview-summary-main">
-            <section class="oq-overview-kpis" aria-label="${escapeHtml(t("overview.summaryKpis"))}">
-              ${renderOverviewSectionHead(t("overview.summaryKpis"))}
-              <div class="oq-overview-top">
-                ${renderOverviewStatCards(getOverviewTopCards())}
-              </div>
-            </section>
-            ${renderOverviewStatusPanel(strategyLabel, controlModeLabel)}
-          </div>
-          <aside class="oq-overview-summary-side" data-render-signature="${escapeHtml(getOverviewControlsRenderSignature())}">
-            ${renderOverviewControlPanels()}
-          </aside>
+          ${renderOverviewStatusPanel(strategyLabel, controlModeLabel)}
+          ${renderOverviewTempsPanel()}
+          <aside class="oq-overview-summary-side" data-render-signature="${escapeHtml(getOverviewControlsRenderSignature())}">${renderOverviewControlPanels()}</aside>
         </div>
       </section>
     `;
@@ -875,7 +863,6 @@ import { renderStatCard } from "./stat-card.js";
     if (isCoolingOverviewActive()) {
       return {
         title: t("overview.tempsCoolingTitle"),
-        copy: t("overview.tempsCoolingCopy"),
         rows: [
           { label: t("overview.tempRoom"), key: "roomTemp" },
           { label: t("overview.tempRoomSetpoint"), key: "roomSetpoint" },
@@ -888,7 +875,6 @@ import { renderStatCard } from "./stat-card.js";
     }
     return {
       title: t("overview.tempsTitle"),
-      copy: t("overview.tempsCopy"),
       rows: [
         { label: t("overview.tempRoom"), key: "roomTemp" },
         { label: t("overview.tempRoomSetpoint"), key: "roomSetpoint" },
