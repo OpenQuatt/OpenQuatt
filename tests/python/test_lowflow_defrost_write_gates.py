@@ -46,15 +46,16 @@ int main() {
     service.cycle.step(clock_ms);
     assert(!runtime.defrost_safety_stop_(hp==0));
     for (auto gate:gates[hp]) { assert(!gate(0)); assert(!gate(17)); assert(!gate(2)); }
+    // Rejected active selects replace the cleared safety stop with zero.
     // Initial global stop interrupts ownership but does not clear the ODU bit.
     oq_lowflow_fault_active=true;
     assert(runtime.defrost_safety_stop_(hp==0));
-    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(!gate(17)); assert(!gate(2)); }
+    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(gate(17)==0); assert(gate(2)==0); }
     assert(service.cycle.observed_active() && service.cycle.interrupted);
     oq_lowflow_fault_active=false;
     oq_water_temp_hard_trip_active=true;
     assert(runtime.defrost_safety_stop_(hp==0));
-    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(!gate(17)); assert(!gate(2)); }
+    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(gate(17)==0); assert(gate(2)==0); }
     assert(engine.request_stop(clock_ms));
     oq_water_temp_hard_trip_active=false;
     assert(engine.outputs().run_state==oq_incidents::RunState::STOPPING);
@@ -62,7 +63,7 @@ int main() {
     // Acknowledgements are lost; ordinary STOPPING remains authoritative.
     assert(runtime.defrost_safety_stop_(hp==0));
     assert(service.normal_write_allowed(0,runtime.defrost_safety_stop_(hp==0)));
-    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(!gate(17)); assert(!gate(2)); }
+    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(gate(17)==0); assert(gate(2)==0); }
     clock_ms+=10000;
     service.cycle.observe_mode(2,clock_ms); service.cycle.observe_bit(true,clock_ms);
     assert(!engine.request_stop(clock_ms));
@@ -72,7 +73,7 @@ int main() {
     assert(!engine.request_stop(clock_ms));
     assert(engine.outputs().run_state==oq_incidents::RunState::STOP_UNCONFIRMED);
     service.cycle.observe_mode(2,clock_ms); service.cycle.observe_bit(true,clock_ms);
-    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(!gate(17)); assert(!gate(2)); }
+    for (auto gate:gates[hp]) { assert(gate(0)==0); assert(gate(17)==0); assert(gate(2)==0); }
     // With no pending stop/global fault, normal defrost hold remains intact.
     engine=oq_incidents::HpIncidentEngine{};
     service.cycle=oq_defrost::Cycle{};

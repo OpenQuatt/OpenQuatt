@@ -663,8 +663,12 @@ select:
       "Cooling": 1
       "Heating": 2
     write_lambda: |-
-      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value)) {
+      // ModbusSelect clears its pending frame before this callback. A rejected
+      // active command must replace that cleared safety stop with another zero.
+      bool safety_stop = false;
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value, false, &safety_stop)) {
         id(${hp_id}_compressor_command_revalidation_required) = true;
+        if (safety_stop) return 0;
         return {};
       }
       return value;
@@ -681,8 +685,12 @@ select:
       id(oq_incident_manager).observe_boot_readback(${hp_index}, 1999U, static_cast<float>(x), millis());
       return {};
     write_lambda: |-
-      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value)) {
+      // ModbusSelect clears its pending frame before this callback. A rejected
+      // active command must replace that cleared safety stop with another zero.
+      bool safety_stop = false;
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value, false, &safety_stop)) {
         id(${hp_id}_compressor_command_revalidation_required) = true;
+        if (safety_stop) return 0;
         return {};
       }
       return value;

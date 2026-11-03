@@ -133,10 +133,10 @@ class DefrostContractTest(unittest.TestCase):
         self.assertIn("portENTER_CRITICAL(&mux_)", SERVICE)
 
     def test_final_write_gates_cover_both_actuators(self):
-        self.assertIn("oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value)", IO)
-        self.assertIn("oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value)", IO)
+        self.assertIn("oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value, false, &safety_stop)", IO)
+        self.assertIn("oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value, false, &safety_stop)", IO)
         gate = (ROOT / "openquatt/includes/control/oq_compressor_command_runtime.h").read_text()
-        self.assertIn("normal_write_allowed(value, fault)", gate)
+        self.assertIn("normal_write_allowed(fault ? 0 : value, fault)", gate)
         self.assertIn("cycle.telemetry_fault(millis())", gate)
         self.assertIn("cycle.observe_bit(x, millis())", IO)
         self.assertIn("cycle.observe_mode(x, millis())", IO)
