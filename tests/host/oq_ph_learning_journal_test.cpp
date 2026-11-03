@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <cstring>
 #include <initializer_list>
 #include <math.h>
 #include <string.h>
