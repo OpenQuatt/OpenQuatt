@@ -1,5 +1,5 @@
 import { renderPerformanceTelemetryPrompt } from "./performance-telemetry-prompt.js";
-import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
+import { getBinaryEntityState, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, getOpenQuattPauseDraftValue, hasOpenQuattResumeSchedule } from "../core/entity-store.js";
 import { isDeviceReconnectRecovering } from "../core/device-reconnect.js";
@@ -27,7 +27,7 @@ import { formatDutchAmps } from "../settings/electrical-limit.js";
 import { renderHeatingStrategyAdviceModal } from "./heating-strategy-advice.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
-import { getIntlLocale, getLocale, t } from "../i18n/index.js";
+import { formatNumber, getIntlLocale, getLocale, t } from "../i18n/index.js";
 import { render } from "../core/render-scheduler.js";
 
   export function getHeaderRenderSignature() {
@@ -498,6 +498,52 @@ import { render } from "../core/render-scheduler.js";
           ${state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice ? `<p class="${state.wifiResetError || state.wifiResetActionError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice)}</p>` : ""}
           <div class="oq-helper-modal-actions">
             <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
+          </div>
+        `,
+      });
+    }
+    // Dynamic setpoint info modal
+    if (state.systemModal === "dynamic-setpoint-info") {
+      const warmupState = getBinaryEntityState("warmupEnabled");
+      const warmupEnabled = warmupState === null ? "—" : warmupState ? t("common.on") : t("common.off");
+      const formatTemperature = (key) => {
+        const numeric = getEntityNumericValue(key);
+        return Number.isNaN(numeric)
+          ? "—"
+          : `${formatNumber(numeric, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} °C`;
+      };
+      const effectiveTarget = getEntityNumericValue("warmupEffectiveTarget");
+      const roomSetpointValue = getEntityNumericValue("roomSetpoint");
+      const deviation = (() => {
+        if (Number.isNaN(effectiveTarget) || Number.isNaN(roomSetpointValue)) {
+          return "—";
+        }
+        const diff = effectiveTarget - roomSetpointValue;
+        const sign = diff > 0 ? "+" : diff < 0 ? "−" : "";
+        return `${sign}${formatNumber(Math.abs(diff), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} °C`;
+      })();
+      const rows = [
+        [t("overview.dynamicSetpointWarmupEnabled"), warmupEnabled],
+        [t("overview.dynamicSetpointEffectiveTarget"), formatTemperature("warmupEffectiveTarget")],
+        [t("overview.dynamicSetpointComfortMemory"), formatTemperature("phComfortMemory")],
+        [t("overview.tempRoomSetpoint"), formatTemperature("roomSetpoint")],
+        [t("overview.dynamicSetpointDeviation"), deviation],
+      ];
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-dynamic-setpoint-info-title",
+        kicker: t("overview.dynamicSetpointKicker"),
+        title: t("overview.dynamicSetpointTitle"),
+        closeAction: "close-system-modal",
+        closeLabel: t("common.close"),
+        bodyMarkup: `
+          <div class="oq-helper-modal-grid">
+            ${rows.map(([label, value]) => `
+              <div class="oq-helper-modal-row">
+                <span class="oq-helper-modal-label">${escapeHtml(label)}</span>
+                <strong class="oq-helper-modal-value">${escapeHtml(value)}</strong>
+              </div>
+            `).join("")}
           </div>
         `,
       });

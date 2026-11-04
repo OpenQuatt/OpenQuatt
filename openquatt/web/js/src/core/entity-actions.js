@@ -675,6 +675,11 @@ function updateFrequencyRangeControl(input) {
       }
       return;
     }
+    if (action === "show-dynamic-setpoint-info") {
+      state.systemModal = "dynamic-setpoint-info";
+      render();
+      return;
+    }
     if (actionDelegates.some((delegate) => delegate(action, button, event))) {
       return;
     }
