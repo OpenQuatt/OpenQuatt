@@ -111,15 +111,22 @@ class Runtime {
     // Capture the reference scales once with the manual inputs for this tick.
     // Future line calibration must not change these control scales.
     const auto envelope = oq_power_house::house_envelope_from_legacy(demand_input.rated_w);
-    float memory_max_c = id(ph_memory_max_c).has_state() ? id(ph_memory_max_c).state : clamp_power(0.05f + 0.50f * id(ph_comfort_band_above_c).state, 0.08f, 0.20f);
-        if (!id(ph_memory_max_c).has_state()) {
-            id(ph_memory_max_c).publish_state(memory_max_c);
-        }
-        const oq_power_house::DemandTuning demand_tuning{
-            config.temperature_guard_c,        id(ph_kp_w_per_k).state,   id(ph_comfort_band_below_c).state,
-            id(ph_comfort_band_above_c).state, memory_max_c, id(ph_demand_rise_time_min).state,
-            id(ph_demand_fall_time_min).state, config.demand_max_f,
-        };
+    float memory_max_c = id(ph_memory_max_c).has_state()
+                             ? id(ph_memory_max_c).state
+                             : clamp_power(0.05f + 0.50f * id(ph_comfort_band_above_c).state, 0.08f, 0.20f);
+    if (!id(ph_memory_max_c).has_state()) {
+      id(ph_memory_max_c).publish_state(memory_max_c);
+    }
+    const oq_power_house::DemandTuning demand_tuning{
+        config.temperature_guard_c,
+        id(ph_kp_w_per_k).state,
+        id(ph_comfort_band_below_c).state,
+        id(ph_comfort_band_above_c).state,
+        memory_max_c,
+        id(ph_demand_rise_time_min).state,
+        id(ph_demand_fall_time_min).state,
+        config.demand_max_f,
+    };
     const int applied_total =
         std::max(0, static_cast<int>(id(hp1_last_applied_level))) + std::max(0, static_cast<int>(hp2_applied_level));
     if (applied_total > 0 && this->fast_floor_w_ > 0.0f) {
