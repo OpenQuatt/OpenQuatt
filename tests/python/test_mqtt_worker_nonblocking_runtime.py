@@ -77,13 +77,31 @@ class MqttWorkerNonblockingRuntimeTest(unittest.TestCase):
         if result.returncode:
             raise AssertionError(result.stderr[-10000:])
 
-    def run_case(self, name):
-        result = run_process([str(self.binary), name], text=True, capture_output=True, timeout=12)
+    def run_case(self, name, now_ms=None):
+        command = [str(self.binary), name]
+        if now_ms is not None:
+            command.append(str(now_ms))
+        result = run_process(command, text=True, capture_output=True, timeout=12)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(f"PASS {name}", result.stdout)
 
     def test_loop_returns_while_worker_subscribe_waits(self):
         self.run_case("blocked_subscribe")
+
+    def test_reconnect_without_deadline_survives_long_uptime(self):
+        for now_ms in (0x7fffffff, 0x80000000, 0xffffffff, 0):
+            with self.subTest(now_ms=hex(now_ms)):
+                self.run_case("reconnect_at_uptime", now_ms)
+
+    def test_reconnect_respects_retry_deadline_across_time_boundaries(self):
+        for now_ms in (0x7fffffff, 0x80000000, 0xffffffff, 0):
+            with self.subTest(now_ms=hex(now_ms)):
+                self.run_case("reconnect_with_retry_at_uptime", now_ms)
+
+    def test_terminal_cleanup_without_deadline_survives_long_uptime(self):
+        for now_ms in (0x7fffffff, 0x80000000, 0xffffffff, 0):
+            with self.subTest(now_ms=hex(now_ms)):
+                self.run_case("cleanup_at_uptime", now_ms)
 
     def test_enable_before_worker_idle_is_not_lost(self):
         self.run_case("idle_handoff")

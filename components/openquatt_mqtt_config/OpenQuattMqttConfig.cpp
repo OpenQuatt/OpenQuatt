@@ -667,9 +667,11 @@ void OpenQuattMqttConfig::loop() {
   this->process_storage_transaction_();
   if ((this->client_reconcile_pending_.load() || this->resubscribe_inputs_.load() ||
        this->client_requested_generation_.load() != this->client_applied_generation_.load()) &&
-      !this->client_worker_active_.load() && (this->mqtt_client_present_.load() || network::is_connected()) &&
-      time_reached_(millis(), this->next_reconcile_attempt_ms_.load())) {
-    this->request_client_reconcile_();
+      !this->client_worker_active_.load() && (this->mqtt_client_present_.load() || network::is_connected())) {
+    const uint32_t next_reconcile_attempt_ms = this->next_reconcile_attempt_ms_.load();
+    if (next_reconcile_attempt_ms == 0U || time_reached_(millis(), next_reconcile_attempt_ms)) {
+      this->request_client_reconcile_();
+    }
   }
   if (this->clear_session_scoped_inputs_pending_.exchange(false)) {
     this->clear_session_scoped_inputs_();
@@ -1373,10 +1375,11 @@ bool OpenQuattMqttConfig::process_permanent_failure_cleanup_() {
     return false;
   }
   this->close_client_event_gate_();
-  if (!time_reached_(millis(), this->next_reconcile_attempt_ms_.load())) {
+  if (this->client_worker_active_.load()) {
     return true;
   }
-  if (this->client_worker_active_.load()) {
+  const uint32_t next_reconcile_attempt_ms = this->next_reconcile_attempt_ms_.load();
+  if (next_reconcile_attempt_ms != 0U && !time_reached_(millis(), next_reconcile_attempt_ms)) {
     return true;
   }
   if (this->mqtt_client_present_.load()) {

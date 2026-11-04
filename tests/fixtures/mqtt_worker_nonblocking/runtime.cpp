@@ -352,6 +352,47 @@ static void blocked_subscribe() {
   subscribe_wait.release();
   idle(component);
 }
+static void reconnect_at_uptime(uint32_t reconnect_ms, bool retry_pending) {
+  OpenQuattMqttConfig component;
+  component.loop();
+  idle(component);
+  assert(subscribe_calls == 1 && component.next_reconcile_attempt_ms_.load() == 0U);
+  now_ms.store(reconnect_ms);
+  const uint32_t retry_ms = reconnect_ms + OpenQuattMqttConfig::MQTT_RECONCILE_RETRY_MS;
+  if (retry_pending) component.next_reconcile_attempt_ms_.store(retry_ms);
+
+  esp_mqtt_event_t event;
+  event.client = component.mqtt_client_;
+  component.mqtt_event_handler_(&component, nullptr, MQTT_EVENT_DISCONNECTED, &event);
+  component.mqtt_event_handler_(&component, nullptr, MQTT_EVENT_CONNECTED, &event);
+  assert(component.resubscribe_inputs_.load());
+  if (retry_pending) {
+    component.loop();
+    assert(subscribe_calls == 1 && !component.client_worker_active_.load());
+    now_ms.store(retry_ms - 1U);
+    component.loop();
+    assert(subscribe_calls == 1 && !component.client_worker_active_.load());
+    now_ms.store(retry_ms);
+  }
+  component.loop();
+  assert(component.client_worker_active_.load() || subscribe_calls == 2);
+  until([&] { return subscribe_calls == 2 && !component.client_worker_active_.load(); });
+  assert(!component.resubscribe_inputs_.load() && component.next_reconcile_attempt_ms_.load() == 0U);
+  assert(init_calls == 0 && stop_calls == 0 && destroy_calls == 0);
+}
+static void cleanup_at_uptime(uint32_t cleanup_ms) {
+  OpenQuattMqttConfig component;
+  component.loop();
+  idle(component);
+  now_ms.store(cleanup_ms);
+  component.start_permanent_failure_cleanup_();
+  assert(component.client_worker_active_.load() || !component.mqtt_client_present_.load());
+  until([&] { return !component.mqtt_client_present_.load() && !component.client_worker_active_.load(); });
+  now_ms.store(cleanup_ms + OpenQuattMqttConfig::MQTT_RECONCILE_RETRY_MS);
+  component.loop();
+  assert(component.marked_failed.load() && component.permanent_failure_cleanup_pending_.load());
+  assert(!component.client_events_enabled_.load() && stop_calls == 1 && destroy_calls == 1 && init_calls == 0);
+}
 static void idle_handoff() {
   OpenQuattMqttConfig component;
   idle_wait.enabled = true;
@@ -476,10 +517,17 @@ static void partial_init() {
   assert(stop_calls == 0 && component.permanent_failure_cleanup_pending_.load());
 }
 int main(int argc, char** argv) {
-  assert(argc == 2);
+  assert(argc == 2 || argc == 3);
   const std::string name = argv[1];
+  const uint32_t test_ms = argc == 3 ? static_cast<uint32_t>(std::stoul(argv[2], nullptr, 0)) : 0U;
   if (name == "blocked_subscribe")
     blocked_subscribe();
+  else if (name == "reconnect_at_uptime")
+    reconnect_at_uptime(test_ms, false);
+  else if (name == "reconnect_with_retry_at_uptime")
+    reconnect_at_uptime(test_ms, true);
+  else if (name == "cleanup_at_uptime")
+    cleanup_at_uptime(test_ms);
   else if (name == "idle_handoff")
     idle_handoff();
   else if (name == "offline_handoff")
