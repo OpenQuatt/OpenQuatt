@@ -394,6 +394,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   export function renderPowerHouseAdvancedField() {
     const fields = [
       renderSettingsNumberField("phKp", t("settingsHeating.phKpTitle"), t("settingsHeating.phKpCopy"), "", { unitOverride: "W/K" }),
+    renderSettingsNumberField("phMemoryMaxC", t("settingsHeating.phMemoryMaxTitle"), t("settingsHeating.phMemoryMaxCopy"), "", { decimals: 1 }),
       renderPowerHouseResponseProfilesField(),
     ].filter(Boolean);
 
@@ -419,15 +420,6 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           <div class="oq-run-extension-summary" data-oq-power-house-comfort-thresholds>${renderPowerHouseComfortThresholds()}</div>
         </section>
         ${renderPowerHouseRunExtensionField()}
-        <section class="oq-settings-subpanel oq-settings-subpanel--nested" aria-label="${escapeHtml(t("settingsHeating.phMemoryMaxTitle"))}">
-          <div class="oq-settings-subpanel-head">
-            <h4>${escapeHtml(t("settingsHeating.phMemoryMaxTitle"))}</h4>
-            <p>${escapeHtml(t("settingsHeating.phMemoryMaxCopy"))}</p>
-          </div>
-          <div class="oq-settings-grid">
-            ${renderSettingsNumberField("phMemoryMaxC", t("settingsHeating.phMemoryMaxTitle"), t("settingsHeating.phMemoryMaxCopy"), "", { decimals: 1 })}
-          </div>
-        </section>
         ${renderSettingsAdvancedDisclosure("power-house", t("settingsHeating.phAdvancedTitle"), t("settingsHeating.phAdvancedCopy"), `<div class="oq-settings-grid">${fields.join("")}</div>`)}
       </div>
     `;
