@@ -8,7 +8,7 @@
 namespace oq_ph_learning {
 
 constexpr size_t kStatusJsonBufferSize = 4U * 1024U;
-constexpr size_t kExportJsonBufferSize = 32U * 1024U;
+constexpr size_t kExportJsonBufferSize = 37U * 1024U;
 constexpr size_t kMaxExportRecordRows = 128U;
 constexpr size_t kMaxExportDiagnosticRows = 60U;
 constexpr size_t kMaxDailyCollectionJsonBytes = 1536U;
@@ -27,6 +27,10 @@ static constexpr char kExportRecordsPrefix[] =
     "{\"schema\":1,\"mode\":\"passive\",\"auto_apply_allowed\":false,\"record_columns\":[\"start_epoch_s\",\"end_"
     "epoch_s\",\"mean_room_c\",\"mean_setpoint_c\",\"mean_outside_c\",\"mean_heat_w\","
     "\"room_trend_k_per_h\",\"context_revision\",\"effective_outside_c\",\"record_kind\"],\"records\":[";
+static constexpr char kExportRecordQualityPrefix[] =
+    "],\"record_quality_policy\":1,\"record_quality_columns\":[\"heat_coverage_bp\",\"temperature_coverage_bp\",\"heat_"
+    "uncertainty_mean_w\","
+    "\"fit_eligible\",\"fit_weight_bp\"],\"record_quality\":[";
 static constexpr char kExportDiagnosticsPrefix[] =
     "],\"diagnostic_columns\":[\"epoch_s\",\"invalid_reasons\",\"control_mode\",\"room_c\",\"setpoint_c\","
     "\"outside_c\",\"actual_signed_heat_w\",\"heat_valid\",\"training_qualified\",\"base_w\",\"request_w\","
@@ -44,12 +48,14 @@ constexpr size_t kExportRecordRowMaxBytes =
     2U + 9U + 3U * kMaxSerializedUint32Chars + 6U * kMaxSerializedFloatChars + 1U;
 constexpr size_t kExportDiagnosticRowMaxBytes = 2U + 25U + 4U * kMaxSerializedUint32Chars + kMaxSerializedInt32Chars +
                                                 8U * kMaxSerializedFloatChars + 13U * kMaxSerializedBoolChars;
+// Two coverages, bounded U or its overflow string, eligibility and weight.
+constexpr size_t kExportRecordQualityRowMaxBytes = 2U + 4U + 5U + 5U + 10U + 5U + 5U;
 constexpr size_t kMaxExportBaseJsonBytes =
     sizeof(kExportRecordsPrefix) - 1U + delimited_rows_max(kExportRecordRowMaxBytes, kMaxExportRecordRows) +
-    sizeof(kExportDiagnosticsPrefix) - 1U + delimited_rows_max(kExportDiagnosticRowMaxBytes, kMaxExportDiagnosticRows) +
-    sizeof(kExportSuffix) - 1U;
-// The optional L1 object is export-only: the separate 4 KiB status endpoint is
-// unchanged. Keep its worst-case body bounded along with all retained rows.
+    sizeof(kExportRecordQualityPrefix) - 1U +
+    delimited_rows_max(kExportRecordQualityRowMaxBytes, kMaxExportRecordRows) + sizeof(kExportDiagnosticsPrefix) - 1U +
+    delimited_rows_max(kExportDiagnosticRowMaxBytes, kMaxExportDiagnosticRows) + sizeof(kExportSuffix) - 1U;
+// Both diagnostic objects fit alongside every retained record and source row.
 constexpr size_t kMaxExportJsonBytes = kMaxExportBaseJsonBytes + sizeof(kExportDailyCollectionPrefix) - 1U +
                                        kMaxDailyCollectionJsonBytes + sizeof(kExportDailyCollectionStatePrefix) - 1U +
                                        kMaxDailyCollectionStateJsonBytes;

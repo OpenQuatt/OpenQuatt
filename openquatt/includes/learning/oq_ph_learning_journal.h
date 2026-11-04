@@ -16,8 +16,9 @@ namespace oq_power_house::learning {
 
 constexpr uint32_t kLearningJournalMagic = 0x4F514C4AU;              // OQLJ
 constexpr uint32_t kLearningMeasurementContextMarker = 0x4D435458U;  // MCTX
-// Schema 7 appends a bounded daily checkpoint after the unchanged thermal tail.
-constexpr uint16_t kLearningJournalSchemaVersion = 7;
+// Schema9 compacts the redundant record revision/duration into canonical quality
+// codes and appends independent observation state to the unchanged daily prefix.
+constexpr uint16_t kLearningJournalSchemaVersion = 9;
 constexpr size_t kLearningJournalHeaderBytes = 32;
 constexpr size_t kLearningJournalRecordBytes = 52;
 static_assert(kDailyTemperatureProfileSize * sizeof(int16_t) == 16U,
@@ -26,7 +27,15 @@ constexpr size_t kLearningJournalCrcBytes = 4;
 // 17 doubles, three counters and last accepted UTC timestamp; no boot-local clocks.
 constexpr size_t kLearningJournalThermalBytes = 152;
 // Explicit UTC/value serialization; no boot-local clocks or raw struct layout.
-constexpr size_t kLearningJournalDailyBytes = 252;
+constexpr size_t kLearningJournalDailyV7Bytes = 252;
+constexpr size_t kLearningJournalDailyV8Bytes = kLearningJournalDailyV7Bytes + sizeof(float);
+constexpr size_t kLearningJournalDailyBytes = kLearningJournalDailyV8Bytes + 44U;
+inline constexpr size_t learning_journal_daily_bytes(uint16_t schema) {
+  return schema >= 9   ? kLearningJournalDailyBytes
+         : schema == 8 ? kLearningJournalDailyV8Bytes
+         : schema == 7 ? kLearningJournalDailyV7Bytes
+                       : 0U;
+}
 constexpr size_t kLearningJournalMaxBytes =
     kLearningJournalHeaderBytes + kMaxPassiveContextBytes + kMaxSegmentRecords * kLearningJournalRecordBytes +
     kLearningJournalThermalBytes + kLearningJournalDailyBytes + kLearningJournalCrcBytes;
@@ -307,7 +316,7 @@ inline bool read_thermal(Reader& reader, ThermalModelState& state, uint32_t& epo
   return epoch != 0 && thermal_detail::finite_state(state);
 }
 
-inline void write_daily(Writer& writer, const SegmentAccumulator* state) {
+inline void write_daily(Writer& writer, const SegmentAccumulator* state, const QualityConfig& quality = {}) {
   if (state == nullptr || !state->active) {
     for (size_t i = 0; i < kLearningJournalDailyBytes / 4U; ++i) write_u32(writer, 0);
     return;
@@ -333,13 +342,24 @@ inline void write_daily(Writer& writer, const SegmentAccumulator* state) {
   write_double(writer, state->trend_wtt);
   write_double(writer, state->trend_wr);
   write_double(writer, state->trend_wtr);
+  write_float(writer, static_cast<float>(daily_missing_heat_bound_w(quality, state->last_heat_w, state->last_heat_w,
+                                                                    state->gap_heat_bound_floor_w)));
+  write_float(writer, state->heat_last_w);
+  write_u32(writer, state->heat_last_elapsed_ms);
+  write_u32(writer, state->heat_last_epoch_s);
+  write_u32(writer, state->heat_observed_ms);
+  write_u32(writer, state->temperature_observed_ms);
+  write_u32(writer, state->next_heat_observed_ms);
+  write_double(writer, state->next_heat_integral_ws);
+  write_double(writer, state->next_heat_uncertainty_ws);
+  write_u32(writer, (state->heat_gap_pending ? 1U : 0U) | (state->daily_quality_known ? 2U : 0U));
 }
 
-inline bool read_daily(Reader& reader, SegmentAccumulator& state) {
+inline bool read_daily(Reader& reader, SegmentAccumulator& state, uint16_t schema = kLearningJournalSchemaVersion) {
   state = {};
   const uint32_t active = read_u32(reader);
   if (active == 0) {
-    for (size_t i = 1; i < kLearningJournalDailyBytes / 4U; ++i)
+    for (size_t i = 1; i < learning_journal_daily_bytes(schema) / 4U; ++i)
       if (read_u32(reader) != 0) return false;
     return reader.ok;
   }
@@ -365,9 +385,41 @@ inline bool read_daily(Reader& reader, SegmentAccumulator& state) {
   state.trend_wtt = read_double(reader);
   state.trend_wr = read_double(reader);
   state.trend_wtr = read_double(reader);
+  if (schema >= 8) {
+    state.gap_heat_bound_floor_w = read_float(reader);
+    // Structural encoding limits are independent of current consumer quality.
+    // Never interpret missing/corrupt new-format metadata as a zero floor.
+    if (!isfinite(state.gap_heat_bound_floor_w) || state.gap_heat_bound_floor_w < 1000.0f ||
+        state.gap_heat_bound_floor_w > 100000.0f)
+      return false;
+  }
   if (!reader.ok || !isfinite(state.integrated_duration_s) || state.integrated_duration_s < 0.0 ||
       state.integrated_duration_s >= static_cast<double>(kSegmentDurationMs) / 1000.0)
     return false;
+  if (schema >= 9) {
+    state.heat_last_w = read_float(reader);
+    state.heat_last_elapsed_ms = read_u32(reader);
+    state.heat_last_epoch_s = read_u32(reader);
+    state.heat_observed_ms = read_u32(reader);
+    state.temperature_observed_ms = read_u32(reader);
+    state.next_heat_observed_ms = read_u32(reader);
+    state.next_heat_integral_ws = read_double(reader);
+    state.next_heat_uncertainty_ws = read_double(reader);
+    const uint32_t flags = read_u32(reader);
+    if (!reader.ok || (flags & ~3U) != 0U) return false;
+    state.heat_gap_pending = (flags & 1U) != 0U;
+    state.daily_quality_known = (flags & 2U) != 0U;
+  } else {
+    // Earlier schemas did not measure independent coverage. Keep their saved
+    // values and debt, but never promote their missing counters to full coverage.
+    state.heat_last_w = state.last_heat_w;
+    state.heat_last_elapsed_ms = static_cast<uint32_t>(llround(state.integrated_duration_s * 1000.0));
+    state.heat_last_epoch_s = state.last_epoch_s;
+    state.heat_observed_ms = state.temperature_observed_ms = state.next_heat_observed_ms = 0;
+    state.next_heat_integral_ws = state.next_heat_uncertainty_ws = 0.0;
+    state.heat_gap_pending = true;
+    state.daily_quality_known = false;
+  }
   state.carried_duration_ms = static_cast<uint64_t>(llround(state.integrated_duration_s * 1000.0));
   state.start_monotonic_ms = state.last_monotonic_ms = 1;
   state.source_gap_pending = true;
@@ -379,8 +431,10 @@ inline bool read_daily(Reader& reader, SegmentAccumulator& state) {
 inline void write_record(Writer& writer, const SegmentRecord& record) {
   write_u32(writer, record.start_epoch_s);
   write_u32(writer, record.end_epoch_s);
-  write_u32(writer, record.duration_s);
-  write_u32(writer, record.context_revision);
+  write_u16(writer, is_daily_record(record) ? 0U : static_cast<uint16_t>(record.duration_s));
+  write_u16(writer, record.daily_quality.heat_coverage_bp);
+  write_u16(writer, record.daily_quality.temperature_coverage_bp);
+  write_u16(writer, record.daily_quality.heat_uncertainty_mean_w);
   write_float(writer, record.mean_room_c);
   write_float(writer, record.mean_setpoint_c);
   write_float(writer, record.mean_outside_c);
@@ -396,12 +450,22 @@ inline void write_record(Writer& writer, const SegmentRecord& record) {
   }
 }
 
-inline SegmentRecord read_record(Reader& reader, uint16_t schema) {
+inline SegmentRecord read_record(Reader& reader, uint16_t schema, uint32_t header_revision) {
   SegmentRecord record;
   record.start_epoch_s = read_u32(reader);
   record.end_epoch_s = read_u32(reader);
-  record.duration_s = read_u32(reader);
-  record.context_revision = read_u32(reader);
+  if (schema >= 9) {
+    const uint16_t duration = read_u16(reader);
+    record.duration_s = duration == 0U ? 86400U : duration;
+    record.context_revision = header_revision;
+    record.daily_quality.heat_coverage_bp = read_u16(reader);
+    record.daily_quality.temperature_coverage_bp = read_u16(reader);
+    record.daily_quality.heat_uncertainty_mean_w = read_u16(reader);
+  } else {
+    record.duration_s = read_u32(reader);
+    record.context_revision = read_u32(reader);
+    record.daily_quality = {};
+  }
   record.mean_room_c = read_float(reader);
   record.mean_setpoint_c = read_float(reader);
   record.mean_outside_c = read_float(reader);
@@ -455,8 +519,8 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
   if (encoded_size != slot.size || metadata.context_size == 0 || metadata.context_size > kMaxPassiveContextBytes ||
       encoded_size != kLearningJournalHeaderBytes + metadata.context_size +
                           static_cast<size_t>(metadata.record_count) * kLearningJournalRecordBytes +
-                          (schema >= 5 ? kLearningJournalThermalBytes : 0) +
-                          (schema >= 7 ? kLearningJournalDailyBytes : 0) + kLearningJournalCrcBytes)
+                          (schema >= 5 ? kLearningJournalThermalBytes : 0) + learning_journal_daily_bytes(schema) +
+                          kLearningJournalCrcBytes)
     return LearningJournalStatus::INVALID_LENGTH;
   if (metadata.sequence == 0 || metadata.created_epoch_s == 0) return LearningJournalStatus::INVALID_SEQUENCE;
   if (metadata.created_epoch_s > now_epoch_s) return LearningJournalStatus::TIME_DISCONTINUITY;
@@ -477,11 +541,11 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
   reader.position = kLearningJournalHeaderBytes + metadata.context_size;
   uint32_t previous_end_epoch_s = 0;
   for (uint16_t index = 0; index < metadata.record_count; ++index) {
-    SegmentRecord record = read_record(reader, schema);
+    SegmentRecord record = read_record(reader, schema, metadata.context_revision);
     // Schemas 4/5 always contain the original four-hour float layout. A
     // forged daily duration must not make those bytes a valid daily profile.
     if (!reader.ok || (schema < 6 && is_daily_record(record)) ||
-        validate_segment_record(record, quality) != LearningStatus::OK)
+        validate_segment_record_structure(record, quality) != LearningStatus::OK)
       return LearningJournalStatus::INVALID_RECORD;
     if (record.context_revision != metadata.context_revision) return LearningJournalStatus::INVALID_RECORD;
     if (record.end_epoch_s > now_epoch_s) return LearningJournalStatus::TIME_DISCONTINUITY;
@@ -500,10 +564,11 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
     SegmentAccumulator daily;
     // Eligibility belongs to the daily consumer: a changed quality limit must
     // not discard otherwise valid historical records and thermal parameters.
-    if (!read_daily(reader, daily) ||
-        (daily.active && (daily.context_revision != metadata.context_revision || daily.start_epoch_s == 0 ||
-                          daily.last_epoch_s < daily.start_epoch_s || daily.last_epoch_s > metadata.created_epoch_s ||
-                          daily.start_epoch_s < previous_end_epoch_s)))
+    if (!read_daily(reader, daily, schema) ||
+        (daily.active &&
+         (daily.context_revision != metadata.context_revision || daily.start_epoch_s == 0 ||
+          daily.last_epoch_s < daily.start_epoch_s || daily.last_epoch_s > metadata.created_epoch_s ||
+          daily.heat_last_epoch_s > metadata.created_epoch_s || daily.start_epoch_s < previous_end_epoch_s)))
       return LearningJournalStatus::INVALID_RECORD;
   }
   if (reader.position != slot.size - kLearningJournalCrcBytes) return LearningJournalStatus::INVALID_LENGTH;
@@ -541,7 +606,7 @@ inline LearningJournalStatus encode_learning_journal(const LearningDatasetView& 
     return LearningJournalStatus::INVALID_ARGUMENT;
   if (daily != nullptr && daily->active &&
       (!valid_daily_checkpoint(*daily, quality) || daily->context_revision != state.context.context_revision ||
-       daily->last_epoch_s > created_epoch_s))
+       daily->last_epoch_s > created_epoch_s || daily->heat_last_epoch_s > created_epoch_s))
     return LearningJournalStatus::INVALID_ARGUMENT;
   const size_t required = kLearningJournalHeaderBytes + state.context.size +
                           state.record_count * kLearningJournalRecordBytes + kLearningJournalThermalBytes +
@@ -565,7 +630,8 @@ inline LearningJournalStatus encode_learning_journal(const LearningDatasetView& 
   uint32_t previous_end_epoch_s = 0;
   for (size_t index = 0; index < state.record_count; ++index) {
     const SegmentRecord& record = state.records[index];
-    if (validate_segment_record(record, quality) != LearningStatus::OK ||
+    if ((!is_daily_record(record) && record.duration_s > UINT16_MAX) ||
+        validate_segment_record_structure(record, quality) != LearningStatus::OK ||
         record.context_revision != state.context.context_revision || record.end_epoch_s > created_epoch_s ||
         created_epoch_s - record.end_epoch_s > kMaxRecordAgeS ||
         (index > 0 && record.start_epoch_s < previous_end_epoch_s))
@@ -576,7 +642,7 @@ inline LearningJournalStatus encode_learning_journal(const LearningDatasetView& 
   if (daily != nullptr && daily->active && daily->start_epoch_s < previous_end_epoch_s)
     return LearningJournalStatus::INVALID_RECORD;
   write_thermal(writer, thermal, thermal_epoch);
-  write_daily(writer, daily);
+  write_daily(writer, daily, quality);
   if (!writer.ok || writer.position != required - kLearningJournalCrcBytes)
     return LearningJournalStatus::BUFFER_TOO_SMALL;
   write_u32(writer, learning_journal_crc32(output, writer.position));
@@ -646,7 +712,8 @@ struct LearningJournalRecords {
     if (slot.bytes == nullptr || slot.size < kLearningJournalHeaderBytes + kLearningJournalCrcBytes) return 0;
     learning_journal_detail::Reader reader{slot.bytes, slot.size};
     reader.position = 4;
-    if (learning_journal_detail::read_u16(reader) != 7) return 0;
+    const uint16_t schema = learning_journal_detail::read_u16(reader);
+    if (schema < 7 || schema > kLearningJournalSchemaVersion) return 0;
     reader.position = kLearningJournalHeaderBytes + context_size + record_count * kLearningJournalRecordBytes +
                       kLearningJournalThermalBytes;
     if (learning_journal_detail::read_u32(reader) != 1) return 0;
@@ -687,12 +754,20 @@ struct LearningJournalRecords {
                                                         context.bytes, context.size))
       return result(DailyCheckpointRestoreStatus::CONTEXT_MISMATCH);
     learning_journal_detail::Reader reader{slot.bytes, slot.size};
+    reader.position = 4;
+    const uint16_t schema = learning_journal_detail::read_u16(reader);
     reader.position = kLearningJournalHeaderBytes + context_size + record_count * kLearningJournalRecordBytes +
                       kLearningJournalThermalBytes;
     SegmentAccumulator state;
-    if (!learning_journal_detail::read_daily(reader, state)) return result(DailyCheckpointRestoreStatus::DECODE_FAILED);
+    if (!learning_journal_detail::read_daily(reader, state, schema))
+      return result(DailyCheckpointRestoreStatus::DECODE_FAILED);
     if (!valid_daily_checkpoint(state, quality)) return result(DailyCheckpointRestoreStatus::QUALITY_INVALID);
     state.context_revision = context.context_revision;
+    // Only legacy schema7 lacks a saved floor. New checkpoints retain their
+    // reference/observed floor across reboot; neither path reprices old debt.
+    // The collector clears the floor after closure/reset, never before it.
+    if (schema < 8) state.gap_heat_bound_floor_w = quality.max_abs_heat_w;
+    state.heat_gap_pending = true;  // The reboot interval itself was not observed.
     output = state;
     return result(DailyCheckpointRestoreStatus::OK);
   }
@@ -722,8 +797,10 @@ struct LearningJournalRecords {
     learning_journal_detail::Reader reader{slot.bytes, slot.size};
     reader.position = 4;
     const uint16_t schema = learning_journal_detail::read_u16(reader);
+    reader.position = 28;
+    const uint32_t revision = learning_journal_detail::read_u32(reader);
     reader.position = kLearningJournalHeaderBytes + context_size + index * kLearningJournalRecordBytes;
-    return learning_journal_detail::read_record(reader, schema);
+    return learning_journal_detail::read_record(reader, schema, revision);
   }
 };
 

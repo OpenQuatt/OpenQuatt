@@ -230,14 +230,14 @@ void test_heating_and_idle_contract_requires_current_withdrawn_boiler_command() 
          SnapshotSourceStatus::UNTRUSTED_PROVENANCE);
   assert(source_detail::append_measurement(contract, kNowMs, measurements, count, true) == SnapshotSourceStatus::OK);
 
-  constexpr int blocked_modes[] = {-1, 3, 4, 5, 98, 99, 100};
+  constexpr int blocked_modes[] = {-1, 3, 4, 5, 6, 97, 99, 100, 101};
   for (int cm : blocked_modes) {
     const auto blocked = learning_no_boiler_heat_contract(true, cm, off, false, false, kNowMs, false);
     assert(!blocked.valid);
     assert(blocked.source.kind == contract.source.kind && blocked.source.id == contract.source.id);
     assert(blocked.source_generation == contract.source_generation && blocked.provenance == contract.provenance);
   }
-  for (int cm = 0; cm <= 2; ++cm) {
+  for (int cm : {0, 1, 2, 98}) {
     const auto idle = learning_no_boiler_heat_contract(true, cm, off, false, false, kNowMs, false);
     assert(idle.valid && idle.value == BoilerHeatState::NO_HEAT);
     assert(idle.source.id == contract.source.id && idle.source_generation == contract.source_generation);

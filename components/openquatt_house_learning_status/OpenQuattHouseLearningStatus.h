@@ -45,7 +45,8 @@ class OpenQuattHouseLearningStatus : public Component {
 
  protected:
   static constexpr size_t STATUS_BUFFER_SIZE = 4U * 1024U;
-  static constexpr size_t EXPORT_BUFFER_SIZE = 32U * 1024U;
+  // Retained daily quality; all endpoint copies remain strict PSRAM.
+  static constexpr size_t EXPORT_BUFFER_SIZE = 37U * 1024U;
   static constexpr size_t REQUEST_BUFFER_SIZE = EXPORT_BUFFER_SIZE;
 
   bool publish_json_(PsramBuffer<char>& destination, size_t* stored_length, const char* json, size_t length);
