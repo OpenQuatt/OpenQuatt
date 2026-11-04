@@ -27,6 +27,8 @@
   const entities = new Map();
   let devControlsRoot = null;
   const learningPreview = new URL(window.location.href).searchParams.get("learningPreview");
+  // The demo does not invite visitors to share data; ?performancePrompt=1 shows the invitation for development.
+  const performancePromptPreview = new URL(window.location.href).searchParams.get("performancePrompt") === "1";
   const state = {
     scenario: "heating",
     installation: "duo",
@@ -2081,7 +2083,7 @@
     setEntity("binary_sensor", "Usage statistics choice configured", { value: false, state: false });
     setEntity("switch", "Performance model validation", { value: false, state: false });
     setEntity("binary_sensor", "Performance model validation choice configured", { value: false, state: false });
-    setEntity("binary_sensor", "Performance model validation prompt handled", { value: false, state: false });
+    setEntity("binary_sensor", "Performance model validation prompt handled", { value: !performancePromptPreview, state: !performancePromptPreview });
     setEntity("text_sensor", "Usage statistics installation ID", { value: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f", state: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f" });
     setEntity("text", "CIC - Feed URL", { value: "http://192.168.2.117:8080/beta/feed/data.json", state: "http://192.168.2.117:8080/beta/feed/data.json" });
     setEntity("switch", "OpenTherm Enabled", { value: false, state: false });
