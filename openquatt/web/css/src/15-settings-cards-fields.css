@@ -717,16 +717,38 @@
 }
 
 .oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head {
+  flex-wrap: wrap;
   justify-content: flex-start;
   gap: 8px;
 }
 
-/* The info button follows the label, so its popover spans the field under the label instead of hanging at the far edge. */
+/* Field help unfolds under the label at a readable width instead of floating over the controls. */
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head > .oq-settings-info {
+  display: contents;
+}
+
 .oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head .oq-settings-info-popover {
-  left: 0;
-  right: 0;
+  position: static;
+  flex: 0 0 100%;
   width: auto;
   max-width: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head .oq-settings-info-popover p {
+  width: fit-content;
+  max-width: 560px;
+  padding: 10px 12px;
+  border-radius: var(--oq-helper-radius-md);
+  background: var(--oq-helper-card-muted);
+}
+
+/* Short values do not need the full column; long text such as URLs keeps its width. */
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-control > :is(.oq-helper-control, .oq-settings-control--select, .oq-settings-control--time) {
+  max-width: 360px;
 }
 
 .oq-settings-view :is(.oq-settings-grid, .oq-settings-hp-group-grid) {
