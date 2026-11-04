@@ -18,6 +18,7 @@ import { updateMqttState } from "../core/feature-state.js";
 import { captureQuickStartScrollState, queueQuickStartScrollRestore, renderQuickStartModal } from "../features/quickstart.js";
 import { captureCm100CommissioningScrollState, captureHistoryStorageModalScrollState, captureServiceTaskModalScrollState, captureSettingsBackupRestoreModalScrollState, captureWebServerLogScrollState, queueCm100CommissioningScrollRestore, queueHistoryStorageModalScrollRestore, queueServiceTaskModalScrollRestore, queueSettingsBackupRestoreModalScrollRestore, queueWebServerLogScrollRestore, syncWebServerLogStream } from "../features/webserver-logs.js";
 import { renderSettingsGroupContent, renderSettingsGroupNav } from "../settings/core.js";
+import { renderSettingsFeedback, syncSettingsFeedback } from "../features/settings-feedback.js";
 import { renderEnergyView, renderResultsView } from "./energy.js";
 import { renderControlReplayView } from "../features/control-replay-view.js";
 import { renderOverviewView, syncTechTooltipLayers } from "./heatpump.js";
@@ -35,10 +36,9 @@ export function renderSettingsView() {
           <p class="oq-settings-view-note">${escapeHtml(t("shell.settingsNote"))}</p>
         </aside>
         <div class="oq-settings-view-main">
-          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
-          ${state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
           ${renderSettingsGroupContent()}
         </div>
+        ${renderSettingsFeedback()}
       </section>
     `;
   }
@@ -317,6 +317,7 @@ export function renderSettingsView() {
     syncOverviewTrendInteractions();
     syncNativeVisibility();
     revealActiveNavItems();
+    syncSettingsFeedback(state.root);
     bindHeaderDevControls();
     syncDocumentTheme();
     syncDocumentTitle();

@@ -343,3 +343,115 @@
   font-weight: 700;
   line-height: 1.4;
 }
+
+/* Settings feedback is a toast at the bottom of the viewport instead of a line that pushes the page down. */
+.oq-settings-feedback {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(520px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-md);
+  background: var(--oq-theme-surface-1e8i, #ffffff);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  color: var(--oq-helper-ink);
+  transform: translateX(-50%);
+  animation: oq-settings-feedback-in 180ms ease-out;
+}
+
+.oq-settings-feedback p {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.oq-settings-feedback-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: #16a34a;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.oq-settings-feedback--error {
+  border-color: rgba(234, 88, 12, 0.35);
+}
+
+.oq-settings-feedback--error .oq-settings-feedback-icon {
+  stroke: var(--oq-helper-accent-deep);
+}
+
+.oq-settings-feedback-close {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  margin: -4px -6px -4px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--oq-helper-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.oq-settings-feedback-close:hover,
+.oq-settings-feedback-close:focus-visible {
+  background: var(--oq-helper-card-muted);
+  color: var(--oq-helper-ink);
+}
+
+.oq-settings-feedback.is-settled {
+  animation: none;
+}
+
+.oq-settings-feedback.is-leaving {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.oq-helper-shell--dark .oq-settings-feedback {
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.45);
+}
+
+.oq-helper-shell--dark .oq-settings-feedback-icon {
+  stroke: #4ade80;
+}
+
+.oq-helper-shell--dark .oq-settings-feedback--error .oq-settings-feedback-icon {
+  stroke: #fb923c;
+}
+
+@keyframes oq-settings-feedback-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oq-settings-feedback,
+  .oq-settings-feedback.is-leaving {
+    animation: none;
+    transition: none;
+  }
+}

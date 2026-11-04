@@ -12,6 +12,7 @@ import { refreshTrendHistoryData } from "./storage-history.js";
 import { refreshOduRuntimeFrequencyStatuses } from "./odu-runtime-frequency.js";
 import { refreshOduDefrostStatuses } from "./odu-defrost.js";
 import { refreshOduSettingsStatuses } from "./odu-settings.js";
+import { dismissSettingsFeedback } from "./settings-feedback.js";
 
 function openServiceSettings() {
   state.systemModal = "";
@@ -217,6 +218,10 @@ const viewActionHandlers = {
   "open-cm100-commissioning-modal": () => openServiceSettings(),
   "open-installation-monitoring": () => openServiceSettings(),
   "open-service-task-modal": (button) => openServiceTask(button),
+  "dismiss-settings-feedback": () => {
+    dismissSettingsFeedback();
+    render();
+  },
 };
 
 export function handleViewAction(action, button, event) {
