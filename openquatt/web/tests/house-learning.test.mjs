@@ -233,6 +233,28 @@ test("oude wachtstatus zonder meetgat claimt geen behouden dag en actuele status
   }
 });
 
+test("budgetscope beperkt de limiet tot modeladvies en behoudt oude firmwarecopy", () => {
+  const payload = statusPayload({ enabled: true, daily_record_count: 1,
+    collection: { batch_active: true, batch_elapsed_s: 3600, batch_target_s: 86400,
+      batch_resume_status: "none", batch_missing_energy_uncertainty_wh: 3000,
+      batch_missing_energy_budget_wh: 2400, batch_budget_scope: "model_advice_only" },
+  });
+  const status = normalizeHouseLearningStatus(payload);
+  assert.equal(status.collection.batch.budgetScope, "model_advice_only");
+  assert.equal(normalizeHouseLearningStatus(statusPayload()).collection.batch.budgetScope, undefined);
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    const html = renderHouseLearningStatusMarkup(status);
+    assert.match(html, locale === "nl" ? /De dag blijft bewaard; de limiet geldt alleen voor modeladvies/ : /The day is retained; the limit applies only to model advice/);
+    assert.match(html, locale === "nl" ? /bevestigde geplande softwareherstart.*5 minuten/ : /verified planned software restart.*5 minutes/);
+    const old = normalizeHouseLearningStatus({ ...payload, collection: { ...payload.collection, batch_budget_scope: undefined } });
+    assert.match(renderHouseLearningStatusMarkup(old), locale === "nl" ? /Conditionele onzekerheidslast door meetgaten/ : /Conditional uncertainty allowance/);
+    assert.doesNotMatch(renderHouseLearningStatusMarkup(old), /The day is retained|De dag blijft bewaard/);
+    const stale = normalizeHouseLearningStatus({ ...payload, tick_epoch: 1 });
+    assert.doesNotMatch(renderHouseLearningStatusMarkup(stale), /The day is retained|De dag blijft bewaard/);
+  }
+});
+
 test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm opgehaald", async () => {
   state.appView = "settings";
   state.settingsGroup = "heating";
@@ -884,7 +906,7 @@ test("firmware-endpoint bewaart caches en requestscratch uitsluitend in PSRAM", 
     readFile(new URL("../../includes/control/oq_ph_learning_runtime.h", import.meta.url), "utf8"),
   ]);
   assert.match(header, /STATUS_BUFFER_SIZE = 4U \* 1024U/);
-  assert.match(header, /EXPORT_BUFFER_SIZE = 32U \* 1024U/);
+  assert.match(header, /EXPORT_BUFFER_SIZE = 37U \* 1024U/);
   assert.match(header, /REQUEST_BUFFER_SIZE = EXPORT_BUFFER_SIZE/);
   assert.match(source, /status_buffer_\.allocate_external/);
   assert.match(source, /export_buffer_\.allocate_external/);

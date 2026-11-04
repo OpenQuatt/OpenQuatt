@@ -32,19 +32,29 @@ watertemperatuursensoren via het servicemenu kan de meetnauwkeurigheid verbetere
 
 ## Wanneer een record ontstaat
 
-Voor beide leerroutes zijn geldige geselecteerde waarden voor kamer, setpoint,
-buiten en flow nodig, met bruikbare water- en HP-statusmetingen voor de calorimetrie.
+Voor een volledig temperatuurframe zijn geldige geselecteerde waarden voor kamer,
+setpoint, buiten en flow nodig, met bruikbare water- en HP-statusmetingen voor de
+calorimetrie. Bij een kort ontbrekend temperatuurveld blijft onafhankelijk geldige
+warmte meetellen via een eigen cursor, inclusief nul en negatieve warmte. Daarvoor
+blijven bekende geschikte bedrijfsvoering en geldige calorimetrie vereist.
 De regeling moet in verwarmingsmodus staan, zonder service, OTA of actuele
 ketelwarmte. Een geldige bron is dus niet hetzelfde als een volledig learning-record:
 de vermogensmeting en bedrijfstoestand moeten ook bruikbaar zijn.
+
+CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
+meetellen. CM98 alleen is geen service- of ketelwarmtesignaal. Het actuele
+ketelcontract, service-/OTA-pauzes en alle bron- en vermogenscontroles blijven
+gelden; werkelijk gemeten warmte tijdens pompbedrijf wordt niet naar nul gezet.
 
 De woninglijn verzamelt volledige perioden van 24 uur. Normale CM0/CM1-pauzes,
 setpointwijzigingen en normale ontdooicycli tellen mee. Geldig nuldebiet levert nul
 watervermogen; bij pompuitloop blijft het gemeten vermogen, inclusief een eventuele
 negatieve waarde, meetellen. De compressor hoeft niet continu te draaien en er is
 geen eis van een constant setpoint of een stabiele watertemperatuur. Na de volledige
-dag wordt nog wel grove kamertemperatuurdrift gecontroleerd; zo'n dag kan worden
-afgewezen. Bestaande vieruursrecords behouden hun oorspronkelijke kwaliteitscontrole.
+dag wordt structuur afzonderlijk van modelkwaliteit beoordeeld. Een structureel
+geldige dag blijft bewaard met dekking en warmte-onzekerheid, ook bij te grote
+kamertrend of hoge onzekerheid. Zulke dagen krijgen geen modeladviesgewicht.
+Bestaande vieruursrecords behouden hun oorspronkelijke kwaliteitscontrole.
 
 De dynamische 1R1C-route verwerkt kortere perioden van opwarmen en afkoelen. Deze
 route sluit actieve begrenzing en beschermingsfasen uit; dat onderbreekt niet
@@ -55,8 +65,10 @@ meetonderbrekingen en hervatten na een herstart staan hieronder.
 Bij stoppen kan werkmodusregister `2099` al uitstand melden terwijl
 compressorfrequentie `2103` nog boven nul staat. Als alle overige metingen en
 bedrijfsinformatie geldig zijn, behoudt een lopende dag deze korte overgang.
-De overgang telt niet als geldige vermogensmeting: de bestaande interpolatie en
-het onzekerheidsbudget gelden zodra consistente metingen terugkeren. Het hele
+Het volledige frame blijft tijdens die overgang ongeldig. Onafhankelijk geldige
+calorimetrie telt wel mee, inclusief gemeten nulvermogen; alleen werkelijk
+ontbrekende warmte wordt bij herstel geïnterpoleerd en conditioneel begrensd.
+Een hoge onzekerheidslast wist de dag niet, maar kan modeladvies uitsluiten. Het hele
 interval tussen de geldige meetpunten mag maximaal 120 seconden duren. Een andere
 gelijktijdige meetfout of een te lange overgang onderbreekt de dag wel. Deze
 uitzondering start geen nieuwe dag met tegenstrijdige gegevens; de 1R1C-route en
@@ -88,40 +100,47 @@ Die bevestiging wordt bij boot verbruikt. Een oude kopie kan daardoor niet opnie
 hervatten als het verwijderen van een verworpen dag later mislukt. Afgeronde
 historie en het 1R1C-model blijven onafhankelijk herstelbaar; leren blijft passief.
 
-Schema 7 voegt het dagcheckpoint toe; schema 4/5/6 blijven leesbaar. Oude firmware
-kan schema 7 niet lezen. De eerste OTA vanuit firmware zonder dagcheckpoint kan de
-bestaande RAM-dag nog niet bewaren. Afgeronde metingen blijven bij de upgrade behouden.
+Schema 9 bewaart kwaliteitscodes per dag en de onafhankelijke warmtecursor in het
+checkpoint. Schema 4–8 blijven leesbaar, met behoud van geordende recordwaarden,
+1R1C-toestand, laatste geaccepteerde UTC en instellingen. Oude dekking blijft
+onbekend. Schema 9 gebruikt dezelfde 128×52-byte-recordruimte en een 300-byte
+dagcheckpoint; de maximale slotinhoud is 8168 bytes binnen de bestaande 8192 bytes.
+Oude firmware kan schema 9 niet lezen. Na twee saves kunnen beide slots schema 9
+zijn: dit is geen rollbackgarantie of algemene OTA-vrijgave. De eerste OTA vanuit
+firmware zonder dagcheckpoint kan een bestaande RAM-dag niet achteraf bewaren.
 Herstel vereist geldige UTC en een ondersteund schema en algoritmeversie.
 
-De opgeslagen dag wacht na de boot op geldige UTC, ontbrekende geselecteerde
-meetwaarden en dezelfde meetcontext. Tijdens de eerste bronopstart na een boot mag
-het checkpoint kort wachten op nog ontbrekende bedrijfstelemetrie; dit zijn geen
-geldige metingen en de grens van 120 seconden wordt niet verlengd. Een daadwerkelijk
-waargenomen ongeldige bedrijfstoestand of ontvangen ongeldige bedrijfstelemetrie
-breekt het herstel af; latere verbetering herstelt die dag niet alsnog. Dit geldt
-ook voor ontvangen ongeldige meetwaarden vóór de klok is gesynchroniseerd.
-De hele onderbreking vanaf het laatste opgeslagen geldige meetpunt tot
-de eerste geldige nieuwe meting mag maximaal 120 seconden zijn, inclusief upload,
-herstart en het beschikbaar komen van de bronnen. De ontbrekende warmte wordt
-begrensd met dezelfde onzekerheidscontrole als andere korte dagmeetgaten: maximaal
-100 W onzekerheid gemiddeld over 24 uur, samen met eerdere meetgaten. Temperaturen
-worden geïnterpoleerd; hiervoor bestaat geen afzonderlijke foutgarantie.
-Bij te lange uitval, gewijzigde meetcontext, ongeldige actuele bedrijfstoestand of
-uitgeput onzekerheidsbudget begint een nieuwe dag. De 1R1C-leerstand blijft behouden,
-maar het onafgeronde 30-minuteninterval begint opnieuw.
+De opgeslagen dag wacht na boot op geldige UTC, ontbrekende geselecteerde
+meetwaarden en dezelfde fysieke meetcontext. Alleen een geverifieerd eenmalig
+softwareherstartticket, gebonden aan journalsequentie, checkpointtijd en volledige
+CRC, geeft maximaal 300 seconden vanaf het opgeslagen geldige meetpunt tot herstel,
+inclusief upload, reboot en bronopstart. Tijdens waargenomen WAIT blijven de gewone
+maximaal 60 s-ticks vereist. Een gewone expliciete brononderbreking blijft maximaal
+120 s; de OTA-voortgangslease blijft 120 s. Een onverwachte reset krijgt geen extra
+hersteltijd. Bekende ongeschikte bedrijfsvoering, ontvangen ongeldige telemetrie,
+klokbreuken en contextwijzigingen blijven harde veto's.
 
-Voorbeeld: na 18 uur meten volgt een herstart. Zijn na 90 seconden weer geldige
-metingen beschikbaar en past het meetgat binnen het budget, dan loopt dezelfde dag
-verder tot 24 uur. Bij stroomuitval, een fysieke reset of crash begint de lopende
-dag opnieuw; ook bij een ontbrekende bevestiging na een firmwarewissel. Afgeronde
-leerdata blijven behouden. Een mislukte opslag vóór de geplande herstart geeft
-geen hervatbevestiging en begint eveneens een nieuwe dag.
+Tijdens geautoriseerd wachten blijft nieuw geldig warmtevermogen in een eigen
+PSRAM-toestand; de opgeslagen journalinhoud wordt niet herschreven. Na herstel is
+alleen werkelijk ontbrekende warmte onzeker. Een hoge opgebouwde onzekerheid wist
+het checkpoint niet meer. Zij blijft bij de complete dag beschikbaar voor de
+aparte kwaliteitsbeoordeling. Temperaturen worden geïnterpoleerd; hiervoor bestaat
+geen afzonderlijke foutgarantie. Bij te lange uitval of een hard veto begint een
+nieuwe dag. De 1R1C-leerstand blijft behouden; het onvoltooide 30-minuteninterval begint
+opnieuw. Een ticket wordt deze boot eenmaal gebruikt en mag niet worden hergebruikt.
+
+Voorbeeld: na 18 uur meten volgt een bevestigde geplande softwareherstart. Bij geldige
+bronnen na 180 seconden kan dezelfde dag hervatten. Bij stroomuitval, fysieke reset,
+crash of mislukte opslag vóór herstart begint de lopende dag opnieuw. Afgeronde
+metingen blijven onafhankelijk herstelbaar. Een mislukte OTA kan de bestaande
+RAM-dag hervatten onder de gewone 120 s-meetgatvoorwaarden.
 Tijdens verzamelen zijn maximaal 96 periodieke checkpointwrites per dag nodig, plus
 geplande herstarts/OTA; het journal blijft beperkt tot de bestaande twee 8 KiB-slots.
 Het dagcheckpoint is gekoppeld aan hardware en meetkalibratie, niet aan de
 bronkeuze. Een andere automatische of handmatige bronkeuze verhindert herstel dus
 niet. Bestaande schema-7-checkpoints met broninstellingen in hun meetcontext blijven
-hervatbaar wanneer de fysieke meetcontext gelijk is; schema en CRC veranderen niet.
+hervatbaar wanneer de fysieke meetcontext gelijk is. Opnieuw opslaan gebruikt
+schema 9 en een nieuwe CRC; dit verandert de inhoudelijke bronselectie niet.
 De overige voorwaarden voor hervatten, waaronder de RTC-bevestiging en meetgatgrens,
 blijven gelden.
 Een afgebroken webupload mag het leren niet blijvend pauzeren: zonder nieuwe
@@ -153,8 +172,9 @@ zij is geen extra meetinstelling.
 
 De export bevat naast de laatste 60 meetregels een optioneel `daily_collection`:
 verloren dagvoortgang, bronreden, meetgatduur en onzekerheidslast vóór afbreken.
-Gemiste ticks, te lange gaten, klokbreuken en budgetoverschrijding hebben eigen
-oorzaken. De tellers gelden sinds initialiseren/resetten van de collector en
+Gemiste ticks, te lange gaten en klokbreuken hebben eigen oorzaken. De oude
+budgetoorzaak blijft herkenbaar; hoge warmte-onzekerheid onderbreekt de nieuwe
+dagcollector niet meer. De tellers gelden sinds initialiseren/resetten van de collector en
 worden niet over een herstart bewaard. Wachten zonder actieve dag telt geen
 verloren dag. Een onbekende last of duur is `null`, niet nul.
 
@@ -165,7 +185,80 @@ bronstatus en herstelreden. De bootreden beschrijft de controllerherstart;
 Context-, decode- en kwaliteitsweigeringen zijn uitgesplitst. Een vóór import
 afgewezen bootcheckpoint valt buiten de actieve-dagtellers.
 
-De status en export publiceren `batch_missing_energy_budget_wh`. De bestaande
-2400 Wh is een conditionele bovengrens voor ontbrekende warmte, geen gemeten
-energiefout. Kwaliteitsgrenzen, journalformaat, bewaarbeleid en automatische toepassing
-veranderen niet.
+## Dagkwaliteit en modeladvies
+
+De bestaande tien `record_columns` blijven ongewijzigd. Exportschema1 voegt
+`record_quality_policy: 1`, vijf `record_quality_columns` en een aligned
+`record_quality`-array toe: warmtedekking, temperatuurdekking, gemiddelde
+warmtegat-onzekerheid, servergeschiktheid en gewicht. Dekking is naar beneden in
+basispunten afgerond; 10000 is 100%. Onzekerheid wordt conservatief naar boven
+vastgelegd als gemiddeld watt over 24 uur. Onbekende historische waarden blijven
+`null`; overloop is `"overflow"` en geeft geen modelgewicht. Geen ontbrekende
+kwaliteit wordt als nul onzekerheid of volledige dekking gepresenteerd.
+
+Bewaren en modelgebruik zijn aparte beslissingen. Nieuw bekende dagen tellen
+voor advies alleen mee bij beide dekkingen ≥99%, gemiddelde warmtegat-onzekerheid
+≤100 W en de bestaande dagkwaliteitstoetsen, waaronder kamertrend ≤0,20 K/h.
+Het gewicht is `warmtedekking × temperatuurdekking / (1 + onzekerheid_W / 100)`;
+dit blijft in alle Huber-/leave-one-day-out-fits aanwezig. Ongeschikte dagen blijven
+opgeslagen en zichtbaar met gewicht 0. Oude geschikte dagen zonder kwaliteitscodes
+mogen trainen met gewicht 0,5, maar leveren nooit onafhankelijke controledagen.
+Vrijgave wacht op drie nieuwe bruikbare dagen met bekende kwaliteit en blijft ook
+aan de bestaande aantallen, spreiding, verdeling en stabiliteitscriteria gebonden.
+
+De onafhankelijke controle begrenst de slechtste verbetering voor warmte binnen
+`gemeten ± U`: minimaal 50 W en 5% tegenover de foutbovengrens van de ingestelde lijn.
+Dit is geen gekalibreerde betrouwbaarheidskans; temperatuurfouten, zon, interne
+winsten en sensorbias worden hiermee niet volledig afgedekt. Het opgeslagen
+1R1C-/RLS-model wordt niet vervangen en `auto_apply_allowed` blijft false. Fysieke
+context-/algoritmeversie 4 blijft gelijk; kwaliteitspolicy 1 heeft een eigen versie.
+
+Status en export benoemen de vroegere 2400 Wh-grens met
+`batch_budget_scope: "model_advice_only"`: een adviespoort, geen afbreekgrens voor
+het bewaren van de dag. Voor exact 100 W is geen empirische woningonderbouwing;
+deze eerste adviespolicy blijft bewust apart van de feitelijke metingen.
+
+De conditionele ontbrekende-warmtegrens komt uit het volledige performancedomein:
+V1/V1.5 Single 6115,28 W / Duo 12230,56 W; V2 Single 9172,15 W / Duo 18344,30 W.
+De effectieve grens is het maximum van tabelbasis, geldige absolute eindvermogens
+en waargenomen piekvloer. Voor een gat is U begrensd met `B × duur + integraal(abs(Q))`;
+negatieve warmte mag onzekerheid niet wegstrepen. De tabel is geen bewezen maximum
+van alle werkelijke thermische/defrostpieken. Bij onbekende generatie gebruikt de
+runtime de hoogste ondersteunde tabelbasis voor dezelfde Single/Duo-topologie.
+Alleen oude schema7-checkpoints zonder opgeslagen piekvloer behouden voor de
+eerste overbrugging de conservatieve 50 kW-terugval; reeds opgeslagen U wordt
+nooit achteraf verlaagd.
+
+Het plausibiliteitsfilter voor nieuwe, getekende warmtemetingen gebruikt
+`tabelmaximum × 1,20`: V1/V1.5 Single 7338,34 W / Duo 14676,67 W en V2 Single
+11006,58 W / Duo 22013,16 W. Exact de grens is toegestaan; positief en negatief
+worden symmetrisch behandeld. Dit is een engineeringmarge, geen gemeten bewijs
+dat iedere werkelijke waterzijdige piek binnen 20% blijft. Onbekende generatie
+gebruikt ook hier de hoogste ondersteunde generatie voor de ingestelde topologie.
+De status publiceert de actieve grens als `collection.batch_heat_measurement_limit_w`.
+
+Een eindige uitschieter boven deze grens wordt pas na bron-/unit-/tijdcontroles
+`heat_out_of_range`. Hij telt niet als warmte of RLS-meting en wordt niet naar
+nul of de grens afgeknipt. Een kort gat mag onder dezelfde bedrijfsvoorwaarden
+overbruggen; de afgekeurde absolute piek vergroot daarbij conservatief de
+onzekerheidsvloer. Langdurige gaten en harde bedrijfs-/bronfouten blijven blokkeren.
+Bij geverifieerd bootherstel kan zo'n uitschieter wachten binnen de bestaande
+300 s-totaalgrens en 60 s-tickgrens; ticket, klok en andere veto's blijven gelden.
+Een uitschieter vóór geldige UTC/journalherstel blijft een hard bootveto: er is
+dan nog geen herstelaccumulator waarin zijn piekevidence behouden kan worden.
+
+De oude structurele 50 kW-grens blijft uitsluitend voor compatibiliteit met
+eerder opgeslagen records, checkpoints, piekvloeren en U. Daardoor wist een
+lagere nieuwe meetgrens geen echte historie of RLS. Waarden buiten dat oude
+domein blijven hard ongeldig; ze leveren geen bruikbare piekevidence.
+
+De webgrafiek bewaart alle punten en toont de kwaliteit in de tooltip. Alleen
+servergeschikte punten beïnvloeden de adviesvoortgang; historische kwaliteit blijft
+zichtbaar onbekend. Oudere firmware zonder kwaliteitsmetadata behoudt de bestaande
+presentatie. Leerdata-backup/herstel blijft toekomstig onderzoek, niet inbegrepen.
+
+De drie serializer-/export-/requestscratchbuffers groeien van 32 naar 37 KiB, samen
+15 KiB extra strikt PSRAM zonder interne-RAMfallback. De statusbuffer blijft 4 KiB;
+de HTTPD-stack wordt niet vergroot. Host-/JSON-capaciteitstests bewijzen geen
+ESP32-geheugenmarge, flashdurabiliteit of timing. Representatieve HIL-, upgrade- en
+bewuste downgradevalidatie blijven vereist vóór een eventuele installatie.

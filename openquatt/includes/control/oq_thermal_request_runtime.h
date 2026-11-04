@@ -44,10 +44,13 @@ class Runtime {
         manual_active || mode.cooling ? config.tick_ms : (mode.curve ? config.curve_ms : config.power_house_ms);
 
     const bool startup_inhibit_active = this->update_startup_inhibit_(config.now_ms, config.minimum_off_s);
-    const bool startup_inhibit_changed =
-        !this->startup_snapshot_initialized_ || this->startup_mask_ != this->last_startup_mask_;
-    this->startup_snapshot_initialized_ = true;
-    this->last_startup_mask_ = this->startup_mask_;
+    // Bits 0/1 track per-HP startup; bit 2 invalidates cached requests on either
+    // shared safety edge. Reuse the existing snapshot byte, not extra runtime state.
+    const uint8_t guard_mask = static_cast<uint8_t>(
+        this->startup_mask_ | ((id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active)) ? 0x04U : 0U));
+    const bool guard_changed = !this->guard_snapshot_initialized_ || guard_mask != this->last_guard_mask_;
+    this->guard_snapshot_initialized_ = true;
+    this->last_guard_mask_ = guard_mask;
     if (id(oq_heat_last_mode_code) != mode.control_flavor_code) {
       id(oq_heat_last_mode_code) = mode.control_flavor_code;
       id(oq_heat_last_loop_ms) = 0;
@@ -58,7 +61,7 @@ class Runtime {
     const int strategy_hp2 = mode.cooling ? id(oq_cooling_request_hp2_level)
                              : mode.curve ? id(oq_curve_dispatch_hp2_level)
                                           : id(oq_ph_request_hp2_level);
-    if (startup_inhibit_changed || !this->strategy_snapshot_initialized_ || cm_code != this->last_cm_code_ ||
+    if (guard_changed || !this->strategy_snapshot_initialized_ || cm_code != this->last_cm_code_ ||
         strategy_hp1 != this->last_strategy_hp1_ || strategy_hp2 != this->last_strategy_hp2_) {
       id(oq_heat_last_loop_ms) = 0;
     }
@@ -99,9 +102,9 @@ class Runtime {
 
  private:
   bool strategy_snapshot_initialized_{false};
-  bool startup_snapshot_initialized_{false};
+  bool guard_snapshot_initialized_{false};
   uint8_t startup_mask_{0};
-  uint8_t last_startup_mask_{0};
+  uint8_t last_guard_mask_{0};
   int last_cm_code_{-1};
   int last_strategy_hp1_{0};
   int last_strategy_hp2_{0};

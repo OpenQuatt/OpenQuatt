@@ -72,6 +72,8 @@ const RESUME_REASON_KEYS = {
   ...SOURCE_REJECTION_KEYS,
   checkpoint_missing: "houseLearning.resumeReasons.missing",
   checkpoint_expired: "houseLearning.resumeReasons.expired",
+  checkpoint_tick_discontinuity: "houseLearning.collectionRejections.timeDiscontinuity",
+  checkpoint_heat_time_invalid: "houseLearning.resumeReasons.invalid",
   checkpoint_invalid: "houseLearning.resumeReasons.invalid",
   checkpoint_context_unavailable: "houseLearning.resumeReasons.context",
   checkpoint_context_mismatch: "houseLearning.resumeReasons.context",
@@ -247,7 +249,8 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   const uncertaintyNote = current && phase.missingEnergyUncertaintyWh >= 0
     && Number.isFinite(phase.missingEnergyUncertaintyWh) && phase.missingEnergyBudgetWh > 0
     && Number.isFinite(phase.missingEnergyBudgetWh)
-    ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.status.gapBudget", {
+    ? `<p class="oq-settings-action-note">${escapeHtml(t(phase.budgetScope === "model_advice_only"
+      ? "houseLearning.status.gapBudgetModelAdvice" : "houseLearning.status.gapBudget", {
       used: formatNumber(phase.missingEnergyUncertaintyWh, { maximumFractionDigits: 1 }),
       budget: formatNumber(phase.missingEnergyBudgetWh, { maximumFractionDigits: 1 }),
     }))}</p>` : "";
@@ -262,7 +265,9 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   const historyNote = legacyCount > 0
     ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.legacyRecords", { count: formatNumber(legacyCount) }))}</p>`
     : "";
-  const collectionNote = dailyCollection ? t(status.collection?.batch?.resumeStatus != null ? "houseLearning.status.dailyRestartWindowCopy" : "houseLearning.status.dailyWindowCopy") : "";
+  const collectionNote = dailyCollection ? t(status.collection?.batch?.budgetScope === "model_advice_only"
+    ? "houseLearning.status.dailyQualityWindowCopy"
+    : status.collection?.batch?.resumeStatus != null ? "houseLearning.status.dailyRestartWindowCopy" : "houseLearning.status.dailyWindowCopy") : "";
   const batchDiagnosticCards = [
     [t("houseLearning.cards.batchHeatLossH"), metric(status.hBatch, "W/K"), t(dailyCollection ? "houseLearning.cards.batchHeatLossCopy" : "houseLearning.cards.stableBatchPeriodsCopy")],
     [t("houseLearning.cards.batchStartTemperature"), metric(status.t0Batch, "°C"), t("houseLearning.cards.batchStartTemperatureCopy")],

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "../../../openquatt/includes/control/oq_ph_daily_collection_state_json.h"
+#include "../../../openquatt/includes/control/oq_ph_daily_record_quality_json.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_persistence_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
@@ -25,9 +26,16 @@ unsigned heap_caps_get_minimum_free_size(unsigned) { return UINT32_MAX; }
 unsigned heap_caps_get_largest_free_block(unsigned) { return UINT32_MAX; }
 unsigned uxTaskGetStackHighWaterMark(void*) { return UINT32_MAX; }
 int oq_control_mode_code = INT32_MIN;
+int esp_reset_reason() { return INT32_MIN; }
 struct Endpoint {
   std::string largest;
   unsigned publications = 0;
+  std::string exported;
+  bool publish_export_json(const char* text, size_t length) {
+    assert(length > 0 && length < kExportJsonBufferSize && text[length] == '\0');
+    exported.assign(text, length);
+    return true;
+  }
   bool publish_status_json(const char* text, size_t length) {
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
     if (length > largest.size()) largest.assign(text, length);
@@ -38,6 +46,10 @@ struct Endpoint {
 #define id(value) value
 const char* paused_status = nullptr;
 const char* paused_reason = nullptr;
+
+#ifdef OQ_TEST_EXPORT_JSON
+#include "production_diagnostic_row.inc"
+#endif
 
 struct RuntimeStorage {
   PassiveRuntimeStorage learner;
@@ -51,6 +63,12 @@ struct RuntimeStorage {
   struct Source {
     int route = 0;
   } sources[4];
+  bool pending_daily_heat_initialized = false;
+  uint64_t daily_resume_last_observation_ms = 0;
+#ifdef OQ_TEST_EXPORT_JSON
+  DiagnosticRow rows[kMaxExportDiagnosticRows];
+  size_t row_count = 0, row_next = 0;
+#endif
   bool daily_restore_pending = false;
   bool daily_restore_allowed = true, restart_prepared = false;
   DailyRestartTicket boot_restart_ticket;
@@ -58,6 +76,7 @@ struct RuntimeStorage {
   const void* partition = nullptr;
   const char* daily_resume_status = "waiting_for_sources";
   const char* daily_resume_reason = "checkpoint_context_unavailable";
+  DailyRestartDiagnostics daily_restart;
   SnapshotSourceStatus batch_source_status = SnapshotSourceStatus::OK;
   uint64_t max_tick_us = UINT64_MAX;
   char json[kExportJsonBufferSize]{};
@@ -65,6 +84,7 @@ struct RuntimeStorage {
 struct Production {
   RuntimeStorage* storage_ = nullptr;
   static const char* route_name_(int) { return "selected_outside_temperature"; }
+  static void publish_export_error_() { assert(false && "production export exceeded its fixed cache"); }
   static void publish_status_error_() { assert(false && "production status exceeded its fixed cache"); }
   static void publish_paused_status_(RuntimeStorage& state) {
     paused_status = state.daily_resume_status;
@@ -169,10 +189,34 @@ void test_daily_resume_cause_before_journal_load() {
   assert(strcmp(state.daily_resume_status, "none") == 0 && strcmp(state.daily_resume_reason, "none") == 0);
 }
 
+#ifdef OQ_TEST_EXPORT_JSON
+int main() {
+  RuntimeStorage state;
+  state.learner.record_count = kMaxSegmentRecords;
+  for (size_t i = 0; i < kMaxSegmentRecords; ++i) {
+    auto& r = state.learner.records[i];
+    r.start_epoch_s = UINT32_MAX - 86400;
+    r.end_epoch_s = UINT32_MAX;
+    r.duration_s = 86400;
+    r.context_revision = UINT32_MAX;
+    r.mean_room_c = r.mean_setpoint_c = 20;
+    r.mean_outside_c = 5;
+    r.mean_heat_w = 2000;
+    r.room_trend_k_per_h = 0;
+    if (i % 4 == 0) r.daily_quality = {10000, 10000, 0};
+    if (i % 4 == 1) r.daily_quality = {10000, 9999, 100};
+    if (i % 4 == 2) r.daily_quality = {10000, 10000, kDailyUncertaintyOverflow};
+  }
+  state.row_count = kMaxExportDiagnosticRows;
+  Production::publish_export_(state, true, UINT32_MAX);
+  std::cout << oq_ph_learning_status_endpoint.exported << '\n';
+}
+#else
 int main() {
   test_daily_resume_notice_lifecycle();
   test_daily_resume_cause_before_journal_load();
   RuntimeStorage state;
+  state.daily_restart = {1, UINT32_MAX, kDailyMaximumRestartGapMs, true, "restore", "operational_context_unknown"};
   auto& learner = state.learner;
   auto& summary = state.summary;
   learner.initialized = learner.opted_in = learner.blocked = true;
@@ -201,15 +245,17 @@ int main() {
   summary.thermal.heat_loss_w_per_k = summary.thermal.thermal_capacity_wh_per_k = -std::numeric_limits<float>::max();
   summary.thermal.accepted_samples = summary.thermal.readiness_reasons = UINT32_MAX;
   state.config.thermal_window.target_duration_ms = UINT64_MAX;
+  state.config.quality.max_daily_missing_heat_w = 18344.30078125f;
   state.input.context_revision = UINT32_MAX;
   state.source_diagnostics.invalid_reasons = UINT32_MAX;
   state.journal.status = "persistence_unavailable";
   // Enumerate names so later enum additions cannot silently defeat the budget.
   for (unsigned status = 0; status <= static_cast<unsigned>(LearningStatus::UNSTABLE_FIT); ++status) {
     summary.batch.status = learner.diagnostics.last_batch_rejection = static_cast<LearningStatus>(status);
-    for (unsigned source = 0; source <= static_cast<unsigned>(SnapshotSourceStatus::BOILER_COMMAND_ACTIVE); ++source) {
+    for (unsigned source = 0; source <= static_cast<unsigned>(SnapshotSourceStatus::HEAT_OUT_OF_RANGE); ++source) {
       state.source_diagnostics.status = state.batch_source_status = learner.diagnostics.last_batch_source_status =
           static_cast<SnapshotSourceStatus>(source);
+      state.daily_restart.source_status = snapshot_source_status_name(static_cast<SnapshotSourceStatus>(source));
       for (const auto validation :
            {ModelValidationStatus::CONTEXT_MISMATCH, ModelValidationStatus::INSUFFICIENT_SHARED_RANGE,
             ModelValidationStatus::MODEL_DISAGREEMENT}) {
@@ -228,3 +274,5 @@ int main() {
   assert(oq_ph_learning_status_endpoint.publications > 100);
   std::cout << oq_ph_learning_status_endpoint.largest << '\n';
 }
+
+#endif

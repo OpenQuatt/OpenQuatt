@@ -85,7 +85,31 @@ struct LearningSnapshot {
   float outside_c = NAN;
   float heat_to_water_w = NAN;  // Signed calorimetry; validity is separate.
   float mean_water_c = NAN;
+  // Bound evidence only when the source builder permits an incomplete daily
+  // observation. Never a valid calorimetry endpoint or an integrated sample.
+  float gap_heat_observed_abs_w = 0.0f;
+  // Independent signed calorimetry; NaN is unavailable, zero is measured zero.
+  // This does not make the total snapshot valid for temperature integration.
+  float partial_heat_to_water_w = NAN;
 };
+
+constexpr uint16_t kDailyQualityUnknown = UINT16_MAX;
+constexpr uint16_t kDailyUncertaintyOverflow = UINT16_MAX - 1U;
+constexpr uint16_t kDailyCoverageScale = 10000U;
+
+// Canonical fixed-point quality codes: no repeated float rounding in storage.
+// Heat uncertainty is an upper bound in average W over24h, not a standard deviation.
+struct DailyRecordQuality {
+  uint16_t heat_coverage_bp = kDailyQualityUnknown;
+  uint16_t temperature_coverage_bp = kDailyQualityUnknown;
+  uint16_t heat_uncertainty_mean_w = kDailyQualityUnknown;
+};
+
+inline bool valid_daily_record_quality_codes(const DailyRecordQuality& quality) {
+  return (quality.heat_coverage_bp <= kDailyCoverageScale || quality.heat_coverage_bp == kDailyQualityUnknown) &&
+         (quality.temperature_coverage_bp <= kDailyCoverageScale ||
+          quality.temperature_coverage_bp == kDailyQualityUnknown);
+}
 
 struct SegmentRecord {
   uint32_t start_epoch_s = 0;
@@ -104,6 +128,7 @@ struct SegmentRecord {
   // Eight equally weighted, sorted groups of three hourly means. Only daily
   // records use this profile; the journal reuses the four legacy quality fields.
   int16_t effective_outside_profile_centi[kDailyTemperatureProfileSize]{};
+  DailyRecordQuality daily_quality;
 };
 
 inline bool is_daily_record(const SegmentRecord& record) { return record.duration_s == kSegmentDurationMs / 1000ULL; }

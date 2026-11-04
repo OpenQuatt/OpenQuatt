@@ -24,11 +24,15 @@ esphome:
           esphome::openquatt_incident_manager::set_ota_resume_guard_reader([]() {
             const uint32_t now = millis();
             uint8_t mask = 0U;
-            if (id(oq_incident_manager).ota_resume_candidate(1U, now) && oq_boot_resume_runtime::capture(true).ready)
-              mask |= 1U;
+            if (id(oq_incident_manager).ota_resume_candidate(1U, now)) {
+              const auto safety = oq_boot_resume_runtime::capture(true);
+              if (!safety.abort && safety.ready) mask |= 1U;
+            }
             #if OQ_TOPOLOGY_DUO
-            if (id(oq_incident_manager).ota_resume_candidate(2U, now) && oq_boot_resume_runtime::capture(false).ready)
-              mask |= 2U;
+            if (id(oq_incident_manager).ota_resume_candidate(2U, now)) {
+              const auto safety = oq_boot_resume_runtime::capture(false);
+              if (!safety.abort && safety.ready) mask |= 2U;
+            }
             #endif
             return mask;
           });

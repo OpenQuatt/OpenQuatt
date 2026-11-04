@@ -654,7 +654,7 @@ select:
     internal: true
     address: 3999
     value_type: U_WORD
-    optimistic: true
+    optimistic: false
     lambda: |-
       id(oq_incident_manager).observe_boot_readback(${hp_index}, 3999U, static_cast<float>(x), millis());
       return {};
@@ -663,11 +663,18 @@ select:
       "Cooling": 1
       "Heating": 2
     write_lambda: |-
-      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value)) {
+      // Replace a cleared safety stop and publish only the accepted frame's
+      // option. SDK optimistic publishing would use the rejected request index.
+      bool safety_stop = false;
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value, false, &safety_stop)) {
         id(${hp_id}_compressor_command_revalidation_required) = true;
-        return {};
+        if (!safety_stop) return {};
+        value = 0;
       }
-      return value;
+      // Both optionsmaps use the register value as their option index.
+      if (item->write_single_register(3999U, static_cast<uint16_t>(value)))
+        item->publish_state(static_cast<size_t>(value));
+      return {};
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}_slow
@@ -676,16 +683,23 @@ select:
     internal: true
     address: 1999
     value_type: U_WORD
-    optimistic: true
+    optimistic: false
     lambda: |-
       id(oq_incident_manager).observe_boot_readback(${hp_index}, 1999U, static_cast<float>(x), millis());
       return {};
     write_lambda: |-
-      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value)) {
+      // Replace a cleared safety stop and publish only the accepted frame's
+      // option. SDK optimistic publishing would use the rejected request index.
+      bool safety_stop = false;
+      if (!oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value, false, &safety_stop)) {
         id(${hp_id}_compressor_command_revalidation_required) = true;
-        return {};
+        if (!safety_stop) return {};
+        value = 0;
       }
-      return value;
+      // Both optionsmaps use the register value as their option index.
+      if (item->write_single_register(1999U, static_cast<uint16_t>(value)))
+        item->publish_state(static_cast<size_t>(value));
+      return {};
     optionsmap:
       "0": 0
       "1": 1

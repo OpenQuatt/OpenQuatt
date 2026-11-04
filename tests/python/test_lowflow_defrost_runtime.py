@@ -26,8 +26,9 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
         request = (CONTROL / "oq_thermal_request_runtime.h").read_text()
         actuator = (CONTROL / "oq_thermal_actuator_runtime.h").read_text()
         request_methods = "\n".join(method(request, name) for name in (
-            "mode_is_cooling_", "target_is_cooling_", "dew_stop_blocks_retained_",
+            "tick", "mode_is_cooling_", "target_is_cooling_", "dew_stop_blocks_retained_",
             "defrost_hold_", "minimum_runtime_hold_", "run_inactive_"))
+        request_fields = request[request.index("\n private:\n") + len("\n private:\n"):request.index("  bool update_startup_inhibit_(")]
         actuator_methods = "\n".join(method(actuator, name) for name in (
             "defrost_safety_stop_", "apply_level_"))
         harness = r'''
@@ -74,7 +75,15 @@ bool oq_dual_hp_enabled=false;
 float oq_dual_hp_enable_hold_elapsed_accum_min=0, oq_dual_hp_disable_hold_elapsed_accum_min=0;
 float oq_dual_hp_emergency_hold_elapsed_accum_min=0;
 int oq_curve_single_owner_hp=0, oq_control_mode_code=1, oq_actuator_hp1_req=0, oq_actuator_hp2_req=0;
-uint32_t oq_duo_request_hold_until_ms=0;
+uint32_t oq_duo_request_hold_until_ms=0, oq_heat_last_loop_ms=0;
+int oq_heat_mode_code=0, oq_heat_last_mode_code=-1;
+int oq_cooling_request_hp1_level=0, oq_cooling_request_hp2_level=0;
+int oq_curve_dispatch_hp1_level=0, oq_curve_dispatch_hp2_level=0;
+int oq_ph_request_hp1_level=0, oq_ph_request_hp2_level=0;
+int oq_cooling_demand_raw=0, oq_demand_raw=0, oq_demand_filtered=0, oq_power_cap_f=20;
+uint8_t startup_test_mask=0;
+namespace oq_manual_hp { bool owns_control() { return false; } }
+struct Number { float state=300; bool has_state() const { return true; } } oq_min_runtime_min;
 namespace oq_frequency_runtime {
 struct Context {
   bool configured_v2=true;
@@ -85,18 +94,29 @@ struct Context {
   bool frequency_allowed(bool, int, int) const { return true; }
   int pick_allowed_level(bool, int, int level, int, int) const { return level; }
 };
+Context capture();
 }
-struct TickConfig { uint32_t now_ms=100000, minimum_off_s=240; };
+struct TickConfig {
+  uint32_t now_ms=100000, minimum_off_s=240, tick_ms=5000, curve_ms=15000, power_house_ms=30000;
+  int minimum_runtime_floor_s=300, demand_max_f=20;
+  float minimum_flow_lph=400;
+};
 struct RequestRuntime {
+  // REQUEST_FIELDS
   int previous[2]={8,8};
+  unsigned publications=0;
+  bool update_startup_inhibit_(uint32_t, uint32_t) { startup_mask_=startup_test_mask; return startup_mask_!=0; }
+  void track_measured_start_(bool, uint32_t) {}
+  template<class... T> void run_manual_(T...) { assert(false); }
+  template<class... T> void run_automatic_(T...) { assert(false); }
   int selected_level_(bool hp) const { return previous[hp?0:1]; }
   int last_applied_(bool hp) const { return previous[hp?0:1]; }
   bool measured_thermal_(bool) const { return true; }
-  bool startup_blocked_(bool) const { return false; }
+  bool startup_blocked_(bool hp) const { return (startup_test_mask & (hp?1:2))!=0; }
   int hold_mode_(int, int) const { return 2; }
   void publish_optimizer_reason_(const char*) {}
   template<class... T> void update_startup_event_(T...) {}
-  template<class... T> void publish_request_(T...) {}
+  template<class... T> void publish_request_(T...) { ++publications; }
   template<class... T> void publish_debug_(T...) {}
   // REQUEST_METHODS
 };
@@ -188,7 +208,10 @@ oq_frequency_runtime::Context frequency() {
   f.table.heating.hz={0,20,26,30,36,40,45,48,52,55,60,65,68,72,76,82,85,90,95,102,110};
   return f;
 }
+namespace oq_frequency_runtime { Context capture() { return ::frequency(); } }
 void reset() {
+  oq_control_mode_code=1; oq_heat_mode_code=0; oq_heat_last_mode_code=-1; oq_heat_last_loop_ms=0;
+  oq_actuator_hp1_req=oq_actuator_hp2_req=0; startup_test_mask=0;
   events.clear(); oq_water_temp_hard_trip_active=oq_lowflow_fault_active=false;
   oq_cooling_stop_reason_code=0;
   hp1_working_mode={}; hp2_working_mode={};
@@ -197,6 +220,27 @@ void reset() {
 }
 int main() {
   const auto f=frequency();
+  // Execute the real request tick; unchanged CM/strategy must not hide safety
+  // entry/clear behind the 30s strategy cadence on a 5s application tick.
+  for(bool lowflow : {true,false}) {
+    reset(); RequestRuntime r; TickConfig config;
+    r.tick(config);
+    assert(r.publications==1 && oq_actuator_hp1_req>0 && oq_actuator_hp2_req>0);
+    config.now_ms+=5000; r.tick(config); assert(r.publications==1);
+    (lowflow?oq_lowflow_fault_active:oq_water_temp_hard_trip_active)=true;
+    config.now_ms+=5000; r.tick(config);
+    assert(oq_actuator_hp1_req==0 && oq_actuator_hp2_req==0 && r.publications==2);
+    // Swapping active causes leaves the shared stop in place without a false clear.
+    (lowflow?oq_water_temp_hard_trip_active:oq_lowflow_fault_active)=true;
+    (lowflow?oq_lowflow_fault_active:oq_water_temp_hard_trip_active)=false;
+    config.now_ms+=5000; r.tick(config);
+    assert(oq_actuator_hp1_req==0 && oq_actuator_hp2_req==0 && r.publications==2);
+    oq_lowflow_fault_active=oq_water_temp_hard_trip_active=false;
+    config.now_ms+=5000; r.tick(config);
+    assert(oq_actuator_hp1_req>0 && oq_actuator_hp2_req>0 && r.publications==3);
+    config.now_ms+=29999; r.tick(config); assert(r.publications==3);
+    config.now_ms+=1; r.tick(config); assert(r.publications==4);
+  }
   for(bool lowflow : {true,false}) {
     reset(); RequestRuntime r;
     // Fault-free inactive requests preserve defrost even after minimum runtime ends.
@@ -434,6 +478,7 @@ int main() {
   puts("PASS production inactive/defrost and actuator global-stop/notification/retry lifecycle");
 }
 '''
+        harness = harness.replace("// REQUEST_FIELDS", request_fields)
         harness = harness.replace("// REQUEST_METHODS", request_methods)
         harness = harness.replace("// ACTUATOR_METHODS", actuator_methods)
         args = compiler_command("-I", str(ROOT))

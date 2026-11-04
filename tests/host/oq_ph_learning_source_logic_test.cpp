@@ -452,13 +452,18 @@ void test_unknown_operation_cannot_hold_a_daily_measurement() {
   auto held = observe_source_input(state, input, QualityConfig{});
   assert(!held.source.measurement_valid && state.active && state.source_gap_pending);
   assert(state.integrated_duration_s == 0.0);
+  assert(isfinite(held.source.snapshot.partial_heat_to_water_w));
+  assert(state.heat_observed_ms == 60000 && state.temperature_observed_ms == 0);
+  assert(fabs(state.heat_integral - held.source.snapshot.partial_heat_to_water_w * 60.0) < 0.01);
   retime(input, kNowMs + 120000);
   input.epoch_s += 60;
   input.room_c.valid = true;
   auto recovered = observe_source_input(state, input, QualityConfig{});
   assert(recovered.source.measurement_valid && state.active && !state.source_gap_pending);
   assert(state.integrated_duration_s == 120.0);
-  assert(state.missing_energy_uncertainty_ws > 0.0);
+  assert(state.missing_energy_uncertainty_ws == 0.0);
+  assert(state.heat_observed_ms == 120000 && state.temperature_observed_ms == 0);
+  assert(fabs(state.heat_integral - recovered.source.snapshot.heat_to_water_w * 120.0) < 0.01);
 }
 
 void test_stop_transition_finishes_a_day_with_heating_pauses() {
@@ -481,7 +486,8 @@ void test_stop_transition_finishes_a_day_with_heating_pauses() {
     if (!observed.source.measurement_valid) {
       assert(observed.source.status == SnapshotSourceStatus::INCONSISTENT_ACTIVITY);
       assert(observed.source.may_bridge_daily_gap && state.source_gap_pending);
-      // A transition is not integrated as valid zero heat.
+      // The total frame stays invalid; independently measured zero flow
+      // still establishes zero transferred heat in the heat stream.
       assert(state.last_epoch_s == input.epoch_s - 10);
     }
     if (observed.aggregate.has_record) {
@@ -489,7 +495,10 @@ void test_stop_transition_finishes_a_day_with_heating_pauses() {
       assert(observed.aggregate.record.duration_s == 86400);
       assert(observed.aggregate.record.mean_heat_w > 0);
     }
-    if (second == 86390) assert(state.missing_energy_uncertainty_ws > 0);
+    if (second == 86390) {
+      assert(state.missing_energy_uncertainty_ws == 0);
+      assert(state.heat_observed_ms == 86390000);
+    }
     // A completed day seeds its successor at the shared boundary.
     if (second == 86400) assert(state.start_epoch_s == kEpochS + 86400);
   }
@@ -513,7 +522,8 @@ void test_stop_transition_is_bounded_and_cannot_seed_a_day() {
     observe_source_input(state, input, QualityConfig{});
     assert(state.active && !state.source_gap_pending);
     assert(state.start_epoch_s == kEpochS + (resume_second == 120 ? 0 : resume_second));
-    assert((state.missing_energy_uncertainty_ws > 0) == (resume_second == 120));
+    assert(state.missing_energy_uncertainty_ws == 0);
+    assert(state.heat_observed_ms == (resume_second == 120 ? 120000U : 0U));
   }
   SegmentAccumulator empty;
   auto input = valid_input();

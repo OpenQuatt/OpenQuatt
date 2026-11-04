@@ -23,6 +23,8 @@ static AdviceResult batch_fit(float room_trend = 0.0f, float reference_room = 20
     record.room_range_k = fabsf(room_trend) * 24.0f;
     record.setpoint_range_c = 0.0f;
     record.water_start_c = record.water_end_c = 35.0f;
+    // These synthetic perfect days have known coverage and may prove holdout.
+    record.daily_quality = {10000, 10000, 0};
   }
   FitConfig config;
   AdviceFitWorkspace workspace;

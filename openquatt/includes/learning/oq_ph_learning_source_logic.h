@@ -180,6 +180,7 @@ enum class SnapshotSourceStatus : uint8_t {
   BOILER_UNAVAILABLE,
   BOILER_COMMAND_STALE,
   BOILER_COMMAND_ACTIVE,
+  HEAT_OUT_OF_RANGE,
 };
 
 struct SnapshotBuildResult {
@@ -325,6 +326,12 @@ inline bool scalar_gap_status(SnapshotSourceStatus status) {
          status == SnapshotSourceStatus::TIME_SKEW;
 }
 
+// A finite, otherwise verified calorimetry outlier can pause daily collection.
+// Keep this separate from the generic receipt/boot classification.
+inline bool daily_measurement_gap_status(SnapshotSourceStatus status) {
+  return scalar_gap_status(status) || status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE;
+}
+
 inline SnapshotSourceStatus append_heat_pump_operation(const HeatPumpRawMeasurements& heat_pump,
                                                        PhysicalUnit expected_unit, uint64_t now_ms,
                                                        MeasurementMeta* measurements, size_t& count) {
@@ -463,6 +470,14 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
     result.status = status;
     return result;
   }
+  if (fabsf(heat_w) > configured_measurement_heat_limit_w(quality)) {
+    // Keep the rejected finite magnitude solely as conservative gap evidence.
+    // It is not an accepted measurement and must never enter energy or RLS.
+    result.status = SnapshotSourceStatus::HEAT_OUT_OF_RANGE;
+    result.heat_to_water_w = heat_w;
+    result.mean_water_c = static_cast<float>(mean_water_c);
+    return result;
+  }
   result.status = SnapshotSourceStatus::OK;
   result.heat_to_water_w = heat_w;
   result.mean_water_c = static_cast<float>(mean_water_c);
@@ -540,7 +555,9 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   // simultaneous invalid value, identity or timing contract on another field.
   const auto consider = [&](SnapshotSourceStatus next) {
     if (next != SnapshotSourceStatus::OK &&
-        (status == SnapshotSourceStatus::OK || (scalar_gap_status(status) && !scalar_gap_status(next))))
+        (status == SnapshotSourceStatus::OK ||
+         (daily_measurement_gap_status(status) &&
+          (!daily_measurement_gap_status(next) || next == SnapshotSourceStatus::HEAT_OUT_OF_RANGE))))
       status = next;
   };
   const auto scalar = [&](const PhysicalMeasurement<float>& value, float low, float high) {
@@ -564,15 +581,25 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   if (status != SnapshotSourceStatus::OK) {
     auto result = failure(input, status, reasons_for_status(status));
     result.may_bridge_daily_gap =
-        purpose == SnapshotPurpose::STRUCTURAL_BATCH && !stopping && scalar_gap_status(status);
+        purpose == SnapshotPurpose::STRUCTURAL_BATCH && !stopping && daily_measurement_gap_status(status);
+    if (result.may_bridge_daily_gap && calorimetry.valid) {
+      result.snapshot.gap_heat_observed_abs_w = fabsf(calorimetry.heat_to_water_w);
+      result.snapshot.partial_heat_to_water_w = calorimetry.heat_to_water_w;
+    } else if (result.may_bridge_daily_gap && calorimetry.status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE) {
+      result.snapshot.gap_heat_observed_abs_w = fabsf(calorimetry.heat_to_water_w);
+    }
     return result;
   }
 
   if (stopping) {
     auto result = failure(input, SnapshotSourceStatus::INCONSISTENT_ACTIVITY, INVALID_CONTROL_MODE);
-    // No heat is accepted until consistent telemetry returns. The accumulator
-    // applies its existing 120 s valid-to-valid limit and missing-energy budget.
+    // The full frame stays invalid while mode/frequency disagree. Preserve
+    // independently valid calorimetry; bound only actually missing heat.
     result.may_bridge_daily_gap = purpose == SnapshotPurpose::STRUCTURAL_BATCH;
+    if (result.may_bridge_daily_gap && calorimetry.valid) {
+      result.snapshot.gap_heat_observed_abs_w = fabsf(calorimetry.heat_to_water_w);
+      result.snapshot.partial_heat_to_water_w = calorimetry.heat_to_water_w;
+    }
     return result;
   }
 

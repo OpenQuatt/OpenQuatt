@@ -118,6 +118,69 @@ Het rapport bevat actuele en minimale interne heap, grootste vrije block,
 fragmentatie, vrije PSRAM en beide ODU-diagnoseregels voor zover de entities
 beschikbaar zijn. Ook simulatorcontract en -versie worden vastgelegd.
 
+## Herstarten bij geheugenmetingen
+
+Vergelijk baseline en kandidaat met dezelfde configuratie en meetinstrumentatie
+na een aantoonbare volledige applicatieherstart. Een OTA-reboot is hiervoor
+geldig. Leg de firmware-/config-/artifactbinding en het bootbewijs vast, zoals
+een verse uptime en de resetreden. Alleen een geslaagde upload bewijst geen
+herstart. Gebruik bij beide hetzelfde resetpad en dezelfde resetreden,
+OTA-imagestatus (eerste boot na OTA of latere boot) en restart-handoff-/recoverytoestand
+(gearmd of overgenomen). Leg deze gegevens vast; vergelijk geen power-on-baseline
+met een OTA-reboot-kandidaat. Neem
+startup/eerste verbindingen, relevante
+reconnects en realistische gelijktijdige HA/web/API/MQTT/Modbus/OpenTherm/OTA-belasting
+mee. Verifieer dat
+de bedoelde paden werkelijk zijn geraakt; alleen een steady-state-momentopname
+is onvoldoende. Configureer bijvoorbeeld MQTT vóór de herstart als de eerste
+connect en subscriptions onderdeel van de meting zijn.
+
+Vergelijk ook hetzelfde tijdvenster sinds de herstart. Noteer wanneer de opname
+begint en welke vertraagde achtergrondactiviteiten werkelijk plaatsvinden:
+
+- De eerste firmwaremanifestcontrole start standaard na **300 seconden stabiel
+  netwerk**, volgens
+  [`oq_firmware_initial_check_delay_s`](../../openquatt/oq_substitutions_common.yaml).
+  Dit HTTPS/TLS-verzoek kan tijdelijk extra intern geheugen gebruiken; de
+  wachttijd begint opnieuw bij een netwerkonderbreking.
+- De geplande opstartpublicatie van uitgaande gebruikstelemetrie wacht **90
+  seconden nadat de gereedheidsvoorwaarden zijn vervuld**. Bij inschakelen
+  tijdens bedrijf kan een publicatie al voor de volgende loop worden gepland.
+  Toestemming, configuratie, netwerkbeschikbaarheid en retries bepalen het
+  werkelijke publicatiemoment.
+  Zie [`OpenQuattUsageTelemetry`](../../components/openquatt_usage_telemetry/OpenQuattUsageTelemetry.cpp).
+  De aparte telemetrietoestemming staat los van MQTT-invoer. Een tijdstempel of
+  heapwaarde in een payload beschrijft de snapshot bij het opstellen, niet de
+  latere transportpiek.
+
+Leg actuele interne heap en grootste vrije blok vóór, tijdens en na zo'n
+activiteit vast, naast het cumulatieve minimum sinds boot. Een tijdelijke dip
+met gemeten herstel bewijst op zichzelf geen lek of regressie; een oud, lager
+bootminimum kan een nieuwe, minder diepe dip verbergen. Alleen overeenkomst in
+tijd bewijst de oorzaak niet. Een baseline die pas na de achtergrondactiviteit
+wordt opgenomen, sluit die opstartfase niet af voor de kandidaat. Wis geen
+historie en flash geen incompatibel opslagformaat terug om een vergelijking af
+te dwingen; leg de ontbrekende dekking vast. De eisen aan allocatiefouten,
+blijvend herstel en aantoonbare geheugen- en stackmarges blijven gelden.
+
+Een fysieke power-on-test blijft verplicht bij wijzigingen aan bootloader of
+startup, reset/sleep, platform-/ESP-IDF-versies, PSRAM-initialisatie/configuratie,
+hardware/voeding, initialisatie van externe peripherals of resetafhankelijk
+behouden toestand zoals RTC/`.noinit`. Dat geldt ook bij een concrete onopgeloste
+afhankelijkheid van het resettype in het gewijzigde pad. Leg resterende
+dekkingstekorten vast; een OTA-meting wordt daarmee geen fysieke power-on-test.
+
+De onderbouwing voor ESP32-S3: [`esp_restart()` reset beide CPU's en start de
+applicatie via de bootloader opnieuw](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/api-reference/system/misc_system_api.html#software-reset).
+De [heapallocator initialiseert de heaps bij startup](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/api-reference/system/mem_alloc.html#implementation-notes).
+Een herstart zet dus geen bestaande runtimeheap voort. Software-reset en
+power-on hebben wel verschillende resetredenen en kunnen verschillende
+peripheral-/retentietoestand hebben; daarom blijft fysieke dekking nodig voor
+de genoemde wijzigingen. Dit verandert de vereiste interne heap- en
+stackmarges, allocatiefoutcontrole en
+[PSRAM/cache-/DMA-beperkingen](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/api-guides/external-ram.html#restrictions)
+niet. Onvoldoende aangetoonde marge blijft release-blocking volgens `AGENTS.md`.
+
 ## Volledige input-/bronselectietest
 
 De testconfig is uitsluitend voor HIL en wordt niet als releaseprofiel gebouwd.
