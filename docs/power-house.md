@@ -310,7 +310,7 @@ Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd do
 | Stopgrens boven gewenste temperatuur | `Power House run extension stop margin` | 0,1–1,0 °C boven setpoint; standaard 0,5 °C |
 | Afkoeling na stoppen | `Power House run extension restart cooldown` | 0,1–3,0 °C onder de comfortstop; standaard 0,2 °C |
 
-De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden. In Home Assistant is de afkoelingsinstelling standaard uitgeschakeld; je kunt die daar zelf inschakelen. De web-app toont stop- en herstarttemperatuur berekend met de getoonde instellingen. Tijdens bewerken is dat een voorvertoning van je wijziging.
+De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden. In Home Assistant zijn beide extension‑instellingen standaard uitgeschakeld; je kunt ze daar zelf inschakelen. De web-app toont stop- en herstarttemperatuur berekend met de getoonde instellingen. Tijdens bewerken is dat een voorvertoning van je wijziging.
 
 ```text
 stopgrens = setpoint + stopmarge
