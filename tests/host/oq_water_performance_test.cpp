@@ -86,7 +86,7 @@ int main() {
   const CandidateModel model(frequency, -7, 30, flow, {35.77f, 40.75f}, true, false);
   oq_power_house_dispatch::DispatchInput in;
   in.duo = in.performance_valid = true;
-  in.demand_level = 20;
+
   in.requested_w = 8000;
   in.hp1.candidate = in.hp2.candidate = {0, true, false, false, true};
   in.pair_power = &CandidateModel::dispatch;

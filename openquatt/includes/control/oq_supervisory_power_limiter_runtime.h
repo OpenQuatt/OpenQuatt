@@ -103,6 +103,11 @@ inline float configured_current_a(float minimum_a, float v1_a, float v2_a, float
 
 class Runtime {
  public:
+  float request_limit_w(float reference_w) const {
+    return this->initialized_ ? oq_supervisory_power::request_limit_w(reference_w, this->state_.cap_f, this->maximum_f_)
+                              : 0.0f;
+  }
+
   void tick(const TickConfig& tick) {
     const float current_a =
         configured_current_a(tick.minimum_current_a, tick.v1_current_a, tick.v2_current_a, tick.v2_max_current_a);
@@ -139,6 +144,7 @@ class Runtime {
     }
     const auto output = oq_supervisory_power::step(input, config, this->state_);
     this->state_ = output.state;
+    this->maximum_f_ = tick.max_cap_f;
     id(oq_power_cap_f) = output.state.cap_f;
     id(oq_power_limit_soft_w) = limits.soft_w;
     id(oq_power_limit_peak_w) = limits.peak_w;
@@ -154,6 +160,7 @@ class Runtime {
   }
 
   bool initialized_ = false;
+  int maximum_f_ = 0;
   oq_supervisory_power::State state_;
 };
 

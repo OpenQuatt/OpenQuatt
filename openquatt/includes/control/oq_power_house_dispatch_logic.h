@@ -69,7 +69,6 @@ struct ProtectionObservation {
 };
 struct DispatchInput {
   uint32_t now_ms = 0;
-  int demand_level = 0;
   float requested_w = NAN;
   bool duo = false, performance_valid = false, lead_hp1 = true;
   HpInput hp1, hp2;
@@ -109,8 +108,18 @@ struct DispatchTuning {
   float soft_limit_w = NAN, peak_limit_w = NAN;
   float over_soft_penalty_per_w = 5.0f;
   float topology_power_margin_w = 150.0f, topology_heat_advantage_w = 450.0f;
-  int defrost_boost_min_level = 6, defrost_boost_steps = 1;
+  float defrost_boost_min_w = 0.0f;
+  int defrost_boost_steps = 1;
+  bool defrost_boost_min_exclusive = false;
 };
+
+inline bool defrost_boost_demand_allowed(float requested_w, const DispatchTuning& tuning) {
+  if (!std::isfinite(requested_w) || requested_w <= 0.0f || !std::isfinite(tuning.defrost_boost_min_w) ||
+      tuning.defrost_boost_min_w < 0.0f)
+    return false;
+  return tuning.defrost_boost_min_exclusive ? requested_w > tuning.defrost_boost_min_w
+                                            : requested_w >= tuning.defrost_boost_min_w;
+}
 struct DispatchDecision {
   int hp1_level = 0, hp2_level = 0, owner_hp = 0;
   Reason reason = Reason::IDLE;
@@ -307,8 +316,8 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
   bool model_available = false;
   out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning, &model_available) : NAN;
   out.deficit_w = request_valid && in.performance_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : NAN;
-  out.saturated = in.demand_level > 0 && std::isfinite(out.deficit_w) && out.deficit_w > 0.0f;
-  if (in.demand_level <= 0) {
+  out.saturated = request_valid && in.requested_w > 0.0f && std::isfinite(out.deficit_w) && out.deficit_w > 0.0f;
+  if (request_valid && in.requested_w == 0.0f) {
     out.output_valid = request_valid && in.performance_valid;
     if (out.output_valid) out.expected_w = 0.0f;
     return out;
@@ -433,7 +442,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
     Candidate chosen = keep_current && current.valid ? current : best;
     const int boost_steps = std::max(0, std::min(3, tuning.defrost_boost_steps));
     if (chosen.valid && chosen.active_count == 2 && boost_steps > 0 &&
-        in.demand_level >= tuning.defrost_boost_min_level && chosen.thermal_w + tie_band_w < target_w &&
+        defrost_boost_demand_allowed(in.requested_w, tuning) && chosen.thermal_w + tie_band_w < target_w &&
         (in.hp1.valve_defrost != in.hp2.valve_defrost)) {
       for (int step = boost_steps; step > 0; --step) {
         const int hp1 = in.hp2.valve_defrost ? std::min(kMaxLevel, chosen.hp1_level + step) : chosen.hp1_level;

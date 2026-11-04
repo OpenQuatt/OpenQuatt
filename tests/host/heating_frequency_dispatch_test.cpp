@@ -87,7 +87,6 @@ void test_fixture_chain() {
     assert(maximum == (table.variant == oq_odu::Variant::V2_NEW_MODEL ? 17 : 10));
     for (int level = 1; level <= maximum; ++level) {
       DispatchInput input;
-      input.demand_level = 10;
       input.performance_valid = true;
       for (float ambient : {-15.0f, -7.0f, 0.0f, 2.0f, 7.0f, 12.0f}) {
         input.hp1 = modeled_hp(frequency, true, level, 35, ambient);
@@ -113,7 +112,6 @@ void test_extra_points_and_limits() {
   const auto table = snapshot(oq_test::v2_new_amh6::EEPROM_WORDS, oq_odu::Variant::V2_NEW_MODEL);
   auto frequency = context(table, table);
   DispatchInput input;
-  input.demand_level = 10;
   input.performance_valid = true;
   input.hp1 = modeled_hp(frequency, true);
   for (int level : {4, 5, 6, 8, 11, 12, 14}) {
@@ -156,14 +154,13 @@ void test_future_v1_and_asymmetric_duo() {
   const auto frequency = context(future, future);
   assert(frequency.automatic_level_limit(true, 2) == 20);
   auto hp = modeled_hp(frequency, true, 20);
-  DispatchInput input{0, 10, hp.levels[20].thermal_w, false, true, true, hp, {}};
+  DispatchInput input{0, hp.levels[20].thermal_w, false, true, true, hp, {}};
   assert(decide_dispatch(input, limits(), {}).hp1_level == 20);
   assert(oq_odu::normalized_heating_demand_level(false, future, 20) == 10);
 
   // Runtime lead may use a different stand only after checking its own heat/power.
   input = {};
   input.duo = input.performance_valid = true;
-  input.demand_level = 10;
   input.requested_w = 3000;
   input.hp1.candidate = input.hp2.candidate = {0, true, false, false};
   input.hp1.levels[7] = {true, true, true, 3000, 500, 48};
