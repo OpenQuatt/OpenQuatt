@@ -726,6 +726,15 @@
     gap: 12px;
   }
 
+  .oq-overview-controlpanel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .oq-overview-controlpanel-actions--split {
+    justify-content: space-between;
+  }
+
   .oq-overview-hp-tools {
     margin-top: 14px;
   }

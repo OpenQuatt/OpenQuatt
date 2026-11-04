@@ -10,7 +10,7 @@ import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { formatNumericState } from "../core/formatting.js";
-import { getHeatPumpPanelStatusLabel, getOverviewStatusRows, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
+import { getHeatPumpPanelStatusLabel, getOverviewStatusModel, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
 import { formatNumber, t } from "../i18n/index.js";
@@ -1599,7 +1599,7 @@ import { renderStatCard } from "./stat-card.js";
         const controlModeLabel = getEntityStateText("controlModeLabel");
         replaceOuterHtmlIfSignatureChanged(
           statusPanel,
-          getRenderSignature(getOverviewStatusRows(strategyLabel, controlModeLabel)),
+          getRenderSignature(getOverviewStatusModel(strategyLabel, controlModeLabel)),
           () => renderOverviewStatusPanel(strategyLabel, controlModeLabel),
         );
       }

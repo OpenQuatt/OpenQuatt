@@ -14,6 +14,8 @@
   --oq-overview-lane-bg: rgba(31, 42, 57, 0.96);
   --oq-overview-lane-border: rgba(124, 141, 165, 0.2);
   --oq-overview-row-border: rgba(124, 141, 165, 0.18);
+  --oq-overview-segment-bg: rgba(15, 23, 42, 0.32);
+  --oq-overview-segment-active-bg: rgba(148, 163, 184, 0.18);
   --oq-stat-background: var(--oq-overview-lane-bg);
   --oq-stat-border: var(--oq-overview-panel-border);
   --oq-stat-ink: var(--oq-overview-title);
@@ -39,6 +41,8 @@
   --oq-overview-lane-bg: #ffffff;
   --oq-overview-lane-border: #e5e7eb;
   --oq-overview-row-border: #e5e7eb;
+  --oq-overview-segment-bg: #f1f5f9;
+  --oq-overview-segment-active-bg: #ffffff;
 }
 
 .oq-overview-kpis,
@@ -144,8 +148,9 @@
 .oq-overview-sectionhead h3,
 .oq-overview-system-copy h3 {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
+  color: var(--oq-overview-soft);
+  font-size: 0.9rem;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -204,18 +209,65 @@
 
 .oq-overview-sectionhead,
 .oq-overview-temps > .oq-overview-system-copy {
-  margin-bottom: 4px;
+  margin-bottom: 10px;
 }
 
-.oq-overview-statuspanel,
-.oq-overview-controlpanel-stack {
+/* Status and temperatures share one shape: a focal value, a meaning line, then compact rows.
+   The meaning line takes the state colour, so the value keeps the card's left edge. */
+.oq-overview-cardhero {
   display: grid;
-  align-content: start;
+  gap: 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--oq-overview-row-border);
 }
 
-.oq-overview-statuslist,
+.oq-overview-cardhero strong {
+  color: var(--oq-overview-title);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.oq-overview-cardhero span {
+  color: var(--oq-overview-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.oq-overview-cardhero--green span {
+  color: #15803d;
+}
+
+.oq-overview-cardhero--orange span {
+  color: #c2410c;
+}
+
+.oq-overview-cardhero--sky span {
+  color: #0369a1;
+}
+
+.oq-helper-shell--dark .oq-overview-cardhero--green span {
+  color: #86efac;
+}
+
+.oq-helper-shell--dark .oq-overview-cardhero--orange span {
+  color: #fdba74;
+}
+
+.oq-helper-shell--dark .oq-overview-cardhero--sky span {
+  color: #7dd3fc;
+}
+
+.oq-overview-cardrows {
+  display: grid;
+}
+
 .oq-overview-temps-list {
   display: grid;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .oq-overview-controlpanel {
@@ -247,12 +299,25 @@
   gap: 10px;
 }
 
-.oq-overview-controlpanel-meta-item,
-.oq-overview-controlpanel-head {
+.oq-overview-controlpanel-meta-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.oq-overview-controlpanel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.oq-overview-controlpanel-name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .oq-overview-controlpanel-meta-item {
@@ -270,28 +335,34 @@
   text-transform: uppercase;
 }
 
-/* The name reads as text; the dot carries the state colour. */
-.oq-overview-controlpanel-head span {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+.oq-overview-controlpanel-name > span {
   color: var(--oq-overview-title);
   font-size: 0.95rem;
   font-weight: 600;
+  line-height: 1.3;
 }
 
-.oq-overview-controlpanel-head span::before {
+/* The state line carries the colour through its dot. */
+.oq-overview-controlpanel-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--oq-overview-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.oq-overview-controlpanel-state::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: #cbd5e1;
-  box-shadow: 0 0 0 4px rgba(203, 213, 225, 0.16);
   flex: 0 0 auto;
 }
 
-.oq-overview-controlpanel-meta-item strong,
-.oq-overview-controlpanel-head strong {
+.oq-overview-controlpanel-meta-item strong {
   color: var(--oq-overview-title);
   font-size: 0.9rem;
   line-height: 1.2;
@@ -323,56 +394,58 @@
   color: #fb923c;
 }
 
-.oq-overview-controlpanel--green .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--green .oq-overview-controlpanel-state::before {
   background: #22c55e;
   box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
 }
 
-.oq-overview-controlpanel--blue .oq-overview-controlpanel-head span::before,
-.oq-overview-controlpanel--sky .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--blue .oq-overview-controlpanel-state::before,
+.oq-overview-controlpanel--sky .oq-overview-controlpanel-state::before {
   background: #3b82f6;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.14);
 }
 
-.oq-overview-controlpanel--orange .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--orange .oq-overview-controlpanel-state::before {
   background: #f97316;
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.14);
 }
 
-.oq-overview-controlpanel--violet .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--violet .oq-overview-controlpanel-state::before {
   background: #a855f7;
   box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.14);
 }
 
-.oq-overview-controlpanel-state {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--oq-overview-chip-border);
-  background: var(--oq-overview-chip-bg);
-  color: var(--oq-overview-title);
-  font-size: 0.76rem;
-}
-
 .oq-overview-controlpanel-state--green {
-  border-color: rgba(34, 197, 94, 0.34);
+  color: #15803d;
 }
 
 .oq-overview-controlpanel-state--blue,
 .oq-overview-controlpanel-state--sky {
-  border-color: rgba(59, 130, 246, 0.28);
+  color: #1d4ed8;
 }
 
 .oq-overview-controlpanel-state--orange {
-  border-color: rgba(249, 115, 22, 0.32);
+  color: #c2410c;
 }
 
 .oq-overview-controlpanel-state--violet {
-  border-color: rgba(139, 92, 246, 0.3);
-  background: rgba(139, 92, 246, 0.08);
+  color: #7c3aed;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-state--green {
+  color: #86efac;
+}
+
+.oq-helper-shell--dark :is(.oq-overview-controlpanel-state--blue, .oq-overview-controlpanel-state--sky) {
+  color: #93c5fd;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-state--orange {
+  color: #fdba74;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-state--violet {
+  color: #c4b5fd;
 }
 
 .oq-overview-controlpanel-meta-item--loading strong,
@@ -394,19 +467,24 @@
 
 .oq-overview-controlpanel-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .oq-overview-controlpanel-actions--split {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
+/* One joined control instead of three loose buttons. */
 .oq-overview-controlpanel-segmented {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--oq-overview-chip-border);
+  border-radius: 11px;
+  background: var(--oq-overview-segment-bg);
 }
 
 .oq-overview-controlpanel-segment,
@@ -425,14 +503,24 @@
 
 .oq-overview-controlpanel-segment,
 .oq-overview-controlpanel-toggle {
-  min-height: 40px;
-  padding: 0 15px;
-  border-radius: 13px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
   border: 1px solid var(--oq-overview-chip-border);
   background: var(--oq-overview-chip-bg);
   color: var(--oq-overview-title);
   font-size: 0.85rem;
-  font-weight: 700;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.oq-overview-controlpanel-segmented .oq-overview-controlpanel-segment {
+  min-height: 30px;
+  padding: 0 12px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--oq-overview-soft);
 }
 
 .oq-overview-controlpanel-segment:hover,
@@ -441,9 +529,16 @@
   border-color: rgba(37, 99, 235, 0.22);
 }
 
-.oq-overview-controlpanel-segment.is-selected {
-  border-color: rgba(37, 99, 235, 0.28);
-  background: rgba(37, 99, 235, 0.12);
+.oq-overview-controlpanel-segmented .oq-overview-controlpanel-segment:hover {
+  border-color: transparent;
+  color: var(--oq-overview-title);
+}
+
+.oq-overview-controlpanel-segmented .oq-overview-controlpanel-segment.is-selected {
+  border-color: var(--oq-overview-chip-border);
+  background: var(--oq-overview-segment-active-bg);
+  color: var(--oq-overview-title);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .oq-overview-controlpanel-segment:disabled,
@@ -460,18 +555,10 @@
   gap: 8px;
 }
 
-.oq-overview-controlpanel-toggle {
-  min-width: 160px;
-}
-
-.oq-overview-controlpanel-actions:not(.oq-overview-controlpanel-actions--split) .oq-overview-controlpanel-toggle {
-  width: 100%;
-}
-
 .oq-overview-controlpanel-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   border: 1px solid var(--oq-overview-chip-border);
   background: var(--oq-overview-chip-bg);
   color: var(--oq-overview-title);

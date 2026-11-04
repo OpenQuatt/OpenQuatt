@@ -149,6 +149,34 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
+  const OVERVIEW_MODE_LABEL_KEYS = {
+    CM0: "overview.modeStandby",
+    CM1: "overview.modeHolding",
+    CM2: "overview.modeHeating",
+    CM3: "overview.modeHeatingBoiler",
+    CM4: "overview.modeBoilerOnly",
+    CM5: "overview.modeCooling",
+    CM98: "overview.modeFrost",
+    CM100: "overview.modeService",
+  };
+
+  const OVERVIEW_HERO_TONE_CLASSES = {
+    green: "oq-overview-cardhero--green",
+    orange: "oq-overview-cardhero--orange",
+    sky: "oq-overview-cardhero--sky",
+  };
+
+  // One focal value per card, with a short line that says what it means.
+  export function renderOverviewCardHero(value, detail = "", tone = "") {
+    const toneClass = OVERVIEW_HERO_TONE_CLASSES[tone] ? ` ${OVERVIEW_HERO_TONE_CLASSES[tone]}` : "";
+    return `
+      <div class="oq-overview-cardhero${toneClass}">
+        <strong>${escapeHtml(value)}</strong>
+        ${detail ? `<span>${escapeHtml(detail)}</span>` : ""}
+      </div>
+    `;
+  }
+
   export function renderOverviewMetricCard(label, value, tone = "blue", note = "") {
     return renderStatCard({ label, value, tone, note, accent: true });
   }
@@ -615,22 +643,33 @@ import { renderStatCard } from "./stat-card.js";
     };
   }
 
-  export function getOverviewStatusRows(strategyLabel, controlModeLabel) {
-    return [
-      { label: t("overview.cardStrategy"), value: strategyLabel },
-      { label: t("overview.cardControlMode"), value: controlModeLabel },
-      { label: t("overview.cardControl"), value: getOverviewPrimarySignal().value },
-      { label: t("overview.cardSystem"), value: getOverviewSystemSignal().value },
-    ];
+  export function getOverviewStatusModel(strategyLabel, controlModeLabel) {
+    const primary = getOverviewPrimarySignal();
+    const modeCode = /^CM\d+/i.exec(String(controlModeLabel || "").trim())?.[0].toUpperCase() || "";
+    const modeKey = OVERVIEW_MODE_LABEL_KEYS[modeCode];
+    const enabled = isEntityActive("openquattEnabled");
+    const title = enabled && modeKey ? t(modeKey) : primary.value;
+    const detail = enabled && modeKey && primary.value !== title ? primary.value : "";
+    return {
+      title,
+      detail,
+      tone: modeCode === "CM4" || modeCode === "CM98" ? "orange" : primary.tone,
+      rows: [
+        { label: t("overview.cardStrategy"), value: strategyLabel },
+        { label: t("overview.cardControlMode"), value: modeCode || controlModeLabel },
+        { label: t("overview.cardSystem"), value: getOverviewSystemSignal().value },
+      ],
+    };
   }
 
   export function renderOverviewStatusPanel(strategyLabel, controlModeLabel) {
-    const rows = getOverviewStatusRows(strategyLabel, controlModeLabel);
+    const model = getOverviewStatusModel(strategyLabel, controlModeLabel);
     return `
-      <section class="oq-overview-statuspanel" aria-label="${escapeHtml(t("overview.statusPanelLabel"))}" data-render-signature="${escapeHtml(getRenderSignature(rows))}">
+      <section class="oq-overview-statuspanel" aria-label="${escapeHtml(t("overview.statusPanelLabel"))}" data-render-signature="${escapeHtml(getRenderSignature(model))}">
         ${renderOverviewSectionHead(t("overview.statusPanelLabel"))}
-        <div class="oq-overview-statuslist">
-          ${rows.map((row) => `
+        ${renderOverviewCardHero(model.title, model.detail, model.tone)}
+        <div class="oq-overview-cardrows">
+          ${model.rows.map((row) => `
             <div class="oq-overview-row">
               <span>${escapeHtml(row.label)}</span>
               <strong>${escapeHtml(row.value)}</strong>
@@ -701,27 +740,22 @@ import { renderStatCard } from "./stat-card.js";
       coolingCopy = appendCoolingPermissionSource(t("overview.coolingWaitingCardCopy"), coolingEffectiveSource);
     }
 
-    let silentStatus = t("overview.silentOff");
-    let silentCopy = t("overview.silentOffCopy");
+    // The segmented control already shows the chosen mode; the state line says whether it applies now.
+    let silentStatus = t("overview.silentStateOff");
     let silentTone = "neutral";
     if (silentModeOverride === "On") {
-      silentStatus = t("overview.coolingOn");
-      silentCopy = t("overview.silentForcedCopy");
+      silentStatus = t("overview.silentStateOn");
       silentTone = "orange";
     } else if (silentModeOverride === "Schedule") {
-      silentStatus = t("overview.silentSchedule");
-      if (isEntityActive("silentActive")) {
-        silentCopy = t("overview.silentScheduleActiveCopy");
-        silentTone = "violet";
-      } else {
-        silentCopy = t("overview.silentScheduleCopy");
-      }
+      const silentActive = isEntityActive("silentActive");
+      silentStatus = t(silentActive ? "overview.silentStateScheduleActive" : "overview.silentStateScheduleIdle");
+      silentTone = silentActive ? "violet" : "neutral";
     }
 
     return [
       { key: "openquattEnabled", label: t("overview.controlCardTitle"), status: openquattEnabled ? t("overview.controlActive") : t("overview.controlPaused"), copy: openquattEnabled ? t("overview.controlAutoCopy") : openquattResumeScheduled ? t("overview.controlPausedScheduledCopy") : t("overview.controlPausedCopy"), tone: openquattEnabled ? "green" : "orange", kind: "openquatt-control", meta: openquattEnabled ? [] : [openquattResumeLoading ? { label: t("overview.resumeLabel"), value: t("overview.resumeLoading"), tone: "neutral", loading: true } : { label: openquattResumeScheduled ? t("overview.resumeAuto") : t("overview.resumeLabel"), value: openquattResumeScheduled ? formatOpenQuattResumeDateTime(openquattResumeAt, true) : t("overview.resumeManual"), tone: openquattResumeScheduled ? "orange" : "neutral" }] },
       { key: "manualCoolingEnable", label: t("overview.coolingCardTitle"), status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? t("overview.coolingManualOff") : t("overview.coolingManualOn"), nextState: manualCoolingEnabled ? "off" : "on", tone: !coolingEnabled ? "neutral" : (coolingStatus === t("overview.coolingBlockedCard") ? "orange" : (coolingModeActive ? "blue" : "sky")), settingsAction: hasEntity(COOLING_SCHEDULE_SOURCE_KEY) && COOLING_SCHEDULE_TIME_KEYS.every((key) => hasEntity(key)) ? "open-cooling-schedule-modal" : "", settingsLabel: t("system.coolingScheduleTitle") },
-      { key: "silentModeOverride", label: t("overview.silentCardTitle"), status: silentStatus, copy: silentCopy, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: "open-silent-settings-modal", settingsLabel: t("overview.silentSettingsTitle"), options: [{ value: "Off", label: t("overview.silentOff") }, { value: "On", label: t("overview.coolingOn") }, { value: "Schedule", label: t("overview.silentSchedule") }] },
+      { key: "silentModeOverride", label: t("overview.silentCardTitle"), status: silentStatus, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: "open-silent-settings-modal", settingsLabel: t("overview.silentSettingsTitle"), options: [{ value: "Off", label: t("overview.silentOff") }, { value: "On", label: t("overview.coolingOn") }, { value: "Schedule", label: t("overview.silentSchedule") }] },
     ].filter((card) => hasEntity(card.key));
   }
 
@@ -825,12 +859,14 @@ import { renderStatCard } from "./stat-card.js";
         ${cards.map((card) => `
           <article class="oq-overview-controlpanel oq-overview-controlpanel--${escapeHtml(card.tone)}">
             <div class="oq-overview-controlpanel-head">
-              <span>${escapeHtml(card.label)}</span>
-              <strong class="oq-overview-controlpanel-state oq-overview-controlpanel-state--${escapeHtml(card.tone)}">${escapeHtml(card.status)}</strong>
+              <div class="oq-overview-controlpanel-name">
+                <span>${escapeHtml(card.label)}</span>
+                <strong class="oq-overview-controlpanel-state oq-overview-controlpanel-state--${escapeHtml(card.tone)}">${escapeHtml(card.status)}</strong>
+              </div>
+              ${renderOverviewControlActions(card)}
             </div>
             ${card.copy && card.tone !== "neutral" && card.tone !== "green" ? `<p>${escapeHtml(card.copy)}</p>` : ""}
             ${renderOverviewControlMeta(card.meta)}
-            ${renderOverviewControlActions(card)}
           </article>
         `).join("")}
       </section>
@@ -894,16 +930,28 @@ import { renderStatCard } from "./stat-card.js";
     });
   }
 
+  export function getOverviewRoomDetail(roomKey, setpointKey) {
+    const setpoint = getEntityStateText(setpointKey);
+    const delta = getEntityNumericValue(roomKey) - getEntityNumericValue(setpointKey);
+    const detail = t("overview.tempHeroDetail", { setpoint });
+    if (!Number.isFinite(delta) || Math.abs(delta) < 0.05) {
+      return detail;
+    }
+    const deltaText = formatNumericState(Math.abs(delta), 1, "°C");
+    return `${detail} · ${t(delta < 0 ? "overview.tempHeroBelow" : "overview.tempHeroAbove", { value: deltaText })}`;
+  }
+
   export function renderOverviewTempsPanel() {
     const model = getOverviewTempsModel();
+    const [room, setpoint, ...rows] = model.rows;
     return renderOverviewShell({
       className: "oq-overview-temps",
       title: model.title,
-      copy: model.copy,
       signature: getOverviewTempsRenderSignature(model),
       body: `
-        <div class="oq-overview-temps-list">
-          ${model.rows.map((row) => renderTempRow(row.label, row.key, row.value || "")).join("")}
+        ${renderOverviewCardHero(getEntityStateText(room.key), getOverviewRoomDetail(room.key, setpoint.key))}
+        <div class="oq-overview-cardrows">
+          ${rows.map((row) => renderTempRow(row.label, row.key, row.value || "")).join("")}
         </div>
       `,
     });
