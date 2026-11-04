@@ -41,6 +41,11 @@ De regeling moet in verwarmingsmodus staan, zonder service, OTA of actuele
 ketelwarmte. Een geldige bron is dus niet hetzelfde als een volledig learning-record:
 de vermogensmeting en bedrijfstoestand moeten ook bruikbaar zijn.
 
+CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
+meetellen. CM98 alleen is geen service- of ketelwarmtesignaal. Het actuele
+ketelcontract, service-/OTA-pauzes en alle bron- en vermogenscontroles blijven
+gelden; werkelijk gemeten warmte tijdens pompbedrijf wordt niet naar nul gezet.
+
 De woninglijn verzamelt volledige perioden van 24 uur. Normale CM0/CM1-pauzes,
 setpointwijzigingen en normale ontdooicycli tellen mee. Geldig nuldebiet levert nul
 watervermogen; bij pompuitloop blijft het gemeten vermogen, inclusief een eventuele

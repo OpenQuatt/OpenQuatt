@@ -629,8 +629,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     op.captured_monotonic_ms = now_ms;
     const int cm = id(oq_control_mode_code);
     op.control_mode_valid = true;
-    op.control_mode = id(oq_heat_mode_code) == 0 && (cm == 0 || cm == 1 || cm == 2) ? LearningControlMode::HEATING
-                                                                                    : LearningControlMode::OTHER;
+    op.control_mode = id(oq_heat_mode_code) == 0 && learning_control_mode_allows_measurement(cm)
+                          ? LearningControlMode::HEATING
+                          : LearningControlMode::OTHER;
     op.active_limit_valid =
         learning_strategy_output_current(id(oq_strategy_output_valid), id(oq_strategy_output_source_code),
                                          id(oq_strategy_active_code), millis(), id(oq_strategy_output_updated_ms)) &&
@@ -643,7 +644,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     op.active_limit = op.active_limit || !learning_hp_protection_clear(oq_sources::hp2, now_ms);
 #endif
     op.service_or_ota_valid = true;
-    op.service_or_ota = cm >= 98 || id(oq_commissioning_active) || id(oq_hp_water_calibration_active) ||
+    op.service_or_ota = cm >= 99 || id(oq_commissioning_active) || id(oq_hp_water_calibration_active) ||
                         id(oq_runtime_polling_paused).state;
     const bool boiler_heat_observed =
         id(oq_boiler_output_request) || id(boiler_relay).state || applied_ot_command_active ||

@@ -414,7 +414,13 @@ inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources
   return result;
 }
 
-// CM0/CM1 pauses and CM2 heating exclude boiler demand. Require the current NONE
+// Idle, pump runout, heating and frost circulation are ordinary measurement
+// phases. The mode alone does not prove that the boiler is off.
+inline bool learning_control_mode_allows_measurement(int control_mode) {
+  return control_mode == 0 || control_mode == 1 || control_mode == 2 || control_mode == 98;
+}
+
+// CM0/CM1 pauses, CM2 heating and CM98 frost circulation exclude boiler demand. Require the current NONE
 // command and withdrawn outputs as well: a mode label or R1-off alone is not
 // enough during startup, a mode transition or a paused/stale dispatcher.
 // This is controller evidence, not a physical heat measurement or a statement
@@ -424,8 +430,9 @@ inline PhysicalMeasurement<BoilerHeatState> learning_no_boiler_heat_contract(
     bool relay_active, uint64_t now_ms, bool applied_ot_command_active, SnapshotSourceStatus* status = nullptr) {
   PhysicalMeasurement<BoilerHeatState> result;
   result.value = BoilerHeatState::NO_HEAT;
-  const auto reason = !runtime_available                     ? SnapshotSourceStatus::BOILER_UNAVAILABLE
-                      : control_mode < 0 || control_mode > 2 ? SnapshotSourceStatus::CONTROL_MODE_BLOCKED
+  const auto reason = !runtime_available ? SnapshotSourceStatus::BOILER_UNAVAILABLE
+                      : !learning_control_mode_allows_measurement(control_mode)
+                          ? SnapshotSourceStatus::CONTROL_MODE_BLOCKED
                       : now_ms == 0U || !oq_boiler::command_is_fresh(command, static_cast<uint32_t>(now_ms), 15000U)
                           ? SnapshotSourceStatus::BOILER_COMMAND_STALE
                       : command.source != oq_boiler::COMMAND_SOURCE_NONE || command.demand_present ||
