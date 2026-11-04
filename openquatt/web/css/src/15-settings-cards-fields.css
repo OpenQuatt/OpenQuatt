@@ -721,6 +721,14 @@
   gap: 8px;
 }
 
+/* The info button follows the label, so its popover spans the field under the label instead of hanging at the far edge. */
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head .oq-settings-info-popover {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+}
+
 .oq-settings-view :is(.oq-settings-grid, .oq-settings-hp-group-grid) {
   gap: 22px 28px;
   margin-top: 20px;
