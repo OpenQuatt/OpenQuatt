@@ -14,6 +14,7 @@ const { handleViewAction } = await import("../js/src/features/view-actions.js");
 const { setLocale } = await import("../js/src/i18n/index.js");
 const {
   getOverviewTrendCardsModel,
+  getOverviewTrendChartModel,
   getOverviewTrendSeriesCurrentValue,
   getOverviewTrendSeriesValue,
   getVisibleOverviewTrendSeries,
@@ -221,4 +222,17 @@ test("live trend values also update the accessible button label", () => {
   patchOverviewTrendCurrentValues(root);
   assert.equal(attributes.get("aria-label"), `${request.label}: ${valueElement.textContent}`);
   assert.notEqual(valueElement.textContent, firstValue);
+});
+
+test("trend axis labels stay inside the drawn range and never overlap", () => {
+  const series = [{ id: "flow", sampleKey: "flow", label: "Flow", tone: "sky", decimals: 0, unit: " L/h" }];
+  const samples = [960, 820, 560, 520, 700, 940].map((flow, index) => ({ t: index * 3600000, flow }));
+  const model = getOverviewTrendChartModel(samples, series, { windowHours: 24, mockData: true });
+  const labels = model.yAxisLabels.map((label) => ({ value: Number(label.text), y: label.y }));
+  assert.ok(labels.length >= 2);
+  // A label clamped onto the plot edge breaks the linear value-to-position mapping.
+  const pixelsPerUnit = (labels[0].y - labels[1].y) / (labels[1].value - labels[0].value);
+  for (const label of labels.slice(2)) {
+    assert.ok(Math.abs((labels[0].y - label.y) / (label.value - labels[0].value) - pixelsPerUnit) < 0.001, `label ${label.value} is not on the axis scale`);
+  }
 });

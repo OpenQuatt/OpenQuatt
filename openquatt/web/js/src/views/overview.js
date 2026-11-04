@@ -1312,7 +1312,7 @@ import { renderStatCard } from "./stat-card.js";
     const span = Math.max(endTime - startTime, 1);
     const uptimeMs = span;
     const rawRange = getOverviewTrendRange(samples, series);
-    const displayRange = rawRange.min === rawRange.max
+    const paddedRange = rawRange.min === rawRange.max
       ? {
           min: rawRange.min - 1,
           max: rawRange.max + 1,
@@ -1322,6 +1322,11 @@ import { renderStatCard } from "./stat-card.js";
           max: rawRange.max + Math.max((rawRange.max - rawRange.min) * 0.12, 1),
         };
     const axisTicks = getOverviewTrendAxisTicks(rawRange, series);
+    // The drawn range covers every tick, so each label sits at its real value instead of being clamped to an edge.
+    const displayRange = {
+      min: Math.min(paddedRange.min, axisTicks.axisMin),
+      max: Math.max(paddedRange.max, axisTicks.axisMax),
+    };
 
     const xOf = (timestamp) => left + (((timestamp - startTime) / span) * plotWidth);
     const yOf = (value) => {
@@ -1609,13 +1614,11 @@ import { renderStatCard } from "./stat-card.js";
 
   export function renderOverviewTrendCard(card) {
     const latest = card.samples[card.samples.length - 1] || null;
-    const windowText = formatOverviewTrendWindowText(card.windowHours);
     const visibleSeries = getVisibleOverviewTrendSeries(card);
     return `
       <article class="oq-overview-trendcard oq-overview-trendcard--${escapeHtml(card.tone)}" data-oq-trend-card="${escapeHtml(card.id)}" data-render-signature="${escapeHtml(getOverviewTrendCardSignature(card))}">
         <div class="oq-overview-trendcard-head">
           <div class="oq-overview-trendcard-copy">
-            <p class="oq-overview-trendcard-kicker">${escapeHtml(windowText)}</p>
             <h4>${escapeHtml(card.title)}</h4>
             <p>${escapeHtml(card.copy)}</p>
           </div>
@@ -1666,7 +1669,7 @@ import { renderStatCard } from "./stat-card.js";
     const windowHours = getOverviewTrendWindowHours();
     const flashHistoryEnabled = isTrendHistoryFlashEnabled();
     return `
-      <div class="oq-overview-trends-windowbar" role="group" aria-label="${escapeHtml(t("overview.trendWindowLabel"))}">
+      <div class="oq-overview-trends-windowbar oq-overview-controlpanel-segmented" role="group" aria-label="${escapeHtml(t("overview.trendWindowLabel"))}">
         ${TREND_WINDOW_HOURS_OPTIONS.map((hours) => `
           ${(() => {
             const requiresFlashHistory = hours > 168;
@@ -1719,12 +1722,8 @@ import { renderStatCard } from "./stat-card.js";
     return `
       <section class="oq-helper-panel oq-helper-panel--flush">
         <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
-          <div class="oq-overview-trends-info-wrap">
-            ${renderTrendsInfoToggle()}
-          </div>
           <div class="oq-overview-head oq-overview-trends-head">
             <div>
-              <p class="oq-helper-label">${escapeHtml(t("navigation.diagnosis"))}</p>
               <h2 class="oq-helper-section-title">${escapeHtml(t("overview.diagnosisTitle"))}</h2>
               <p class="oq-helper-section-copy">${escapeHtml(t("overview.diagnosisCopy"))}</p>
             </div>
@@ -1732,6 +1731,7 @@ import { renderStatCard } from "./stat-card.js";
               ${trendHistoryEnabled ? `
                 <div class="oq-overview-trends-window">
                   <span>${escapeHtml(t("overview.trendsWindow"))}</span>
+                  ${renderTrendsInfoToggle()}
                   ${renderTrendWindowSwitcher()}
                 </div>
               ` : ""}

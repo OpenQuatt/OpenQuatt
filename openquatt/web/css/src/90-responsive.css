@@ -292,13 +292,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .oq-overview-trends {
-    padding: 16px;
-    border-radius: 20px;
-  }
-
   .oq-overview-trendcard {
-    padding: 14px;
+    padding: 18px;
   }
 
   
@@ -759,28 +754,15 @@
   }
 
   .oq-overview-trends {
-    margin-top: 10px;
-    padding: 12px;
-  }
-
-  .oq-overview-trends-window {
-    padding: 12px;
-    border-radius: 16px;
-  }
-
-  .oq-overview-trends-windowbar {
-    gap: 6px;
+    margin-top: 16px;
   }
 
   .oq-overview-trends-grid {
-    gap: 10px;
-    margin-top: 10px;
+    gap: 12px;
   }
 
   .oq-overview-trendcard {
-    gap: 10px;
-    padding: 12px;
-    border-radius: 16px;
+    gap: 12px;
   }
 
   .oq-overview-trendcard-copy > p:last-child {
@@ -804,17 +786,12 @@
     font-size: 0.84rem;
   }
 
-  .oq-overview-trend-pill {
-    padding: 6px 8px;
-    border-radius: 10px;
-  }
-
   .oq-overview-trend-pill span {
-    font-size: 0.64rem;
+    font-size: 0.75rem;
   }
 
   .oq-overview-trend-pill strong {
-    font-size: 0.82rem;
+    font-size: 0.85rem;
   }
 
   .oq-overview-hp-head,
@@ -902,7 +879,6 @@
   .oq-overview-trendcard-head {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "kicker"
       "title"
       "description"
       "meta";
