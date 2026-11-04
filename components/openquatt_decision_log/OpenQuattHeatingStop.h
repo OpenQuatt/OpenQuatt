@@ -65,7 +65,7 @@ inline bool begin_capture(Snapshot& snapshot, uint32_t now_ms, uint8_t reason, b
   return false;
 }
 
-inline uint8_t comfort_reason(bool already_stopping) {
+inline HeatingStopReason comfort_reason(bool already_stopping) {
   return already_stopping ? REASON_PH_COMFORT_HOLD : REASON_PH_COMFORT_STOP;
 }
 
