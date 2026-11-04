@@ -111,9 +111,10 @@ class Runtime {
     // Capture the reference scales once with the manual inputs for this tick.
     // Future line calibration must not change these control scales.
     const auto envelope = oq_power_house::house_envelope_from_legacy(demand_input.rated_w);
-    float memory_max_c = id(ph_memory_max_c).has_state()
-                             ? id(ph_memory_max_c).state
-                             : clamp_power(0.05f + 0.50f * id(ph_comfort_band_above_c).state, 0.08f, 0.20f);
+    float memory_max_c =
+        id(ph_memory_max_c).has_state()
+            ? id(ph_memory_max_c).state
+            : oq_power_house::clamp_power(0.05f + 0.50f * id(ph_comfort_band_above_c).state, 0.08f, 0.20f);
     if (!id(ph_memory_max_c).has_state()) {
       id(ph_memory_max_c).publish_state(memory_max_c);
     }
