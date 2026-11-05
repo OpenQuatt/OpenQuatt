@@ -158,7 +158,8 @@ int main() {
     assert(original.raw.status == "200 OK" && original.raw.ended && !original.raw.closed);
     assert(original.raw.type == "application/json; charset=utf-8");
     assert(original.raw.headers["Cache-Control"] == "no-store");
-    assert(original.raw.chunks == (original.raw.body.size() + 1023U) / 1024U && live_buffers == 2);
+    assert(static_cast<size_t>(original.raw.chunks) == (original.raw.body.size() + 1023U) / 1024U);
+    assert(live_buffers == 2);
     std::cout << original.raw.body << '\n';
     for (const char* path : {"/openquatt/service/status/other", "/other"}) {
       AsyncWebServerRequest request(path); assert(!handler.canHandle(&request));
@@ -180,7 +181,7 @@ int main() {
     for (size_t length : {0U, 1U, 1023U, 1024U, 1025U, 8193U}) {
       httpd_req_t request; const std::string text(length, 'x');
       assert(send_snapshot(&request, text.data(), text.size()));
-      assert(request.body == text && request.chunks == (length + 1023U) / 1024U);
+      assert(request.body == text && static_cast<size_t>(request.chunks) == (length + 1023U) / 1024U);
       assert(request.ended && !request.closed);
     }
     for (int failure : {1, 2, 3}) {
