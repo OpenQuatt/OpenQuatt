@@ -1018,8 +1018,36 @@
   will-change: stroke-dashoffset;
 }
 
-.oq-hp-tech-fan-blades {
-  will-change: transform;
+/* Each cycle moves exactly one dash pattern (8 + 14 px, water 7 + 18 px), so the loop is seamless.
+   Water runs at 42% of the refrigerant speed. */
+.oq-hp-schematic-board.is-running .oq-hp-tech-pipe-flow {
+  animation: oq-hp-pipe-flow 1.7s linear infinite;
+}
+
+.oq-hp-schematic-board:is(.is-running, .is-water-flowing) .oq-hp-tech-pipe-flow[data-oq-flow-variant="water"] {
+  animation: oq-hp-water-flow 4.6s linear infinite;
+}
+
+.oq-hp-schematic-board.is-fan-running .oq-hp-tech-fan-blades {
+  animation: oq-hp-fan-spin 3.2s linear infinite;
+}
+
+@keyframes oq-hp-pipe-flow {
+  to {
+    stroke-dashoffset: -22px;
+  }
+}
+
+@keyframes oq-hp-water-flow {
+  to {
+    stroke-dashoffset: -25px;
+  }
+}
+
+@keyframes oq-hp-fan-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .oq-overview-boiler {

@@ -8,7 +8,7 @@ import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUr
 import { primeEntities, syncEntities } from "./entity-sync.js";
 import { clearPreparedDebugRecordingCopy, refreshDebugRecordingDeviceStatus } from "../features/debug-recording.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
-import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "./motion.js";
+import { clearLegacyMotionVariables, syncMotionAnimations } from "./motion.js";
 import { render } from "./render-scheduler.js";
 import { t } from "../i18n/index.js";
 
@@ -79,13 +79,10 @@ import { t } from "../i18n/index.js";
     }
   }
 
+  // The CSS media query stops the motion itself; re-anchor animations that restart when motion returns.
   export function handleReducedMotionPreferenceChange(event) {
     state.reducedMotion = Boolean(event?.matches);
-    if (state.reducedMotion) {
-      stopMotionLoop();
-      return;
-    }
-    startMotionLoop();
+    syncMotionAnimations();
   }
 
   export function bindReducedMotionPreference() {
@@ -189,14 +186,12 @@ import { t } from "../i18n/index.js";
     syncNativeVisibility();
     if (state.nativeOpen) {
       stopEntityPolling();
-      stopMotionLoop();
       if (!state.nativeFrontendLoaded) {
         void ensureNativeFrontendLoaded();
       }
       return;
     }
 
-    startMotionLoop();
     startEntityPolling();
 
     if (options.refresh === false) {

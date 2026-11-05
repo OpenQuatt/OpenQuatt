@@ -2379,7 +2379,4 @@
   export const HIDDEN_POLL_INTERVAL_MS = 30000;
   export const POLL_JITTER_MIN_MS = 250;
   export const POLL_JITTER_MAX_MS = 750;
-  export const FLOW_DASH_CYCLE_PX = 22;
-  export const FLOW_OFFSET_PX_PER_SEC = FLOW_DASH_CYCLE_PX / 1.7;
-  export const FAN_ROTATION_DEG_PER_SEC = 360 / 3.2;
 export const OPENQUATT_RESUME_CLEAR_VALUE = "2000-01-01 00:00:00";

@@ -9,7 +9,7 @@ import { captureSettingsFocusContinuity, restoreSettingsFocusContinuity } from "
 import { setRenderCallback } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { deferTimeInputRender } from "../core/time-input.js";
-import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "../core/motion.js";
+import { clearLegacyMotionVariables, syncMotionAnimations } from "../core/motion.js";
 import { bindHeaderDevControls, syncNativeVisibility } from "../core/runtime.js";
 import { renderDeviceReconnectModal, renderUpdateModal } from "../features/firmware-update.js";
 import { getDeviceVersionLabel, getHeaderRenderSignature, renderControlModeOverrideBanner, renderDevPanel, renderHeaderStatus, renderNativeSurfaceShell, renderSystemModal } from "../features/header-status.js";
@@ -252,7 +252,6 @@ export function renderSettingsView() {
       state.settingsRenderSignature = "";
       state.headerRenderSignature = getHeaderRenderSignature();
       updateMqttState({ mqttSensorsModalRenderSignature: "" });
-      stopMotionLoop();
       syncNativeVisibility();
       syncWebServerLogStream();
       bindHeaderDevControls();
@@ -313,7 +312,7 @@ export function renderSettingsView() {
     clearLegacyMotionVariables();
     syncTechTooltipLayers();
     syncWebServerLogStream();
-    startMotionLoop();
+    syncMotionAnimations();
     syncOverviewTrendInteractions();
     syncNativeVisibility();
     revealActiveNavItems();

@@ -4,7 +4,7 @@ import { getEntityValue } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
-import { startMotionLoop } from "../core/motion.js";
+import { syncMotionAnimations } from "../core/motion.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
 import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
@@ -1544,7 +1544,7 @@ import { renderStatCard } from "./stat-card.js";
       updatePipeGroup(board, id.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`), pipe.tone, pipe.d);
     });
     ensureTechTooltipLayering(board);
-    startMotionLoop();
+    syncMotionAnimations(board);
   }
 
   export function patchOverviewDom() {

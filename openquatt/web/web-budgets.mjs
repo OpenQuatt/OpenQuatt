@@ -38,5 +38,8 @@ export const WEB_BUNDLE_BUDGETS = [
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
   // Passive-learning layout: +2,969 B raw / +493 B gzip versus dev 388f6f9d
   // on Node 24.14.1; preserves the existing 1,581 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 216_484 },
+  // Heat-pump schematic motion moves from a per-frame JS loop to CSS animations:
+  // +408 B CSS raw while the JS bundle shrinks by 1,392 B raw (Node 24.4.1);
+  // preserves the existing 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 216_892 },
 ];

@@ -7,60 +7,41 @@ globalThis.window = {
   matchMedia: () => ({ matches: false }),
 };
 
-const { startMotionLoop, stopMotionLoop } = await import("../js/src/core/motion.js");
+const { syncMotionAnimations } = await import("../js/src/core/motion.js");
 const { state } = await import("../js/src/core/state.js");
 
-function createMotionRoot(getFlowNodes) {
-  const board = {
-    querySelectorAll(selector) {
-      return selector === ".oq-hp-tech-pipe-flow" ? getFlowNodes() : [];
-    },
-  };
+function createAnimatedNode(animations) {
+  return { getAnimations: () => animations };
+}
+
+function createMotionRoot(nodes) {
   return {
-    style: { removeProperty() {} },
-    getAttribute: () => "",
-    removeAttribute() {},
     querySelectorAll(selector) {
-      return selector === ".oq-hp-schematic-board.is-running" && getFlowNodes().length ? [board] : [];
+      return selector === ".oq-hp-tech-pipe-flow, .oq-hp-tech-fan-blades" ? nodes : [];
     },
   };
 }
 
-test("startMotionLoop starts when motion targets appear after an idle patch", (t) => {
-  const originalRequestAnimationFrame = window.requestAnimationFrame;
-  const originalCancelAnimationFrame = window.cancelAnimationFrame;
+test("recreated pipe and fan animations share the document timeline origin", (t) => {
   t.after(() => {
-    stopMotionLoop();
-    window.requestAnimationFrame = originalRequestAnimationFrame;
-    window.cancelAnimationFrame = originalCancelAnimationFrame;
     state.root = null;
   });
+  const flow = { animationName: "oq-hp-pipe-flow", startTime: 1840.5 };
+  const fan = { animationName: "oq-hp-fan-spin", startTime: 1840.5 };
+  const transition = { transitionProperty: "stroke", startTime: 1840.5 };
+  state.root = createMotionRoot([createAnimatedNode([flow]), createAnimatedNode([fan, transition])]);
 
-  let frameCount = 0;
-  let flowNodes = [];
-  window.requestAnimationFrame = () => {
-    frameCount += 1;
-    return frameCount;
-  };
-  window.cancelAnimationFrame = () => {};
-  state.root = createMotionRoot(() => flowNodes);
-  state.motionFrame = 0;
-  state.motionStartedAt = 0;
-  state.motionTargets = { pipeFlows: [], fanBlades: [] };
-  state.reducedMotion = false;
+  assert.equal(syncMotionAnimations(), 2);
+  assert.equal(flow.startTime, 0);
+  assert.equal(fan.startTime, 0);
+  assert.equal(transition.startTime, 1840.5, "transitions keep their own timing");
+  assert.equal(syncMotionAnimations(), 0, "aligned animations are left alone");
+});
 
-  startMotionLoop();
-  assert.equal(frameCount, 0);
-
-  const firstFlow = { dataset: { oqFlowVariant: "default" }, style: {} };
-  flowNodes = [firstFlow];
-  startMotionLoop();
-  assert.equal(frameCount, 1);
-  assert.equal(state.motionTargets.pipeFlows[0], firstFlow);
-
-  const replacementFlow = { dataset: { oqFlowVariant: "default" }, style: {} };
-  flowNodes = [replacementFlow];
-  startMotionLoop();
-  assert.equal(frameCount, 1);
-  assert.equal(state.motionTargets.pipeFlows[0], replacementFlow);
+test("a patched board aligns only its own animations and tolerates browsers without getAnimations", () => {
+  const water = { animationName: "oq-hp-water-flow", startTime: 92 };
+  const board = createMotionRoot([createAnimatedNode([water]), {}]);
+  assert.equal(syncMotionAnimations(board), 1);
+  assert.equal(water.startTime, 0);
+  assert.equal(syncMotionAnimations(null), 0);
 });
