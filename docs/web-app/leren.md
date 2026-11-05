@@ -92,3 +92,17 @@ herstellen. Het scenario wacht op een nieuwe geldige meetperiode van 30 minuten.
 Bij een korte onderbreking kan het laatst ontvangen scenario tijdelijk zichtbaar
 blijven. De waarden verdwijnen na 30 seconden zonder bevestiging of zodra hun
 tijdstip is verstreken.
+
+## Warmtevraag vergelijken
+
+Bij een goedgekeurde geleerde woninglijn toont **Warmtevraag vergelijken** hoeveel
+basiswarmte Power House met de ingestelde en met de geleerde lijn zou vragen.
+Beide berekeningen gebruiken hetzelfde rekenmoment, dezelfde metingen en
+dezelfde toestand van de regeling. Het verschil is de geleerde vraag min de
+ingestelde vraag, in watt.
+
+De vergelijking verschijnt binnen het temperatuurbereik waarin de geleerde lijn
+is getoetst. Tijdens bijvoorbeeld opwarmen, externe warmtevraag of service
+laat het scherm zien waarom de waarden tijdelijk wegvallen. Starten, stoppen
+en verdelen volgen daarna hun eigen regels. De vergelijking past de woninglijn
+of de aansturing niet aan.

@@ -58,7 +58,34 @@ const collectionPhase = (collection, prefix) => {
   };
 };
 
-export function normalizeHouseLearningStatus(payload = {}) {
+const SHADOW_REASONS = new Set([
+  "ready", "inactive", "startup", "warmup_active", "external_override", "stale_frame", "source_changed",
+  "settings_changed", "service_or_ota", "reset_pending", "invalid_inputs", "batch_not_ready", "context_mismatch",
+  "outside_range", "invalid_candidate",
+]);
+
+function normalizeHouseLearningShadow(payload, requestStartedAt) {
+  if (payload.shadow_expired === true) return { available: false, reason: "stale_frame" };
+  if (!Object.hasOwn(payload, "shadow")) return null;
+  const value = payload.shadow;
+  const invalid = { available: false, reason: "invalid_inputs" };
+  if (!value || value.schema !== 1 || value.semantics !== "one_step_from_observed_state"
+      || value.scope !== "base_before_start_stop_dispatch" || value.source !== "actual" || value.state_origin !== "live_pre_tick"
+      || value.run_id !== null || value.auto_apply_allowed !== false || payload.auto_apply_allowed !== false
+      || typeof value.available !== "boolean" || !SHADOW_REASONS.has(value.reason)
+      || value.available !== (value.reason === "ready") || !Number.isSafeInteger(value.tick_ms) || value.tick_ms < 0
+      || !Number.isInteger(value.context_revision) || value.context_revision < 0) return invalid;
+  const { manual_w: manualW, candidate_w: candidateW, delta_w: deltaW } = value;
+  if (!value.available) return [manualW, candidateW, deltaW].every(item => item === null)
+    ? { available: false, reason: value.reason } : invalid;
+  const ttl = payload.shadow_ttl_ms;
+  if (!Number.isInteger(ttl) || ttl <= 0 || ttl > 30000 || value.tick_ms === 0 || value.context_revision === 0 || value.context_revision !== payload.context_revision
+      || ![manualW, candidateW, deltaW].every(Number.isFinite) || manualW < 0 || candidateW < 0
+      || Math.abs(candidateW - manualW - deltaW) > Math.max(0.01, Math.abs(manualW) * 0.00001, Math.abs(candidateW) * 0.00001)) return invalid;
+  return { available: true, reason: "ready", manualW, candidateW, deltaW, expiresAt: requestStartedAt + ttl };
+}
+
+export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = performance.now()) {
   if (Number(payload.schema) !== 1 || payload.mode !== "passive") throw translatedError("houseLearning.errors.unknownStatusFormat");
   const source = (key) => {
     const item = payload.sources?.[key];
@@ -68,6 +95,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
   };
   return {
     enabled: payload.enabled === true,
+    shadow: normalizeHouseLearningShadow(payload, requestStartedAt),
     controlMode: numberOrNull(payload.control_mode),
     storageReady: payload.storage_ready === true,
     status: String(payload.status || "unknown"),
@@ -209,6 +237,7 @@ export async function refreshHouseLearningStatus(options = {}) {
   const initialCapabilityCheck = !state.houseLearningEndpointAvailable && !state.houseLearningEndpointChecked;
   const requestGeneration = Number(state.houseLearningRequestId || 0);
   const before = JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
+  const requestStartedAt = performance.now();
   state.houseLearningEndpointChecking = true;
   state.houseLearningFetchPromise = (async () => {
     let probeCompleted = false;
@@ -230,7 +259,7 @@ export async function refreshHouseLearningStatus(options = {}) {
           state.houseLearningEndpointAvailable = true;
           throw new Error(`HTTP ${response.status}`);
         }
-        const status = normalizeHouseLearningStatus(payload);
+        const status = normalizeHouseLearningStatus(payload, requestStartedAt);
         if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
         state.houseLearningEndpointAvailable = true;
         state.houseLearningStatus = status;

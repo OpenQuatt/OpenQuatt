@@ -193,6 +193,29 @@ export default {
     }
   },
   houseLearning: {
+    shadow: {
+      title: "Compare heat demand",
+      copy: "Base heat demand before start, stop and distribution decisions. The comparison has no effect on control.",
+      help: "The configured and learned heat demand curves take one step from the same observed state. The difference is learned minus configured demand.",
+      manual: "Configured heat demand curve", candidate: "Learned heat demand curve", delta: "Difference",
+      reasons: {
+        unavailable: "No current comparison available.",
+        batchNotReady: "The comparison appears once the learned heat demand curve has been approved.",
+        contextMismatch: "The learned curve does not match the current settings.",
+        outsideRange: "The outdoor temperature is outside the learned range.",
+        invalidCandidate: "The learned heat demand is invalid.",
+        inactive: "The comparison appears when Power House calculates heat demand.",
+        startup: "Comparison is waiting for the controller to start.",
+        warmupActive: "Comparison is waiting for warmup to finish.",
+        externalOverride: "The comparison waits until external heat demand ends.",
+        staleFrame: "Waiting for a current comparison from the controller.",
+        sourceChanged: "The data source changed. Waiting for a new comparison.",
+        settingsChanged: "Settings changed. Waiting for a new comparison.",
+        serviceOrOta: "Comparison is paused during service or OTA.",
+        resetPending: "Comparison is waiting for the reset to be confirmed.",
+        invalidInputs: "Comparison is waiting for valid measurements.",
+      },
+    },
     panel: {
       details: "Learning status and measurements",
       eyebrow: "Passive learning",

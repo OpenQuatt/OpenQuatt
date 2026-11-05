@@ -40,7 +40,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Outlook, localized settings, atomic scenario and the interactive weather charts.
     // Against PR #924 on Node 24.14.1: +29,299 B raw and +9,441 B gzip.
     // Allow this one-time migration up to the measured size with 61 B gzip headroom.
-    raw: 1_437_598,
+    // Read-only demand comparison and both locales: +5,259 B raw and +1,520 B gzip versus Vooruitblik.
+    raw: 1_442_857,
     gzipBaselineCeiling: 403_320,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

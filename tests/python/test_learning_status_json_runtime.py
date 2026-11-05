@@ -68,6 +68,27 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             self.assertEqual(payload["collection_state"]["batch_budget_scope"], "model_advice_only")
             self.assertFalse(payload["auto_apply_allowed"])
 
+    def test_cached_shadow_is_revoked_at_read_without_changing_learning_status(self):
+        source = (ROOT / "components/openquatt_house_learning_status/OpenQuattHouseLearningStatus.cpp").read_text()
+        with tempfile.TemporaryDirectory(prefix="oq-learning-shadow-cache-") as directory:
+            temporary = Path(directory)
+            functions = "\n".join(production_function(source, signature) for signature in (
+                "void OpenQuattHouseLearningStatus::invalidate_shadow(",
+                "bool OpenQuattHouseLearningStatus::publish_status_json(",
+                "bool OpenQuattHouseLearningStatus::snapshot_status(",
+            ))
+            (temporary / "production_shadow_status.inc").write_text(functions)
+            binary = temporary / "shadow-cache"
+            built = run_process(
+                compiler_command("-fsanitize=undefined", "-fno-sanitize-recover=all",
+                                 "-I", str(temporary), str(ROOT / "tests/fixtures/learning/shadow_cache.cpp"),
+                                 "-o", str(binary)),
+                timeout=COMPILE_TIMEOUT_SECONDS, capture_output=True, text=True,
+            )
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            run = run_process([str(binary)], timeout=RUN_TIMEOUT_SECONDS, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
     def test_full_production_status_and_all_enum_names_fit_existing_cache(self):
         with tempfile.TemporaryDirectory(prefix="oq-learning-status-json-") as directory:
             temporary = Path(directory)
@@ -96,6 +117,11 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             payload = json.loads(run.stdout)
             self.assertLess(len(run.stdout.encode()), 4096)
+            self.assertEqual(payload["shadow"]["tick_ms"], 2**64 - 1)
+            self.assertEqual(payload["shadow"]["context_revision"], 2**32 - 1)
+            self.assertTrue(payload["shadow"]["available"])
+            self.assertFalse(payload["shadow"]["auto_apply_allowed"])
+            self.assertEqual(payload["shadow"]["delta_w"], -350)
             self.assertFalse(payload["auto_apply_allowed"])
             self.assertEqual(payload["collection"]["batch_missing_energy_budget_wh"], 2400)
             self.assertEqual(payload["collection"]["batch_budget_scope"], "model_advice_only")
