@@ -1,9 +1,36 @@
 # Contributing
 
-This guide is intended for repo maintenance and reviews. Its goal is not to enforce generic YAML style, but to keep ESPHome packages predictable and quick to review.
+This guide covers contributing to OpenQuatt and maintaining its ESPHome packages.
 
 For architecture, HIL, release and local-development references, see
 [`docs/development/`](docs/development/README.md).
+
+## Pull Request Validation
+
+You can open a PR without access to a hardware-in-the-loop (HIL) setup. Describe
+your change, list the checks you ran and their results, and say what you still
+need help testing.
+
+Use the existing CI checks and cover behaviour changes with focused regression
+tests. Maintainers assess control and hardware risks separately from runtime
+memory risks. For each additional test, they note in the PR which risk it
+addresses, the scenario, what counts as a pass, and who will run it. Maintainers
+arrange any required hardware tests and verify the results before merging.
+
+- Require targeted HIL when safety or correctness depends on controller,
+  peripheral, reset, or timing behaviour that the available tests cannot verify.
+  Run the relevant scenarios and a smoke test. Resolve safety questions about
+  the change before merging to `dev`, which publishes development firmware.
+- Require hardware memory measurements when a change can materially affect
+  runtime memory use, fragmentation, or stack margins. Examples include larger
+  buffers, changes to allocation placement, new tasks, and changes to which
+  network operations can overlap. Follow the
+  [memory measurement procedure](#embedded-memory-and-heap).
+
+For broad control changes, use the [HIL guide](docs/development/hil-testing.md)
+to decide whether a full run is needed. Review the combined validation evidence
+for a release candidate as part of the
+[release process](docs/development/releaseproces.md).
 
 ## Purpose
 
@@ -83,7 +110,9 @@ For new runtime features and material changes:
 - Use targeted placement before changing global options such as `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`.
 - Review the maximum simultaneous peak across components, not only each component in isolation.
 
-Validate memory-sensitive work with identical baseline and candidate firmware. Record at least:
+When hardware memory measurements are required, compare baseline and candidate
+firmware on representative hardware with the same configuration and
+instrumentation. Record the following measurements.
 
 - current internal free heap;
 - cumulative minimum internal heap since boot;
