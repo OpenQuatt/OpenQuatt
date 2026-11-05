@@ -46,5 +46,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // A top or bottom position for settings feedback, chosen in the interface menu: +105 B CSS raw;
   // preserves the 80 B raw headroom.
   // Settings change log table and its stacked phone layout: +973 B CSS raw; preserves the 80 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 217_970 },
+  // Edge fades on sideways-scrolling tab strips, driven by a scroll timeline: +939 B CSS raw;
+  // preserves the 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 218_909 },
 ];

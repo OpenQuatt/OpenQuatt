@@ -24,6 +24,57 @@
   display: none;
 }
 
+/* Tab strips that scroll sideways fade out at each edge that still has tabs beyond it. A scroll timeline
+   drives the fade, so a strip without overflow, or a browser without scroll timelines, shows no fade. */
+@property --oq-scroll-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --oq-scroll-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes oq-scroll-edge-fade {
+  from {
+    --oq-scroll-fade-start: 0px;
+    --oq-scroll-fade-end: 48px;
+  }
+
+  12% {
+    --oq-scroll-fade-start: 48px;
+  }
+
+  88% {
+    --oq-scroll-fade-end: 48px;
+  }
+
+  to {
+    --oq-scroll-fade-start: 48px;
+    --oq-scroll-fade-end: 0px;
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  /* The first mask layer keeps the divider line solid under faded tabs. */
+  .oq-helper-app-nav {
+    mask-image: linear-gradient(#000, #000),
+      linear-gradient(to right, transparent, #000 var(--oq-scroll-fade-start),
+        #000 calc(100% - var(--oq-scroll-fade-end)), transparent);
+    mask-position: bottom, 0 0;
+    mask-size: 100% 1px, 100% 100%;
+    mask-repeat: no-repeat;
+    /* Longhands: a minified shorthand with a timeline is not accepted by every scroll-timeline browser. */
+    animation-name: oq-scroll-edge-fade;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
 /* Labels start on the page edge; the active underline spans the label only. */
 .oq-helper-app-tab {
   appearance: none;

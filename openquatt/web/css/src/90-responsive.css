@@ -464,6 +464,18 @@
     display: none;
   }
 
+  @supports (animation-timeline: scroll()) {
+    .oq-settings-group-nav {
+      mask-image: linear-gradient(to right, transparent, #000 var(--oq-scroll-fade-start),
+        #000 calc(100% - var(--oq-scroll-fade-end)), transparent);
+      /* Longhands: a minified shorthand with a timeline is not accepted by every scroll-timeline browser. */
+      animation-name: oq-scroll-edge-fade;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: scroll(self inline);
+    }
+  }
+
   .oq-settings-group-button {
     flex: 0 0 auto;
     width: auto;
