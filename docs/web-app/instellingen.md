@@ -16,6 +16,8 @@ Open **Instellingen** in de web-app en kies de groep die bij je vraag past. Voor
 
 Verander één instelling tegelijk en controleer het effect. Bij onverklaarbaar gedrag begin je bij [Problemen oplossen](../problemen-oplossen.md).
 
+Een wijziging wordt direct opgeslagen. Daarna toont een melding de oude en de nieuwe waarde, met de knop **Ongedaan maken** om de vorige waarde terug te zetten. Op een touchscreen verschuift een schuifregelaar alleen als je het bolletje versleept; een tik op de baan tijdens het scrollen verandert niets.
+
 ### Installatie
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende warmtebron, stille uren, watergrenzen en compressorinstellingen.

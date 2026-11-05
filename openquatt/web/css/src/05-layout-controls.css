@@ -936,6 +936,33 @@
   accent-color: var(--oq-helper-accent);
 }
 
+/* On touch screens only the thumb starts a slider change, so a finger that lands on the track while
+   scrolling no longer jumps the value; a vertical swipe that starts on the thumb still scrolls the page. */
+@media (pointer: coarse) {
+  .oq-helper-range,
+  .oq-settings-electrical-slider,
+  .oq-simple-curve-control input[type="range"] {
+    pointer-events: none;
+    touch-action: pan-y;
+  }
+
+  .oq-helper-dual-range-input {
+    touch-action: pan-y;
+  }
+
+  .oq-helper-range::-webkit-slider-thumb,
+  .oq-settings-electrical-slider::-webkit-slider-thumb,
+  .oq-simple-curve-control input[type="range"]::-webkit-slider-thumb {
+    pointer-events: auto;
+  }
+
+  .oq-helper-range::-moz-range-thumb,
+  .oq-settings-electrical-slider::-moz-range-thumb,
+  .oq-simple-curve-control input[type="range"]::-moz-range-thumb {
+    pointer-events: auto;
+  }
+}
+
 .oq-helper-dual-range {
   display: grid;
   gap: 10px;

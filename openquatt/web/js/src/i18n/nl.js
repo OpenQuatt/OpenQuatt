@@ -2970,6 +2970,8 @@ export default {
     autoDetect: "Automatische detectie gestart.",
     switchStarted: "Omschakelen naar {option} is gestart. De actieve verbinding wordt bijgewerkt zodra {option} beschikbaar is.",
     entityUpdated: "{name} bijgewerkt.",
+    entityRestored: "{name} teruggezet naar {value}.",
+    undo: "Ongedaan maken",
     entityUpdateFailed: "{name} kon niet worden bijgewerkt. {error}",
     entityAdjustFailed: "{name} aanpassen mislukt ({error}).",
     dateTimeExpected: "{name} verwacht datum en tijd.",

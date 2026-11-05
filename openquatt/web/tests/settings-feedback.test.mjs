@@ -32,7 +32,7 @@ function renderAndSync(root) {
 }
 
 function reset() {
-  Object.assign(state, { appView: "settings", controlError: "", controlNotice: "" });
+  Object.assign(state, { appView: "settings", controlError: "", controlNotice: "", settingsUndo: null });
   syncSettingsFeedback(createRoot());
 }
 
@@ -115,5 +115,38 @@ test("the toast sits at the top unless the interface menu moves it to the bottom
   state.feedbackPosition = "bottom";
   assert.match(renderSettingsFeedback(), /oq-settings-feedback--bottom/);
   state.feedbackPosition = "top";
+  reset();
+});
+
+test("a plain change offers undo with its old and new value and stays eight seconds", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    reset();
+    const root = createRoot();
+    state.controlNotice = NOTICE;
+    state.settingsUndo = { key: "coolingMinSupply", value: 18, label: "Minimale koel-aanvoer", from: "18.0 °C", to: "20.0 °C", notice: NOTICE };
+    const markup = renderAndSync(root);
+    assert.match(markup, /data-oq-action="undo-settings-change"/);
+    assert.match(markup, /18\.0 °C → 20\.0 °C/);
+    mock.timers.tick(4000);
+    assert.deepEqual(root.toast.classes, [], "undo keeps the toast longer than a plain confirmation");
+    mock.timers.tick(4000);
+    assert.deepEqual(root.toast.classes, ["is-leaving"]);
+  } finally {
+    mock.timers.reset();
+    reset();
+  }
+});
+
+test("undo is not shown for errors or for another notice, and dismissing drops it", () => {
+  reset();
+  state.settingsUndo = { key: "coolingMinSupply", value: 18, label: "Minimale koel-aanvoer", from: "18.0 °C", to: "20.0 °C", notice: NOTICE };
+  state.controlNotice = "Iets anders bijgewerkt.";
+  assert.doesNotMatch(renderSettingsFeedback(), /undo-settings-change/);
+  state.controlNotice = NOTICE;
+  state.controlError = "Opslaan mislukt";
+  assert.doesNotMatch(renderSettingsFeedback(), /undo-settings-change/);
+  dismissSettingsFeedback();
+  assert.equal(state.settingsUndo, null);
   reset();
 });

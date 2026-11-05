@@ -127,6 +127,8 @@ export const state = {
   busyAction: "",
   controlError: "",
   controlNotice: "",
+  // The previous value of the last plain settings write, offered as undo while its notice shows.
+  settingsUndo: null,
   ...createDiagnosticsState(),
   ...createSettingsState(),
   quickStartSetupUpdateComplete: initialQuickStartSetupComplete,

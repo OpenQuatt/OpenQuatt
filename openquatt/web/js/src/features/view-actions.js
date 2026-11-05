@@ -2,6 +2,7 @@ import { isTrendHistoryEnabled } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { SETTINGS_GROUPS } from "../core/config.js";
 import { syncEntities } from "../core/entity-sync.js";
+import { undoSettingsChange } from "../core/entity-write-actions.js";
 import { setAppView } from "../core/navigation.js";
 import { render } from "../core/render-scheduler.js";
 import { setFeedbackPosition, setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
@@ -232,6 +233,9 @@ const viewActionHandlers = {
   "dismiss-settings-feedback": () => {
     dismissSettingsFeedback();
     render();
+  },
+  "undo-settings-change": () => {
+    void undoSettingsChange();
   },
 };
 

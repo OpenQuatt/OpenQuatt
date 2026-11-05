@@ -415,6 +415,50 @@
   color: var(--oq-helper-ink);
 }
 
+.oq-settings-feedback-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--oq-helper-soft);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The undo button moves to its own line, right-aligned, when it does not fit next to the message. */
+.oq-settings-feedback--action {
+  flex-wrap: wrap;
+}
+
+.oq-settings-feedback--action p {
+  flex: 1 1 180px;
+}
+
+.oq-settings-feedback-undo {
+  appearance: none;
+  flex: 0 0 auto;
+  min-height: 36px;
+  margin: -6px -8px -6px auto;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--oq-helper-accent-deep);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.oq-settings-feedback-undo:hover,
+.oq-settings-feedback-undo:focus-visible {
+  background: var(--oq-helper-card-muted);
+}
+
+.oq-settings-feedback-undo:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .oq-settings-feedback--bottom {
   --oq-settings-feedback-shift: 8px;
   top: auto;
@@ -439,8 +483,10 @@
   stroke: #4ade80;
 }
 
-.oq-helper-shell--dark .oq-settings-feedback--error .oq-settings-feedback-icon {
+.oq-helper-shell--dark .oq-settings-feedback--error .oq-settings-feedback-icon,
+.oq-helper-shell--dark .oq-settings-feedback-undo {
   stroke: #fb923c;
+  color: #fb923c;
 }
 
 @keyframes oq-settings-feedback-in {

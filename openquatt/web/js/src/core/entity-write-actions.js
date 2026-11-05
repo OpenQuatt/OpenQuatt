@@ -140,9 +140,50 @@ function getEntityCurrentValue(key) {
   return entity?.value ?? entity?.state;
 }
 
+// These writes have their own confirmation or side effects, so undo is not offered for them.
+const UNDO_EXCLUDED_KEYS = new Set(["controlModeOverride", "electricalCurrentLimit", "preferredConnection"]);
+
 // Successful writes go into the device change log; the label is captured now, while the field is on screen.
+// The previous value is kept as undo for as long as this write's notice is the one on screen.
 function recordEntityChange(key, previousValue, nextValue) {
-  void recordSettingsChange(getEntityFeedbackName(key), formatChangeLogValue(key, previousValue), formatChangeLogValue(key, nextValue));
+  const label = getEntityFeedbackName(key);
+  const from = formatChangeLogValue(key, previousValue);
+  const to = formatChangeLogValue(key, nextValue);
+  void recordSettingsChange(label, from, to);
+  const known = previousValue !== undefined && previousValue !== null && previousValue !== "";
+  state.settingsUndo = known && from !== to && !UNDO_EXCLUDED_KEYS.has(key)
+    ? { key, value: previousValue, label, from, to, notice: state.controlNotice }
+    : null;
+}
+
+// Writes the previous value back through the same commit path, which also logs the reverse change.
+export async function undoSettingsChange() {
+  const undo = state.settingsUndo;
+  if (!undo || undo.notice !== state.controlNotice || state.busyAction) return false;
+  state.settingsUndo = null;
+  const domain = ENTITY_DEFS[undo.key]?.domain;
+  let restored = false;
+  if (domain === "select") {
+    restored = await commitSelect(undo.key, String(undo.value));
+  } else if (domain === "switch") {
+    const enabled = undo.value === true || undo.value === "true" || undo.value === "ON";
+    await commitSwitch(undo.key, enabled);
+    // A refresh failure afterwards reports its own error; the write itself decides here.
+    restored = state.entities[undo.key]?.value === enabled;
+  } else if (domain === "number") {
+    restored = await commitNumber(undo.key, undo.value);
+  } else if (domain === "time") {
+    restored = await commitTime(undo.key, undo.value);
+  } else if (domain === "datetime") {
+    await commitDateTime(undo.key, undo.value);
+    restored = !state.controlError;
+  }
+  if (restored) {
+    state.settingsUndo = null;
+    state.controlNotice = t("actions.entityRestored", { name: undo.label, value: undo.from });
+    render();
+  }
+  return restored;
 }
 
 export async function commitSelect(key, option) {

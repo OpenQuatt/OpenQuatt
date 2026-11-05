@@ -33,7 +33,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Preserve the existing 411 B raw headroom and unchanged relative gzip limits.
     // Settings change log (settings group, table, posting entries and copy in both locales):
     // measured raw 1,400,322 B, +4,053 B versus the feedback-position commit (Node 24.4.1); 80 B raw headroom.
-    raw: 1_400_402,
+    // Undo for plain settings writes in the feedback toast (#783): +1,286 B raw; 80 B raw headroom.
+    raw: 1_401_688,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -48,5 +49,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // Settings change log table and its stacked phone layout: +973 B CSS raw; preserves the 80 B raw headroom.
   // Edge fades on sideways-scrolling tab strips, driven by a scroll timeline: +939 B CSS raw;
   // preserves the 80 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 218_909 },
+  // Touch-safe sliders and the undo action in the feedback toast (#783): +870 B CSS raw;
+  // preserves the 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 219_779 },
 ];

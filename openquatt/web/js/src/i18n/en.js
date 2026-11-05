@@ -2970,6 +2970,8 @@ export default {
     autoDetect: "Automatic detection started.",
     switchStarted: "Switching to {option} started. The active connection updates once {option} is available.",
     entityUpdated: "{name} updated.",
+    entityRestored: "{name} restored to {value}.",
+    undo: "Undo",
     entityUpdateFailed: "{name} could not be updated. {error}",
     entityAdjustFailed: "Adjusting {name} failed ({error}).",
     dateTimeExpected: "{name} expects a date and time.",
