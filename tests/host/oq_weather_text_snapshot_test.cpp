@@ -8,7 +8,7 @@
 int main() {
   using namespace esphome::openquatt_weather;
   WeatherTextSnapshots store;
-  int location, status, foreign, resolved, issued;
+  int location = 0, status = 0, foreign = 0, resolved = 0, issued = 0;
   store.bind(0, &location);
   store.bind(1, &status);
   store.bind(2, &resolved);
