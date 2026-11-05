@@ -67,3 +67,28 @@ Via **Diagnostische leerdata downloaden** bewaar je een lokale JSON-export.
 ombouw van Single naar Duo of omgekeerd wis je de leerdata voordat je de
 nieuwe opstelling gaat beoordelen. Bij ingeschakelde technische statistieken
 wordt alleen de aan/uit-stand van passief leren gedeeld.
+
+
+## Vooruitblik
+
+Met de optionele weerproef op een Heatpump Controller Q verschijnt naast **Leren**
+het tabblad **Vooruitblik**. Vul een Nederlandse plaatsnaam, postcode of
+coördinaten in en zet **Weersverwachting gebruiken** aan. De controller stuurt
+de locatie naar Open-Meteo om de plaats en de KNMI-weersverwachting op te halen.
+Locatie en toestemming blijven lokaal op de controller bewaard en staan buiten
+de instellingenback-up.
+
+Het scherm toont 36 uur aan buitentemperatuur en wind. Wijs in de grafiek een uur
+aan, gebruik de pijltjestoetsen of open **Bekijk uurwaarden**.
+
+**Temperatuur in huis** geeft een voorlopig scenario voor 30, 60 en 180 minuten.
+De berekening neemt de actuele kamertemperatuur als beginpunt, houdt de gemeten
+warmteafgifte constant en gebruikt de verwachte buitentemperatuur. Wind is
+extra informatie in de grafiek. Het scenario stuurt de regeling niet aan.
+
+Na een herstart zijn actuele metingen, een geldige weersverwachting en een
+actueel beoordeeld woningmodel nodig. De controller kan een opgeslagen schatting
+herstellen. Het scenario wacht op een nieuwe geldige meetperiode van 30 minuten.
+Bij een korte onderbreking kan het laatst ontvangen scenario tijdelijk zichtbaar
+blijven. De waarden verdwijnen na 30 seconden zonder bevestiging of zodra hun
+tijdstip is verstreken.

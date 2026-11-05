@@ -1,3 +1,5 @@
+import { commitWeatherLocation } from "../features/weather.js";
+import { invalidateWeatherForecast, refreshWeatherForecast } from "../features/weather-forecast.js";
 import { hasEntity } from "./app-shared.js";
 import { fetchWithTimeout } from "./browser-utils.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEADER_ENTITY_KEYS, LIMIT_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
@@ -286,7 +288,11 @@ export async function commitSwitch(key, enabled) {
     return;
   }
 
-  if (key === "houseLearningEnabled" && (state.busyAction || state.houseLearningReset === "pending")) return;
+  const isLearningSwitch = key === "houseLearningEnabled";
+  const isWeatherSwitch = key === "weatherEnabled";
+  if (((isLearningSwitch || isWeatherSwitch) && state.busyAction) || (isLearningSwitch && state.houseLearningReset === "pending")) return;
+  if (isWeatherSwitch) state.weatherConfigRevision += 1;
+  if (isLearningSwitch || isWeatherSwitch) invalidateWeatherForecast();
 
   state.busyAction = `switch-${key}`;
   state.controlNotice = "";
@@ -296,19 +302,21 @@ export async function commitSwitch(key, enabled) {
   try {
     const action = enabled ? "turn_on" : "turn_off";
     const path = buildEntityPath(entity.domain, entity.name, action);
-    const response = key === "houseLearningEnabled"
+    const response = isLearningSwitch || isWeatherSwitch
       ? await fetchWithTimeout(path, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS)
       : await fetch(path, { method: "POST" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    if (key === "houseLearningEnabled") {
-      const staleStatus = state.houseLearningFetchPromise;
-      // Fence status and switch reads issued before the controller acknowledged the write.
-      state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
-      state.houseLearningEndpointChecking = false;
-      state.houseLearningStatus = null;
-      render();
+    if (isLearningSwitch || isWeatherSwitch) {
+      const staleStatus = isLearningSwitch ? state.houseLearningFetchPromise : null;
+      if (isLearningSwitch) {
+        // Fence reads issued before the controller acknowledged the write.
+        state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
+        state.houseLearningEndpointChecking = false;
+        state.houseLearningStatus = null;
+        render();
+      }
       const [chunk] = buildBulkEntityChunks([key], "all");
       const payload = await fetchBulkEntityChunk(chunk).catch(() => null);
       const readback = payload?.entities?.[key];
@@ -316,8 +324,8 @@ export async function commitSwitch(key, enabled) {
         && typeof readback?.value === "boolean" && readback.state === (readback.value ? "ON" : "OFF");
       if (valid) state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
       if (staleStatus) await staleStatus;
-      await refreshHouseLearningStatus({ force: true });
-      if (!valid || readback.value !== enabled) throw new Error(t("learning.switchUnconfirmed"));
+      if (isLearningSwitch) await refreshHouseLearningStatus({ force: true });
+      if (!valid || readback.value !== enabled) throw new Error(t(isLearningSwitch ? "learning.switchUnconfirmed" : "weather.switchUnconfirmed"));
       state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
       return;
     }
@@ -345,6 +353,7 @@ export async function commitSwitch(key, enabled) {
   } finally {
     state.busyAction = "";
     render();
+    if (isWeatherSwitch) void refreshWeatherForecast({ force: true });
   }
 }
 
@@ -478,6 +487,7 @@ export async function commitTime(key, value) {
 }
 
 export async function commitText(key, value) {
+  if (key === "weatherLocation") return commitWeatherLocation(value);
   const entity = ENTITY_DEFS[key];
   const normalized = String(value || "").trim();
   state.busyAction = `save-${key}`;

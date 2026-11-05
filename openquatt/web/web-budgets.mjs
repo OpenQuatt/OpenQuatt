@@ -37,12 +37,16 @@ export const WEB_BUNDLE_BUDGETS = [
     // Learning page, two measurement bars and retained-day progress in both locales:
     // +6,919 B raw / +1,750 B gzip versus dev 6dd491f5 (Node 24.14.1).
     // Preserve 444 B of raw headroom and the existing relative gzip limits.
-    raw: 1_408_299,
-    gzipBaselineCeiling: 362_000,
+    // Outlook, localized settings, atomic scenario and the interactive weather charts.
+    // Against PR #924 on Node 24.14.1: +29,299 B raw and +9,441 B gzip.
+    // Allow this one-time migration up to the measured size with 61 B gzip headroom.
+    raw: 1_437_598,
+    gzipBaselineCeiling: 403_320,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
   // Passive-learning layout: +2,969 B raw / +493 B gzip versus dev 388f6f9d
   // on Node 24.14.1; preserves the existing 1,581 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 216_484 },
+  // Outlook and weather graphs add 4,367 B raw and 823 B gzip.
+  { file: "css/openquatt-app.css", raw: 220_851 },
 ];

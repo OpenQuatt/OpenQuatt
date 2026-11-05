@@ -437,6 +437,7 @@ test("reset negeert een oude status en meldt pas succes na leeg, gepauzeerd en g
   assert.equal(isHouseLearningResetConfirmed(), true);
   assert.equal(isHouseLearningResetConfirmed({ ...state.houseLearningStatus, status: "reset_pending" }), false);
   assert.equal(state.houseLearningStatus.records, 0);
+  assert.equal(state.entities.houseLearningEnabled.value, false);
   assert.match(state.controlNotice, /gewist.*gepauzeerd/);
 });
 

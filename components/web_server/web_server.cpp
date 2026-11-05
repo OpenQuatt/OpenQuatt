@@ -11,6 +11,9 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 #include "esphome/core/util.h"
+#ifdef USE_OPENQUATT_WEATHER
+#include "esphome/components/openquatt_weather/WeatherTextSnapshot.h"
+#endif
 
 #if !defined(USE_ESP32) && defined(USE_ARDUINO)
 #include "StreamString.h"
@@ -592,8 +595,18 @@ static void set_json_id(JsonObject root, EntityBase* obj, const char* prefix, Js
     char icon_buf[MAX_ICON_LENGTH];
     root[ESPHOME_F("icon")] = obj->get_icon_to(icon_buf);
 #endif
-    root[ESPHOME_F("entity_category")] = obj->get_entity_category();
-    bool is_disabled = obj->is_disabled_by_default();
+    bool is_disabled;
+#ifdef USE_OPENQUATT_WEATHER
+    openquatt_weather::TextSnapshotMetadata metadata;
+    if (openquatt_weather::copy_weather_text_metadata(obj, metadata)) {
+      root[ESPHOME_F("entity_category")] = metadata.category;
+      is_disabled = metadata.disabled_by_default;
+    } else
+#endif
+    {
+      root[ESPHOME_F("entity_category")] = obj->get_entity_category();
+      is_disabled = obj->is_disabled_by_default();
+    }
     if (is_disabled) root[ESPHOME_F("is_disabled_by_default")] = is_disabled;
   }
 }
@@ -692,7 +705,15 @@ void WebServer::text_sensor_json_(text_sensor::TextSensor* obj, const std::strin
                                   json::JsonBuilder& builder) {
   JsonObject root = builder.root();
 
-  set_json_icon_state_value(root, obj, "text_sensor", value.c_str(), value.c_str(), start_config);
+#ifdef USE_OPENQUATT_WEATHER
+  openquatt_weather::TextSnapshotValue snapshot;
+  const char* text = openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(obj), snapshot)
+                         ? snapshot.text
+                         : value.c_str();
+#else
+  const char* text = value.c_str();
+#endif
+  set_json_icon_state_value(root, obj, "text_sensor", text, text, start_config);
   if (start_config == DETAIL_ALL) {
     this->add_sorting_info_(root, obj);
   }
@@ -1339,6 +1360,29 @@ void WebServer::handle_text_request(AsyncWebServerRequest* request, const UrlMat
       return;
     }
 
+#ifdef USE_OPENQUATT_WEATHER
+    if (openquatt_weather::is_weather_location(static_cast<EntityBase*>(obj)) &&
+        request->hasArg(ESPHOME_F("save_request"))) {
+      const auto token = request->arg(ESPHOME_F("save_request"));
+      const auto value = request->arg(ESPHOME_F("value"));
+      if (!request->hasArg(ESPHOME_F("value")) ||
+          !openquatt_weather::valid_save_request(token.c_str(), token.length()) || value.length() > 64 ||
+          std::memchr(value.c_str(), '\0', value.length())) {
+        request->send(400);
+        return;
+      }
+      struct LocationRequest {
+        const void* entity;
+        char value[65]{}, token[33]{};
+      } pending{static_cast<EntityBase*>(obj)};
+      std::memcpy(pending.value, value.c_str(), value.length());
+      std::memcpy(pending.token, token.c_str(), token.length());
+      DEFER_ACTION(pending, openquatt_weather::control_weather_location(pending.entity, pending.value, pending.token));
+      request->send(200);
+      return;
+    }
+#endif
+
     auto call = obj->make_call();
     parse_cstr_param_(
         request, ESPHOME_F("value"), call,
@@ -1364,8 +1408,23 @@ void WebServer::text_json_(text::Text* obj, const std::string& value, JsonDetail
   // A password entity shows the mask and prefills the input with nothing, so the secret never
   // reaches the JSON and the mask cannot be written back as the value
   const bool password = obj->traits.get_mode() == text::TextMode::TEXT_MODE_PASSWORD;
-  set_json_icon_state_value(root, obj, "text", password ? "********" : value.c_str(), password ? "" : value.c_str(),
-                            start_config);
+#ifdef USE_OPENQUATT_WEATHER
+  openquatt_weather::TextSnapshotValue snapshot;
+  const bool weather =
+      !password && openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(obj), snapshot);
+  const char* text = password ? "" : weather ? snapshot.text : value.c_str();
+  if (weather && openquatt_weather::is_weather_location(static_cast<EntityBase*>(obj))) {
+    root[ESPHOME_F("save_request")] = snapshot.save_request;
+    const char* status = snapshot.save_state == openquatt_weather::SaveState::STORED    ? "stored"
+                         : snapshot.save_state == openquatt_weather::SaveState::PENDING ? "pending"
+                         : snapshot.save_state == openquatt_weather::SaveState::FAILED  ? "failed"
+                                                                                        : "none";
+    root[ESPHOME_F("save_status")] = status;
+  }
+#else
+  const char* text = password ? "" : value.c_str();
+#endif
+  set_json_icon_state_value(root, obj, "text", password ? "********" : text, password ? "" : text, start_config);
   root[ESPHOME_F("min_length")] = obj->traits.get_min_length();
   root[ESPHOME_F("max_length")] = obj->traits.get_max_length();
   root[ESPHOME_F("pattern")] = obj->traits.get_pattern_c_str();

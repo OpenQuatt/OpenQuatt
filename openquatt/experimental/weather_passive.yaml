@@ -1,0 +1,66 @@
+# Opt-in Q-edition package for passive weather and room-temperature scenarios.
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_weather]
+
+openquatt_weather:
+  id: oq_weather_experiment
+  location:
+    id: oq_weather_location
+    name: "Weather Location"
+    entity_category: config
+  clock: oq_time
+  enabled_switch: oq_weather_experiment_enabled
+  pause_sensor: oq_runtime_polling_paused
+  web_auth: oq_web_auth_store
+  status:
+    name: "Weather Experiment Status"
+    entity_category: diagnostic
+  resolved_location:
+    name: "Weather Resolved Location"
+    entity_category: diagnostic
+  forecast_age:
+    name: "Weather Forecast Age"
+    entity_category: diagnostic
+  issued_epoch:
+    name: "Passive Forecast Issued Epoch"
+    entity_category: diagnostic
+  request_count:
+    name: "Weather Request Count"
+    entity_category: diagnostic
+  failure_count:
+    name: "Weather Failure Count"
+    entity_category: diagnostic
+  worker_stack_free:
+    name: "Weather Worker Stack Free"
+    entity_category: diagnostic
+  last_duration:
+    name: "Weather Last Request Duration"
+    entity_category: diagnostic
+  temperature_30m:
+    name: "Passive Room Forecast 30m"
+    entity_category: diagnostic
+  temperature_1h:
+    name: "Passive Room Forecast 1h"
+    entity_category: diagnostic
+  temperature_3h:
+    name: "Passive Room Forecast 3h"
+    entity_category: diagnostic
+
+switch:
+  - platform: template
+    id: oq_weather_experiment_enabled
+    name: "Weather Passive Experiment"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
+interval:
+  - interval: 10s
+    startup_delay: 31s
+    then:
+      - lambda: |-
+          auto observation = oq_ph_learning::runtime().forecast_observation();
+          id(oq_weather_experiment).observe(observation);
