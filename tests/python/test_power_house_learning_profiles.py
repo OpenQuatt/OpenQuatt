@@ -30,7 +30,17 @@ class LearningProfileContractTest(unittest.TestCase):
             self.assertNotIn(f"watch_measurement_select_(id({source}))", runtime)
             self.assertNotIn(source, context_builder)
         self.assertNotIn("cic_feed_url", context_builder)
-        self.assertNotIn("id(cic_feed_url).add_on_state_callback", runtime)
+        # These listeners may revoke a diagnostic snapshot. They must not
+        # change the physical measurement context or discard a learning day.
+        cic_callback = runtime.split("id(cic_feed_url).add_on_state_callback", 1)[1].split("});", 1)[0]
+        source_watch = runtime.split("void watch_shadow_source_", 1)[1]
+        source_callback = source_watch.split("entity.add_on_state_callback", 1)[1].split("});", 1)[0]
+        for callback in (cic_callback, source_callback):
+            self.assertEqual(callback.split("{", 1)[1].strip(),
+                             "this->invalidate_shadow_(oq_power_house::ShadowDemandReason::SOURCE_CHANGED);")
+        invalidate = runtime.split("void invalidate_shadow_", 1)[1].split("}", 1)[0]
+        self.assertEqual(invalidate.split("{", 1)[1].strip(),
+                         "oq_power_house_runtime::runtime().invalidate_demand_evaluation(reason);")
         self.assertNotIn("watch_source_select_", runtime)
         self.assertNotIn("observe_source_revisions(", runtime)
         self.assertNotIn("observe_valid_source_revisions(", runtime)
