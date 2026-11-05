@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstring>
+#include <initializer_list>
 #include "components/openquatt_weather/WeatherForecastSnapshot.h"
 
 using namespace esphome::openquatt_weather;
