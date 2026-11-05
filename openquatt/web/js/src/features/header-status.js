@@ -334,10 +334,18 @@ import { render } from "../core/render-scheduler.js";
     return controls.render();
   }
 
+  // The dock sits next to the app shell, not inside it, so it carries the shell's dark theme class itself.
   export function renderDevPanel() {
     if (!__OQ_PREVIEW__) {
       return "";
     }
+    const markup = renderDevPanelDock();
+    return markup
+      ? `<div class="oq-helper-devdock-theme${state.overviewTheme === "dark" ? " oq-helper-shell--dark" : ""}">${markup}</div>`
+      : "";
+  }
+
+  function renderDevPanelDock() {
     const controlsMarkup = renderHeaderDevControls();
     if (!controlsMarkup) {
       return "";
