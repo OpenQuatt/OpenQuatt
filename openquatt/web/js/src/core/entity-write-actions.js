@@ -17,6 +17,7 @@ import { clearQuickStartSetupInstall, state } from "./state.js";
 import { pollFirmwareUpdateState, primeFirmwareUpdateState } from "../features/firmware-update.js";
 import { updateFirmwareState } from "./feature-state.js";
 import { stopLoginAuthStatusPolling } from "../features/security-actions.js";
+import { formatChangeLogValue, recordSettingsChange } from "../features/settings-change-log.js";
 import { refreshSettingsStorageStateSoon, SETTINGS_STORAGE_KEYS } from "../features/storage-history.js";
 import { refreshWebServerLogHistory } from "../features/webserver-logs.js";
 import { waitForPerformanceTelemetryChoiceConfirmation } from "./performance-telemetry-domain.js";
@@ -134,6 +135,16 @@ function getEntityFeedbackName(key) {
   return title || ENTITY_DEFS[key]?.name || key;
 }
 
+function getEntityCurrentValue(key) {
+  const entity = state.entities[key];
+  return entity?.value ?? entity?.state;
+}
+
+// Successful writes go into the device change log; the label is captured now, while the field is on screen.
+function recordEntityChange(key, previousValue, nextValue) {
+  void recordSettingsChange(getEntityFeedbackName(key), formatChangeLogValue(key, previousValue), formatChangeLogValue(key, nextValue));
+}
+
 export async function commitSelect(key, option) {
   const entity = ENTITY_DEFS[key];
   const previousEntity = state.entities[key] ? { ...state.entities[key] } : null;
@@ -204,6 +215,7 @@ export async function commitSelect(key, option) {
           ? t("actions.autoDetect")
           : t("actions.switchStarted", { option })
       : t("actions.entityUpdated", { name: getEntityFeedbackName(key) });
+    recordEntityChange(key, previousEntity?.value ?? previousEntity?.state, option);
     if (key === "firmwareUpdateChannel") {
       updateFirmwareState({ updateInstallCompleted: false, updateInstallCompletedVersion: "" });
       state.entities.firmwareUpdateChannel = {
@@ -291,6 +303,7 @@ export async function commitSwitch(key, enabled) {
     return;
   }
 
+  const previousValue = getEntityCurrentValue(key);
   state.busyAction = `switch-${key}`;
   state.controlNotice = "";
   state.controlError = "";
@@ -308,6 +321,7 @@ export async function commitSwitch(key, enabled) {
       state: enabled,
     };
     state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: getEntityFeedbackName(key) });
+    recordEntityChange(key, previousValue, enabled);
     state.busyAction = "";
     if (state.appView === "overview") {
       await refreshEntities([...OVERVIEW_KEYS, ...HEADER_ENTITY_KEYS, "setupComplete", ...FIRMWARE_ENTITY_KEYS], "state");
@@ -341,6 +355,7 @@ export async function commitNumber(key, value, successNotice = "") {
     render();
     return false;
   }
+  const previousValue = getEntityCurrentValue(key);
   state.busyAction = `save-${key}`;
   state.controlNotice = "";
   state.controlError = "";
@@ -361,6 +376,7 @@ export async function commitNumber(key, value, successNotice = "") {
     delete state.inputDrafts[key];
     succeeded = true;
     state.controlNotice = successNotice || t("actions.entityUpdated", { name: getEntityFeedbackName(key) });
+    recordEntityChange(key, previousValue, normalized);
     await refreshEntities(
       state.appView === "settings"
         ? getSettingsRefreshKeys()
@@ -416,6 +432,7 @@ export async function commitTime(key, value) {
   const entity = ENTITY_DEFS[key];
   const normalized = normalizeTimeValue(value);
   if (!normalized || state.savingTimeFields.has(key)) return false;
+  const previousValue = getEntityCurrentValue(key);
   state.savingTimeFields.add(key);
   state.timeWriteRevision += 1;
   state.inputDrafts[key] = String(value);
@@ -445,6 +462,7 @@ export async function commitTime(key, value) {
     }
     delete state.inputDrafts[key];
     state.controlNotice = t("actions.entityUpdated", { name: getEntityFeedbackName(key) });
+    recordEntityChange(key, normalizeTimeValue(previousValue), normalized);
     return true;
   } catch (error) {
     // Keep the attempted value visible so the user can retry without retyping.
@@ -542,6 +560,7 @@ export async function refreshOpenQuattControlState() {
 export async function commitDateTime(key, value) {
   const entity = ENTITY_DEFS[key];
   const normalized = normalizeDateTimeValue(value);
+  const previousValue = getEntityCurrentValue(key);
   state.busyAction = `save-${key}`;
   state.controlNotice = "";
   state.controlError = "";
@@ -550,6 +569,7 @@ export async function commitDateTime(key, value) {
   try {
     await postDateTimeValue(key, normalized);
     state.controlNotice = t("actions.entityUpdated", { name: getEntityFeedbackName(key) });
+    recordEntityChange(key, previousValue, normalized);
     await refreshEntities(
       state.appView === "settings"
         ? getSettingsRefreshKeys()

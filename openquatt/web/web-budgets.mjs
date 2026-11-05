@@ -31,7 +31,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Daily recovery reasons and conditional gap-budget copy in both locales:
     // +2,378 B raw / +702 B gzip versus dev 5ae3951f (Node 24.14.1).
     // Preserve the existing 411 B raw headroom and unchanged relative gzip limits.
-    raw: 1_396_675,
+    // Settings change log (settings group, table, posting entries and copy in both locales):
+    // measured raw 1,400,322 B, +4,053 B versus the feedback-position commit (Node 24.4.1); 80 B raw headroom.
+    raw: 1_400_402,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -43,5 +45,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // preserves the existing 80 B raw headroom.
   // A top or bottom position for settings feedback, chosen in the interface menu: +105 B CSS raw;
   // preserves the 80 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 216_997 },
+  // Settings change log table and its stacked phone layout: +973 B CSS raw; preserves the 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 217_970 },
 ];

@@ -13,6 +13,7 @@ import { refreshOduRuntimeFrequencyStatuses } from "./odu-runtime-frequency.js";
 import { refreshOduDefrostStatuses } from "./odu-defrost.js";
 import { refreshOduSettingsStatuses } from "./odu-settings.js";
 import { dismissSettingsFeedback } from "./settings-feedback.js";
+import { CHANGE_LOG_GROUP_ID, refreshSettingsChangeLog } from "./settings-change-log.js";
 
 function openServiceSettings() {
   state.systemModal = "";
@@ -107,8 +108,14 @@ const viewActionHandlers = {
   },
   "select-settings-group": (button) => {
     setSettingsGroup(button.dataset.groupId || SETTINGS_GROUPS[0].id);
+    if (state.settingsGroup === CHANGE_LOG_GROUP_ID) {
+      void refreshSettingsChangeLog();
+    }
     render();
     void syncEntities({ forceFast: true });
+  },
+  "refresh-settings-change-log": () => {
+    void refreshSettingsChangeLog();
   },
   "select-settings-source": (button) => {
     const key = String(button.dataset.sourceKey || "").trim().replace(/[^a-z0-9_-]/gi, "");

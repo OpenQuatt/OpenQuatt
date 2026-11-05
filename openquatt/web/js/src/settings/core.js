@@ -9,6 +9,7 @@ import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, ge
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getEspTemperatureLabel } from "../features/header-status.js";
 import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/security-access.js";
+import { CHANGE_LOG_GROUP_ID, renderSettingsChangeLogSection } from "../features/settings-change-log.js";
 import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSelectControl } from "./controls.js";
 import { t } from "../i18n/index.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
@@ -100,6 +101,8 @@ function syncFrequencyRangeControl(control) {
         ? [renderSettingsHeatingSection(), isCurveMode() ? "" : renderHouseLearningSettings()]
       : activeGroup === "cooling"
         ? [renderSettingsCoolingSection()]
+      : activeGroup === CHANGE_LOG_GROUP_ID
+        ? [renderSettingsChangeLogSection()]
         : activeGroup === "integrations"
             ? [
                 renderSettingsOpenThermCicSection(),
