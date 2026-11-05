@@ -114,17 +114,26 @@ void test_last_batch_rejection_survives_collection_and_clears_on_success_or_rese
   assert(state.diagnostics.last_batch_source_status == SnapshotSourceStatus::OK);
   assert(!passive_runtime_summary(state, state.last_monotonic_ms).auto_apply_allowed);
 
-  // Completed quality rejection remains visible when the next window starts.
+  // An unsuitable room trend remains evidence, separate from advice eligibility.
   for (uint32_t minute = 0; minute <= 1441; ++minute) {
     const uint32_t second = 86440U + minute * 60U;
     auto unstable = tick(1000ULL + second * 1000ULL, epoch + second);
     unstable.batch_snapshot.room_c = 20.0f + minute * 0.004f;
     tick_passive_runtime(state, unstable);
   }
-  assert(state.record_count == 1);
+  assert(state.record_count == 2 && state.diagnostics.accepted_batch_records == 2);
+  const auto& retained_unstable = state.records[1];
+  assert(retained_unstable.start_epoch_s == epoch + 86430U && retained_unstable.end_epoch_s == epoch + 172830U);
+  assert(validate_segment_record_structure(retained_unstable, config().quality) == LearningStatus::OK);
+  assert(evaluate_segment_quality(retained_unstable, config().quality) == LearningStatus::ROOM_UNSTABLE);
+  assert(!daily_record_fit_eligible(retained_unstable, config().quality));
+  assert(retained_unstable.daily_quality.heat_coverage_bp == 10000);
+  assert(retained_unstable.daily_quality.temperature_coverage_bp == 10000);
+  assert(retained_unstable.daily_quality.heat_uncertainty_mean_w == 0);
+  assert(state.daily_diagnostics.completed_quality_rejections == 0);
   assert(state.batch_accumulator.active);
   assert(state.diagnostics.last_batch_status == LearningStatus::COLLECTING);
-  assert(state.diagnostics.last_batch_rejection == LearningStatus::ROOM_UNSTABLE);
+  assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);
   assert(state.diagnostics.last_batch_source_status == SnapshotSourceStatus::OK);
   reset_passive_runtime(state);
   assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);

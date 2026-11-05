@@ -15,6 +15,7 @@ SegmentRecord fitted_record(uint16_t day, float outside_c, float room_c = 20.0f,
   record.end_epoch_s = record.start_epoch_s + 86400U;
   record.duration_s = 86400U;
   record.context_revision = 1;
+  record.daily_quality = {10000, 10000, 0};
   record.mean_room_c = room_c;
   record.mean_setpoint_c = room_c;
   record.mean_outside_c = outside_c;
@@ -178,7 +179,7 @@ void test_fail_closed_dataset_gates() {
   assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::SEGMENT_INELIGIBLE);
   make_dataset(records);
   records[0].room_trend_k_per_h = 0.201f;
-  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::ROOM_UNSTABLE);
+  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INSUFFICIENT_DATA);
   make_dataset(records);
   records[0].effective_outside_profile_centi[0] = 1000;
   assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INVALID_MEASUREMENT);

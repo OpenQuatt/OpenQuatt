@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <cstring>
 #include <initializer_list>
 #include <math.h>
 #include <string.h>
@@ -50,14 +51,50 @@ void repair_crc(uint8_t* bytes, size_t size) {
   write_u32(bytes, size - kLearningJournalCrcBytes, learning_journal_crc32(bytes, size - kLearningJournalCrcBytes));
 }
 
-// Schemas 4/5/6 precede the daily tail. Keep their original declared size and CRC.
+uint16_t load_u16(const uint8_t* bytes, size_t offset) {
+  return static_cast<uint16_t>(bytes[offset]) | static_cast<uint16_t>(bytes[offset + 1U]) << 8U;
+}
+
+uint32_t load_u32(const uint8_t* bytes, size_t offset) {
+  uint32_t value = 0;
+  for (uint8_t shift = 0; shift < 32U; shift += 8U) value |= static_cast<uint32_t>(bytes[offset++]) << shift;
+  return value;
+}
+
+// Convert the latest fixture to the actual earlier record layout and tail size.
+// Only the redundant record revision/duration and new metadata change; all
+// original scalar/profile/thermal/checkpoint payload fields remain byte exact.
 void legacy_schema(uint8_t* bytes, size_t& size, uint16_t schema, uint16_t algorithm = 4) {
-  size -= kLearningJournalDailyBytes;
+  assert(schema >= 4 && schema <= 8 && load_u16(bytes, 4) == 9);
+  const size_t context_size = load_u16(bytes, 24);
+  for (uint16_t index = 0; index < load_u16(bytes, 22); ++index) {
+    const size_t offset = kLearningJournalHeaderBytes + context_size + index * kLearningJournalRecordBytes;
+    const uint16_t duration = load_u16(bytes, offset + 8U);
+    write_u32(bytes, offset + 8U, duration == 0U ? 86400U : duration);
+    write_u32(bytes, offset + 12U, load_u32(bytes, 28));
+  }
+  size -= kLearningJournalDailyBytes - learning_journal_daily_bytes(schema);
   if (schema == 4) size -= kLearningJournalThermalBytes;
   write_u16(bytes, 4, schema);
   write_u16(bytes, 20, algorithm);
   write_u32(bytes, 8, static_cast<uint32_t>(size));
   repair_crc(bytes, size);
+}
+
+void legacy_schema_seven(uint8_t* bytes, size_t& size) { legacy_schema(bytes, size, 7); }
+
+void unchanged_record_values_and_thermal(const uint8_t* old_bytes, const uint8_t* new_bytes, size_t count) {
+  const size_t records_offset = kLearningJournalHeaderBytes + sizeof(kContext);
+  for (size_t index = 0; index < count; ++index) {
+    const size_t offset = records_offset + index * kLearningJournalRecordBytes;
+    assert(memcmp(old_bytes + offset, new_bytes + offset, 8U) == 0);
+    assert(memcmp(old_bytes + offset + 16U, new_bytes + offset + 16U, 36U) == 0);
+    const uint16_t duration = load_u16(new_bytes, offset + 8U);
+    assert(load_u32(old_bytes, offset + 8U) == (duration == 0U ? 86400U : duration));
+    assert(load_u32(old_bytes, offset + 12U) == load_u32(new_bytes, 28));
+  }
+  const size_t thermal_offset = records_offset + count * kLearningJournalRecordBytes;
+  assert(memcmp(old_bytes + thermal_offset, new_bytes + thermal_offset, kLearningJournalThermalBytes) == 0);
 }
 
 SegmentAccumulator daily_checkpoint(uint32_t start_epoch, uint32_t duration_s = 4200) {
@@ -313,7 +350,7 @@ void test_schema_five_legacy_layout_and_thermal_survive_upgrade() {
   size_t size = 0;
   assert(encode_learning_journal({&legacy, 1, context()}, config().quality, 3, now, bytes, sizeof(bytes), size,
                                  &thermal, now) == LearningJournalStatus::OK);
-  // Schema 7 preserves each legacy record and the schema-5 thermal tail byte for byte.
+  // New encoding preserves every legacy field and the schema-5 thermal tail.
   legacy_schema(bytes, size, 5, 3);
   const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
   assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == 5);
@@ -336,10 +373,8 @@ void test_schema_five_legacy_layout_and_thermal_survive_upgrade() {
   size_t upgraded_size = 0;
   assert(encode_learning_journal({&restored, 1, context()}, config().quality, 4, now, upgraded, sizeof(upgraded),
                                  upgraded_size, &thermal, now) == LearningJournalStatus::OK);
-  assert(upgraded_size == size + kLearningJournalDailyBytes && upgraded[4] == 7);
-  const size_t records_offset = kLearningJournalHeaderBytes + sizeof(kContext);
-  assert(memcmp(bytes + records_offset, upgraded + records_offset,
-                kLearningJournalRecordBytes + kLearningJournalThermalBytes) == 0);
+  assert(upgraded_size == size + kLearningJournalDailyBytes && upgraded[4] == kLearningJournalSchemaVersion);
+  unchanged_record_values_and_thermal(bytes, upgraded, 1);
 }
 
 void test_schema_six_mixed_records_signed_profile_and_thermal_round_trip() {
@@ -377,10 +412,8 @@ void test_schema_six_mixed_records_signed_profile_and_thermal_round_trip() {
   size_t upgraded_size = 0;
   assert(encode_learning_journal({records, 2, context()}, config().quality, 9, now, upgraded, sizeof(upgraded),
                                  upgraded_size, &thermal, now) == LearningJournalStatus::OK);
-  assert(upgraded_size == size + kLearningJournalDailyBytes && upgraded[4] == 7);
-  const size_t records_offset = kLearningJournalHeaderBytes + sizeof(kContext);
-  assert(memcmp(bytes + records_offset, upgraded + records_offset,
-                2 * kLearningJournalRecordBytes + kLearningJournalThermalBytes) == 0);
+  assert(upgraded_size == size + kLearningJournalDailyBytes && upgraded[4] == kLearningJournalSchemaVersion);
+  unchanged_record_values_and_thermal(bytes, upgraded, 2);
 
   uint8_t changed[kLearningJournalMaxBytes];
   memcpy(changed, bytes, size);
@@ -413,7 +446,7 @@ void test_schema_four_records_migrate_without_thermal_state() {
   size_t size = 0;
   assert(encode_learning_journal(passive_runtime_dataset(state), state.config.quality, 1, now, bytes, sizeof(bytes),
                                  size) == LearningJournalStatus::OK);
-  // Schema 4 had the identical record layout and CRC, without the thermal tail.
+  // Schema4 has the earlier record layout and no thermal or checkpoint tail.
   legacy_schema(bytes, size, 4, 2);
   constexpr uint8_t new_source[] = {9};
   const auto metadata =
@@ -437,7 +470,7 @@ void test_daily_checkpoint_round_trip_requires_exact_context_and_remaps_clocks()
   assert(encode_learning_journal({&completed, 1, context()}, config().quality, 2, now, bytes, sizeof(bytes), size,
                                  &thermal, now, &daily) == LearningJournalStatus::OK);
   const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
-  assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == 7);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == kLearningJournalSchemaVersion);
   LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
   assert(view.has_daily_checkpoint() && view.daily_checkpoint_epoch() == now);
   SegmentAccumulator restored;
@@ -487,7 +520,7 @@ void test_max_capacity_checkpoint_fits_slot_and_old_layouts_cannot_read_new_tail
   assert(encode_learning_journal({records, kMaxSegmentRecords, {max_context, sizeof(max_context), 1}}, config().quality,
                                  1, now, bytes, sizeof(bytes), size, &thermal, now,
                                  &daily) == LearningJournalStatus::OK);
-  assert(size == kLearningJournalMaxBytes && size == 8120U);
+  assert(size == kLearningJournalMaxBytes && size == 8168U);
   const auto metadata =
       inspect_learning_journal({bytes, size}, max_context, sizeof(max_context), now, config().quality);
   assert(metadata.status == LearningJournalStatus::OK && metadata.record_count == kMaxSegmentRecords);
@@ -495,8 +528,8 @@ void test_max_capacity_checkpoint_fits_slot_and_old_layouts_cannot_read_new_tail
   SegmentAccumulator restored;
   assert(view.restore_daily(restored, {max_context, sizeof(max_context), 1}, config().quality));
   assert(restored.heat_integral == daily.heat_integral);
-  // The old schema length contract rejects schema7 tails, even with repaired CRC.
-  for (uint16_t old_schema : {uint16_t{4}, uint16_t{5}, uint16_t{6}}) {
+  // Earlier schema length contracts reject the unconverted new tail.
+  for (uint16_t old_schema : {uint16_t{4}, uint16_t{5}, uint16_t{6}, uint16_t{7}, uint16_t{8}}) {
     write_u16(bytes, 4, old_schema);
     repair_crc(bytes, size);
     assert(inspect_learning_journal({bytes, size}, max_context, sizeof(max_context), now, config().quality).status ==
@@ -638,6 +671,7 @@ void test_daily_restore_diagnostics_preserve_output_and_history() {
   // No sums or saved hours change on a successful round trip, only local clocks.
   auto expected = daily;
   expected.context_revision = 7;
+  expected.heat_gap_pending = true;
   uint8_t expected_bytes[kLearningJournalDailyBytes], actual_bytes[kLearningJournalDailyBytes];
   learning_journal_detail::Writer expected_writer{expected_bytes, sizeof(expected_bytes)};
   learning_journal_detail::Writer actual_writer{actual_bytes, sizeof(actual_bytes)};
@@ -651,9 +685,291 @@ void test_daily_restore_diagnostics_preserve_output_and_history() {
   reject(context(), config().quality, DailyCheckpointRestoreStatus::MISSING);
 }
 
+void test_current_floor_and_schema_seven_backward_reading() {
+  constexpr uint32_t now = 20000U * 86400U + 4200U;
+  const auto completed = record(now - 4200U - 4U * 3600U, -5);
+  auto daily = daily_checkpoint(now - 4200U);
+  daily.missing_energy_uncertainty_ws = 4567.5;
+  daily.gap_heat_bound_floor_w = 20000.0f;
+  auto q = config().quality;
+  q.max_daily_missing_heat_w = 6115.28f;
+  const auto thermal = learned_thermal_model();
+  uint8_t current[kLearningJournalMaxBytes], legacy[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({&completed, 1, context()}, q, 9, now, current, sizeof(current), size, &thermal, now,
+                                 &daily) == LearningJournalStatus::OK);
+  const auto metadata = inspect_learning_journal({current, size}, kContext, sizeof(kContext), now, q);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == kLearningJournalSchemaVersion);
+  LearningJournalRecords view{{current, size}, sizeof(kContext), 1};
+  SegmentAccumulator restored;
+  assert(view.restore_daily(restored, context(), q));
+  assert(restored.gap_heat_bound_floor_w == 20000.0f);
+  assert(restored.missing_energy_uncertainty_ws == daily.missing_energy_uncertainty_ws);
+  size_t old_size = size;
+  std::memcpy(legacy, current, size);
+  legacy_schema_seven(legacy, old_size);
+  const auto old_metadata = inspect_learning_journal({legacy, old_size}, kContext, sizeof(kContext), now, q);
+  assert(old_metadata.status == LearningJournalStatus::OK && old_metadata.schema_version == 7);
+  LearningJournalRecords old{{legacy, old_size}, sizeof(kContext), 1};
+  assert(old.has_daily_checkpoint() && old.daily_checkpoint_epoch() == now);
+  assert(old.restore_daily(restored, context(), q));
+  assert(restored.gap_heat_bound_floor_w == q.max_abs_heat_w);
+  assert(restored.missing_energy_uncertainty_ws == daily.missing_energy_uncertainty_ws);
+  assert(old[0].mean_heat_w == completed.mean_heat_w && old[0].start_epoch_s == completed.start_epoch_s);
+  ThermalModelState restored_thermal;
+  uint32_t thermal_epoch = 0;
+  assert(old.restore_thermal(restored_thermal, config().thermal_model, 1000, 7, thermal_epoch));
+  assert(restored_thermal.accepted_samples == thermal.accepted_samples);
+  assert(restored_thermal.theta_loss_scaled == thermal.theta_loss_scaled);
+  // New metadata corruption must not be reinterpreted as a known zero peak.
+  const size_t floor_offset =
+      size - kLearningJournalCrcBytes - kLearningJournalDailyBytes + kLearningJournalDailyV7Bytes;
+  for (const float bad : {0.0f, -1.0f, NAN, INFINITY, 100001.0f}) {
+    uint8_t changed[kLearningJournalMaxBytes];
+    std::memcpy(changed, current, size);
+    learning_journal_detail::Writer writer{changed, size};
+    writer.position = floor_offset;
+    learning_journal_detail::write_float(writer, bad);
+    repair_crc(changed, size);
+    assert(inspect_learning_journal({changed, size}, kContext, sizeof(kContext), now, q).status ==
+           LearningJournalStatus::INVALID_RECORD);
+    assert(select_learning_journal_slot({changed, size}, {legacy, old_size}, kContext, sizeof(kContext), now, q)
+               .selected_slot == 1);
+  }
+  auto strict = q;
+  strict.max_abs_heat_w = 10000.0f;
+  // A current consumer limit may reject the unfinished day, not its history/RLS.
+  assert(inspect_learning_journal({current, size}, kContext, sizeof(kContext), now, strict).status ==
+         LearningJournalStatus::OK);
+  assert(!view.restore_daily(restored, context(), strict));
+}
+
+void test_schema_nine_record_layout_and_canonical_quality_codes() {
+  constexpr uint32_t now = 20000U * 86400U;
+  auto value = daily_record(now);
+  value.context_revision = 17;
+  for (uint16_t coverage = 0; coverage <= kDailyCoverageScale; ++coverage) {
+    value.daily_quality = {coverage, static_cast<uint16_t>(kDailyCoverageScale - coverage), coverage};
+    uint8_t bytes[kLearningJournalRecordBytes], again[kLearningJournalRecordBytes];
+    learning_journal_detail::Writer writer{bytes, sizeof(bytes)};
+    learning_journal_detail::write_record(writer, value);
+    assert(writer.ok && writer.position == 52U);
+    assert(load_u32(bytes, 0) == value.start_epoch_s && load_u32(bytes, 4) == value.end_epoch_s);
+    assert(load_u16(bytes, 8) == 0 && load_u16(bytes, 10) == coverage);
+    assert(load_u16(bytes, 12) == kDailyCoverageScale - coverage && load_u16(bytes, 14) == coverage);
+    learning_journal_detail::Reader reader{bytes, sizeof(bytes)};
+    const auto decoded = learning_journal_detail::read_record(reader, 9, 17);
+    assert(reader.ok && reader.position == 52U && decoded.duration_s == 86400U && decoded.context_revision == 17);
+    assert(decoded.daily_quality.heat_coverage_bp == coverage);
+    assert(decoded.daily_quality.temperature_coverage_bp == kDailyCoverageScale - coverage);
+    assert(decoded.daily_quality.heat_uncertainty_mean_w == coverage);
+    learning_journal_detail::Writer second{again, sizeof(again)};
+    learning_journal_detail::write_record(second, decoded);
+    assert(second.ok && memcmp(bytes, again, sizeof(bytes)) == 0);
+  }
+  for (uint16_t uncertainty :
+       {uint16_t{0}, uint16_t{1}, uint16_t{65533}, kDailyUncertaintyOverflow, kDailyQualityUnknown}) {
+    value.daily_quality = {kDailyQualityUnknown, kDailyQualityUnknown, uncertainty};
+    uint8_t bytes[kLearningJournalRecordBytes], again[kLearningJournalRecordBytes];
+    learning_journal_detail::Writer writer{bytes, sizeof(bytes)};
+    learning_journal_detail::write_record(writer, value);
+    learning_journal_detail::Reader reader{bytes, sizeof(bytes)};
+    const auto decoded = learning_journal_detail::read_record(reader, 9, 23);
+    assert(decoded.context_revision == 23);  // No stale per-record revision survives.
+    assert(decoded.daily_quality.heat_coverage_bp == kDailyQualityUnknown);
+    assert(decoded.daily_quality.temperature_coverage_bp == kDailyQualityUnknown);
+    assert(decoded.daily_quality.heat_uncertainty_mean_w == uncertainty);
+    learning_journal_detail::Writer second{again, sizeof(again)};
+    learning_journal_detail::write_record(second, decoded);
+    assert(writer.ok && reader.ok && second.ok && memcmp(bytes, again, sizeof(bytes)) == 0);
+  }
+  for (uint32_t duration = 14400; duration <= 15000; ++duration) {
+    auto legacy = record(now - duration, -4);
+    legacy.duration_s = duration;
+    legacy.end_epoch_s = now;
+    uint8_t bytes[kLearningJournalRecordBytes];
+    learning_journal_detail::Writer writer{bytes, sizeof(bytes)};
+    learning_journal_detail::write_record(writer, legacy);
+    learning_journal_detail::Reader reader{bytes, sizeof(bytes)};
+    const auto decoded = learning_journal_detail::read_record(reader, 9, 1);
+    assert(writer.ok && reader.ok && load_u16(bytes, 8) == duration && decoded.duration_s == duration);
+    assert(decoded.start_epoch_s == legacy.start_epoch_s && decoded.end_epoch_s == legacy.end_epoch_s);
+    assert(decoded.water_start_c == legacy.water_start_c && decoded.water_end_c == legacy.water_end_c);
+  }
+}
+
+void test_schema_nine_rejects_invalid_codes_and_retains_nonfit_days() {
+  constexpr uint32_t now = 20000U * 86400U;
+  auto value = daily_record(now);
+  value.room_trend_k_per_h = 1.5f;
+  value.daily_quality = {9000, 8000, kDailyUncertaintyOverflow};
+  assert(validate_segment_record_structure(value, config().quality) == LearningStatus::OK);
+  assert(validate_segment_record(value, config().quality) != LearningStatus::OK);
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({&value, 1, context()}, config().quality, 1, now, bytes, sizeof(bytes), size) ==
+         LearningJournalStatus::OK);
+  assert(inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality).status ==
+         LearningJournalStatus::OK);
+  LearningJournalRecords view{{bytes, size}, sizeof(kContext), 1};
+  assert(view[0].daily_quality.heat_uncertainty_mean_w == kDailyUncertaintyOverflow);
+  const size_t record_offset = kLearningJournalHeaderBytes + sizeof(kContext);
+  for (size_t offset : {10U, 12U}) {
+    for (uint16_t bad : {uint16_t{10001}, uint16_t{65534}}) {
+      uint8_t changed[kLearningJournalMaxBytes];
+      memcpy(changed, bytes, size);
+      write_u16(changed, record_offset + offset, bad);
+      repair_crc(changed, size);
+      assert(inspect_learning_journal({changed, size}, kContext, sizeof(kContext), now, config().quality).status ==
+             LearningJournalStatus::INVALID_RECORD);
+    }
+  }
+  for (uint16_t bad_duration : {uint16_t{1}, uint16_t{14399}, uint16_t{15001}, uint16_t{65535}}) {
+    uint8_t changed[kLearningJournalMaxBytes];
+    memcpy(changed, bytes, size);
+    write_u16(changed, record_offset + 8U, bad_duration);
+    repair_crc(changed, size);
+    assert(inspect_learning_journal({changed, size}, kContext, sizeof(kContext), now, config().quality).status ==
+           LearningJournalStatus::INVALID_RECORD);
+  }
+  value.daily_quality.heat_coverage_bp = 10001;
+  assert(encode_learning_journal({&value, 1, context()}, config().quality, 1, now, bytes, sizeof(bytes), size) ==
+         LearningJournalStatus::INVALID_RECORD);
+  value.daily_quality.heat_coverage_bp = 9000;
+  value.context_revision = 2;
+  assert(encode_learning_journal({&value, 1, context()}, config().quality, 1, now, bytes, sizeof(bytes), size) ==
+         LearningJournalStatus::INVALID_RECORD);
+}
+
+void test_every_legacy_schema_preserves_values_thermal_debt_and_unknown_coverage() {
+  constexpr uint32_t now = 20000U * 86400U + 4200U;
+  const auto thermal = learned_thermal_model();
+  auto quality = config().quality;
+  quality.max_daily_missing_heat_w = 6115.28f;
+  for (uint16_t schema : {uint16_t{4}, uint16_t{5}, uint16_t{6}, uint16_t{7}, uint16_t{8}}) {
+    SegmentRecord values[]{record(now - 4200U - 3U * 86400U, -4),
+                           schema >= 6 ? daily_record(now - 4200U) : record(now - 4200U - 14400U, 5)};
+    for (auto& value : values) value.daily_quality = {7000, 6000, 123};
+    auto daily = daily_checkpoint(now - 4200U);
+    daily.missing_energy_uncertainty_ws = 289.578 * 3600.0;
+    daily.gap_heat_bound_floor_w = 20000.0f;
+    uint8_t bytes[kLearningJournalMaxBytes];
+    size_t size = 0;
+    assert(encode_learning_journal({values, 2, context()}, quality, 7, now, bytes, sizeof(bytes), size, &thermal, now,
+                                   &daily) == LearningJournalStatus::OK);
+    legacy_schema(bytes, size, schema);
+    const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, quality);
+    assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == schema);
+    uint8_t wrong_revision[kLearningJournalMaxBytes];
+    memcpy(wrong_revision, bytes, size);
+    write_u32(wrong_revision, 28, 2);
+    repair_crc(wrong_revision, size);
+    assert(inspect_learning_journal({wrong_revision, size}, kContext, sizeof(kContext), now, quality).status ==
+           LearningJournalStatus::INVALID_RECORD);  // Old per-record revisions must not be overwritten.
+    LearningJournalRecords view{{bytes, size}, sizeof(kContext), 2};
+    SegmentRecord restored_records[]{view[0], view[1]};
+    for (size_t index = 0; index < 2; ++index) {
+      const auto& decoded = restored_records[index];
+      assert(decoded.start_epoch_s == values[index].start_epoch_s && decoded.end_epoch_s == values[index].end_epoch_s);
+      assert(decoded.duration_s == values[index].duration_s &&
+             decoded.context_revision == values[index].context_revision);
+      assert(decoded.daily_quality.heat_coverage_bp == kDailyQualityUnknown);
+      assert(decoded.daily_quality.temperature_coverage_bp == kDailyQualityUnknown);
+      assert(decoded.daily_quality.heat_uncertainty_mean_w == kDailyQualityUnknown);
+    }
+    ThermalModelState restored_thermal;
+    uint32_t thermal_epoch = 0;
+    assert(view.restore_thermal(restored_thermal, config().thermal_model, 500, 1, thermal_epoch) == (schema >= 5));
+    if (schema >= 5) assert(restored_thermal.accepted_samples == thermal.accepted_samples);
+    SegmentAccumulator restored_daily;
+    assert(view.restore_daily(restored_daily, context(), quality) == (schema >= 7));
+    if (schema >= 7) {
+      assert(restored_daily.missing_energy_uncertainty_ws == daily.missing_energy_uncertainty_ws);
+      assert(restored_daily.heat_last_w == daily.last_heat_w);
+      assert(restored_daily.heat_last_epoch_s == daily.last_epoch_s);
+      assert(restored_daily.heat_last_elapsed_ms == 4200000U);
+      assert(restored_daily.heat_observed_ms == 0 && restored_daily.temperature_observed_ms == 0);
+      assert(restored_daily.next_heat_observed_ms == 0 && restored_daily.next_heat_integral_ws == 0.0);
+      assert(restored_daily.next_heat_uncertainty_ws == 0.0 && !restored_daily.daily_quality_known);
+      assert(restored_daily.heat_gap_pending);
+      assert(restored_daily.gap_heat_bound_floor_w == (schema == 7 ? 50000.0f : 20000.0f));
+    }
+    uint8_t upgraded[kLearningJournalMaxBytes];
+    size_t upgraded_size = 0;
+    assert(encode_learning_journal({restored_records, 2, context()}, quality, 8, now, upgraded, sizeof(upgraded),
+                                   upgraded_size, schema >= 5 ? &restored_thermal : nullptr, thermal_epoch,
+                                   schema >= 7 ? &restored_daily : nullptr) == LearningJournalStatus::OK);
+    assert(upgraded[4] == 9 && upgraded_size > size);
+    if (schema >= 5) unchanged_record_values_and_thermal(bytes, upgraded, 2);
+    assert(inspect_learning_journal({upgraded, upgraded_size}, kContext, sizeof(kContext), now, quality).status ==
+           LearningJournalStatus::OK);
+  }
+}
+
+void test_schema_nine_checkpoint_preserves_independent_heat_cursor_and_flags() {
+  constexpr uint32_t start = 20000U * 86400U;
+  auto daily = daily_checkpoint(start, 86340U);
+  daily.heat_last_w = 3000.0f;
+  daily.heat_last_elapsed_ms = 86460000U;
+  daily.heat_last_epoch_s = start + 86460U;
+  daily.heat_observed_ms = 86400000U;
+  daily.temperature_observed_ms = 86340000U;
+  daily.next_heat_observed_ms = 60000U;
+  daily.next_heat_integral_ws = 180000.0;
+  daily.next_heat_uncertainty_ws = 1234.5;
+  daily.heat_gap_pending = false;
+  daily.daily_quality_known = true;
+  assert(valid_daily_checkpoint(daily, config().quality));
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({nullptr, 0, context()}, config().quality, 1, start + 86459U, bytes, sizeof(bytes),
+                                 size, nullptr, 0, &daily) == LearningJournalStatus::INVALID_ARGUMENT);
+  assert(encode_learning_journal({nullptr, 0, context()}, config().quality, 1, start + 86460U, bytes, sizeof(bytes),
+                                 size, nullptr, 0, &daily) == LearningJournalStatus::OK);
+  const size_t daily_offset = size - kLearningJournalCrcBytes - kLearningJournalDailyBytes;
+  const size_t flags_offset = size - kLearningJournalCrcBytes - sizeof(uint32_t);
+  assert(load_u32(bytes, flags_offset) == 2U && kLearningJournalDailyBytes == 300U);
+  learning_journal_detail::Reader reader{bytes, size};
+  reader.position = daily_offset;
+  SegmentAccumulator decoded;
+  assert(learning_journal_detail::read_daily(reader, decoded, 9));
+  assert(reader.position == size - kLearningJournalCrcBytes && !decoded.heat_gap_pending);
+  LearningJournalRecords view{{bytes, size}, sizeof(kContext), 0};
+  assert(view.restore_daily(decoded, context(), config().quality));
+  assert(decoded.heat_gap_pending && decoded.daily_quality_known);
+  assert(decoded.heat_last_w == daily.heat_last_w && decoded.heat_last_elapsed_ms == daily.heat_last_elapsed_ms);
+  assert(decoded.heat_last_epoch_s == daily.heat_last_epoch_s && decoded.heat_observed_ms == daily.heat_observed_ms);
+  assert(decoded.temperature_observed_ms == daily.temperature_observed_ms);
+  assert(decoded.next_heat_observed_ms == daily.next_heat_observed_ms);
+  assert(decoded.next_heat_integral_ws == daily.next_heat_integral_ws);
+  assert(decoded.next_heat_uncertainty_ws == daily.next_heat_uncertainty_ws);
+  write_u32(bytes, 16, start + 86459U);
+  repair_crc(bytes, size);
+  assert(inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), start + 86460U, config().quality).status ==
+         LearningJournalStatus::INVALID_RECORD);
+  write_u32(bytes, 16, start + 86460U);
+  repair_crc(bytes, size);
+  bytes[daily_offset + kLearningJournalDailyV8Bytes] ^= 1U;
+  assert(inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), start + 86460U, config().quality).status ==
+         LearningJournalStatus::CORRUPT);
+  bytes[daily_offset + kLearningJournalDailyV8Bytes] ^= 1U;
+  for (uint32_t bad_flags : {4U, 8U, UINT32_MAX}) {
+    write_u32(bytes, flags_offset, bad_flags);
+    repair_crc(bytes, size);
+    assert(
+        inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), start + 86460U, config().quality).status ==
+        LearningJournalStatus::INVALID_RECORD);
+  }
+}
+
 }  // namespace
 
 int main() {
+  test_schema_nine_record_layout_and_canonical_quality_codes();
+  test_schema_nine_rejects_invalid_codes_and_retains_nonfit_days();
+  test_every_legacy_schema_preserves_values_thermal_debt_and_unknown_coverage();
+  test_schema_nine_checkpoint_preserves_independent_heat_cursor_and_flags();
+  test_current_floor_and_schema_seven_backward_reading();
   test_daily_restore_diagnostics_preserve_output_and_history();
   test_daily_checkpoint_elapsed_reads_saved_progress_and_bounds_conversion();
   test_current_quality_can_reject_day_without_discarding_records_or_thermal();

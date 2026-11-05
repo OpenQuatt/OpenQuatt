@@ -31,12 +31,16 @@ export const WEB_BUNDLE_BUDGETS = [
     // Daily recovery reasons and conditional gap-budget copy in both locales:
     // +2,378 B raw / +702 B gzip versus dev 5ae3951f (Node 24.14.1).
     // Preserve the existing 411 B raw headroom and unchanged relative gzip limits.
+    // Retained daily quality, server weights and truthful restart help (Node24.14.1):
+    // +4,705 B raw / +1,365 B gzip versus dev2575a93d.
+    // Preserve444 B raw headroom; all relative gzip limits remain unchanged.
     // Settings change log (settings group, table, posting entries and copy in both locales):
     // measured raw 1,400,322 B, +4,053 B versus the feedback-position commit (Node 24.4.1); 80 B raw headroom.
     // Undo for plain settings writes in the feedback toast (#783): +1,286 B raw; 80 B raw headroom.
     // Change-log JSON export, fault outline on heat-pump panels and a fault pill next to the logo:
     // +1,832 B raw; 80 B raw headroom.
-    raw: 1_403_520,
+    // Combined with dev 6dd491f5: measured raw 1,408,146 B (Node 24.4.1); 80 B raw headroom.
+    raw: 1_408_226,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -55,5 +59,8 @@ export const WEB_BUNDLE_BUDGETS = [
   // preserves the 80 B raw headroom.
   // Fault outline, fault notice tone, header fault pill and wrapping section actions: +1,066 B CSS raw;
   // preserves the 80 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 220_845 },
+  // The calmer UI restyles every view at once: +1,607 B gzip versus dev 6dd491f5 (+3.8%), above the 3%
+  // relative limit. This ceiling admits that once with ~180 B gzip headroom; after the merge the base
+  // reaches the ceiling, so later changes fall back to the regular relative limit.
+  { file: "css/openquatt-app.css", raw: 220_845, gzipBaselineCeiling: 44_000 },
 ];

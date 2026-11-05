@@ -15,7 +15,10 @@ inline float minimum_defrost_flow_lph = NAN;
 #define OQ_COMMAND_SECONDARY_ID(suffix) id(hp1_##suffix)
 #endif
 
-inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = false) {
+// Select transforms may replace a rejected safety command with zero after the
+// SDK cleared its pending write. Boot/OTA ownership still blocks every write.
+inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = false, bool* safety_stop = nullptr) {
+  if (safety_stop != nullptr) *safety_stop = false;
   const unsigned hp = hp1 ? 1U : 2U;
   if (oq_boot_resume_runtime::ota_hold(hp1)) return false;
   oq_boot_resume_runtime::update(hp1);
@@ -36,6 +39,7 @@ inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = f
                          incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
   auto& service = hp1 ? id(hp1_odu_defrost) : OQ_COMMAND_SECONDARY_ID(odu_defrost);
   const bool fault = hard_stop || service.cycle.telemetry_fault(millis());
+  if (safety_stop != nullptr) *safety_stop = fault && !queued;
   if (queued && address == 3999 && value == 4) {
     const bool online = hp1 ? id(hp1_is_online) : OQ_COMMAND_SECONDARY_ID(is_online);
     const bool identity =
@@ -62,7 +66,7 @@ inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = f
     if (!(value == 0 && fault) &&
         (!service.cycle.fresh(millis()) || service.cycle.observed_active() || service.holding()))
       return false;
-  } else if (!service.normal_write_allowed(value, fault))
+  } else if (!service.normal_write_allowed(fault ? 0 : value, fault))
     return false;
   if (value == 0) return true;  // Stops never depend on temperature data.
   if (fault) return false;

@@ -189,6 +189,12 @@ struct DailyRestartTicket {
     return journal_crc == learning_journal_detail::read_u32(reader) && reader.ok;
   }
 
+  DailyRestartPolicy recovery_policy(uint32_t saved_sequence, const LearningJournalRecords& records,
+                                     bool recovery_allowed) const {
+    return recovery_allowed && matches(saved_sequence, records) ? DailyRestartPolicy::VERIFIED_SOFTWARE_RESTART
+                                                                : DailyRestartPolicy::STANDARD;
+  }
+
   DailyRestartTicket consume(bool software_restart) volatile {
     const DailyRestartTicket result = software_restart && magic == 0x4F514452U
                                           ? DailyRestartTicket{magic, sequence, checkpoint_epoch, journal_crc}

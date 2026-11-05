@@ -4,6 +4,7 @@ import { renderHouseLearningReadiness } from "./house-learning-readiness.js";
 import { renderSettingsInfoToggle } from "./controls.js";
 
 const REQUIRED_COLUMNS = ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"];
+const QUALITY_COLUMNS = ["heat_coverage_bp", "temperature_coverage_bp", "heat_uncertainty_mean_w", "fit_eligible", "fit_weight_bp"];
 const WIDTH = 720;
 const HEIGHT = 320;
 const PADDING = { top: 26, right: 24, bottom: 42, left: 52 };
@@ -20,6 +21,30 @@ const formatDuration = (seconds) => {
     : t("houseLearning.chart.durationMinutes", { minutes: formatNumber(minutes) });
 };
 
+function recordQualities(payload) {
+  if (!["record_quality_policy", "record_quality_columns", "record_quality"].some(key => Object.hasOwn(payload, key))) return null;
+  const columns = payload.record_quality_columns;
+  const rows = payload.record_quality;
+  const aligned = payload.record_quality_policy === 1 && Array.isArray(columns) && columns.every(column => typeof column === "string" && column.length > 0)
+    && new Set(columns).size === columns.length && QUALITY_COLUMNS.every(column => columns.includes(column))
+    && Array.isArray(rows) && rows.length === payload.records.length;
+  const index = aligned ? Object.fromEntries(columns.map((column, position) => [column, position])) : {};
+  const basisPoints = value => Number.isInteger(value) && value >= 0 && value <= 10000;
+  return payload.records.map((_, position) => {
+    const row = aligned ? rows[position] : null;
+    if (!Array.isArray(row) || row.length !== columns.length) return { valid: false };
+    const [heatCoverageBp, temperatureCoverageBp, heatUncertaintyMeanW, fitEligible, fitWeightBp] = QUALITY_COLUMNS.map(column => row[index[column]]);
+    if (![heatCoverageBp, temperatureCoverageBp].every(value => value === null || basisPoints(value))
+      || !(heatUncertaintyMeanW === null || heatUncertaintyMeanW === "overflow"
+        || Number.isInteger(heatUncertaintyMeanW) && heatUncertaintyMeanW >= 0 && heatUncertaintyMeanW <= 65533)
+      || typeof fitEligible !== "boolean" || !basisPoints(fitWeightBp)) return { valid: false };
+    return { valid: true, heatCoverageBp, temperatureCoverageBp, heatUncertaintyMeanW, fitEligible, fitWeightBp };
+  });
+}
+
+const usableForChartModel = record => record.quality === undefined
+  || record.quality?.valid && record.quality.fitEligible && record.quality.fitWeightBp > 0;
+
 export function normalizeHouseLearningExport(payload = {}) {
   if (Number(payload.schema) !== 1 || payload.mode !== "passive" || !Array.isArray(payload.record_columns) || !Array.isArray(payload.records)) {
     throw translatedError("houseLearning.errors.unknownExportFormat");
@@ -27,7 +52,8 @@ export function normalizeHouseLearningExport(payload = {}) {
   const columns = payload.record_columns.map((column) => String(column));
   if (!REQUIRED_COLUMNS.every((column) => columns.includes(column))) throw translatedError("houseLearning.errors.exportMissingColumns");
   const index = Object.fromEntries(columns.map((column, position) => [column, position]));
-  return payload.records.map((row) => {
+  const qualities = recordQualities(payload);
+  return payload.records.map((row, position) => {
     if (!Array.isArray(row)) return null;
     const startEpoch = finite(row[index.start_epoch_s]);
     const endEpoch = finite(row[index.end_epoch_s]);
@@ -40,6 +66,7 @@ export function normalizeHouseLearningExport(payload = {}) {
     if (startEpoch == null || endEpoch == null || startEpoch <= 0 || endEpoch <= startEpoch || meanOutsideC == null || outsideC == null || heatW == null || (heatW < 0 && recordKind !== 1)) return null;
     return { startEpoch, endEpoch, outsideC, heatW, recordKind,
       ...(converted ? { meanOutsideC, referenceRoomC: finite(payload.reference_room_c) ?? 20 } : {}),
+      ...(qualities ? { quality: qualities[position] } : {}),
     };
   }).filter(Boolean);
 }
@@ -71,6 +98,22 @@ function pathFor(model, from, to, power, zeroC) {
 }
 
 function chartTooltip(record) {
+  const quality = record.quality;
+  const percent = value => value === null ? "—" : formatNumber(value / 10000, { style: "percent", maximumFractionDigits: 2 });
+  const qualityLines = quality === undefined ? [] : !quality?.valid ? [t("houseLearning.chart.qualityInvalid")]
+    : [
+      ...(quality.heatCoverageBp === null && quality.temperatureCoverageBp === null && quality.heatUncertaintyMeanW === null
+        ? [t("houseLearning.chart.qualityLegacyUnknown")]
+        : [
+          t("houseLearning.chart.qualityHeatCoverage", { value: percent(quality.heatCoverageBp) }),
+          t("houseLearning.chart.qualityTemperatureCoverage", { value: percent(quality.temperatureCoverageBp) }),
+          t("houseLearning.chart.qualityUncertainty", { value: quality.heatUncertaintyMeanW === "overflow"
+            ? t("houseLearning.chart.qualityOverflow") : quality.heatUncertaintyMeanW === null
+              ? "—" : `≤ ${format(Math.ceil(quality.heatUncertaintyMeanW * 24 / 10) / 100, 2)} kWh` }),
+        ]),
+      t("houseLearning.chart.qualityWeight", { value: percent(quality.fitWeightBp) }),
+      !quality.fitEligible || quality.fitWeightBp === 0 ? t("houseLearning.chart.qualityNotEligible") : "",
+    ];
   return [
     formatRecordDate(record.startEpoch),
     t("houseLearning.chart.tooltipDuration", { duration: formatDuration(record.endEpoch - record.startEpoch) }),
@@ -78,6 +121,7 @@ function chartTooltip(record) {
     t("houseLearning.chart.tooltipOutside", { value: format(record.meanOutsideC ?? record.outsideC) }),
     record.referenceRoomC != null ? t("houseLearning.chart.tooltipEffectiveOutside", { temperature: format(record.referenceRoomC), value: format(record.outsideC) }) : "",
     t("houseLearning.chart.tooltipHeat", { value: format(record.heatW, 0) }),
+    ...qualityLines,
   ].filter(Boolean).join("\n");
 }
 
@@ -85,9 +129,11 @@ export function renderHouseLearningChart(records, configured, learned) {
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH);
   const dailyFit = records.some((record) => record.referenceRoomC != null) || finite(learned?.referenceRoomC) != null;
-  const readiness = dailyFit ? renderHouseLearningReadiness(records, learned) : "";
+  const usableRecords = records.filter(usableForChartModel);
+  const hasQuality = records.some(record => record.quality !== undefined);
+  const readiness = dailyFit ? renderHouseLearningReadiness(usableRecords, learned) : "";
   if (!records.length && !model.configuredValid && !model.learnedValid) return `${readiness}<div class="oq-house-learning-chart-empty"><strong>${escapeHtml(t("houseLearning.chart.emptyTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.emptyCopy"))}</span></div>`;
-  const fitRecords = dailyFit ? records.filter((record) => record.recordKind === 1) : records;
+  const fitRecords = dailyFit ? usableRecords.filter((record) => record.recordKind === 1) : usableRecords;
   const measuredMin = fitRecords.length ? Math.min(...fitRecords.map((record) => record.outsideC)) : null;
   const measuredMax = fitRecords.length ? Math.max(...fitRecords.map((record) => record.outsideC)) : null;
   const yGrid = Array.from({ length: Math.round((model.axisMaxY - model.axisMinY) / model.yStep) + 1 }, (_, index) => model.axisMinY + index * model.yStep);
@@ -111,7 +157,8 @@ export function renderHouseLearningChart(records, configured, learned) {
       ? t("houseLearning.chart.referenceRoom", { temperature: format(finite(learned?.referenceRoomC) ?? 20) }) : "",
     legacyRecords.length ? t("houseLearning.chart.legacyRecords", { count: formatNumber(legacyRecords.length) }) : "",
     model.configuredValid ? t("houseLearning.chart.configuredLineNote") : "",
-    !fitRecords.length
+    hasQuality && records.length && !fitRecords.length
+      ? t("houseLearning.chart.qualityNoEligible") : !fitRecords.length
       ? t(model.learnedValid ? "houseLearning.chart.noPeriodsWithExtrapolation" : "houseLearning.chart.noPeriods")
       : t(dailyFit
         ? fitRecords.length === 1 ? "houseLearning.chart.dailyPeriodCountOne" : "houseLearning.chart.dailyPeriodCountMany"
@@ -120,6 +167,9 @@ export function renderHouseLearningChart(records, configured, learned) {
     !model.configuredValid ? t("houseLearning.chart.configuredLineIncomplete") : "",
     !model.learnedValid ? dailyFit ? "" : t("houseLearning.chart.noBatchEstimate") : !model.ready ? t("houseLearning.chart.provisionalLine") : "",
   ].filter(Boolean);
+  const summary = hasQuality
+    ? t("houseLearning.chart.qualitySummary", { retained: formatNumber(records.length), eligible: formatNumber(fitRecords.length) })
+    : t(dailyFit ? "houseLearning.chart.compactDailySummary" : "houseLearning.chart.compactSummary", { count: formatNumber(fitRecords.length), temperature: format(finite(learned?.referenceRoomC) ?? 20) });
   return `${readiness}
     <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${model.learnedValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}</div>
     <div class="oq-house-learning-chart-wrap">
@@ -136,7 +186,7 @@ export function renderHouseLearningChart(records, configured, learned) {
       <div class="oq-house-learning-chart-tooltip" aria-hidden="true"></div>
     </div>
 
-    <div class="oq-house-learning-chart-footer"><span>${escapeHtml(t(dailyFit ? "houseLearning.chart.compactDailySummary" : "houseLearning.chart.compactSummary", { count: formatNumber(fitRecords.length), temperature: format(finite(learned?.referenceRoomC) ?? 20) }))}</span>${renderSettingsInfoToggle("house-learning-chart", t("houseLearning.chart.panelTitle"), notes.join("\n\n"))}</div>
+    <div class="oq-house-learning-chart-footer"><span>${escapeHtml(summary)}</span>${renderSettingsInfoToggle("house-learning-chart", t("houseLearning.chart.panelTitle"), notes.join("\n\n"))}</div>
   `;
 }
 

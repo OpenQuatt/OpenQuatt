@@ -19,12 +19,20 @@ struct QualityConfig {
   float setpoint_max_c = 35.0f;
   float water_min_c = -10.0f;
   float water_max_c = 95.0f;
+  // Historical structural ceiling. Lower live limits must not invalidate stored
+  // records, RLS history, checkpoint endpoints or previously accrued uncertainty.
   float max_abs_heat_w = 50000.0f;
   float max_setpoint_range_c = 0.05f;
   float max_abs_room_trend_k_per_h = 0.05f;  // Legacy four-hour records.
   float max_daily_room_trend_k_per_h = 0.20f;
   float max_room_range_c = 0.30f;
   float max_abs_water_endpoint_delta_c = 1.0f;
+  // Daily gap policy only. Zero retains the broad measurement-validation bound.
+  // Never use this envelope to reject or clamp otherwise valid measured heat.
+  float max_daily_missing_heat_w = 0.0f;
+  // Live observations only; the production adapter always binds this to the
+  // configured reference plus margin. Zero keeps pure/legacy callers compatible.
+  float max_observed_heat_w = 0.0f;
 };
 
 inline bool valid_quality_config(const QualityConfig& config) {
@@ -45,10 +53,36 @@ inline bool valid_quality_config(const QualityConfig& config) {
          config.max_daily_room_trend_k_per_h <= 2.0f && isfinite(config.max_room_range_c) &&
          config.max_room_range_c >= 0.0f && config.max_room_range_c <= 5.0f &&
          isfinite(config.max_abs_water_endpoint_delta_c) && config.max_abs_water_endpoint_delta_c >= 0.0f &&
-         config.max_abs_water_endpoint_delta_c <= 20.0f;
+         config.max_abs_water_endpoint_delta_c <= 20.0f && isfinite(config.max_daily_missing_heat_w) &&
+         (config.max_daily_missing_heat_w == 0.0f || config.max_daily_missing_heat_w >= 1000.0f) &&
+         config.max_daily_missing_heat_w <= config.max_abs_heat_w && isfinite(config.max_observed_heat_w) &&
+         (config.max_observed_heat_w == 0.0f || config.max_observed_heat_w >= 1000.0f) &&
+         config.max_observed_heat_w <= config.max_abs_heat_w &&
+         (config.max_observed_heat_w == 0.0f || config.max_daily_missing_heat_w <= config.max_observed_heat_w);
 }
 
-inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const QualityConfig& config) {
+inline float configured_measurement_heat_limit_w(const QualityConfig& config) {
+  return config.max_observed_heat_w > 0.0f ? config.max_observed_heat_w : config.max_abs_heat_w;
+}
+
+inline float configured_daily_missing_heat_bound_w(const QualityConfig& config) {
+  return config.max_daily_missing_heat_w > 0.0f ? config.max_daily_missing_heat_w : config.max_abs_heat_w;
+}
+
+// Real endpoint evidence can exceed the reference envelope, e.g. during signed
+// defrost or a thermal transition. Enlarge the conditional bound; never hide the
+// observation or reduce already accrued debt. Unobserved heat remains an assumption.
+inline double daily_missing_heat_bound_w(const QualityConfig& config, float first_heat_w, float last_heat_w,
+                                         float observed_abs_heat_w = 0.0f) {
+  if (!valid_quality_config(config) || !isfinite(first_heat_w) || !isfinite(last_heat_w) ||
+      fabsf(first_heat_w) > config.max_abs_heat_w || fabsf(last_heat_w) > config.max_abs_heat_w ||
+      !isfinite(observed_abs_heat_w) || observed_abs_heat_w < 0.0f || observed_abs_heat_w > config.max_abs_heat_w)
+    return NAN;
+  return fmax(fmax(configured_daily_missing_heat_bound_w(config), observed_abs_heat_w),
+              fmax(fabs(first_heat_w), fabs(last_heat_w)));
+}
+
+inline LearningStatus validate_snapshot_structure(const LearningSnapshot& snapshot, const QualityConfig& config) {
   if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
   if (snapshot.monotonic_ms == 0 || snapshot.epoch_s == 0 || snapshot.context_revision == 0 ||
       snapshot.invalid_reasons != INVALID_NONE)
@@ -61,6 +95,15 @@ inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const 
       snapshot.mean_water_c > config.water_max_c || fabsf(snapshot.heat_to_water_w) > config.max_abs_heat_w)
     return LearningStatus::INVALID_MEASUREMENT;
   return LearningStatus::OK;
+}
+
+inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const QualityConfig& config) {
+  if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
+  const auto structural = validate_snapshot_structure(snapshot, config);
+  if (structural != LearningStatus::OK) return structural;
+  return fabsf(snapshot.heat_to_water_w) <= configured_measurement_heat_limit_w(config)
+             ? LearningStatus::OK
+             : LearningStatus::INVALID_MEASUREMENT;
 }
 
 inline LearningStatus evaluate_segment_quality(const SegmentRecord& record, const QualityConfig& config) {
@@ -91,7 +134,7 @@ inline LearningStatus evaluate_segment_quality(const SegmentRecord& record, cons
 
 // Legacy records remain readable. New records cover exactly 24 hours, including
 // UTC midnight, and the fit assigns each record to its start day.
-inline LearningStatus validate_segment_record(const SegmentRecord& record, const QualityConfig& config) {
+inline LearningStatus validate_segment_record_structure(const SegmentRecord& record, const QualityConfig& config) {
   if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
   const bool daily = is_daily_record(record);
   const uint32_t legacy_duration_s = static_cast<uint32_t>(kLegacySegmentDurationMs / 1000ULL);
@@ -127,7 +170,16 @@ inline LearningStatus validate_segment_record(const SegmentRecord& record, const
              record.water_end_c > config.water_max_c) {
     return LearningStatus::INVALID_MEASUREMENT;
   }
-  return evaluate_segment_quality(record, config);
+  if (!isfinite(record.room_trend_k_per_h) || !valid_daily_record_quality_codes(record.daily_quality))
+    return LearningStatus::INVALID_MEASUREMENT;
+  return LearningStatus::OK;
+}
+
+// Legacy call sites that explicitly ask for model quality keep their contract.
+// Retention/journal paths use structural validity instead.
+inline LearningStatus validate_segment_record(const SegmentRecord& record, const QualityConfig& config) {
+  const auto structural = validate_segment_record_structure(record, config);
+  return structural == LearningStatus::OK ? evaluate_segment_quality(record, config) : structural;
 }
 
 }  // namespace oq_power_house::learning
