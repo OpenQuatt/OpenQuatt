@@ -1,6 +1,5 @@
 import { hasEntity } from "../core/app-shared.js";
 import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
-import { isCurveMode } from "../core/domain-helpers.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
@@ -109,8 +108,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
 }
 
 export function shouldRefreshHouseLearningStatusSurface() {
-  return !document.hidden && state.appView === "settings" && state.settingsGroup === "heating"
-    && !isCurveMode() && hasEntity("houseLearningEnabled");
+  return !document.hidden && !state.nativeOpen && state.appView === "learning" && hasEntity("houseLearningEnabled");
 }
 
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
@@ -214,11 +212,12 @@ export async function refreshHouseLearningStatus(options = {}) {
   state.houseLearningFetchPromise = (async () => {
     let probeCompleted = false;
     try {
-      const response = await fetchWithTimeout(
+      const { response, payload } = await fetchWithTimeout(
         getHouseLearningStatusEndpoint(),
         { cache: "no-store", headers: { "Cache-Control": "no-store" } },
         8000,
         "house-learning-status-timeout",
+        async (response) => ({ response, payload: response.ok ? await response.json() : null }),
       );
       if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
       if (response.status === 404) {
@@ -226,10 +225,13 @@ export async function refreshHouseLearningStatus(options = {}) {
         state.houseLearningStatus = null;
         state.houseLearningStatusError = "";
       } else {
-        state.houseLearningEndpointAvailable = true;
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const status = normalizeHouseLearningStatus(await response.json());
+        if (!response.ok) {
+          state.houseLearningEndpointAvailable = true;
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const status = normalizeHouseLearningStatus(payload);
         if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
+        state.houseLearningEndpointAvailable = true;
         state.houseLearningStatus = status;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
@@ -250,14 +252,16 @@ export async function refreshHouseLearningStatus(options = {}) {
       probeCompleted = true;
     } finally {
       if (requestGeneration === state.houseLearningRequestId) {
-        if (probeCompleted) state.houseLearningEndpointChecked = true;
+        if (probeCompleted) {
+          state.houseLearningEndpointChecked = true;
+          state.houseLearningLastFetchAt = Date.now();
+        }
         state.houseLearningEndpointChecking = false;
-        state.houseLearningLastFetchAt = Date.now();
       }
     }
     const changed = before !== JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
     // The initial probe must replace its loading panel immediately. Later status
-    // polls retain the settings partial-patch path while the panel is present.
+    // polls retain the partial-patch path while the panel is present.
     if (changed && !state.focusedField && (initialCapabilityCheck || !state.root?.querySelector("[data-oq-house-learning]"))) render();
     return changed;
   })();

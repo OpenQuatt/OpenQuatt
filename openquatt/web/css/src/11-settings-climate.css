@@ -616,3 +616,15 @@
   align-items: flex-start;
   margin-top: 0;
 }
+
+.oq-learning-models {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.oq-learning-models .oq-house-learning-current { min-width: 0; }
+
+@media (max-width: 700px) {
+  .oq-learning-models { grid-template-columns: minmax(0, 1fr); }
+}

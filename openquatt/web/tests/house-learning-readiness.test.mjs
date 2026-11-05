@@ -177,3 +177,14 @@ test("legacykwaliteit behoudt de concrete afwijzing van de controller", () => {
     assert.doesNotMatch(html,/is-complete|✓|Leren: 6|Checking: 3/);
   }
 });
+
+test("bewaarde dagen met onbekende kwaliteit tonen indicatieve balken zonder goedkeuring", () => {
+  setLocale("nl", config);
+  const data = records([4, 6, 8, 10]).map(record => ({ ...record, quality: { valid: true,
+    heatCoverageBp: null, temperatureCoverageBp: null, heatUncertaintyMeanW: null, fitEligible: true, fitWeightBp: 5000 } }));
+  const html = renderHouseLearningReadiness([], {}, data);
+  assert.match(html, /Opgeslagen dagmetingen[\s\S]*4 <span>\/ 9 als minimum/);
+  assert.match(html, /Spreiding van alle opgeslagen dagen[\s\S]*6 °C <span>\/ 6 °C richtwaarde/);
+  assert.doesNotMatch(html, /is-complete|✓/);
+  assert.match(renderHouseLearningReadiness([], {}, data.slice(0, 1)), /— <span>\/ 6 °C richtwaarde/);
+});

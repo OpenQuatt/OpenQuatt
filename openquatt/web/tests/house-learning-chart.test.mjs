@@ -166,7 +166,7 @@ test("recordkwaliteit blijft optioneel, kolomgestuurd en uitgelijnd vóór recor
   assert.equal(JSON.stringify(input), before);
 });
 
-test("bewaarde ongeschikte dagen blijven punten maar vergroten fitbereik en voortgang niet", () => {
+test("bewaarde ongeschikte dagen tellen alleen mee in het overzicht van alle opgeslagen dagmetingen", () => {
   const input = qualityPayload();
   input.records = input.records.map(row => [...row]);
   input.records[0][8] = -9;
@@ -179,7 +179,9 @@ test("bewaarde ongeschikte dagen blijven punten maar vergroten fitbereik en voor
   assert.equal(Number(range[1]), model.x(4));
   assert.equal(Number(range[2]), model.x(11) - model.x(4));
   assert.equal((html.match(/data-oq-house-learning-tip=/g) || []).length, 3);
-  assert.match(html, /<dt>Dagmetingen<\/dt><dd>2 /);
+  assert.match(html, /<dt>Opgeslagen dagmetingen<\/dt><dd>3 /);
+  assert.match(html, /Dagmetingen met bekende meetkwaliteit: 2/);
+  assert.doesNotMatch(html, /is-complete|✓/);
   assert.match(html, /Meetperioden: 3 bewaard · 2 voor modeladvies/);
   assert.match(html, /Bewaard, niet voor modeladvies/);
 });

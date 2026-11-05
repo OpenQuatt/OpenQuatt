@@ -131,7 +131,7 @@ export function renderHouseLearningChart(records, configured, learned) {
   const dailyFit = records.some((record) => record.referenceRoomC != null) || finite(learned?.referenceRoomC) != null;
   const usableRecords = records.filter(usableForChartModel);
   const hasQuality = records.some(record => record.quality !== undefined);
-  const readiness = dailyFit ? renderHouseLearningReadiness(usableRecords, learned) : "";
+  const readiness = dailyFit ? renderHouseLearningReadiness(usableRecords, learned, records) : "";
   if (!records.length && !model.configuredValid && !model.learnedValid) return `${readiness}<div class="oq-house-learning-chart-empty"><strong>${escapeHtml(t("houseLearning.chart.emptyTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.emptyCopy"))}</span></div>`;
   const fitRecords = dailyFit ? usableRecords.filter((record) => record.recordKind === 1) : usableRecords;
   const measuredMin = fitRecords.length ? Math.min(...fitRecords.map((record) => record.outsideC)) : null;

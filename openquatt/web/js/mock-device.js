@@ -226,7 +226,7 @@
       2: { loaded: false, armed: false, busy: false, status: "Ready: load the current compressor frequency table from the ODU", extendedLayout: false },
     },
     houseLearning: {
-      journalStatus: "ready",
+      journalStatus: "saved_verified",
       preview: learningPreview,
       records: 32,
       rlsSamples: 174,
@@ -4229,6 +4229,7 @@
       return;
     }
     if (name === "Power House Passive Learning") {
+      entity.state = enabled ? "ON" : "OFF";
       notifyMockUpdated();
       return;
     }

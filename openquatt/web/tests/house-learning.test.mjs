@@ -25,8 +25,10 @@ const {
   shouldRefreshHouseLearningStatusSurface,
 } = await import("../js/src/features/house-learning.js");
 const { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
-const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
+const { getInitialPrimeKeys, refreshEntities, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
+const { commitSwitch } = await import("../js/src/core/entity-write-actions.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+const { renderLearningView } = await import("../js/src/views/learning.js");
 const { setLocale } = await import("../js/src/i18n/index.js");
 
 function switchEntity(value = false) {
@@ -36,6 +38,7 @@ function switchEntity(value = false) {
 test.afterEach(() => {
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
   document.hidden = false;
+  state.nativeOpen = false;
   state.busyAction = "";
   state.controlError = "";
   state.controlNotice = "";
@@ -255,9 +258,8 @@ test("budgetscope beperkt de limiet tot modeladvies en behoudt oude firmwarecopy
   }
 });
 
-test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm opgehaald", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+test("leerstatus wordt alleen op het zichtbare leerscherm opgehaald", async () => {
+  state.appView = "learning";
   state.entities = { houseLearningEnabled: switchEntity(false) };
   state.houseLearningLastFetchAt = 0;
   state.houseLearningFetchPromise = null;
@@ -273,19 +275,24 @@ test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm op
     fetches += 1;
     return { ok: true, status: 200, json: async () => statusPayload() };
   };
-  assert.equal(shouldRefreshHouseLearningStatusSurface(), false);
+  assert.equal(shouldRefreshHouseLearningStatusSurface(), true);
   assert.equal(await refreshHouseLearningStatus({ force: true }), false);
-  assert.equal(fetches, 0);
+  assert.equal(fetches, 1);
+  state.nativeOpen = true;
+  assert.equal(await refreshHouseLearningStatus({ force: true }), false);
+  state.nativeOpen = false;
+  state.appView = "settings";
+  assert.equal(await refreshHouseLearningStatus({ force: true }), false);
+  assert.equal(fetches, 1);
 
   state.entities.strategy = { value: "Power House" };
   state.appView = "overview";
   assert.equal(await refreshHouseLearningStatus({ force: true }), false);
-  assert.equal(fetches, 0);
+  assert.equal(fetches, 1);
 });
 
-test("directe heating-entry vervangt de eerste capabilitycheck na de statusrespons", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+test("directe learning-entry vervangt de eerste capabilitycheck na de statusrespons", async () => {
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
   let respond;
   globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
@@ -297,9 +304,8 @@ test("directe heating-entry vervangt de eerste capabilitycheck na de statusrespo
   assert.equal(renderHouseLearningSettings(), "");
 });
 
-test("directe heating-entry vervangt de laadstatus ook na een geslaagde respons", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+test("directe learning-entry vervangt de laadstatus ook na een geslaagde respons", async () => {
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
   let rendered = "";
   let renders = 0;
@@ -322,12 +328,11 @@ test("directe heating-entry vervangt de laadstatus ook na een geslaagde respons"
   assert.equal(renders, 2);
   globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => statusPayload({ enabled: true, control_mode: 2, status: "collecting", records: 43 }) });
   assert.equal(await refreshHouseLearningStatus({ force: true }), true);
-  assert.equal(renders, 2, "normale statusupdates bouwen het instellingenscherm niet opnieuw op");
+  assert.equal(renders, 2, "normale statusupdates bouwen het leerscherm niet opnieuw op");
 });
 
 test("een herhaalde 404-probe toont geen laadblok opnieuw", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
   const responses = [];
   globalThis.fetch = () => new Promise((resolve) => responses.push(resolve));
@@ -345,15 +350,14 @@ test("een herhaalde 404-probe toont geen laadblok opnieuw", async () => {
   const retry = refreshHouseLearningStatus({ force: true });
 
   assert.equal(renderHouseLearningSettings(), "");
-  assert.equal(patchHouseLearningSettingsStatus(), true);
-  assert.equal(panel.removed, true);
+  assert.equal(patchHouseLearningSettingsStatus(), false);
+  assert.equal(panel.removed, undefined);
   responses.shift()({ ok: false, status: 404, json: async () => ({}) });
   assert.equal(await retry, false);
 });
 
 test("een late statusrespons na navigatie bevestigt de capability niet", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
   let respond;
   globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
@@ -369,8 +373,7 @@ test("een late statusrespons na navigatie bevestigt de capability niet", async (
 
 test("annuleren verstuurt geen reset en een geweigerde reset blijft als fout zichtbaar", async () => {
   document.hidden = false;
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
   state.busyAction = "";
   state.controlError = "";
@@ -395,8 +398,7 @@ test("annuleren verstuurt geen reset en een geweigerde reset blijft als fout zic
 
 test("reset negeert een oude status en meldt pas succes na leeg, gepauzeerd en gewist journal", async () => {
   document.hidden = false;
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
   state.busyAction = "";
   state.controlError = "";
@@ -439,8 +441,7 @@ test("reset negeert een oude status en meldt pas succes na leeg, gepauzeerd en g
 });
 
 test("reset wist een lopende grafiekexport en laat de laadtoestand niet hangen", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
   let releaseExport;
   let requests = 0;
@@ -486,8 +487,7 @@ test("geaccepteerde maar onbevestigde reset blijft onzeker en wordt niet opnieuw
 
 test("endpointfouten blijven zichtbaar en een late JSON-body wordt genegeerd", async () => {
   document.hidden = false;
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { houseLearningEnabled: switchEntity(false) };
   state.houseLearningEndpointAvailable = false;
   state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true, advice_ready: true }));
@@ -704,7 +704,10 @@ test("bronroutes en leerwaterwaarden gebruiken bestaande entities", () => {
   assert.match(markup, /HP1 en HP2/);
   assert.match(markup, /0 bij stilstand/);
   assert.match(markup, /0 meetperioden afgerond/);
-  for (const key of ["hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut"]) assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes(key));
+  state.appView = "learning";
+  for (const key of ["hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut", "houseLearningEnabled", "houseLearningReset", "housePower"]) {
+    assert.ok(getInitialPrimeKeys().includes(key), key);
+  }
 });
 
 test("gepauzeerde en verouderde status claimen geen actuele verzameling of geldige bron", () => {
@@ -771,7 +774,7 @@ test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen
   assert.match(markup, /Passief leren/);
   assert.doesNotMatch(markup, /data-oq-field="houseLearning(?:Hydraulics|Fluid)"/);
   assert.doesNotMatch(markup, /Hydraulische opstelling|Warmtedragende vloeistof/);
-  assert.match(markup, /Geen automatische wijzigingen/);
+  assert.match(renderLearningView(), /Passief leren past je instellingen niet aan/);
   assert.doesNotMatch(markup, /Andere warmtebron|No other heat in CM2|R1-uit is geen bewijs/);
   assert.doesNotMatch(markup, /Meetcontract en grenzen|Calorimetrie gecontroleerd|Onzekerheid warmtevermogen|Maximale meetflow|Temperatuurtolerantie koppelpunt|Grens externe warmtebijdrage/);
   assert.match(markup, /Nog niet beoordeeld/);
@@ -867,7 +870,8 @@ test("de compacte leerschakelaar behoudt de bestaande loading- en schrijfgates",
 });
 
 test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigde polls te renderen", () => {
-  const status = normalizeHouseLearningStatus(statusPayload({ batch_status: "insufficient_spread" }));
+  const status = normalizeHouseLearningStatus(statusPayload({ batch_status: "insufficient_spread", reference_room_c: 20 }));
+  state.houseLearningChart = [];
   assert.equal(status.batchStatus, "insufficient_spread");
   assert.equal(normalizeHouseLearningStatus(statusPayload({ batch_status: undefined })).batchStatus, "unknown");
   state.entities = { houseLearningEnabled: switchEntity(true) };
@@ -1212,4 +1216,138 @@ test("negatief dagpunt blijft beschikbaar na grafiek sluiten en opnieuw laden", 
   assert.equal(requests, 2);
   assert.equal(state.houseLearningChart[0].heatW, -20);
   assert.match(renderHouseLearningSettings(), /Netto warmte: -20 W/);
+});
+
+test("Leren toont twee aparte voortgangsbalken, met de modelstatus los van de meting", () => {
+  const payload = statusPayload({
+    enabled: true, daily_record_count: 4, rls_samples: 10,
+    h_batch: 220, t0_batch: 20, batch_advice_ready: true, journal_status: "saved_verified",
+    u_rls: 220, c_rls_wh_per_k: 8000, rls_ready: true, rls_readiness_reasons: [], capacity_validated: false,
+    collection: { batch_active: true, batch_elapsed_s: 43200, batch_target_s: 86400,
+      thermal_active: true, thermal_elapsed_s: 450, thermal_target_s: 1800 },
+  });
+  const html = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload), "primary");
+  assert.match(html, /12:00:00 \/ 24:00:00[\s\S]*width:50%[\s\S]*Modelstatus · Beoordeeld/);
+  assert.match(html, /7:30 \/ 30:00[\s\S]*width:25%[\s\S]*Modelstatus · Voorlopige schatting/);
+  for (const overrides of [{ enabled: false }, { tick_epoch: 1 }, { tick_epoch: payload.tick_epoch + 3600 }]) {
+    const inactive = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...payload, ...overrides }), "primary");
+    assert.doesNotMatch(inactive, /width:[0-9]|Modelstatus · Beoordeeld/);
+  }
+});
+
+test("Leren biedt een bruikbaar scherm zonder leerendpoint", () => {
+  state.loadingEntities = false;
+  state.entities = {};
+  assert.match(renderLearningView(), /Passief leren is niet beschikbaar/);
+  state.entities = { houseLearningEnabled: switchEntity(false) };
+  assert.match(renderLearningView(), /Laden/);
+  state.houseLearningEndpointChecked = true;
+  assert.match(renderLearningView(), /Passief leren is niet beschikbaar/);
+});
+
+test("leerschakelaar bevestigt de readback en verwerpt oude switch- en statusresponsen", async () => {
+  state.appView = "learning";
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningEndpointChecked = true;
+  let releaseStatus;
+  let releaseSwitch;
+  let releaseDuringWrite;
+  let markReadback;
+  const readback = new Promise(resolve => { markReadback = resolve; });
+  const responses = { status: 0, switch: 0, write: 0 };
+  const ok = payload => ({ ok: true, status: 200, json: async () => payload });
+  const switchPayload = value => ({ entities: { houseLearningEnabled: { value, state: value ? "ON" : "OFF" } }, missing: [] });
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === "/openquatt/learning/status") {
+      if (++responses.status === 1) return new Promise(resolve => { releaseStatus = resolve; });
+      return ok(statusPayload({ enabled: false, records: 43 }));
+    }
+    if (url === "/openquatt/entities") {
+      if (++responses.switch === 1) return new Promise(resolve => { releaseSwitch = resolve; });
+      if (responses.switch === 3) return new Promise(resolve => { releaseDuringWrite = resolve; });
+      markReadback();
+      return ok(switchPayload(false));
+    }
+    assert.equal(url, "/switch/Power%20House%20Passive%20Learning/turn_off");
+    assert.equal(options.method, "POST");
+    responses.write += 1;
+    return ok({});
+  };
+  const oldStatus = refreshHouseLearningStatus({ force: true });
+  const oldSwitch = refreshEntities(["houseLearningEnabled"], "all");
+  const write = commitSwitch("houseLearningEnabled", false);
+  await readback;
+  const duringWrite = refreshEntities(["houseLearningEnabled"], "all");
+  assert.equal(state.controlNotice, "");
+  releaseStatus(ok(statusPayload({ enabled: true, records: 99 })));
+  assert.equal(await oldStatus, false);
+  await write;
+  releaseSwitch(ok(switchPayload(true)));
+  await oldSwitch;
+  releaseDuringWrite(ok(switchPayload(true)));
+  await duringWrite;
+  assert.deepEqual(responses, { status: 2, switch: 3, write: 1 });
+  assert.equal(state.entities.houseLearningEnabled.value, false);
+  assert.equal(state.houseLearningStatus.records, 43);
+  assert.match(state.controlNotice, /uitgeschakeld/);
+});
+
+test("een geaccepteerde leerschakelaar zonder geldige verse readback meldt geen succes", async () => {
+  state.appView = "learning";
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningEndpointChecked = true;
+  const cases = [
+    { entities: { houseLearningEnabled: { value: true, state: "ON" } }, missing: [] },
+    { entities: { houseLearningEnabled: { value: null, state: "unknown" } }, missing: [] },
+    { entities: { houseLearningEnabled: { value: false, state: "ON" } }, missing: [] },
+    { entities: {}, missing: ["houseLearningEnabled"] },
+    { entities: { houseLearningEnabled: { value: false, state: "OFF" } }, missing: ["houseLearningEnabled"] },
+  ];
+  for (const payload of cases) {
+    state.entities = { houseLearningEnabled: switchEntity(true) };
+    globalThis.fetch = async (url) => ({
+      ok: true, status: 200,
+      json: async () => url === "/openquatt/entities" ? payload : statusPayload({ enabled: true }),
+    });
+    await commitSwitch("houseLearningEnabled", false);
+    assert.equal(state.entities.houseLearningEnabled.value, true);
+    assert.equal(state.controlNotice, "");
+    assert.match(state.controlError, /nieuwe leerstand nog niet bevestigd/);
+  }
+});
+
+test("een stilvallende readback- of statusbody houdt de leerbediening niet geblokkeerd", async () => {
+  const originalTimeout = window.setTimeout;
+  window.setTimeout = (callback) => setTimeout(callback, 5);
+  try {
+    for (const stallEndpoint of ["/openquatt/entities", "/openquatt/learning/status"]) {
+      state.appView = "learning";
+      state.houseLearningEndpointAvailable = true;
+      state.houseLearningEndpointChecked = true;
+      state.entities = { houseLearningEnabled: switchEntity(true) };
+      globalThis.fetch = async (url, { signal } = {}) => ({
+        ok: true, status: 200,
+        json: async () => {
+          if (url === stallEndpoint) {
+            return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+          }
+          return url === "/openquatt/entities"
+            ? { entities: { houseLearningEnabled: { value: false, state: "OFF" } }, missing: [] }
+            : statusPayload({ enabled: false });
+        },
+      });
+      await commitSwitch("houseLearningEnabled", false);
+      assert.equal(state.busyAction, "");
+      if (stallEndpoint === "/openquatt/entities") {
+        assert.equal(state.controlNotice, "");
+        assert.match(state.controlError, /nog niet bevestigd/);
+      } else {
+        assert.match(state.controlNotice, /uitgeschakeld/);
+        assert.match(renderLearningView(), /Leerstatus kon niet worden opgehaald\. leerstatus-time-out/);
+      }
+    }
+  } finally {
+    window.setTimeout = originalTimeout;
+  }
 });

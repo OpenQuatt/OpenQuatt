@@ -27,3 +27,7 @@ export function patchControlReplayDom() {
 export function patchDiagnosisDom() {
   return viewPatchControls.patchDiagnosisDom ? viewPatchControls.patchDiagnosisDom() : false;
 }
+
+export function patchLearningDom() {
+  return viewPatchControls.patchLearningDom ? viewPatchControls.patchLearningDom() : false;
+}
