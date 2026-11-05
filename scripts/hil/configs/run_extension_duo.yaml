@@ -56,6 +56,7 @@ binary_sensor:
           id(oq_incident_manager).get_outputs(2U), id(hp2_last_applied_level));
       candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
           now, id(hp2_last_stop_ms), 1000UL * ${oq_hp_min_off_s}, id(hp2_last_applied_level));
+      // mandatory comment...
       const auto frequency = oq_frequency_runtime::capture();
       const auto model = oq_water_performance::capture(frequency, id(oq_system_supply_temp).state,
           id(hp1_4_way_valve).state || id(hp2_4_way_valve).state || id(hp1_defrost).state || id(hp2_defrost).state);

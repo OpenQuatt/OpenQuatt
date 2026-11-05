@@ -22,7 +22,7 @@ DispatchInput input(bool duo = false) { return {60000, 3, 3000.0f, duo, true, tr
 DispatchTuning tuning() { return {9000.0f, 10000.0f, 5.0f, 150.0f, 450.0f, 6, 1}; }
 void test_cold_weather_request_reaches_dispatch_and_deficit() {
   const oq_power_house::DemandInput demand_input{60000U, -15, -10, 16, 7020, 20, 20, NAN, 1, false};
-  const oq_power_house::DemandTuning demand_tuning{0.5f, 3000, 0.1f, 0.3f, 10, 5, 20};
+  const oq_power_house::DemandTuning demand_tuning{0.5f, 3000, 0.1f, 0.3f, NAN, 10, 5, 20};
   const auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, {});
   for (bool duo : {false, true}) {
     auto in = input(duo);

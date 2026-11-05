@@ -1011,7 +1011,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     } else if (!duoActive
       && heatPumpPanels.some((panel) => getEntityStateText(panel.keys.mode, "") === "Heating")
       && getControlWorkingBlockingNumber("strategyActiveCode") === 3
-      && getControlWorkingBlockingFlag("phRunExtension") === true
       && getEntityStateText("phRunExtensionStatus", "").trim().toLowerCase() === "extending") {
       title = t("runExtension.extending");
       copy = t("controlReplay.curRunExtensionCopy");

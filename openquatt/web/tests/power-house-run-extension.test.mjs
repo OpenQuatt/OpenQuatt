@@ -52,7 +52,6 @@ test("firmware's earlier stop is shown in both locales without changing a settin
   resetSettingsState({
     roomSetpoint: numberEntity(19.5, "°C"),
     phComfortBelow: numberEntity(0.1, "°C"),
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.4, "°C"),
     phRunExtensionRestartCooldown: numberEntity(0.2, "°C"),
     phRunExtensionStatus: { value: "wait_warm_restart", state: "wait_warm_restart" },
@@ -74,10 +73,7 @@ test("firmware's earlier stop is shown in both locales without changing a settin
     assert.equal(getRunExtensionThresholds(false).stop, 19.5);
     assert.equal(state.entities.phRunExtensionStopMargin.value, 0.4);
     delete state.inputDrafts.phRunExtensionStopMargin;
-    state.entities.phRunExtension.value = false;
-    assert.equal(getRunExtensionThresholds().minimumLimited, false);
-    assert.equal(getRunExtensionThresholds().stop, 19.9);
-    state.entities.phRunExtension.value = true;
+    assert.equal(getRunExtensionThresholds().minimumLimited, true);
     state.entities.phRunExtensionStatus = { value: "inactive", state: "inactive" };
     assert.equal(getRunExtensionThresholds().minimumLimited, false);
   } finally {
@@ -87,7 +83,6 @@ test("firmware's earlier stop is shown in both locales without changing a settin
 
 test("run-extension copy and temperatures follow locale changes without changing thresholds", () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.5, "°C"),
     roomSetpoint: numberEntity(20.5, "°C"),
     phRunExtensionStatus: { value: "extending", state: "extending" },
@@ -108,10 +103,6 @@ test("run-extension copy and temperatures follow locale changes without changing
   assert.match(renderPowerHouseRunExtensionField(), /Doorverwarmen op minimumvermogen/);
 });
 
-function switchEntity(enabled) {
-  return { value: enabled, state: enabled };
-}
-
 function resetSettingsState(entities = {}) {
   state.entities = entities;
   state.drafts = {};
@@ -125,22 +116,22 @@ function resetSettingsState(entities = {}) {
   state.pendingControlModeOverride = "";
 }
 
-test("oude firmware zonder run-extension entities verbergt de card", () => {
+test("oude firmware zonder run-extension entities toont de card", () => {
   resetSettingsState({});
-  assert.equal(renderPowerHouseRunExtensionField(), "");
-});
-
-test("switch aanwezig toont de card, OFF verbergt stop-margin", () => {
-  resetSettingsState({ phRunExtension: switchEntity(false) });
   const markup = renderPowerHouseRunExtensionField();
   assert.match(markup, /Langer doorverwarmen/);
-  assert.match(markup, /Een stilstaande warmtepomp wordt door deze schakelaar niet gestart/);
-  assert.doesNotMatch(markup, /Stopgrens boven gewenste temperatuur/);
 });
 
-test("ON toont stop-margin en afgeleide stop/herstart", () => {
+test("run-extension card toont altijd de stopmarge zonder schakelaar", () => {
+  resetSettingsState({ phRunExtensionStopMargin: numberEntity(0.5, "°C") });
+  const markup = renderPowerHouseRunExtensionField();
+  assert.match(markup, /Langer doorverwarmen/);
+  assert.match(markup, /Stopgrens boven gewenste temperatuur/);
+  assert.doesNotMatch(markup, /data-oq-field="phRunExtension"/);
+});
+
+test("toont stop-margin en afgeleide stop/herstart", () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.5, "°C"),
     roomSetpoint: numberEntity(20.5, "°C"),
     phRunExtensionStatus: { value: "inactive", state: "inactive" },
@@ -166,7 +157,6 @@ test("setpoint 20.5 + margin 0.5 geeft stop 21.0 en herstart 20.8", () => {
 
 test("zonder setpoint geen verzonnen absolute waarde", () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.5, "°C"),
   });
   const markup = renderPowerHouseRunExtensionField();
@@ -183,7 +173,6 @@ test("status extending en wait_warm_restart geven juiste tekst", () => {
 
 test("herstart onder setpoint toont een negatieve relatieve marge", () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.1, "°C"),
   });
   assert.match(renderPowerHouseRunExtensionField(), /setpoint − 0,1 °C/);
@@ -191,7 +180,6 @@ test("herstart onder setpoint toont een negatieve relatieve marge", () => {
 
 test("configureerbare herstart toont de effectieve koude comfortgrens met voorbeelden", () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.7, "°C"),
     phRunExtensionRestartCooldown: numberEntity(1.2, "°C"),
     phComfortBelow: numberEntity(0.2, "°C"),
@@ -232,7 +220,6 @@ test("default, setpoint-herstart en halve comfortstappen volgen dezelfde bereken
 
 test("nieuwe firmware toont geen verzonnen herstart bij ontbrekende instellingen", () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionRestartCooldown: numberEntity(0.2),
     phRunExtensionStopMargin: numberEntity(0.5),
     roomSetpoint: numberEntity(21),
@@ -259,7 +246,6 @@ test("oude firmware gebruikt haar vaste afstand zonder nieuwe koude-grensbegrenz
 
 test("input en live patches houden herstartvoorvertoning actueel zonder de invoer te vervangen", async () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.7),
     phRunExtensionRestartCooldown: numberEntity(0.2),
     phComfortBelow: numberEntity(0.2),
@@ -303,7 +289,6 @@ test("comfortbediening scheidt dagelijkse keuzes en behouden geavanceerde afstel
     phComfortAbove: numberEntity(0.3),
     phKp: numberEntity(3000),
     phResponseProfile: { value: "Balanced", state: "Balanced", option: ["Calm", "Balanced", "Responsive", "Custom"] },
-    phRunExtension: switchEntity(false),
   });
   const before = structuredClone(state.entities);
   const markup = renderPowerHouseAdvancedField();
@@ -335,7 +320,6 @@ test("voorvertoning verandert bevestigde grenzen en actuele aanvraag niet", () =
   resetSettingsState({
     roomSetpoint: numberEntity(21),
     phComfortBelow: numberEntity(0.2),
-    phRunExtension: switchEntity(true),
     phRunExtensionStopMargin: numberEntity(0.7),
     phRunExtensionRestartCooldown: numberEntity(0.7),
     phRunExtensionStatus: { value: "warm_restart", state: "warm_restart" },
@@ -358,8 +342,8 @@ test("voorvertoning verandert bevestigde grenzen en actuele aanvraag niet", () =
   assert.doesNotMatch(markup, /Voorbeeld van je wijziging|Huidige instellingen:/);
 });
 
-test("afkoelmarge geeft ook zonder doorverwarmen een actuele koude-grensvoorvertoning", () => {
-  resetSettingsState({ roomSetpoint: numberEntity(21), phComfortBelow: numberEntity(0.15), phRunExtension: switchEntity(false) });
+test("afkoelmarge geeft een actuele koude-grensvoorvertoning", () => {
+  resetSettingsState({ roomSetpoint: numberEntity(21), phComfortBelow: numberEntity(0.15) });
   assert.match(renderPowerHouseComfortThresholds(), /20,85 °C/);
   const comfort = { innerHTML: "" };
   const previousRoot = state.root;
@@ -378,8 +362,8 @@ test("afkoelmarge geeft ook zonder doorverwarmen een actuele koude-grensvoorvert
   } finally { state.root = previousRoot; }
 });
 
-test("bovenmarge toont afremmen zonder doorverwarmen en bewaart bevestigde waarde tijdens invoer", () => {
-  resetSettingsState({ roomSetpoint: numberEntity(20), phComfortBelow: numberEntity(0.2), phComfortAbove: numberEntity(0.3), phRunExtension: switchEntity(false) });
+test("bovenmarge toont afremmen en bewaart bevestigde waarde tijdens invoer", () => {
+  resetSettingsState({ roomSetpoint: numberEntity(20), phComfortBelow: numberEntity(0.2), phComfortAbove: numberEntity(0.3) });
   assert.match(renderPowerHouseComfortThresholds(), /Warmte terugnemen boven/);
   assert.match(renderPowerHouseComfortThresholds(), /20,3 °C/);
   assert.doesNotMatch(renderPowerHouseRunExtensionField(), /data-oq-field="phRunExtensionStopMargin"/);
@@ -406,7 +390,6 @@ test("bovenmarge toont afremmen zonder doorverwarmen en bewaart bevestigde waard
 
 test("live status blijft actueel tijdens invoer zonder de voorvertoning te bevestigen", () => {
   resetSettingsState({
-    phRunExtension: switchEntity(true),
     phRunExtensionStatus: { value: "extending", state: "extending" },
     roomSetpoint: numberEntity(21),
     phComfortBelow: numberEntity(0.2),

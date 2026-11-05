@@ -61,7 +61,7 @@ De recorder gebruikt een ringbuffer van 2 MiB in PSRAM en neemt elke 10 seconden
 
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
 
-Bij **Langer doorverwarmen** bevat de opname de aan/uitstand, de stopgrens boven de gewenste temperatuur en de afkoeling voor een warme herstart. Deze instellingen staan samen met gekozen temperatuurbronnen en compressorbegrenzingen in een configuratiesnapshot. Het bestand bewaart de startsituatie en wijzigingen die bij volgende samples worden waargenomen; de sampleperiode is 10 seconden.
+Bij **Langer doorverwarmen** bevat de opname de stopgrens boven de gewenste temperatuur en de afkoeling voor een warme herstart. Deze instellingen staan samen met gekozen temperatuurbronnen en compressorbegrenzingen in een configuratiesnapshot. Het bestand bewaart de startsituatie en wijzigingen die bij volgende samples worden waargenomen; de sampleperiode is 10 seconden.
 
 De cyclusstatus wordt afzonderlijk opgenomen, bijvoorbeeld doorverwarmen, comfortstop of wachten op warme herstart. Ook het basisvermogen, de doorverwarmvloer, de herstelcorrectie en de laatst berekende stop- en herstarttemperatuur worden bewaard. De ingestelde afkoeling is een temperatuurverschil in °C; de effectieve herstartgrens houdt ook rekening met de comfortondergrens. De regelstatus en berekende grenzen beschrijven de laatst gepubliceerde evaluatie en kunnen kort achterlopen op een zojuist gewijzigde instelling.
 

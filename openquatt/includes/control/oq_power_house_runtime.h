@@ -111,11 +111,19 @@ class Runtime {
     // Capture the reference scales once with the manual inputs for this tick.
     // Future line calibration must not change these control scales.
     const auto envelope = oq_power_house::house_envelope_from_legacy(demand_input.rated_w);
+    float memory_max_c =
+        id(ph_memory_max_c).has_state()
+            ? id(ph_memory_max_c).state
+            : oq_power_house::clamp_power(0.05f + 0.50f * id(ph_comfort_band_above_c).state, 0.08f, 0.20f);
+    if (!id(ph_memory_max_c).has_state()) {
+      id(ph_memory_max_c).publish_state(memory_max_c);
+    }
     const oq_power_house::DemandTuning demand_tuning{
         config.temperature_guard_c,
         id(ph_kp_w_per_k).state,
         id(ph_comfort_band_below_c).state,
         id(ph_comfort_band_above_c).state,
+        memory_max_c,
         id(ph_demand_rise_time_min).state,
         id(ph_demand_fall_time_min).state,
         config.demand_max_f,
@@ -380,7 +388,6 @@ class Runtime {
     // Run extension follows the real comfort goal, avoiding an artificial
     // stop/warm-restart latch at every intermediate target. Its floor is Pmin.
     const float setpoint_c = id(room_setpoint_selected).state;
-    const bool run_ext_enabled = id(ph_run_extension_enabled).state;
     float stop_margin_c = 0.5f;
     if (id(ph_run_extension_stop_margin_c).has_state() && std::isfinite(id(ph_run_extension_stop_margin_c).state))
       stop_margin_c = std::max(0.1f, std::min(1.0f, id(ph_run_extension_stop_margin_c).state));
@@ -401,7 +408,6 @@ class Runtime {
     const bool run_cycle_active = applied_total > 0 || protection_hold || hp1_valve_defrost || hp2_valve_defrost ||
                                   hp1_oil_return || hp2_oil_return;
     oq_power_house_run_extension::Input run_ext_input;
-    run_ext_input.enabled = run_ext_enabled;
     run_ext_input.cycle_active = run_cycle_active;
     run_ext_input.actual_heating_active = applied_total > 0;
     run_ext_input.inputs_valid = demand.valid && room_inputs_valid;
@@ -411,7 +417,7 @@ class Runtime {
     run_ext_input.base_requested_w = base_requested_w;
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.minimum_viable_level = minimum_viable_level;
-    if (run_ext_enabled && applied_total > 0) {
+    if (applied_total > 0) {
       const auto active_minimum = oq_power_house_dispatch::minimum_active_candidate(dispatch_input, dispatch_tuning);
       run_ext_input.minimum_viable_w = active_minimum.valid ? active_minimum.thermal_w : NAN;
       run_ext_input.minimum_viable_level =
@@ -433,17 +439,15 @@ class Runtime {
       this->last_run_ext_phase_ = run_ext_decision.next.phase;
     }
     this->run_extension_state_ = run_ext_decision.next;
-    this->run_ext_enabled_ = run_ext_enabled;
     this->run_ext_base_w_ = base_requested_w;
     this->run_ext_floor_w_ = run_ext_decision.floor_active ? run_ext_decision.floor_w : 0.0f;
     this->run_ext_comfort_stop_c_ = run_ext_decision.comfort_stop_c;
     this->run_ext_warm_restart_c_ = run_ext_decision.warm_restart_c;
-    // Blocked diagnostic: enabled and armed below Pmin, but water limiter or
-    // missing Pmin prevents the floor from being applied.
-    this->run_ext_blocked_ = run_ext_enabled && room_inputs_valid && heating_allowed &&
-                             this->run_extension_state_.cycle_armed && !std::isfinite(run_ext_input.minimum_viable_w) &&
-                             base_requested_w > 0.0f;
-    if (run_ext_enabled && room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
+    // Blocked diagnostic: armed below Pmin, but water limiter or missing Pmin
+    // prevents the floor from being applied.
+    this->run_ext_blocked_ = room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
+                             !std::isfinite(run_ext_input.minimum_viable_w) && base_requested_w > 0.0f;
+    if (room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
         oq_power_house_run_extension::pmin_valid(run_ext_input.minimum_viable_w) &&
         base_requested_w < run_ext_input.minimum_viable_w &&
         !oq_power_house_run_extension::water_floor_allowed(id(oq_water_temp_limit_factor)) && std::isfinite(room_c) &&
@@ -585,7 +589,6 @@ class Runtime {
     this->fast_floor_w_ = 0.0f;
     this->warmup_request_w_ = NAN;
     this->run_extension_state_ = {};
-    this->run_ext_enabled_ = false;
     this->run_ext_blocked_ = false;
     this->run_ext_base_w_ = 0.0f;
     this->run_ext_effective_w_ = 0.0f;
@@ -611,7 +614,6 @@ class Runtime {
   }
 
   std::string run_extension_status() const {
-    if (!this->run_ext_enabled_) return "inactive";
     if (this->run_ext_blocked_) return "blocked";
     return std::string(oq_power_house_run_extension::phase_name(this->run_extension_state_.phase));
   }
@@ -714,7 +716,6 @@ class Runtime {
   oq_power_house_run_extension::Phase last_run_ext_phase_{oq_power_house_run_extension::Phase::INACTIVE};
   // One-shot boot deadline: strategy resets must not re-arm the grace period.
   oq_power_house::StartupPhase startup_phase_{oq_power_house::StartupPhase::WAITING_INPUTS};
-  bool run_ext_enabled_{false};
   bool run_ext_blocked_{false};
   float run_ext_base_w_{0.0f};
   float run_ext_effective_w_{0.0f};

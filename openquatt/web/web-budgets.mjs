@@ -30,11 +30,13 @@ export const WEB_BUNDLE_BUDGETS = [
     // Keep PRs #897 and #899 compatible in either merge order; relative gzip limits stay unchanged.
     // Daily recovery reasons and conditional gap-budget copy in both locales:
     // +2,378 B raw / +702 B gzip versus dev 5ae3951f (Node 24.14.1).
+    // Power house memory max c (+241 B)
     // Preserve the existing 411 B raw headroom and unchanged relative gzip limits.
+
     // Retained daily quality, server weights and truthful restart help (Node24.14.1):
     // +4,705 B raw / +1,365 B gzip versus dev2575a93d.
     // Preserve444 B raw headroom; all relative gzip limits remain unchanged.
-    raw: 1_401_380,
+    raw: 1_401_621,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
