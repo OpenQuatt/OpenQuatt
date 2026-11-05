@@ -140,10 +140,10 @@ import { renderStatCard } from "./stat-card.js";
     }
   }
 
-  export function renderTempRow(label, key, explicitValue = "", labelMarkup = "") {
+  export function renderTempRow(label, key, explicitValue = "") {
     return `
       <div class="oq-overview-row">
-        <span>${labelMarkup || escapeHtml(label)}</span>
+        <span>${escapeHtml(label)}</span>
         <strong>${escapeHtml(explicitValue || getEntityStateText(key))}</strong>
       </div>
     `;
@@ -878,7 +878,7 @@ import { renderStatCard } from "./stat-card.js";
         copy: t("overview.tempsCoolingCopy"),
         rows: [
           { label: t("overview.tempRoom"), key: "roomTemp" },
-          { label: t("overview.tempRoomSetpoint"), labelMarkup: t("overview.dynamicSetpoint"), key: "roomSetpoint" },
+          { label: t("overview.tempRoomSetpoint"), key: "roomSetpoint" },
           { label: t("overview.tempSupply"), key: "supplyTemp" },
           { label: t("overview.tempCoolingTarget"), key: "coolingSupplyTarget" },
           { label: t("overview.tempSafeFloor"), key: "coolingMinimumSafeSupplyTemp" },
@@ -891,7 +891,7 @@ import { renderStatCard } from "./stat-card.js";
       copy: t("overview.tempsCopy"),
       rows: [
         { label: t("overview.tempRoom"), key: "roomTemp" },
-        { label: t("overview.tempRoomSetpoint"), labelMarkup: t("overview.dynamicSetpoint"), key: "roomSetpoint" },
+        { label: t("overview.tempRoomSetpoint"), key: "roomSetpoint" },
         { label: t("overview.tempSupply"), key: "supplyTemp" },
         ...(returnTempKey ? [{ label: t("overview.tempReturn"), key: returnTempKey }] : []),
         outsideTempKey
@@ -917,7 +917,7 @@ import { renderStatCard } from "./stat-card.js";
       signature: getOverviewTempsRenderSignature(model),
       body: `
         <div class="oq-overview-temps-list">
-          ${model.rows.map((row) => renderTempRow(row.label, row.key, row.value || "", row.labelMarkup || "")).join("")}
+          ${model.rows.map((row) => renderTempRow(row.label, row.key, row.value || "")).join("")}
         </div>
       `,
     });
