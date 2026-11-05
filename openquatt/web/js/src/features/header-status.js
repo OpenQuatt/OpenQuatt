@@ -38,6 +38,7 @@ import { render } from "../core/render-scheduler.js";
       state.appView,
       state.complete ? "complete" : "incomplete",
       state.overviewThemePreference,
+      state.feedbackPosition,
       state.hpVisualMode,
       getEntitySignatureFragment("installationTopology"),
       getEntitySignatureFragment("hardwareProfileText"),
@@ -391,6 +392,13 @@ import { render } from "../core/render-scheduler.js";
             <button class="oq-helper-hub-chip${state.overviewThemePreference === "auto" ? " is-active" : ""}" type="button" data-oq-action="select-overview-theme" data-overview-theme="auto" title="${escapeHtml(t("header.themeAutoHint"))}">${escapeHtml(t("header.themeAuto"))}</button>
             <button class="oq-helper-hub-chip${state.overviewThemePreference === "light" ? " is-active" : ""}" type="button" data-oq-action="select-overview-theme" data-overview-theme="light">${escapeHtml(t("header.themeLight"))}</button>
             <button class="oq-helper-hub-chip${state.overviewThemePreference === "dark" ? " is-active" : ""}" type="button" data-oq-action="select-overview-theme" data-overview-theme="dark">${escapeHtml(t("header.themeDark"))}</button>
+          </div>
+        </div>
+        <div class="oq-helper-hub-block">
+          <p class="oq-helper-hub-kicker">${escapeHtml(t("header.feedbackSection"))}</p>
+          <div class="oq-helper-hub-switches" role="group" aria-label="${escapeHtml(t("header.feedbackLabel"))}">
+            <button class="oq-helper-hub-chip${state.feedbackPosition === "top" ? " is-active" : ""}" type="button" data-oq-action="select-feedback-position" data-feedback-position="top">${escapeHtml(t("header.feedbackTop"))}</button>
+            <button class="oq-helper-hub-chip${state.feedbackPosition === "bottom" ? " is-active" : ""}" type="button" data-oq-action="select-feedback-position" data-feedback-position="bottom">${escapeHtml(t("header.feedbackBottom"))}</button>
           </div>
         </div>
         <div class="oq-helper-hub-block">

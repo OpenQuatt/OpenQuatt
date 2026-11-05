@@ -105,6 +105,7 @@ export const state = {
   overviewThemeMedia: null,
   hpVisualMode: getStoredHpVisualMode(),
   hpLayoutMode: getStoredHpLayoutMode(),
+  feedbackPosition: getStoredFeedbackPosition(),
   ...createHistoryState(getStoredTrendWindowHours()),
   deviceReconnectMode: "",
   deviceReconnectStartedAt: 0,
@@ -223,6 +224,15 @@ export function getStoredHpVisualMode() {
     return window.localStorage.getItem("oq-hp-visual-mode") === "compact" ? "compact" : "schematic";
   } catch (_error) {
     return "schematic";
+  }
+}
+
+
+export function getStoredFeedbackPosition() {
+  try {
+    return window.localStorage.getItem("oq-feedback-position") === "bottom" ? "bottom" : "top";
+  } catch (_error) {
+    return "top";
   }
 }
 

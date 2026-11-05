@@ -8,7 +8,7 @@ globalThis.window = {
   clearTimeout: (...args) => globalThis.clearTimeout(...args),
 };
 
-const { state } = await import("../js/src/core/state.js");
+const { getStoredFeedbackPosition, state } = await import("../js/src/core/state.js");
 const { dismissSettingsFeedback, renderSettingsFeedback, syncSettingsFeedback } = await import("../js/src/features/settings-feedback.js");
 
 const NOTICE = "Minimale koel-aanvoer bijgewerkt.";
@@ -104,4 +104,16 @@ test("the timer waits while a modal is visible", () => {
     mock.timers.reset();
     reset();
   }
+});
+
+test("the toast sits at the top unless the interface menu moves it to the bottom", () => {
+  reset();
+  assert.equal(getStoredFeedbackPosition(), "top");
+  state.controlNotice = NOTICE;
+  state.feedbackPosition = "top";
+  assert.doesNotMatch(renderSettingsFeedback(), /oq-settings-feedback--bottom/);
+  state.feedbackPosition = "bottom";
+  assert.match(renderSettingsFeedback(), /oq-settings-feedback--bottom/);
+  state.feedbackPosition = "top";
+  reset();
 });

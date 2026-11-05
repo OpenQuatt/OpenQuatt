@@ -4,7 +4,7 @@ import { SETTINGS_GROUPS } from "../core/config.js";
 import { syncEntities } from "../core/entity-sync.js";
 import { setAppView } from "../core/navigation.js";
 import { render } from "../core/render-scheduler.js";
-import { setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
+import { setFeedbackPosition, setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
 import { state } from "../core/state.js";
 import { setTrendWindowHours } from "../core/trend-window.js";
 import { setEnergyHistoryPeriodToNow, setEnergyHistoryView, shiftEnergyHistoryPeriod } from "../views/energy.js";
@@ -149,6 +149,10 @@ const viewActionHandlers = {
   },
   "select-overview-theme": (button) => {
     setOverviewTheme(button.dataset.overviewTheme);
+    render();
+  },
+  "select-feedback-position": (button) => {
+    setFeedbackPosition(button.dataset.feedbackPosition);
     render();
   },
   "select-hp-visual": (button) => {

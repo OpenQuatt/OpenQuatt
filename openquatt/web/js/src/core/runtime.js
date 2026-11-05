@@ -70,6 +70,15 @@ import { t } from "../i18n/index.js";
     }
   }
 
+  export function setFeedbackPosition(position) {
+    state.feedbackPosition = position === "bottom" ? "bottom" : "top";
+    try {
+      window.localStorage.setItem("oq-feedback-position", state.feedbackPosition);
+    } catch (_error) {
+      // Ignore storage failures in embedded browsers.
+    }
+  }
+
   export function setHpLayoutMode(mode) {
     state.hpLayoutMode = mode === "focus-hp1" || mode === "focus-hp2" ? mode : "equal";
     try {

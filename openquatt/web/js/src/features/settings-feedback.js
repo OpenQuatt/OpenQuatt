@@ -17,7 +17,7 @@ function getFeedback() {
   return text ? { key: `${error}:${text}`, error, text } : null;
 }
 
-// Feedback floats at the bottom of the screen: visible where the change was made, without shifting the page.
+// Feedback floats over the page (top or bottom, chosen in the interface menu) without shifting it.
 export function renderSettingsFeedback() {
   const feedback = getFeedback();
   if (!feedback || feedback.key === expiredFeedback) {
@@ -25,7 +25,7 @@ export function renderSettingsFeedback() {
   }
   const { error, text } = feedback;
   return `
-    <div class="oq-settings-feedback${error ? " oq-settings-feedback--error" : ""}${feedback.key === presentedFeedback ? " is-settled" : ""}" role="${error ? "alert" : "status"}">
+    <div class="oq-settings-feedback${state.feedbackPosition === "bottom" ? " oq-settings-feedback--bottom" : ""}${error ? " oq-settings-feedback--error" : ""}${feedback.key === presentedFeedback ? " is-settled" : ""}" role="${error ? "alert" : "status"}">
       ${renderOqIcon(error ? "alert-circle" : "check", "oq-settings-feedback-icon")}
       <p>${escapeHtml(text)}</p>
       ${error ? `<button class="oq-settings-feedback-close" type="button" data-oq-action="dismiss-settings-feedback" aria-label="${escapeHtml(t("common.close"))}">×</button>` : ""}

@@ -41,5 +41,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // Heat-pump schematic motion moves from a per-frame JS loop to CSS animations:
   // +408 B CSS raw while the JS bundle shrinks by 1,392 B raw (Node 24.4.1);
   // preserves the existing 80 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 216_892 },
+  // A top or bottom position for settings feedback, chosen in the interface menu: +105 B CSS raw;
+  // preserves the 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 216_997 },
 ];
