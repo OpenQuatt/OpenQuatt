@@ -17,6 +17,7 @@ const {
   clipUtf8,
   formatChangeLogValue,
   getSettingsChangeLogEntries,
+  getSettingsChangeLogExport,
   prepareChangeLogEntry,
   recordSettingsChange,
   refreshSettingsChangeLog,
@@ -131,6 +132,11 @@ test("the log renders newest first, escapes text and reports older firmware", as
   assert.deepEqual(getSettingsChangeLogEntries().map((entry) => entry.seq), [2, 1]);
   const markup = renderSettingsChangeLogSection();
   assert.match(markup, /<table class="oq-settings-change-log-table">/);
+  assert.match(markup, /data-oq-action="export-settings-change-log">/, "export is available with entries");
+  const exported = getSettingsChangeLogExport(new Date("2026-11-05T08:00:00Z"));
+  assert.equal(exported.exported_at, "2026-11-05T08:00:00.000Z");
+  assert.deepEqual(exported.entries.map((entry) => entry.seq), [2, 1]);
+  assert.equal(exported.entries[1].time, new Date(1762329600 * 1000).toISOString());
   assert.match(markup, /&lt;b&gt;Stille modus&lt;\/b&gt;/);
   assert.ok(markup.indexOf("Stille modus") < markup.indexOf("Oud"));
 
@@ -141,6 +147,7 @@ test("the log renders newest first, escapes text and reports older firmware", as
     fetchStub.restore();
   }
   assert.match(renderSettingsChangeLogSection(), /Nog geen wijzigingen vastgelegd\./);
+  assert.match(renderSettingsChangeLogSection(), /data-oq-action="export-settings-change-log" disabled/);
 
   fetchStub = stubFetch(() => jsonResponse(404, {}));
   try {

@@ -12,7 +12,7 @@ import { deferTimeInputRender } from "../core/time-input.js";
 import { clearLegacyMotionVariables, syncMotionAnimations } from "../core/motion.js";
 import { bindHeaderDevControls, syncNativeVisibility } from "../core/runtime.js";
 import { renderDeviceReconnectModal, renderUpdateModal } from "../features/firmware-update.js";
-import { getDeviceVersionLabel, getHeaderRenderSignature, renderControlModeOverrideBanner, renderDevPanel, renderHeaderStatus, renderNativeSurfaceShell, renderSystemModal } from "../features/header-status.js";
+import { getDeviceVersionLabel, getHeaderRenderSignature, renderControlModeOverrideBanner, renderDevPanel, renderHeaderAlert, renderHeaderStatus, renderNativeSurfaceShell, renderSystemModal } from "../features/header-status.js";
 import { getMqttSensorsModalRenderSignature } from "../features/mqtt-actions.js";
 import { updateMqttState } from "../core/feature-state.js";
 import { captureQuickStartScrollState, queueQuickStartScrollRestore, renderQuickStartModal } from "../features/quickstart.js";
@@ -278,6 +278,7 @@ export function renderSettingsView() {
             <div class="oq-helper-brand">
               <div class="oq-helper-logo-lockup">
                 <div data-oq-action="matrix-version-tap" style="display:contents">${LOGO_MARKUP}</div>
+                ${renderHeaderAlert()}
               </div>
               <p class="oq-helper-lead">${escapeHtml(t("shell.lead"))}</p>
             </div>

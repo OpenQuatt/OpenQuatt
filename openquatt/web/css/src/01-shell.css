@@ -112,6 +112,81 @@ body.oq-surface-native {
   gap: 16px;
 }
 
+/* A pill next to the logo keeps installation problems visible on every page and opens installation monitoring. */
+.oq-helper-alert-slot {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.oq-helper-alert-slot:empty {
+  display: none;
+}
+
+.oq-helper-alert {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--oq-helper-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  text-align: left;
+  transition: background 160ms ease;
+}
+
+.oq-helper-alert:hover,
+.oq-helper-alert:focus-visible {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.oq-helper-alert:focus-visible {
+  outline: 2px solid var(--oq-helper-accent);
+  outline-offset: 2px;
+}
+
+.oq-helper-alert--fault {
+  border-color: rgba(234, 88, 12, 0.65);
+  background: rgba(234, 88, 12, 0.1);
+}
+
+.oq-helper-alert--fault:hover,
+.oq-helper-alert--fault:focus-visible {
+  background: rgba(234, 88, 12, 0.18);
+}
+
+.oq-helper-alert-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: #ea580c;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.oq-helper-alert-title {
+  flex: 0 0 auto;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.oq-helper-alert-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--oq-helper-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .oq-helper-logo-mark {
   width: clamp(220px, 24vw, 280px);
   max-width: 100%;

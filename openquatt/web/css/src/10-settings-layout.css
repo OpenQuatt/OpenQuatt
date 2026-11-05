@@ -36,9 +36,10 @@
 
 .oq-settings-section-head-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   min-width: 0;
 }
 
@@ -56,6 +57,8 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-left: auto;
 }
 

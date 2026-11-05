@@ -422,7 +422,7 @@ Zie [Gegevens delen en privacy](privacy.md) voor de keuzes over gegevens delen, 
 
 ### Wijzigingen
 
-Het **Wijzigingslogboek** toont welke instellingen via de web-app zijn aangepast, met tijdstip en de oude en nieuwe waarde. De nieuwste wijziging staat bovenaan. OpenQuatt bewaart de laatste 100 wijzigingen in de flash-partitie `openquatt_data`, zodat ze een herstart of update overleven en vanuit elke browser zichtbaar zijn; oudere wijzigingen vallen automatisch weg. Het tijdstip komt van de klok van de browser waarin je de wijziging maakte.
+Het **Wijzigingslogboek** toont welke instellingen via de web-app zijn aangepast, met tijdstip en de oude en nieuwe waarde. De nieuwste wijziging staat bovenaan. OpenQuatt bewaart de laatste 100 wijzigingen in de flash-partitie `openquatt_data`, zodat ze een herstart of update overleven en vanuit elke browser zichtbaar zijn; oudere wijzigingen vallen automatisch weg. Het tijdstip komt van de klok van de browser waarin je de wijziging maakte. Met **Exporteren (JSON)** download je het logboek als JSON-bestand.
 
 Wijzigingen via Home Assistant, MQTT of de ESPHome-API verschijnen hier niet, en tekstvelden zoals adressen of tokens worden bewust niet gelogd. Lange namen en waarden worden ingekort tot ze in een logregel passen.
 

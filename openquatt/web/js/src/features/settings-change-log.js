@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "../core/browser-utils.js";
+import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
 import { ENTITY_DEFS } from "../core/config.js";
 import { formatValue } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
@@ -133,6 +133,27 @@ export async function recordSettingsChange(label, from, to) {
   return true;
 }
 
+// The export keeps the device fields and adds a readable ISO time per entry.
+export function getSettingsChangeLogExport(now = new Date()) {
+  return {
+    exported_at: now.toISOString(),
+    entries: changeLog.entries.map((entry) => ({
+      seq: entry.seq,
+      at: entry.at,
+      time: entry.at > 0 ? new Date(entry.at * 1000).toISOString() : null,
+      label: entry.label,
+      from: entry.from,
+      to: entry.to,
+    })),
+  };
+}
+
+export function exportSettingsChangeLog(now = new Date()) {
+  if (!changeLog.entries.length) return false;
+  downloadJsonFile(`openquatt-change-log-${now.toISOString().slice(0, 10)}.json`, getSettingsChangeLogExport(now));
+  return true;
+}
+
 function renderChangeLogBody() {
   const entries = changeLog.entries;
   if (!entries.length) {
@@ -185,6 +206,6 @@ export function renderSettingsChangeLogSection() {
     renderChangeLogBody(),
     "",
     "oq-settings-change-log",
-    `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="refresh-settings-change-log"${changeLog.status === "loading" ? " disabled" : ""}>${escapeHtml(t("settingsChangeLog.refresh"))}</button>`,
+    `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="export-settings-change-log"${changeLog.entries.length ? "" : " disabled"}>${escapeHtml(t("settingsChangeLog.export"))}</button><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="refresh-settings-change-log"${changeLog.status === "loading" ? " disabled" : ""}>${escapeHtml(t("settingsChangeLog.refresh"))}</button>`,
   );
 }

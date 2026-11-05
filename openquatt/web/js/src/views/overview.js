@@ -41,7 +41,7 @@ import { renderStatCard } from "./stat-card.js";
   export function renderOverviewInstallationMonitoringNotice() {
     const monitoring = getInstallationMonitoringModel();
     return `
-      <aside class="oq-overview-monitoring-notice${monitoring.active ? " is-warning" : " is-hidden"}" data-oq-monitoring-notice data-render-signature="${escapeHtml(getRenderSignature(monitoring))}">
+      <aside class="oq-overview-monitoring-notice${monitoring.active ? " is-warning" : " is-hidden"}${monitoring.active && monitoring.severity === "fault" ? " is-fault" : ""}" data-oq-monitoring-notice data-render-signature="${escapeHtml(getRenderSignature(monitoring))}">
         <div>
           <p>${escapeHtml(t("overview.monitoringTitle"))}</p>
           <strong>${escapeHtml(monitoring.title)}</strong>

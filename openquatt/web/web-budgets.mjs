@@ -34,7 +34,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Settings change log (settings group, table, posting entries and copy in both locales):
     // measured raw 1,400,322 B, +4,053 B versus the feedback-position commit (Node 24.4.1); 80 B raw headroom.
     // Undo for plain settings writes in the feedback toast (#783): +1,286 B raw; 80 B raw headroom.
-    raw: 1_401_688,
+    // Change-log JSON export, fault outline on heat-pump panels and a fault pill next to the logo:
+    // +1,832 B raw; 80 B raw headroom.
+    raw: 1_403_520,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -51,5 +53,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // preserves the 80 B raw headroom.
   // Touch-safe sliders and the undo action in the feedback toast (#783): +870 B CSS raw;
   // preserves the 80 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 219_779 },
+  // Fault outline, fault notice tone, header fault pill and wrapping section actions: +1,066 B CSS raw;
+  // preserves the 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 220_845 },
 ];
