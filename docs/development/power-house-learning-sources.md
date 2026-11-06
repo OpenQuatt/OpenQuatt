@@ -50,9 +50,9 @@ vermogensgrens. Het ingestelde ketelvermogen is een regelwaarde en bewijst geen
 maximum voor ongemeten ketelwarmte.
 
 CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
-meetellen. CM98 alleen is geen service- of ketelwarmtesignaal. Het actuele
-service-/OTA-pauzes en broncontroles blijven gelden. Werkelijk gemeten warmte
-tijdens pompbedrijf wordt met teken meegenomen.
+meetellen. Voor pompbedrijf gelden de reguliere broncontroles en pauzes tijdens
+service of OTA. Werkelijk gemeten warmte tijdens pompbedrijf wordt met teken
+meegenomen.
 
 De woninglijn verzamelt volledige perioden van 24 uur. Normale CM0/CM1-pauzes,
 setpointwijzigingen en normale ontdooicycli tellen mee. Geldig nuldebiet levert nul
