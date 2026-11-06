@@ -77,10 +77,11 @@ coördinaten in en zet **Weersverwachting gebruiken** aan. De controller stuurt
 de locatie naar Open-Meteo om de plaats en de KNMI-weersverwachting op te halen.
 Locatie en toestemming blijven lokaal op de controller bewaard en staan buiten
 de instellingenback-up. De controller stopt het ophalen zodra je de functie
-uitzet en bevestigt de keuze na opslag. Meldt het scherm een opslagfout, probeer
-het dan opnieuw vóór een herstart. Bij de eerste upgrade vanaf de eerdere
-weerproef staat de functie uit. Zet haar opnieuw aan als je wilt blijven
-delen met Open-Meteo.
+uitzet en bevestigt de keuze na opslag. Wacht vóór een herstart of firmware-update
+tot **Uit** is bevestigd. Zolang de opslag loopt of als die mislukt, kan na een
+herstart de vorige opgeslagen stand weer gelden. Probeer het opnieuw bij een
+opslagfout. Bij de eerste upgrade vanaf de eerdere weerproef staat de functie
+uit. Zet haar opnieuw aan als je wilt blijven delen met Open-Meteo.
 
 Het scherm toont 36 uur aan buitentemperatuur en wind. Wijs in de grafiek een uur
 aan, gebruik de pijltjestoetsen of open **Bekijk uurwaarden**.
