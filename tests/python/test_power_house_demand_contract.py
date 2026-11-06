@@ -5,6 +5,27 @@ RUNTIME = (ROOT / "openquatt/includes/control/oq_power_house_runtime.h").read_te
 DISPATCH_LOGIC = (ROOT / "openquatt/includes/control/oq_power_house_dispatch_logic.h").read_text()
 RUN_EXTENSION_LOGIC = (ROOT / "openquatt/includes/control/oq_power_house_run_extension_logic.h").read_text()
 class PowerHouseDemandContractTest(unittest.TestCase):
+    def test_watt_request_reaches_dispatch_without_normalized_control(self) -> None:
+        core = (ROOT / "openquatt/includes/control/oq_power_house_demand_logic.h").read_text()
+        for source in (core, RUNTIME, DISPATCH_LOGIC):
+            for marker in ("raw_demand", "capped_demand", "demand_level", "power_capped_request_w"):
+                self.assertNotIn(marker, source)
+        self.assertNotIn("config.demand_max_f", RUNTIME)
+        self.assertNotIn("id(oq_power_cap_f)", RUNTIME)
+        self.assertIn("request_limit_w(demand_input.rated_w)", RUNTIME)
+        self.assertIn("limit_request_w(requested_w, request_limit_w)", RUNTIME)
+        self.assertIn("dispatch_input.requested_w = requested_w;", RUNTIME)
+        self.assertIn("std::isfinite(requested_w) && requested_w > 0.0f", RUNTIME)
+        learning = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
+        self.assertIn("oq_supervisory_power::request_limit_active(", learning)
+
+    def test_defrost_floor_threshold_keeps_the_legacy_strict_boundary(self) -> None:
+        self.assertIn("if (recovery_floor_active || run_ext_decision.floor_active)", RUNTIME)
+        self.assertIn("demand_input.rated_w * config.defrost_comp_floor_min_house_fraction", RUNTIME)
+        self.assertIn("dispatch_tuning.defrost_boost_min_exclusive = true;", RUNTIME)
+        self.assertIn("roundf(${oq_defrost_comp_min_f}) - 1.0f", YAML)
+        self.assertIn("roundf(${oq_defrost_comp_min_f}) - 0.5f", YAML)
+
     def test_demand_delegates_to_runtime(self) -> None:
         yaml = YAML
         text = RUNTIME
@@ -66,8 +87,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertLess(calculate, commit)
         self.assertNotIn("this->demand_state_ = hp_demand.next", text)
         self.assertIn("this->fast_floor_w_ = house_requested_w;", text)
-        self.assertIn("float base_capped_w = house_requested_w;", text)
-        self.assertIn("std::min(house_raw_demand,", text)
+        self.assertIn("limit_request_w(house_requested_w, request_limit_w)", text)
+        self.assertNotIn("house_raw_demand", text)
         self.assertIn("std::isfinite(this->warmup_request_w_) ? NAN : dispatch.deficit_w", text)
         self.assertIn("warming && !demand.external && dispatch_input.performance_valid", text)
         self.assertIn("this->warmup_request_w_ = NAN;", text)

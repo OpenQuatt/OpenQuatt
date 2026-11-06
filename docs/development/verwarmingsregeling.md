@@ -32,12 +32,16 @@ mee bij iedere beslissing.
 
 | Begrip | Betekenis |
 | --- | --- |
-| `oq_strategy_requested_power_w` | Gewenst thermisch vermogen in W bij Power House; geen gemeten afgifte. |
+| `oq_strategy_requested_power_w` | Gewenst thermisch vermogen in W na begrenzing bij Power House. |
 | `oq_strategy_supply_target_temp` | Gewenste aanvoertemperatuur in °C bij stooklijnregeling. |
-| `oq_demand_raw` | Genormaliseerde verwarmingsvraag `0..20`; geen Hz of fysiek ODU-standnummer. |
+| `oq_demand_raw`, `oq_heating_demand_filtered` | Ruwe en gefilterde stooklijnvraag op de schaal `0..20`. |
+| `oq_demand_filtered` | Genormaliseerde vraag van de actieve stooklijn- of koelregeling. |
 | `oq_ph_request_hp1_level`, `oq_curve_dispatch_hp1_level` | Strategie-uitvoer voor de per-HP levelkeuze; HP2 heeft overeenkomstige velden. |
 | `oq_actuator_hp1_req` | Na request guards vrijgegeven actuatorinput; nog geen fysieke bevestiging. |
 | `hp1_last_applied_level` | Bookkeeping van toegepaste opdrachten; verse frequentie-/modustelemetrie bewijst daadwerkelijk draaien of stoppen. |
+
+Power House zet deze drie stapvelden op nul. De sensoren `Demand raw` en
+`Demand filtered` publiceren dan `NaN`.
 
 De [frequentieruntime](../../openquatt/includes/control/oq_compressor_frequency_runtime.h)
 en [ODU-levelmapping](../../openquatt/includes/odu/oq_odu_compressor_levels.h)
@@ -56,8 +60,8 @@ H = Pr / (T0 - Tc)                         [W/K]
 P_model = Pr × max(0, (T0 - Tout)/(T0 - Tc))
 ```
 
-`Pr` bepaalt de demand- en slewschaal, geen bovengrens: onder `Tc` loopt de lijn
-door. Behoud de volgorde van delen en vermenigvuldigen vanwege demandafronding.
+`Pr` is de vermogensreferentie voor de opbouw- en afbouwbegrenzing en voor het
+elektrische wattplafond. Onder `Tc` kan de modelvraag boven `Pr` uitkomen.
 De structurele `HouseLine` en de regelgrenzen in `PowerHouseEnvelope` hebben
 aparte verantwoordelijkheden.
 
@@ -95,11 +99,13 @@ niet opnieuw.
 
 De som van feedforward en kamerfeedback wordt begrensd door de
 installatie-envelope en de ingestelde opbouw-/afbouwtijd. De waterlimitfactor
-reduceert de effectieve vraag. De dispatcher zoekt vervolgens een toegestane
-HP-combinatie die deze vraag kan leveren.
+verlaagt de vraag. Power House past daarna het wattplafond uit `request_limit_w`
+toe. De dispatcher kiest een toegestane HP-combinatie op basis van die wattvraag.
+De effectieve vraag staat in `oq_strategy_requested_power_w`.
 
-Bij volle demand (20) blijven watts boven `Pr` behouden voor dispatch en
-tekortberekening. Lagere stroomcaps blijven een wattgrens; nul blijft een stop.
+Bij een volle elektrische cap kan de vraag voor dispatch en tekortberekening
+boven `Pr` blijven. Een lagere cap geeft een wattplafond. Bij een plafond van 0 W
+is de warmtevraag nul.
 
 Bij een bevestigde kamer- of setpointverhogingsvraag kan startondersteuning het
 laagste geschikte vermogen vragen terwijl de gewone wattsvraag nog oploopt.

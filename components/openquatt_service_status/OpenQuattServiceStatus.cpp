@@ -1,10 +1,15 @@
 #include "OpenQuattServiceStatus.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
+#include "OpenQuattHttpStatus.h"
+#include "PsramBuffer.h"
+#include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+#include "lwip/sockets.h"
 
 namespace esphome {
 namespace openquatt_service_status {
@@ -21,50 +26,64 @@ bool url_path_matches(const char* url, const char* path) {
   return std::strncmp(url, path, path_len) == 0 && (url[path_len] == '\0' || url[path_len] == '?');
 }
 
-bool write_raw(httpd_req_t* req, const char* value) {
-  return httpd_resp_send_chunk(req, value, static_cast<ssize_t>(std::strlen(value))) == ESP_OK;
+bool send_snapshot(httpd_req_t* req, const char* data, size_t length) {
+  for (size_t offset = 0U; offset < length;) {
+    const size_t count = std::min(length - offset, size_t{1024U});
+    if (httpd_resp_send_chunk(req, data + offset, static_cast<ssize_t>(count)) != ESP_OK) {
+      shutdown(httpd_req_to_sockfd(req), SHUT_RDWR);
+      return false;
+    }
+    offset += count;
+  }
+  if (httpd_resp_send_chunk(req, nullptr, 0) != ESP_OK) {
+    shutdown(httpd_req_to_sockfd(req), SHUT_RDWR);
+    return false;
+  }
+  return true;
 }
 
-bool write_json_string(httpd_req_t* req, const char* value) {
-  if (!write_raw(req, "\"")) return false;
+bool write_raw(SnapshotBufferWriter& writer, const char* value) { return writer.write(value); }
+
+bool write_json_string(SnapshotBufferWriter& writer, const char* value) {
+  if (!write_raw(writer, "\"")) return false;
   const char* cursor = value != nullptr ? value : "";
   while (*cursor != '\0') {
     const unsigned char c = static_cast<unsigned char>(*cursor++);
     char escaped[7];
     switch (c) {
       case '"':
-        if (!write_raw(req, "\\\"")) return false;
+        if (!write_raw(writer, "\\\"")) return false;
         break;
       case '\\':
-        if (!write_raw(req, "\\\\")) return false;
+        if (!write_raw(writer, "\\\\")) return false;
         break;
       case '\b':
-        if (!write_raw(req, "\\b")) return false;
+        if (!write_raw(writer, "\\b")) return false;
         break;
       case '\f':
-        if (!write_raw(req, "\\f")) return false;
+        if (!write_raw(writer, "\\f")) return false;
         break;
       case '\n':
-        if (!write_raw(req, "\\n")) return false;
+        if (!write_raw(writer, "\\n")) return false;
         break;
       case '\r':
-        if (!write_raw(req, "\\r")) return false;
+        if (!write_raw(writer, "\\r")) return false;
         break;
       case '\t':
-        if (!write_raw(req, "\\t")) return false;
+        if (!write_raw(writer, "\\t")) return false;
         break;
       default:
         if (c < 0x20) {
           std::snprintf(escaped, sizeof(escaped), "\\u%04x", c);
-          if (!write_raw(req, escaped)) return false;
+          if (!write_raw(writer, escaped)) return false;
         } else {
           const char out[2] = {static_cast<char>(c), '\0'};
-          if (!write_raw(req, out)) return false;
+          if (!write_raw(writer, out)) return false;
         }
         break;
     }
   }
-  return write_raw(req, "\"");
+  return write_raw(writer, "\"");
 }
 
 const char* text_value(OpenQuattServiceStatus::StringGlobal* global, const char* fallback = "IDLE") {
@@ -81,25 +100,25 @@ int int_value(OpenQuattServiceStatus::IntGlobal* global, int fallback = 0) {
 
 float float_value(OpenQuattServiceStatus::FloatGlobal* global) { return global != nullptr ? global->value() : NAN; }
 
-bool write_entity_key(httpd_req_t* req, bool* first, const char* key) {
-  if (!*first && !write_raw(req, ",")) return false;
+bool write_entity_key(SnapshotBufferWriter& writer, bool* first, const char* key) {
+  if (!*first && !write_raw(writer, ",")) return false;
   *first = false;
-  return write_json_string(req, key) && write_raw(req, ":");
+  return write_json_string(writer, key) && write_raw(writer, ":");
 }
 
-bool write_text_entity(httpd_req_t* req, bool* first, const char* key, const char* value) {
-  return write_entity_key(req, first, key) && write_raw(req, "{\"state\":") && write_json_string(req, value) &&
-         write_raw(req, ",\"value\":") && write_json_string(req, value) && write_raw(req, "}");
+bool write_text_entity(SnapshotBufferWriter& writer, bool* first, const char* key, const char* value) {
+  return write_entity_key(writer, first, key) && write_raw(writer, "{\"state\":") && write_json_string(writer, value) &&
+         write_raw(writer, ",\"value\":") && write_json_string(writer, value) && write_raw(writer, "}");
 }
 
-bool write_binary_entity(httpd_req_t* req, bool* first, const char* key, bool value) {
-  return write_entity_key(req, first, key) &&
-         write_raw(req, value ? R"({"state":"ON","value":true})" : R"({"state":"OFF","value":false})");
+bool write_binary_entity(SnapshotBufferWriter& writer, bool* first, const char* key, bool value) {
+  return write_entity_key(writer, first, key) &&
+         write_raw(writer, value ? R"({"state":"ON","value":true})" : R"({"state":"OFF","value":false})");
 }
 
-bool write_number_literal(httpd_req_t* req, float value, int decimals) {
+bool write_number_literal(SnapshotBufferWriter& writer, float value, int decimals) {
   if (!std::isfinite(value)) {
-    return write_json_string(req, "nan");
+    return write_json_string(writer, "nan");
   }
   char buffer[32];
   std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);
@@ -112,20 +131,20 @@ bool write_number_literal(httpd_req_t* req, float value, int decimals) {
       *end = '\0';
     }
   }
-  return write_raw(req, buffer);
+  return write_raw(writer, buffer);
 }
 
-bool write_number_entity(httpd_req_t* req, bool* first, const char* key, float value, const char* unit = "",
+bool write_number_entity(SnapshotBufferWriter& writer, bool* first, const char* key, float value, const char* unit = "",
                          int decimals = 0) {
-  if (!write_entity_key(req, first, key) || !write_raw(req, "{\"state\":") ||
-      !write_number_literal(req, value, decimals) || !write_raw(req, ",\"value\":") ||
-      !write_number_literal(req, value, decimals)) {
+  if (!write_entity_key(writer, first, key) || !write_raw(writer, "{\"state\":") ||
+      !write_number_literal(writer, value, decimals) || !write_raw(writer, ",\"value\":") ||
+      !write_number_literal(writer, value, decimals)) {
     return false;
   }
   if (unit != nullptr && unit[0] != '\0') {
-    if (!write_raw(req, ",\"uom\":") || !write_json_string(req, unit)) return false;
+    if (!write_raw(writer, ",\"uom\":") || !write_json_string(writer, unit)) return false;
   }
-  return write_raw(req, "}");
+  return write_raw(writer, "}");
 }
 
 class OpenQuattServiceStatusRequestHandler : public AsyncWebHandler {
@@ -152,9 +171,17 @@ class OpenQuattServiceStatusRequestHandler : public AsyncWebHandler {
 
 }  // namespace
 
+OpenQuattServiceStatus::~OpenQuattServiceStatus() {
+  if (this->snapshot_lock_ != nullptr) vSemaphoreDelete(this->snapshot_lock_);
+}
+
 float OpenQuattServiceStatus::get_setup_priority() const { return setup_priority::WIFI; }
 
 void OpenQuattServiceStatus::setup() {
+  this->snapshot_lock_ = xSemaphoreCreateMutex();
+  if (this->snapshot_lock_ == nullptr) ESP_LOGW(TAG, "Snapshot lock unavailable; endpoint returns 503");
+  this->refresh_snapshot_();
+  this->last_snapshot_ms_ = millis();
   if (web_server_base::global_web_server_base == nullptr) {
     ESP_LOGW(TAG, "web_server_base is not available; service status endpoint disabled");
     return;
@@ -167,87 +194,143 @@ void OpenQuattServiceStatus::dump_config() {
   ESP_LOGCONFIG(TAG, "  Web server: %s", this->web_server_ != nullptr ? "configured" : "missing");
 }
 
+void OpenQuattServiceStatus::loop() {
+  const uint32_t now = millis();
+  const uint32_t interval = this->published_size_.load(std::memory_order_relaxed) == 0U ? 1000U : 250U;
+  if (now - this->last_snapshot_ms_ < interval) return;
+  this->last_snapshot_ms_ = now;
+  this->refresh_snapshot_();
+}
+
+void OpenQuattServiceStatus::refresh_snapshot_() {
+  if (this->snapshot_lock_ == nullptr) return;
+  if (!this->pending_snapshot_ && !this->pending_snapshot_.allocate_external(MAX_SNAPSHOT_BYTES)) {
+    this->published_size_.store(0U, std::memory_order_release);
+    return;
+  }
+  SnapshotBufferWriter writer(this->pending_snapshot_.data(), this->pending_snapshot_.size());
+  if (!this->serialize_snapshot_(writer) || writer.size() == 0U) {
+    this->published_size_.store(0U, std::memory_order_release);
+    return;
+  }
+  // Never make the control loop wait for HTTPD, even if its reader is preempted.
+  if (xSemaphoreTake(this->snapshot_lock_, 0) != pdTRUE) return;
+  this->pending_snapshot_.swap(this->published_snapshot_);
+  this->published_at_ms_ = millis();
+  this->published_size_.store(static_cast<uint32_t>(writer.size()), std::memory_order_release);
+  xSemaphoreGive(this->snapshot_lock_);
+}
+
 void OpenQuattServiceStatus::write_status(httpd_req_t* req) const {
+  const auto unavailable = [req]() {
+    openquatt_common::send_http_status(req, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                       R"({"ok":false,"error":"serialization_unavailable"})");
+  };
+  const uint32_t expected_size = this->published_size_.load(std::memory_order_acquire);
+  openquatt_common::PsramBuffer<char> snapshot;
+  if (expected_size == 0U || !snapshot.allocate_external(MAX_SNAPSHOT_BYTES)) {
+    unavailable();
+    return;
+  }
+  if (xSemaphoreTake(this->snapshot_lock_, pdMS_TO_TICKS(5U)) != pdTRUE) {
+    unavailable();
+    return;
+  }
+  const uint32_t size = this->published_size_.load(std::memory_order_relaxed);
+  const bool valid = size != 0U && size <= snapshot.size() && size <= this->published_snapshot_.size() &&
+                     uint32_t(millis() - this->published_at_ms_) <= 1000U;
+  if (valid) std::memcpy(snapshot.data(), this->published_snapshot_.data(), size);
+  xSemaphoreGive(this->snapshot_lock_);
+  // Publication may become unavailable while the request allocates its buffer.
+  // Never allocate or send while holding the lock.
+  if (!valid) {
+    unavailable();
+    return;
+  }
+  send_snapshot(req, snapshot.data(), size);
+}
+
+bool OpenQuattServiceStatus::serialize_snapshot_(SnapshotBufferWriter& writer) const {
   const uint32_t warmup_progress = this->warmup_progress_.read();
   const bool commissioning_active = bool_value(this->commissioning_active_);
   const int commissioning_task_code = int_value(this->commissioning_task_code_);
   bool first = true;
 
-  if (!write_raw(req, R"({"ok":true,"entities":{)") ||
-      !write_text_entity(req, &first, "commissioningStatus", text_value(this->commissioning_status_)) ||
-      !write_binary_entity(req, &first, "cm100Active", int_value(this->control_mode_code_) == 100) ||
-      !write_number_entity(req, &first, "boilerPowerTestResult", float_value(this->boiler_result_w_), "W", 0) ||
-      !write_number_entity(req, &first, "boilerPowerTestConfidence", float_value(this->boiler_confidence_), "%", 0) ||
-      !write_text_entity(req, &first, "boilerPowerTestResultQuality",
-                         text_value(this->boiler_quality_, "not available")) ||
-      !write_binary_entity(req, &first, "boilerPowerTestActive",
-                           commissioning_active && commissioning_task_code == TASK_BOILER_POWER_TEST) ||
-      !write_text_entity(req, &first, "boilerPowerTestStatus", text_value(this->boiler_status_)) ||
-      !write_text_entity(req, &first, "flowAutotuneStatus", text_value(this->flow_autotune_status_)) ||
-      !write_number_entity(req, &first, "flowKpSuggested", float_value(this->flow_kp_suggested_), "", 5) ||
-      !write_number_entity(req, &first, "flowKiSuggested", float_value(this->flow_ki_suggested_), "", 5) ||
-      !write_binary_entity(req, &first, "airPurgeActive", bool_value(this->air_purge_active_)) ||
-      !write_text_entity(req, &first, "airPurgeStatus", text_value(this->air_purge_status_)) ||
-      !write_number_entity(req, &first, "airPurgeRemaining", int_value(this->air_purge_remaining_), "s", 0) ||
-      !write_number_entity(req, &first, "airPurgePhase", int_value(this->air_purge_phase_), "", 0) ||
-      !write_number_entity(req, &first, "airPurgeTargetIpwm", int_value(this->air_purge_target_ipwm_), "iPWM", 0) ||
-      !write_binary_entity(req, &first, "manualFlowActive", bool_value(this->manual_flow_active_)) ||
-      !write_text_entity(req, &first, "manualFlowStatus", text_value(this->manual_flow_status_)) ||
-      !write_number_entity(req, &first, "manualFlowTargetIpwm", int_value(this->manual_flow_target_ipwm_), "iPWM", 0) ||
-      !write_binary_entity(req, &first, "manualHpActive", bool_value(this->manual_hp_active_)) ||
-      !write_text_entity(req, &first, "manualHpStatus", text_value(this->manual_hp_status_)) ||
-      !write_text_entity(req, &first, "manualHpGuardStatus",
-                         text_value(this->manual_hp_guard_status_, "Vrijgegeven")) ||
-      !write_binary_entity(req, &first, "hpWaterCalibrationActive", bool_value(this->hp_water_calibration_active_)) ||
-      !write_text_entity(req, &first, "hpWaterCalibrationStatus", text_value(this->hp_water_calibration_status_)) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationRemaining", int_value(this->hp_water_calibration_remaining_),
-                           "s", 0) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationPhase", int_value(this->hp_water_calibration_phase_), "",
+  if (!write_raw(writer, R"({"ok":true,"entities":{)") ||
+      !write_text_entity(writer, &first, "commissioningStatus", text_value(this->commissioning_status_)) ||
+      !write_binary_entity(writer, &first, "cm100Active", int_value(this->control_mode_code_) == 100) ||
+      !write_number_entity(writer, &first, "boilerPowerTestResult", float_value(this->boiler_result_w_), "W", 0) ||
+      !write_number_entity(writer, &first, "boilerPowerTestConfidence", float_value(this->boiler_confidence_), "%",
                            0) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationSpread", float_value(this->hp_water_calibration_spread_),
+      !write_text_entity(writer, &first, "boilerPowerTestResultQuality",
+                         text_value(this->boiler_quality_, "not available")) ||
+      !write_binary_entity(writer, &first, "boilerPowerTestActive",
+                           commissioning_active && commissioning_task_code == TASK_BOILER_POWER_TEST) ||
+      !write_text_entity(writer, &first, "boilerPowerTestStatus", text_value(this->boiler_status_)) ||
+      !write_text_entity(writer, &first, "flowAutotuneStatus", text_value(this->flow_autotune_status_)) ||
+      !write_number_entity(writer, &first, "flowKpSuggested", float_value(this->flow_kp_suggested_), "", 5) ||
+      !write_number_entity(writer, &first, "flowKiSuggested", float_value(this->flow_ki_suggested_), "", 5) ||
+      !write_binary_entity(writer, &first, "airPurgeActive", bool_value(this->air_purge_active_)) ||
+      !write_text_entity(writer, &first, "airPurgeStatus", text_value(this->air_purge_status_)) ||
+      !write_number_entity(writer, &first, "airPurgeRemaining", int_value(this->air_purge_remaining_), "s", 0) ||
+      !write_number_entity(writer, &first, "airPurgePhase", int_value(this->air_purge_phase_), "", 0) ||
+      !write_number_entity(writer, &first, "airPurgeTargetIpwm", int_value(this->air_purge_target_ipwm_), "iPWM", 0) ||
+      !write_binary_entity(writer, &first, "manualFlowActive", bool_value(this->manual_flow_active_)) ||
+      !write_text_entity(writer, &first, "manualFlowStatus", text_value(this->manual_flow_status_)) ||
+      !write_number_entity(writer, &first, "manualFlowTargetIpwm", int_value(this->manual_flow_target_ipwm_), "iPWM",
+                           0) ||
+      !write_binary_entity(writer, &first, "manualHpActive", bool_value(this->manual_hp_active_)) ||
+      !write_text_entity(writer, &first, "manualHpStatus", text_value(this->manual_hp_status_)) ||
+      !write_text_entity(writer, &first, "manualHpGuardStatus",
+                         text_value(this->manual_hp_guard_status_, "Vrijgegeven")) ||
+      !write_binary_entity(writer, &first, "hpWaterCalibrationActive",
+                           bool_value(this->hp_water_calibration_active_)) ||
+      !write_text_entity(writer, &first, "hpWaterCalibrationStatus", text_value(this->hp_water_calibration_status_)) ||
+      !write_number_entity(writer, &first, "hpWaterCalibrationRemaining",
+                           int_value(this->hp_water_calibration_remaining_), "s", 0) ||
+      !write_number_entity(writer, &first, "hpWaterCalibrationPhase", int_value(this->hp_water_calibration_phase_), "",
+                           0) ||
+      !write_number_entity(writer, &first, "hpWaterCalibrationSpread", float_value(this->hp_water_calibration_spread_),
                            "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationSupplyDelta",
+      !write_number_entity(writer, &first, "hpWaterCalibrationSupplyDelta",
                            float_value(this->hp_water_calibration_supply_delta_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationStableProgress",
+      !write_number_entity(writer, &first, "hpWaterCalibrationStableProgress",
                            int_value(this->hp_water_calibration_stable_progress_), "s", 0) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationStableRequired",
+      !write_number_entity(writer, &first, "hpWaterCalibrationStableRequired",
                            int_value(this->hp_water_calibration_stable_required_), "s", 0) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultReference",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultReference",
                            float_value(this->hp_water_calibration_result_reference_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultSpreadBefore",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultSpreadBefore",
                            float_value(this->hp_water_calibration_result_spread_before_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultExpectedSpread",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultExpectedSpread",
                            float_value(this->hp_water_calibration_result_expected_spread_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultHp1InRawAvg",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultHp1InRawAvg",
                            float_value(this->hp_water_calibration_result_hp1_in_raw_avg_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultHp1OutRawAvg",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultHp1OutRawAvg",
                            float_value(this->hp_water_calibration_result_hp1_out_raw_avg_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultHp2InRawAvg",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultHp2InRawAvg",
                            float_value(this->hp_water_calibration_result_hp2_in_raw_avg_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultHp2OutRawAvg",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultHp2OutRawAvg",
                            float_value(this->hp_water_calibration_result_hp2_out_raw_avg_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultSupplyRawAvg",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultSupplyRawAvg",
                            float_value(this->hp_water_calibration_result_supply_raw_avg_), "°C", 2) ||
-      !write_number_entity(req, &first, "hpWaterCalibrationResultSupplyOffset",
+      !write_number_entity(writer, &first, "hpWaterCalibrationResultSupplyOffset",
                            float_value(this->hp_water_calibration_result_supply_offset_), "°C", 2) ||
-      !write_text_entity(req, &first, "hpWaterCalibrationResultSupplySource",
+      !write_text_entity(writer, &first, "hpWaterCalibrationResultSupplySource",
                          text_value(this->hp_water_calibration_result_supply_source_, ""))) {
-    httpd_resp_send_chunk(req, nullptr, 0);
-    return;
+    return false;
   }
 
   if (warmup_progress != WarmupProgressSnapshot::UNAVAILABLE &&
-      (!write_number_entity(req, &first, "warmupStatus", warmup_progress >> 24U) ||
-       !write_number_entity(req, &first, "warmupElapsed", warmup_progress & 0x00ffffffU, "s"))) {
-    httpd_resp_send_chunk(req, nullptr, 0);
-    return;
+      (!write_number_entity(writer, &first, "warmupStatus", warmup_progress >> 24U) ||
+       !write_number_entity(writer, &first, "warmupElapsed", warmup_progress & 0x00ffffffU, "s"))) {
+    return false;
   }
-  if (!write_raw(req, R"(}})")) {
-    httpd_resp_send_chunk(req, nullptr, 0);
-    return;
+  if (!write_raw(writer, R"(}})")) {
+    return false;
   }
 
-  httpd_resp_send_chunk(req, nullptr, 0);
+  return true;
 }
 
 }  // namespace openquatt_service_status
