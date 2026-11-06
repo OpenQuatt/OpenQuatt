@@ -35,7 +35,7 @@ class WeatherForecastRequestHandler : public AsyncWebHandler {
                                          R"({"ok":false,"error":"psram_unavailable"})");
       return;
     }
-    if (!snapshots.begin_request(static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL)) {
+    if (!snapshots.begin_request([] { return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL; })) {
       openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::TOO_MANY_REQUESTS,
                                          R"({"ok":false,"error":"request_busy"})");
       return;

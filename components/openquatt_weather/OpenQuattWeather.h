@@ -31,6 +31,15 @@ class OpenQuattWebAuth;
 namespace esphome::openquatt_weather {
 
 class OpenQuattWeather;
+class WeatherEnabledSwitch : public switch_::Switch {
+ public:
+  void set_parent(OpenQuattWeather* parent) { parent_ = parent; }
+
+ protected:
+  void write_state(bool enabled) override;
+  OpenQuattWeather* parent_ = nullptr;
+};
+
 class WeatherLocationText : public text::Text {
  public:
   void set_parent(OpenQuattWeather* parent) { parent_ = parent; }
@@ -46,7 +55,10 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* auth) { web_auth_ = auth; }
   openquatt_web_auth::OpenQuattWebAuth* web_auth() const { return web_auth_; }
   ForecastSnapshotAccess& forecast_endpoint() { return forecast_snapshots_; }
-  void set_enabled_switch(switch_::Switch* entity) { enabled_ = entity; }
+  void set_enabled_switch(WeatherEnabledSwitch* entity) {
+    enabled_ = entity;
+    entity->set_parent(this);
+  }
   void set_pause_sensor(binary_sensor::BinarySensor* entity) { pause_ = entity; }
   void set_location_text(WeatherLocationText* entity) {
     location_text_ = entity;
@@ -70,6 +82,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   void on_shutdown() override;
   void on_ota_global_state(ota::OTAState state, float, uint8_t, ota::OTAComponent*) override;
   void observe(const oq_power_house::forecast::Observation& observation);
+  void set_consent(bool enabled);
   void set_location_query(const std::string& query, const std::string& request = {});
   bool worker_busy() const { return phase_.load(std::memory_order_acquire) != oq_weather::MailboxPhase::IDLE; }
   uint32_t cancelled_requests() const { return cancelled_requests_; }
@@ -82,7 +95,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   }
 
  protected:
-  enum class Job : uint8_t { SAVE_LOCATION, RESOLVE_LOCATION, FETCH };
+  enum class Job : uint8_t { SAVE_CONSENT, SAVE_LOCATION, RESOLVE_LOCATION, FETCH };
   struct Storage {
     oq_weather::Series current, candidate;
     oq_power_house::forecast::State forecast;
@@ -96,7 +109,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
     Job job = Job::FETCH;
     uint32_t request_epoch = 0, request_generation = 0, request_configuration = 0;
     uint64_t request_ms = 0;
-    bool result_ok = false;
+    bool request_consent = false, result_ok = false;
     const char* error = "none";
     uint32_t duration_ms = 0, stack_free = 0;
     uint32_t internal_largest_low = 0;
@@ -117,7 +130,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   bool dns_outstanding_ = false;  // Worker-only; callbacks publish dns_done_.
   time::RealTimeClock* clock_ = nullptr;
   openquatt_web_auth::OpenQuattWebAuth* web_auth_ = nullptr;
-  switch_::Switch* enabled_ = nullptr;
+  WeatherEnabledSwitch* enabled_ = nullptr;
   binary_sensor::BinarySensor* pause_ = nullptr;
   WeatherLocationText* location_text_ = nullptr;
   text_sensor::TextSensor* status_ = nullptr;
@@ -139,16 +152,22 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   uint32_t cancelled_requests_ = 0, worker_largest_low_ = 0;
   bool active_ = false, ota_paused_ = false, worker_attempted_ = false;
   bool pending_save_ = false, location_resolved_ = false, configuration_error_ = false;
+  uint32_t consent_revision_ = 0;
+  ConsentState consent_state_ = ConsentState::NONE;
+  bool consent_target_ = false;
   const char* last_error_ = "none";
   bool allowed_() const;
   void invalidate_();
   void request_(Job job);
+  void request_pending_save_();
   void publish_();
   void publish_forecast_();
   void setup_forecast_endpoint_();
   void publish_location_(const char* value, const char* request = "", SaveState state = SaveState::NONE);
   void publish_text_(text_sensor::TextSensor* entity, const char* value);
+  void load_consent_();
   void load_location_();
+  bool save_consent_();
   bool save_location_();
   bool fetch_();
   bool cancelled_() const;

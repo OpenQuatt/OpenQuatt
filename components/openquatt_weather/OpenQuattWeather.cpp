@@ -14,13 +14,29 @@ namespace esphome::openquatt_weather {
 static const char* const TAG = "openquatt.weather";
 static uint64_t monotonic_ms() { return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL; }
 
+static const char* const CONSENT_PENDING = "consent_persistence_pending";
+static const char* const CONSENT_FAILED = "consent_persistence_failed";
+
+static esp_err_t read_consent(uint8_t& value) {
+  nvs_handle_t handle;
+  const esp_err_t opened = nvs_open("oq_weather", NVS_READONLY, &handle);
+  if (opened != ESP_OK) return opened;
+  const esp_err_t result = nvs_get_u8(handle, "enabled", &value);
+  nvs_close(handle);
+  return result;
+}
+
+void WeatherEnabledSwitch::write_state(bool enabled) {
+  if (parent_) parent_->set_consent(enabled);
+}
+
 void WeatherLocationText::control(const std::string& value) {
   if (parent_) parent_->set_location_query(value);
 }
 
 bool OpenQuattWeather::allowed_() const {
-  return enabled_ && enabled_->state && pause_ && !pause_->state && !ota_paused_ && !configuration_error_ &&
-         !pending_save_;
+  return consent_state_ == ConsentState::ON && enabled_ && enabled_->state && pause_ && !pause_->state &&
+         !ota_paused_ && !configuration_error_ && !pending_save_;
 }
 
 void OpenQuattWeather::publish_location_(const char* value, const char* request, SaveState state) {
@@ -30,8 +46,23 @@ void OpenQuattWeather::publish_location_(const char* value, const char* request,
 
 void OpenQuattWeather::publish_text_(text_sensor::TextSensor* entity, const char* value) {
   if (!entity) return;
-  text_snapshots_.publish(static_cast<EntityBase*>(entity), value);
+  const auto consent = entity == status_ ? consent_state_ : ConsentState::NONE;
+  text_snapshots_.publish(static_cast<EntityBase*>(entity), value, "", SaveState::NONE, consent);
   entity->publish_state(value);
+}
+
+void OpenQuattWeather::load_consent_() {
+  uint8_t value = 0;
+  const auto result = read_consent(value);
+  // Only the dedicated record authorizes outbound requests. The former
+  // optimistic switch preference is never read, including on upgrade.
+  if (result == ESP_ERR_NVS_NOT_FOUND || (result == ESP_OK && value == 0))
+    consent_state_ = ConsentState::OFF;
+  else if (result == ESP_OK && value == 1)
+    consent_state_ = ConsentState::ON;
+  else
+    consent_state_ = ConsentState::FAILED;
+  enabled_->publish_state(consent_state_ == ConsentState::ON);
 }
 
 void OpenQuattWeather::load_location_() {
@@ -71,6 +102,8 @@ void OpenQuattWeather::setup() {
     setup_forecast_endpoint_();  // Register a fail-closed 503 route even on allocation failure.
 #endif
     ESP_LOGE(TAG, "Strict PSRAM allocation failed; weather experiment disabled");
+    consent_state_ = ConsentState::FAILED;
+    enabled_->publish_state(false);
     publish_text_(status_, "psram_allocation_failed");
     mark_failed();
     return;
@@ -79,17 +112,9 @@ void OpenQuattWeather::setup() {
 #ifdef USE_ESP32
   setup_forecast_endpoint_();
 #endif
+  load_consent_();
   load_location_();
   ota::get_global_ota_callback()->add_global_state_listener(this);
-  enabled_->add_on_state_callback([this](bool enabled) {
-    if (!enabled)
-      invalidate_();
-    else {
-      next_fetch_ms_ = monotonic_ms();
-      backoff_ms_ = 60000;
-      publish_forecast_();
-    }
-  });
   pause_->add_on_state_callback([this](bool paused) {
     if (paused) invalidate_();
   });
@@ -109,9 +134,22 @@ void OpenQuattWeather::invalidate_() {
     oq_power_house::forecast::discard_pending(storage_[0].forecast);
     storage_[0].issued_scenario = {};
   }
-  for (auto* sensor : temperatures_)
-    if (sensor) sensor->publish_state(NAN);
   publish_forecast_();
+}
+
+void OpenQuattWeather::set_consent(bool enabled) {
+  if (!storage_) return;  // Setup already published failed proof and the allocation diagnostic.
+  if (consent_state_ == (enabled ? ConsentState::ON : ConsentState::OFF)) return;
+  if (++consent_revision_ == 0) consent_revision_ = 1;
+  consent_target_ = enabled;
+  consent_state_ = ConsentState::PENDING;
+  // Stop outbound work immediately. The switch continues to show the last
+  // verified value so a failed revocation can be retried with another OFF.
+  invalidate_();
+  publish_text_(status_, CONSENT_PENDING);
+  if (!worker_) worker_attempted_ = false;  // One new attempt per explicit action.
+  request_pending_save_();
+  publish_();
 }
 
 void OpenQuattWeather::set_location_query(const std::string& query, const std::string& request) {
@@ -143,7 +181,7 @@ void OpenQuattWeather::set_location_query(const std::string& query, const std::s
   last_error_ = "location_saving";
   publish_location_(state.location.query, request.c_str(), SaveState::PENDING);
   publish_text_(resolved_, "");
-  request_(Job::SAVE_LOCATION);
+  request_pending_save_();
   publish_();
 }
 
@@ -165,7 +203,7 @@ void OpenQuattWeather::update() {
   ota_paused_ = ota_pause_.active(monotonic_ms(), pause_->state);
   if (!allowed_()) {
     if (active_) invalidate_();
-    if (pending_save_) request_(Job::SAVE_LOCATION);
+    request_pending_save_();
     publish_();
     return;
   }
@@ -181,37 +219,44 @@ void OpenQuattWeather::update() {
   publish_();
 }
 
+void OpenQuattWeather::request_pending_save_() {
+  if (consent_state_ == ConsentState::PENDING)
+    request_(Job::SAVE_CONSENT);
+  else if (pending_save_)
+    request_(Job::SAVE_LOCATION);
+}
+
 void OpenQuattWeather::request_(Job job) {
-  if (job == Job::SAVE_LOCATION ? ota_paused_ || (pause_ && pause_->state) : !allowed_()) return;
+  const bool saving = job == Job::SAVE_CONSENT || job == Job::SAVE_LOCATION;
+  if (saving ? ota_paused_ || (pause_ && pause_->state) : !allowed_()) return;
   if (phase_.load(std::memory_order_acquire) != oq_weather::MailboxPhase::IDLE) return;
   auto& state = storage_[0];
-  if (!worker_) {
-    if (worker_attempted_) {
-      pending_save_ = false;
-      configuration_error_ = true;
-      last_error_ = "worker_allocation_failed";
-      if (job == Job::SAVE_LOCATION)
-        publish_location_(state.location.query, state.pending_save_request, SaveState::FAILED);
-      return;
-    }
+  if (!worker_ && !worker_attempted_) {
     worker_attempted_ = true;
-    if (xTaskCreate(worker_entry_, "oq_weather", 8192, this, tskIDLE_PRIORITY + 1, &worker_) != pdPASS) {
+    if (xTaskCreate(worker_entry_, "oq_weather", 8192, this, tskIDLE_PRIORITY + 1, &worker_) != pdPASS)
       worker_ = nullptr;
+  }
+  if (!worker_) {
+    if (job == Job::SAVE_CONSENT) {
+      consent_state_ = ConsentState::FAILED;
+      publish_text_(status_, CONSENT_FAILED);
+    } else {
       pending_save_ = false;
       configuration_error_ = true;
       last_error_ = "worker_allocation_failed";
       if (job == Job::SAVE_LOCATION)
         publish_location_(state.location.query, state.pending_save_request, SaveState::FAILED);
-      return;
     }
+    return;
   }
   state.job = job;
   state.request_location = job == Job::SAVE_LOCATION ? state.pending_location : state.location;
   state.request_epoch = clock_->now().is_valid() ? clock_->now().timestamp : 0;
   state.request_ms = monotonic_ms();
   state.request_generation = generation_;
-  state.request_configuration = configuration_;
-  if (job != Job::SAVE_LOCATION) ++request_count_;
+  state.request_configuration = job == Job::SAVE_CONSENT ? consent_revision_ : configuration_;
+  state.request_consent = consent_target_;
+  if (!saving) ++request_count_;
   cancel_.store(false, std::memory_order_release);
   work_gate_.store(oq_weather::WorkGate::QUEUED, std::memory_order_release);
   phase_.store(oq_weather::MailboxPhase::REQUESTED, std::memory_order_release);
@@ -225,21 +270,40 @@ void OpenQuattWeather::worker_entry_(void* argument) {
     if (self->phase_.load(std::memory_order_acquire) != oq_weather::MailboxPhase::REQUESTED) continue;
     auto& state = self->storage_[0];
     const uint64_t started = monotonic_ms();
-    state.result_ok = state.job == Job::SAVE_LOCATION ? self->save_location_() : self->fetch_();
+    if (state.job == Job::SAVE_CONSENT || state.job == Job::SAVE_LOCATION) {
+      // A queued flash job can be cancelled by OTA or a newer action.
+      // After the CAS, finish the transaction and verify its durable bytes.
+      if (!oq_weather::begin_flash_work(self->work_gate_)) {
+        state.error = "save_deferred";
+        state.result_ok = false;
+      } else {
+        state.result_ok = state.job == Job::SAVE_CONSENT ? self->save_consent_() : self->save_location_();
+      }
+    } else {
+      state.result_ok = self->fetch_();
+    }
     state.duration_ms = static_cast<uint32_t>(monotonic_ms() - started);
     state.stack_free = uxTaskGetStackHighWaterMark(nullptr);
     self->phase_.store(oq_weather::MailboxPhase::READY, std::memory_order_release);
   }
 }
 
+bool OpenQuattWeather::save_consent_() {
+  auto& state = storage_[0];
+  state.error = CONSENT_FAILED;
+  nvs_handle_t handle;
+  if (nvs_open("oq_weather", NVS_READWRITE, &handle) != ESP_OK) return false;
+  const uint8_t value = state.request_consent ? 1 : 0;
+  const bool saved = nvs_set_u8(handle, "enabled", value) == ESP_OK && nvs_commit(handle) == ESP_OK;
+  nvs_close(handle);
+  uint8_t verified = 0;
+  const bool ok = saved && read_consent(verified) == ESP_OK && verified == value;
+  if (ok) state.error = "none";
+  return ok;
+}
+
 bool OpenQuattWeather::save_location_() {
   auto& state = storage_[0];
-  // This CAS is the transaction's start boundary. OTA wins if it cancels the
-  // queued job first; an already started NVS transaction is safely completed.
-  if (!oq_weather::begin_flash_work(work_gate_)) {
-    state.error = "save_deferred";
-    return false;
-  }
   state.error = "location_persistence_failed";
   nvs_handle_t handle;
   if (nvs_open("oq_weather", NVS_READWRITE, &handle) != ESP_OK) return false;
@@ -269,7 +333,7 @@ void OpenQuattWeather::loop() {
   ota_paused_ = ota_pause_.active(monotonic_ms(), pause_->state);
   if (ota_paused_ && !was_paused) invalidate_();
   if (phase_.load(std::memory_order_acquire) != oq_weather::MailboxPhase::READY) {
-    if (pending_save_ && !ota_paused_ && !pause_->state) request_(Job::SAVE_LOCATION);
+    request_pending_save_();
     return;
   }
   auto& state = storage_[0];
@@ -277,7 +341,19 @@ void OpenQuattWeather::loop() {
   if (state.internal_largest_low && (!worker_largest_low_ || state.internal_largest_low < worker_largest_low_))
     worker_largest_low_ = state.internal_largest_low;
   if (worker_stack_min_ == 0 || state.stack_free < worker_stack_min_) worker_stack_min_ = state.stack_free;
-  if (state.job == Job::SAVE_LOCATION) {
+  if (state.job == Job::SAVE_CONSENT) {
+    if (std::strcmp(state.error, "save_deferred") != 0) {
+      if (state.request_configuration == consent_revision_) {
+        if (state.result_ok)
+          consent_state_ = state.request_consent ? ConsentState::ON : ConsentState::OFF;
+        else
+          consent_state_ = ConsentState::FAILED;
+      }
+      // A superseded but verified write changes the durable switch value,
+      // while proof for the newest request remains pending.
+      if (state.result_ok) enabled_->publish_state(state.request_consent);
+    }
+  } else if (state.job == Job::SAVE_LOCATION) {
     if (state.request_configuration == configuration_) {
       if (std::strcmp(state.error, "save_deferred") == 0) {
         phase_.store(oq_weather::MailboxPhase::IDLE, std::memory_order_release);
@@ -338,7 +414,7 @@ void OpenQuattWeather::loop() {
     ++cancelled_requests_;
   }
   phase_.store(oq_weather::MailboxPhase::IDLE, std::memory_order_release);
-  if (pending_save_ && !ota_paused_ && !pause_->state) request_(Job::SAVE_LOCATION);
+  request_pending_save_();
   publish_();
 }
 
@@ -401,7 +477,9 @@ void OpenQuattWeather::publish_() {
   const uint64_t now_ms = monotonic_ms();
   const bool usable = allowed_() && clock.is_valid() && oq_weather::usable(state.current, clock.timestamp, now_ms);
   publish_forecast_();
-  const char* status = pending_save_                                            ? "location_saving"
+  const char* status = consent_state_ == ConsentState::PENDING                  ? CONSENT_PENDING
+                       : consent_state_ == ConsentState::FAILED                 ? CONSENT_FAILED
+                       : pending_save_                                          ? "location_saving"
                        : configuration_error_                                   ? last_error_
                        : !enabled_->state                                       ? "disabled"
                        : !allowed_()                                            ? "paused"
@@ -419,22 +497,10 @@ void OpenQuattWeather::publish_() {
     age_->publish_state(state.current.generation && now_ms >= state.current.fetched_ms
                             ? (now_ms - state.current.fetched_ms) / 1000.0f
                             : NAN);
-  if (issued_epoch_) {
-    char issued[16]{};
-    if (state.forecast.latest_issue_epoch)
-      std::snprintf(issued, sizeof(issued), "%u", static_cast<unsigned>(state.forecast.latest_issue_epoch));
-    if (issued_epoch_->state != issued) publish_text_(issued_epoch_, issued);
-  }
   if (requests_) requests_->publish_state(request_count_);
   if (failures_) failures_->publish_state(failure_count_);
   if (stack_free_) stack_free_->publish_state(worker_stack_min_ ? worker_stack_min_ : NAN);
   if (duration_) duration_->publish_state(last_duration_ms_);
-  for (size_t i = 0; i < 3; ++i)
-    if (temperatures_[i])
-      temperatures_[i]->publish_state(usable &&
-                                              oq_power_house::forecast::latest_valid(state.forecast, i, clock.timestamp)
-                                          ? state.forecast.latest[i]
-                                          : NAN);
   if (allowed_() && millis() - last_report_ms_ >= 900000) {
     last_report_ms_ = millis();
     for (size_t i = 0; i < 3; ++i) {
@@ -505,6 +571,16 @@ void OpenQuattWeather::publish_forecast_() {
     snapshot.location[sizeof(snapshot.location) - 1] = '\0';
     std::memcpy(snapshot.configured_location, state.location.query, sizeof(snapshot.configured_location));
   });
+  // REST and the loose entities share the same issue and validity decision.
+  if (issued_epoch_) {
+    char issued[16]{};
+    if (scenario.valid) std::snprintf(issued, sizeof(issued), "%u", static_cast<unsigned>(scenario.issued.epoch));
+    if (issued_epoch_->state != issued) publish_text_(issued_epoch_, issued);
+  }
+  for (size_t i = 0; i < 3; ++i)
+    if (temperatures_[i])
+      temperatures_[i]->publish_state(
+          scenario.valid && (scenario.horizon_valid_mask & (1U << i)) ? scenario.issued.temperature_c[i] : NAN);
 }
 
 void OpenQuattWeather::dump_config() {

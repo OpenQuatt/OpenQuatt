@@ -92,16 +92,18 @@ struct Harness {
   Device device;
   LocationText location;
   time::RealTimeClock clock;
-  switch_::Switch enabled;
+  openquatt_weather::WeatherEnabledSwitch enabled;
   binary_sensor::BinarySensor paused;
   text_sensor::TextSensor status;
   text_sensor::TextSensor resolved;
   ota::OTAComponent ota_owner;
 
-  explicit Harness(bool restored_enabled = false) {
-    // TemplateSwitch.setup (priority 798) publishes restored state before
-    // OpenQuattWeather.setup (DATA, 600) can subscribe to switch callbacks.
-    enabled.state = restored_enabled;
+  explicit Harness(bool restored_enabled = false, bool legacy_enabled = false) {
+    if (restored_enabled) {
+      env.committed_consent = 1;
+      env.namespace_exists = true;
+    }
+    enabled.state = legacy_enabled;
     device.set_location_text(&location);
     device.set_clock(&clock);
     device.set_enabled_switch(&enabled);
@@ -127,7 +129,7 @@ struct Harness {
 
 float published_dew_point(Harness& h) {
   auto& endpoint = h.device.forecast_endpoint();
-  assert(endpoint.begin_request(static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL));
+  assert(endpoint.begin_request([] { return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL; }));
   const auto current = endpoint.request().current;
   endpoint.end_request();
   return current.valid ? current.dew_point_c : NAN;
@@ -170,10 +172,14 @@ void restored_switch_never_restores_weather(bool enabled_at_boot, bool cancel_wi
   h.device.update();
   assert(std::isnan(published_dew_point(h)));
   env.clock_valid = true;
-  h.enabled.publish_state(false);
-  assert(std::isnan(published_dew_point(h)));
-  h.enabled.publish_state(true);
-  assert(std::isnan(published_dew_point(h)));
+  h.enabled.turn_off();
+  assert(h.enabled.state && std::isnan(published_dew_point(h)));
+  h.finish_job();
+  assert(!h.enabled.state);
+  h.enabled.turn_on();
+  assert(!h.enabled.state && std::isnan(published_dew_point(h)));
+  h.finish_job();
+  assert(h.enabled.state && std::isnan(published_dew_point(h)));
 }
 
 void assert_save_receipt(const Harness& h, const char* value, const char* request, openquatt_weather::SaveState state) {
@@ -222,14 +228,20 @@ void fresh_install_task_failure() {
 
 void psram_failure_has_no_internal_fallback() {
   reset_environment(nullptr);
+  env.namespace_exists = true;
+  env.committed_consent = 1;
   env.fail_external_allocation = true;
-  Harness h;
-  assert(h.device.failed && h.status.state == "psram_allocation_failed");
+  Harness h(false, true);
+  assert(h.device.failed && h.status.state == "psram_allocation_failed" && !h.enabled.state);
+  openquatt_weather::TextSnapshotValue snapshot;
+  assert(openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(&h.status), snapshot));
+  assert(snapshot.consent_state == openquatt_weather::ConsentState::FAILED);
   h.location.submit("Brummen");
-  h.enabled.publish_state(true);
+  h.enabled.turn_on();
   h.device.update();
   h.device.loop();
   assert(env.internal_allocations == 0 && env.task_creations == 0 && env.write_calls == 0);
+  assert(env.committed_consent == 1 && h.status.state == "psram_allocation_failed");
 }
 
 void fetch_rearms_after_long_disabled_uptime() {
@@ -239,15 +251,18 @@ void fetch_rearms_after_long_disabled_uptime() {
   h.device.update();
   assert(h.device.idle() && env.task_creations == 0);
   env.now_ms += (1ULL << 31) + 100000;
-  h.enabled.publish_state(true);
+  h.enabled.turn_on();
+  h.finish_job();
   h.device.update();
   assert(h.device.queued() && env.task_creations == 1);
   h.finish_job();
   assert(env.fetch_calls == 1);
-  h.enabled.publish_state(false);
+  h.enabled.turn_off();
+  h.finish_job();
   h.device.update();
   env.now_ms += (1ULL << 32) + 100000;
-  h.enabled.publish_state(true);
+  h.enabled.turn_on();
+  h.finish_job();
   h.device.update();
   assert(h.device.queued() && env.task_creations == 1);
   h.finish_job();
@@ -485,6 +500,135 @@ void allocation_failure_never_stores_a_request_receipt(bool psram) {
     assert_save_receipt(h, "Brummen", request_a, SaveState::FAILED);
   assert(!h.device.pending() && env.write_calls == 0 && env.commit_calls == 0);
 }
+void assert_consent(const Harness& h, openquatt_weather::ConsentState state, bool last_stored_value) {
+  openquatt_weather::TextSnapshotValue snapshot;
+  assert(openquatt_weather::copy_weather_text_snapshot(static_cast<const EntityBase*>(&h.status), snapshot));
+  assert(snapshot.consent_state == state);
+  assert(std::strcmp(snapshot.text, h.status.state.c_str()) == 0);
+  assert(h.enabled.state == last_stored_value);
+  assert(openquatt_weather::copy_weather_text_snapshot(static_cast<const EntityBase*>(&h.location), snapshot));
+  assert(snapshot.consent_state == openquatt_weather::ConsentState::NONE);
+}
+
+void consent_boot_and_durable_round_trip() {
+  using openquatt_weather::ConsentState;
+  reset_environment("52.09, 6.15");
+  {
+    Harness h(false, true);  // A stale optimistic preference must not authorize traffic.
+    env.network_connected = true;
+    assert_consent(h, ConsentState::OFF, false);
+    h.device.update();
+    assert(env.notifications == 0 && env.fetch_calls == 0);
+    h.enabled.turn_on();
+    assert_consent(h, ConsentState::PENDING, false);
+    env.observe_nvs = [&](const char*) { assert_consent(h, ConsentState::PENDING, false); };
+    h.device.run_notified_worker();
+    env.observe_nvs = {};
+    assert(env.committed_consent == 1 && env.verified_reads == 1);
+    assert_consent(h, ConsentState::PENDING, false);
+    h.device.loop();
+    assert_consent(h, ConsentState::ON, true);
+
+    h.enabled.turn_off();
+    assert_consent(h, ConsentState::PENDING, true);
+    assert(h.status.state == "consent_persistence_pending");
+    h.device.run_notified_worker();
+    assert(env.committed_consent == 0 && env.verified_reads == 2);
+    assert_consent(h, ConsentState::PENDING, true);
+    h.device.loop();
+    assert_consent(h, ConsentState::OFF, false);
+    assert(env.task_creations == 1 && env.fetch_calls == 0);
+  }
+  const auto location = env.committed;
+  reset_environment(nullptr);
+  env.committed = location;
+  env.namespace_exists = true;
+  env.committed_consent = 0;
+  Harness reboot(false, true);
+  assert_consent(reboot, ConsentState::OFF, false);
+  env.network_connected = true;
+  reboot.device.update();
+  assert(env.notifications == 0);
+}
+
+void consent_invalid_boot() {
+  using openquatt_weather::ConsentState;
+  reset_environment();
+  env.committed_consent = 2;
+  Harness h(false, true);
+  assert_consent(h, ConsentState::FAILED, false);
+  assert(h.status.state == "consent_persistence_failed");
+  env.network_connected = true;
+  h.device.update();
+  assert(env.notifications == 0 && env.fetch_calls == 0);
+}
+
+void consent_failure_and_explicit_off_retry(const std::string& boundary) {
+  using openquatt_weather::ConsentState;
+  reset_environment();
+  Harness h(true);
+  env.network_connected = true;
+  env.fail_task_creation = boundary == "task";
+  env.fail_write_open = boundary == "open";
+  env.fail_write = boundary == "write";
+  env.fail_commit = boundary == "commit";
+  env.fail_read = boundary == "read";
+  env.corrupt_readback = boundary == "mismatch";
+  h.enabled.turn_off();
+  if (boundary != "task") {
+    assert_consent(h, ConsentState::PENDING, true);
+    h.finish_job();
+  }
+  assert_consent(h, ConsentState::FAILED, true);
+  assert(h.status.state == "consent_persistence_failed");
+  h.device.update();
+  h.device.loop();
+  assert(h.device.idle() && env.notifications == 0 && env.fetch_calls == 0);
+
+  env.fail_task_creation = env.fail_write_open = env.fail_write = env.fail_commit = env.fail_read = false;
+  env.corrupt_readback = false;
+  h.enabled.turn_off();
+  assert_consent(h, ConsentState::PENDING, true);
+  h.finish_job();
+  assert_consent(h, ConsentState::OFF, false);
+  assert(env.committed_consent == 0 && env.fetch_calls == 0);
+}
+
+void consent_latest_off_wins(bool first_transaction_started) {
+  using openquatt_weather::ConsentState;
+  reset_environment();
+  Harness h;
+  env.network_connected = true;
+  h.enabled.turn_on();
+  if (first_transaction_started)
+    env.on_write = [&]() { h.enabled.turn_off(); };
+  else
+    h.enabled.turn_off();
+  h.finish_job();
+  assert_consent(h, ConsentState::PENDING, first_transaction_started);
+  assert(h.device.queued() && env.write_calls == (first_transaction_started ? 1 : 0));
+  h.device.update();
+  h.finish_job();
+  assert_consent(h, ConsentState::OFF, false);
+  assert(env.committed_consent == 0 && env.fetch_calls == 0);
+}
+
+void consent_ota_defers_queued_write() {
+  using openquatt_weather::ConsentState;
+  reset_environment();
+  Harness h(true);
+  h.enabled.turn_off();
+  h.ota_started();
+  h.finish_job();
+  assert_consent(h, ConsentState::PENDING, true);
+  assert(env.committed_consent == 1 && env.write_calls == 0 && h.device.idle());
+  h.ota_aborted();
+  h.device.loop();
+  assert(h.device.queued());
+  h.finish_job();
+  assert_consent(h, ConsentState::OFF, false);
+  assert(env.committed_consent == 0 && env.write_calls == 1);
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -528,6 +672,18 @@ int main(int argc, char** argv) {
     allocation_failure_never_stores_a_request_receipt(false);
   else if (scenario == "receipt_psram_failure")
     allocation_failure_never_stores_a_request_receipt(true);
+  else if (scenario == "consent_round_trip")
+    consent_boot_and_durable_round_trip();
+  else if (scenario == "consent_invalid_boot")
+    consent_invalid_boot();
+  else if (scenario.rfind("consent_failure_", 0) == 0)
+    consent_failure_and_explicit_off_retry(scenario.substr(16));
+  else if (scenario == "consent_latest_queued")
+    consent_latest_off_wins(false);
+  else if (scenario == "consent_latest_started")
+    consent_latest_off_wins(true);
+  else if (scenario == "consent_ota")
+    consent_ota_defers_queued_write();
   else if (scenario == "restore_on")
     restored_switch_never_restores_weather(true, false);
   else if (scenario == "restore_off")

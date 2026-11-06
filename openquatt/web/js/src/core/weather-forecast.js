@@ -13,6 +13,11 @@ export function weatherLocationReceipt() {
   return JSON.stringify([entity?.save_request ?? "", entity?.save_status ?? ""]);
 }
 
+export function weatherConsentBlocksForecast() {
+  const consent = state.entities.weatherStatus?.consent_state;
+  return state.weatherOptOutUnconfirmed || (consent !== undefined && consent !== "on");
+}
+
 function normalizeForecastScenario(scenario, forecast) {
   const fail = () => { throw new Error("weather-scenario-format"); };
   if (!scenario || typeof scenario !== "object" || Array.isArray(scenario) || scenario.schema !== 1
@@ -73,7 +78,7 @@ export function normalizeWeatherForecast(payload, receivedAt = Date.now(), recei
 }
 
 export function weatherForecastCanDisplay(data, now = Date.now(), mono = performance.now()) {
-  if (["save-weatherLocation", "switch-weatherEnabled"].includes(state.busyAction) || !data?.valid || data.enabled !== true || getEntityValue("weatherEnabled") !== true
+  if (weatherConsentBlocksForecast() || ["save-weatherLocation", "switch-weatherEnabled"].includes(state.busyAction) || !data?.valid || data.enabled !== true || getEntityValue("weatherEnabled") !== true
     || data.endpoint !== getWeatherForecastEndpoint()
     || data.configured_location !== String(getEntityValue("weatherLocation") ?? "")
     || Object.hasOwn(data, "locationReceipt") && data.locationReceipt !== weatherLocationReceipt()) return false;

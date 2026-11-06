@@ -274,6 +274,36 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
   return "";
 }
 
+async function confirmSwitchReadback(key, enabled) {
+  const weather = key === "weatherEnabled";
+  const [chunk] = buildBulkEntityChunks(weather ? [key, "weatherStatus"] : [key], "all");
+  const deadline = performance.now() + (weather ? 5000 : 2000);
+  const delays = weather ? [0, 100, 250, 500, 1000, 1500] : [0, 100, 250, 500];
+  for (const delay of delays) {
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) return false;
+    const payload = await fetchBulkEntityChunk(chunk, remaining).catch(() => null);
+    if (!Array.isArray(payload?.missing) || payload.missing.includes(key)) continue;
+    const readback = payload.entities?.[key];
+    const valid = typeof readback?.value === "boolean" && readback.state === (readback.value ? "ON" : "OFF");
+    if (weather && !payload.missing.includes("weatherStatus")) {
+      const status = payload.entities?.weatherStatus;
+      if (typeof status?.value === "string") {
+        state.entities.weatherStatus = mergeEntityPayload("weatherStatus", state.entities.weatherStatus, status);
+        if (status.consent_state === "failed") throw new Error(t("weather.status.consentFailed"));
+        if (status.consent_state !== (enabled ? "on" : "off")) continue;
+      } else continue;
+    } else if (weather) continue;
+    if (valid && readback.value === enabled) {
+      state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+      if (weather) state.weatherOptOutUnconfirmed = false;
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function commitSwitch(key, enabled) {
   const entity = ENTITY_DEFS[key];
   if (!entity) {
@@ -290,8 +320,16 @@ export async function commitSwitch(key, enabled) {
 
   const isLearningSwitch = key === "houseLearningEnabled";
   const isWeatherSwitch = key === "weatherEnabled";
+  const name = isWeatherSwitch ? t("weather.enableLabel") : entity.name;
   if (((isLearningSwitch || isWeatherSwitch) && state.busyAction) || (isLearningSwitch && state.houseLearningReset === "pending")) return;
-  if (isWeatherSwitch) state.weatherConfigRevision += 1;
+  if (isLearningSwitch) {
+    state.houseLearningRequestId += 1;
+    state.houseLearningEndpointChecking = false;
+  }
+  if (isWeatherSwitch) {
+    state.weatherConfigRevision += 1;
+    if (!enabled) state.weatherOptOutUnconfirmed = true;
+  }
   if (isLearningSwitch || isWeatherSwitch) invalidateWeatherForecast();
 
   state.busyAction = `switch-${key}`;
@@ -311,22 +349,17 @@ export async function commitSwitch(key, enabled) {
     if (isLearningSwitch || isWeatherSwitch) {
       const staleStatus = isLearningSwitch ? state.houseLearningFetchPromise : null;
       if (isLearningSwitch) {
-        // Fence reads issued before the controller acknowledged the write.
-        state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
+        // Fence status and switch reads issued before the controller acknowledged the write.
+        state.houseLearningRequestId += 1;
         state.houseLearningEndpointChecking = false;
         state.houseLearningStatus = null;
         render();
       }
-      const [chunk] = buildBulkEntityChunks([key], "all");
-      const payload = await fetchBulkEntityChunk(chunk).catch(() => null);
-      const readback = payload?.entities?.[key];
-      const valid = Array.isArray(payload?.missing) && !payload.missing.includes(key)
-        && typeof readback?.value === "boolean" && readback.state === (readback.value ? "ON" : "OFF");
-      if (valid) state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+      const confirmed = await confirmSwitchReadback(key, enabled);
       if (staleStatus) await staleStatus;
       if (isLearningSwitch) await refreshHouseLearningStatus({ force: true });
-      if (!valid || readback.value !== enabled) throw new Error(t(isLearningSwitch ? "learning.switchUnconfirmed" : "weather.switchUnconfirmed"));
-      state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
+      if (!confirmed) throw new Error(t(isLearningSwitch ? "learning.switchUnconfirmed" : "weather.switchUnconfirmed"));
+      state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name });
       return;
     }
     state.entities[key] = {
@@ -334,7 +367,7 @@ export async function commitSwitch(key, enabled) {
       value: enabled,
       state: enabled,
     };
-    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
+    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name });
     state.busyAction = "";
     if (state.appView === "overview") {
       await refreshEntities([...OVERVIEW_KEYS, ...HEADER_ENTITY_KEYS, "setupComplete", ...FIRMWARE_ENTITY_KEYS], "state");
@@ -348,7 +381,7 @@ export async function commitSwitch(key, enabled) {
     }
     render();
   } catch (error) {
-    state.controlError = t("actions.entityAdjustFailed", { name: entity.name, error: error.message });
+    state.controlError = t("actions.entityAdjustFailed", { name, error: error.message });
     render();
   } finally {
     state.busyAction = "";

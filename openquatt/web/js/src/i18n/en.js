@@ -154,6 +154,8 @@ export default {
       resolving: "Looking up place…", clock: "Waiting for a valid clock", waitingWeather: "Waiting for weather data",
       waitingObservation: "Current indoor and outdoor temperatures and measured heat output.", waitingModel: "Waiting for sufficient model data",
       storedInvalid: "Stored location is invalid; save the location again", storageFailed: "Controller storage failed",
+      consentSaving: "The controller is saving the weather setting.",
+      consentFailed: "Weather requests have stopped. The controller could not save the new setting. Try again before restarting.",
       notFound: "Place not found; try a more specific name or coordinates", ambiguous: "Multiple places found; add the province or use coordinates",
       locationResponse: "The response for this location is unusable", memory: "Insufficient memory; experiment stopped",
       network: "Retrieval failed; waiting for another attempt", invalidForecast: "Weather data rejected; waiting for another attempt",

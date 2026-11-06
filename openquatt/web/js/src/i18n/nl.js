@@ -155,6 +155,8 @@ export default {
       resolving: "Plaats opzoeken…", clock: "Wacht op een geldige klok", waitingWeather: "Wacht op weergegevens",
       waitingObservation: "Actuele metingen van binnen- en buitentemperatuur en warmteafgifte.", waitingModel: "Wacht op voldoende modelgegevens",
       storedInvalid: "Opgeslagen locatie ongeldig; sla de locatie opnieuw op", storageFailed: "Opslaan op de controller mislukt",
+      consentSaving: "De controller slaat de weerinstelling op.",
+      consentFailed: "Weer ophalen is gestopt. De nieuwe instelling kon niet worden opgeslagen. Probeer het opnieuw vóór een herstart.",
       notFound: "Plaats niet gevonden; probeer een specifiekere naam of coördinaten", ambiguous: "Meerdere plaatsen gevonden; voeg de provincie toe of gebruik coördinaten",
       locationResponse: "Het antwoord voor deze locatie is niet bruikbaar", memory: "Onvoldoende geheugen; proef gestopt",
       network: "Ophalen mislukt; wacht op een nieuwe poging", invalidForecast: "Weergegevens afgewezen; wacht op een nieuwe poging",

@@ -4236,7 +4236,11 @@
       notifyMockUpdated();
       return;
     }
-    if (name === "Weather Passive Experiment") entity.state = enabled ? "ON" : "OFF";
+    if (name === "Weather Passive Experiment") {
+      entity.state = enabled ? "ON" : "OFF";
+      const status = getEntity("text_sensor", "Weather Experiment Status");
+      if (status) status.consent_state = enabled ? "on" : "off";
+    }
     if (name === "Power House Passive Learning") {
       entity.state = enabled ? "ON" : "OFF";
       notifyMockUpdated();

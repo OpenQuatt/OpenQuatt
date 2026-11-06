@@ -707,9 +707,12 @@ void WebServer::text_sensor_json_(text_sensor::TextSensor* obj, const std::strin
 
 #ifdef USE_OPENQUATT_WEATHER
   openquatt_weather::TextSnapshotValue snapshot;
-  const char* text = openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(obj), snapshot)
-                         ? snapshot.text
-                         : value.c_str();
+  const bool weather = openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(obj), snapshot);
+  const char* text = weather ? snapshot.text : value.c_str();
+  if (weather) {
+    if (const char* consent = openquatt_weather::consent_state_name(snapshot.consent_state))
+      root[ESPHOME_F("consent_state")] = consent;
+  }
 #else
   const char* text = value.c_str();
 #endif

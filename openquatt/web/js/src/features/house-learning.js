@@ -123,14 +123,17 @@ export async function loadHouseLearningChart() {
   state.houseLearningChartError = "";
   render();
   try {
-    const response = await fetchWithTimeout(
+    const payload = await fetchWithTimeout(
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
       "house-learning-chart-timeout",
+      (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const records = normalizeHouseLearningExport(await response.json());
+    const records = normalizeHouseLearningExport(payload);
     if (requestId !== state.houseLearningChartRequestId) return false;
     state.houseLearningChart = records;
     state.houseLearningChartFetchedAt = Date.now();
@@ -157,14 +160,17 @@ export async function downloadHouseLearningExport() {
   state.houseLearningStatusError = "";
   render();
   try {
-    const response = await fetchWithTimeout(
+    const payload = await fetchWithTimeout(
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
       "house-learning-export-timeout",
+      (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    downloadJsonFile("openquatt-house-learning.json", await response.json());
+    downloadJsonFile("openquatt-house-learning.json", payload);
   } catch (error) {
     state.houseLearningStatusError = localizedMessage("houseLearning.errors.exportFailed", {
       error: errorDetail(error, "house-learning-export-timeout", "houseLearning.errors.exportTimeout"),
