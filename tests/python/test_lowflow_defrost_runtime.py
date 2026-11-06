@@ -62,6 +62,7 @@ int oq_cooling_stop_reason_code=0;
 uint32_t clock_ms=100000;
 uint32_t millis() { return clock_ms; }
 struct Sensor { bool state=true; } hp1_4_way_valve, hp2_4_way_valve;
+Sensor hp1_defrost{false}, hp2_defrost{false};
 struct ModeSensor { float state=2; } hp1_working_mode, hp2_working_mode;
 struct ModeSelect {
   bool has_state() const { return true; }
@@ -155,7 +156,7 @@ inline bool positive_cooling_request(bool) { return false; }
 }
 namespace openquatt_decision_log {
 enum { REASON_UNKNOWN, REASON_HP_FAULT, REASON_CANDIDATE_UNAVAILABLE, REASON_CANDIDATE_IN_REST,
-       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE };
+       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE, REASON_CANDIDATE_IN_DEFROST };
 }
 struct Cycle {
   TickConfig config;
