@@ -175,9 +175,8 @@ Als je deze strategie afstelt, begin dan bijna altijd hier:
 Bij `Duo` daarna eventueel:
 
 6. `Minimum runtime`
-7. `Dual HP Enable Level`
-8. `Dual HP Enable Hold`
-9. `Dual HP Disable Hold`
+7. `Dual HP Enable Hold` (standaard 3 min)
+8. `Dual HP Disable Hold` (standaard 5 min)
 
 ## Wat merk je bij Single en Duo?
 
@@ -196,8 +195,13 @@ Bij `Duo` werkt deze strategie eenvoudiger dan bij `Power House`.
 Praktisch:
 
 - Bij een start vanuit stilstand krijgt de beschikbare warmtepomp met de minste draaiuren voorrang.
-- In `RECOVERY` kan de tweede pomp bijspringen als de eerste haar toegestane maximum bereikt, het aanvoertekort aanhoudt en Duo volgens het prestatiemodel extra warmte kan leveren. Zodra beide pompen draaien, kan de PID hun volledige beschikbare vermogen vragen. Ontdooien zet de wachttijd voor het bijschakelen van een stilstaande pomp terug op nul.
+- In `RECOVERY` kan de tweede pomp bijspringen als de eerste haar toegestane maximum bereikt, de begrensde PID-vraag minstens 95% van de maximale vraag bedraagt, het aanvoertekort aanhoudt en Duo volgens het prestatiemodel extra warmte kan leveren. Hoe groot en hoe lang het tekort moet zijn, hangt af van het stooklijnprofiel. Zodra beide pompen draaien, kan de PID hun volledige beschikbare vermogen vragen. Ontdooien zet de wachttijd voor het bijschakelen van een stilstaande pomp terug op nul.
 - In `MAINTAIN` kan de PID-vraag beide pompen rond het aanvoerdoel laten draaien. Daalt de vraag voldoende en volstaat één pomp, dan moduleert Duo eerst terug. Daarna volgt de ingestelde wachttijd en blijft de beschikbare pomp met de minste draaiuren draaien.
+
+De gewone opschakelroute vraagt minstens 80% van de maximale vraag in
+`MAINTAIN`. In `RECOVERY` geldt die route vanaf 90% als de eerste pomp na
+een herstart van de controller tijdelijk op een vaste stand wordt gehouden.
+Voor deze route geldt `Dual HP Enable Hold`.
 
 ## Wat hoef je meestal niet meteen aan te raken?
 
