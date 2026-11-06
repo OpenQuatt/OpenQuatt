@@ -28,6 +28,7 @@
 #include "../learning/oq_ph_forecast_logic.h"
 #endif
 #include "../performance/hp_perf_limits.h"
+#include "oq_supervisory_power_limiter_runtime.h"
 
 namespace oq_ph_learning {
 
@@ -668,7 +669,12 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         learning_strategy_output_current(id(oq_strategy_output_valid), id(oq_strategy_output_source_code),
                                          id(oq_strategy_active_code), millis(), id(oq_strategy_output_updated_ms)) &&
         isfinite(id(oq_strategy_water_limit_factor));
-    const bool power_cap_active = power_cap_binds_filtered_demand(id(oq_demand_filtered), id(oq_power_cap_f));
+    const bool power_cap_active =
+        id(oq_strategy_active_code) == 3
+            ? oq_supervisory_power::request_limit_active(
+                  id(oq_phouse_req_w),
+                  oq_supervisory_power_runtime::runtime().request_limit_w(id(house_rated_power_w).state))
+            : power_cap_binds_filtered_demand(id(oq_demand_filtered), id(oq_power_cap_f));
     op.active_limit = id(oq_strategy_water_limit_factor) < 0.999f || id(oq_strategy_water_trip_active) ||
                       id(oq_strategy_water_hard_trip_active) || id(oq_strategy_hp_saturated) || power_cap_active ||
                       !learning_hp_protection_clear(oq_sources::hp1, now_ms);

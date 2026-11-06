@@ -1258,7 +1258,8 @@ test("negatief dagpunt blijft beschikbaar na grafiek sluiten en opnieuw laden", 
   assert.match(renderHouseLearningSettings(), /Netto warmte: -20 W/);
 });
 
-test("Leren toont twee aparte voortgangsbalken, met de modelstatus los van de meting", () => {
+test("Leren toont twee aparte voortgangsbalken bij een kleine klokafwijking", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["Date"], now: 1_793_963_600_000 });
   const payload = statusPayload({
     enabled: true, daily_record_count: 4, rls_samples: 10,
     h_batch: 220, t0_batch: 20, batch_advice_ready: true, journal_status: "saved_verified",
@@ -1266,10 +1267,19 @@ test("Leren toont twee aparte voortgangsbalken, met de modelstatus los van de me
     collection: { batch_active: true, batch_elapsed_s: 43200, batch_target_s: 86400,
       thermal_active: true, thermal_elapsed_s: 450, thermal_target_s: 1800 },
   });
-  const html = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload), "primary");
-  assert.match(html, /12:00:00 \/ 24:00:00[\s\S]*width:50%[\s\S]*Modelstatus · Beoordeeld/);
-  assert.match(html, /7:30 \/ 30:00[\s\S]*width:25%[\s\S]*Modelstatus · Voorlopige schatting/);
-  for (const overrides of [{ enabled: false }, { tick_epoch: 1 }, { tick_epoch: payload.tick_epoch + 3600 }]) {
+  for (const offset of [0, 2, -30, 30]) {
+    const status = normalizeHouseLearningStatus({ ...payload, tick_epoch: payload.tick_epoch + offset });
+    const html = renderHouseLearningStatusMarkup(status, "primary");
+    assert.match(html, /12:00:00 \/ 24:00:00[\s\S]*width:50%[\s\S]*Modelstatus · Beoordeeld/, `offset ${offset} s`);
+    assert.match(html, /7:30 \/ 30:00[\s\S]*width:25%[\s\S]*Modelstatus · Voorlopige schatting/, `offset ${offset} s`);
+  }
+  for (const overrides of [
+    { enabled: false },
+    { tick_epoch: 0 },
+    { tick_epoch: payload.tick_epoch - 31 },
+    { tick_epoch: payload.tick_epoch + 31 },
+    { tick_epoch: payload.tick_epoch + 3600 },
+  ]) {
     const inactive = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...payload, ...overrides }), "primary");
     assert.doesNotMatch(inactive, /width:[0-9]|Modelstatus · Beoordeeld/);
   }

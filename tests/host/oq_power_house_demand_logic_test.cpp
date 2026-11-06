@@ -8,7 +8,7 @@ namespace {
 using namespace oq_power_house;
 bool near(float actual, float expected) { return fabsf(actual - expected) < 0.01f; }
 DemandInput input() { return {60001U, 3.0f, -10.0f, 16.0f, 6000.0f, 20.0f, 20.0f, NAN, 1.0f, false}; }
-DemandTuning tuning() { return {0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20}; }
+DemandTuning tuning() { return {0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f}; }
 void test_model_and_feedforward() {
   struct ModelCase {
     float outside_c, expected_w;
@@ -41,20 +41,14 @@ void test_cold_weather_exceeds_reference_power() {
   in.outside_c = -15.0f;
   assert(near(modelled_house_power_w(16.0f, -10.0f, -15.0f, 7020.0f), 8370.0f));
   const auto cold = decide_demand(in, tuning(), {});
-  assert(cold.valid && near(cold.requested_w, 8370.0f) && cold.raw_demand == 20);
+  assert(cold.valid && near(cold.requested_w, 8370.0f));
   // Preserve demand above Pr and the existing rise rate on subsequent ticks.
   in.now_ms += 60000U;
   assert(near(decide_demand(in, tuning(), cold.next).requested_w, 8370.0f));
   assert(near(decide_demand(in, tuning(), {7020, cold.next.last_ms, 0}).requested_w, 7722.0f));
   in.water_limit_factor = 0.5f;
   const auto water = decide_demand(in, tuning(), {});
-  assert(water.valid && near(water.requested_w, 4185.0f) && water.raw_demand == 12);
-}
-void test_normalized_demand_and_explicit_power_caps() {
-  assert(ceil_demand_level(FLT_MAX, FLT_MIN, 20) == 20);
-  assert(near(power_capped_request_w(8370.0f, 20, 20, 7020.0f), 8370.0f));
-  assert(near(power_capped_request_w(8370.0f, 10, 20, 7020.0f), 3510.0f));
-  assert(power_capped_request_w(8370.0f, 0, 20, 7020.0f) == 0.0f);
+  assert(water.valid && near(water.requested_w, 4185.0f));
 }
 void test_cache_and_cadence_rollover() {
   constexpr uint32_t hold_ms = 300000U;
@@ -107,7 +101,7 @@ void test_demand_finite_contract() {
       auto in = input();
       in.*field = value;
       const auto out = decide_demand(in, tuning(), {1000, 1000, 0.1f});
-      assert(!out.valid && out.requested_w == 0 && out.raw_demand == 0 && out.next.last_w == 0);
+      assert(!out.valid && out.requested_w == 0 && out.next.last_w == 0);
       assert(out.next.last_ms == in.now_ms && out.next.comfort_memory_c == 0);
     }
     for (auto field : tuning_fields) {
@@ -130,9 +124,9 @@ void test_demand_finite_contract() {
   auto recovered = input();
   recovered.now_ms = stopped.next.last_ms + 60000U;
   assert(near(decide_demand(recovered, tuning(), stopped.next).requested_w, 600.0f));
-  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.1f, 0.3f, 10, 5, 20}, {}).valid);
+  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.1f, 0.3f, 10, 5}, {}).valid);
   assert(!decide_demand({60001U, 3, -10, 16, 6000, -0x1.fffffep+127f, 0x1.fffffep+127f, NAN, 1, false},
-                        {0.5f, 0, 0.1f, 0.3f, 10, 5, 20}, {})
+                        {0.5f, 0, 0.1f, 0.3f, 10, 5}, {})
               .valid);
 }
 void test_demand_slew_and_limits() {
@@ -147,7 +141,7 @@ void test_demand_slew_and_limits() {
   auto limited = input();
   limited.water_limit_factor = 0.5f;
   const auto out = decide_demand(limited, tuning(), {});
-  assert(out.valid && near(out.requested_w, 1500.0f) && out.raw_demand == 5);
+  assert(out.valid && near(out.requested_w, 1500.0f));
   const auto colder = decide_demand(rise, tuning(), {3000, 1U, 0});
   assert(colder.next.comfort_memory_c > 0.0f);
   auto warm = input();
@@ -203,7 +197,6 @@ void test_comfort_warm_edge_and_recovery_boundary() {
 int main() {
   test_model_and_feedforward();
   test_cold_weather_exceeds_reference_power();
-  test_normalized_demand_and_explicit_power_caps();
   test_cache_and_cadence_rollover();
   test_demand_finite_contract();
   test_demand_slew_and_limits();

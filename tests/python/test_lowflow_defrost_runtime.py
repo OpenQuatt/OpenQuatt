@@ -325,7 +325,7 @@ int main() {
     assert(!events.empty());
   }
   using namespace oq_power_house_dispatch;
-  const DispatchTuning tuning{9000,10000,5,150,450,6,1};
+  const DispatchTuning tuning{9000,10000,5,150,450,1930.5f,1};
   auto capture_boot = [](DispatchInput in) {
     const bool pending[2]={oq_incident_manager.boot[0].pending(in.now_ms),
                            oq_incident_manager.boot[1].pending(in.now_ms)};
@@ -355,7 +355,7 @@ int main() {
     a.previous[0]=a.previous[1]=0; a.physical[slot]=1; a.physical[peer]=0;
     a.retained[0]=a.retained[1]={};
     a.start_limits_[0].remaining=a.start_limits_[1].remaining=0;
-    DispatchInput in{clock_ms,3,2000.0f,true,true,true,{},{},nullptr,nullptr};
+    DispatchInput in{clock_ms,2000.0f,true,true,true,{},{},nullptr,nullptr};
     in.hp1.candidate.available_for_start=in.hp2.candidate.available_for_start=true;
     auto& running=hp1_running?in.hp1:in.hp2;
     auto& idle=hp1_running?in.hp2:in.hp1;
@@ -397,7 +397,7 @@ int main() {
     reset();
     const int slot=hp1_running?0:1, peer=1-slot;
     auto& boot=oq_incident_manager.boot[slot]; boot.begin(true,clock_ms);
-    DispatchInput in{clock_ms,3,2000.0f,true,true,true,{},{},nullptr,nullptr};
+    DispatchInput in{clock_ms,2000.0f,true,true,true,{},{},nullptr,nullptr};
     in.hp1.candidate.available_for_start=in.hp2.candidate.available_for_start=true;
     (hp1_running?in.hp1:in.hp2).levels[1]={true,true,true,2500,400,30};
     (hp1_running?in.hp2:in.hp1).levels[1]={true,true,true,2000,200,30};
@@ -434,7 +434,7 @@ int main() {
   boot.observe(3999,2,clock_ms); boot.observe(1999,1,clock_ms);
   boot.observe(2099,2,clock_ms); boot.observe(2103,30,clock_ms);
   assert(boot.update(clock_ms,false,true,true,true)==1);
-  DispatchInput in{clock_ms,3,4500.0f,true,true,true,{},{},nullptr,nullptr};
+  DispatchInput in{clock_ms,4500.0f,true,true,true,{},{},nullptr,nullptr};
   in.hp1.candidate.available_for_start=in.hp2.candidate.available_for_start=true;
   in.hp2.candidate.previous_applied_level=1; in.hp2.stop_inhibited=true;
   in.hp1.levels[1]={true,true,true,2000,200,30};
