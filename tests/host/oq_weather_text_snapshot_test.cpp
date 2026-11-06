@@ -14,7 +14,14 @@ int main() {
   store.bind(2, &resolved);
   store.bind(3, &issued);
   store.bind(4, &foreign);  // No hidden fifth entry.
+  assert(!is_weather_text(&location));
   published_weather_snapshots.store(&store, std::memory_order_release);
+  assert(is_weather_text(&location));
+  assert(is_weather_text(&status));
+  assert(is_weather_text(&resolved));
+  assert(is_weather_text(&issued));
+  assert(!is_weather_text(&foreign));
+  assert(!is_weather_text(nullptr));
   TextSnapshotValue value;
   assert(!copy_weather_text_snapshot(&foreign, value));
   assert(!copy_weather_text_snapshot(nullptr, value));
