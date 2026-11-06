@@ -156,6 +156,16 @@ inline bool store_record(uint32_t (&storage)[kRecordStorageWords], const SourceI
   return true;
 }
 
+inline bool restore_record(uint32_t (&storage)[kRecordStorageWords], const SourceIdentity& current, float offset_c,
+                           bool& offset_changed) {
+  const auto old = load_record(storage);
+  const float old_offset_c = record_matches(old, current) ? old.offset_c : 0.0f;
+  offset_changed = false;
+  if (!store_record(storage, current, offset_c)) return false;
+  offset_changed = old_offset_c != offset_c;
+  return true;
+}
+
 inline bool record_matches(int32_t source_code, uint32_t source_fingerprint, uint32_t checksum, float offset_c,
                            const SourceIdentity& current, float max_offset_c = 2.0f) {
   const bool fingerprint_matches = current.code == SOURCE_CIC || source_fingerprint == current.fingerprint;

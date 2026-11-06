@@ -498,6 +498,10 @@ inline PhysicalMeasurement<BoilerHeatState> learning_boiler_status(float payload
                              {PhysicalSourceKind::OPENTHERM_FRAME, 0x10000U, PhysicalUnit::SYSTEM}, 1, {10000, 30000});
 }
 
+inline bool learning_boiler_no_heat_observed(const PhysicalMeasurement<BoilerHeatState>& telemetry, uint64_t now_ms) {
+  return live_measurement_fresh(telemetry, now_ms) && telemetry.value == BoilerHeatState::NO_HEAT;
+}
+
 // Heating and its idle/pump phases have no boiler demand. OpenTherm is an optional
 // contradiction check, not a required source. Keep the contract identity stable
 // when telemetry disappears or activity changes; invalidate only the sample.

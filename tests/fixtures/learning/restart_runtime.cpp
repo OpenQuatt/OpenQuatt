@@ -17,10 +17,12 @@ constexpr uint32_t kEpoch = 20000U * 86400U;
 constexpr uint8_t kContext[]{1, 7, 4, 9};
 const PassiveContextView context{kContext, sizeof(kContext), 1};
 DailyRestartTicket daily_restart_ticket;
+DailyRestartTicket boot_restart_ticket;
 
 struct RuntimeStorage {
   PassiveRuntimeStorage learner;
   PassiveRuntimeConfig config;
+  QualityConfig daily_quality;
   LearningJournalStore journal;
   LearningJournalRecords pending_daily;
   SegmentAccumulator pending_daily_heat;
@@ -32,6 +34,11 @@ struct RuntimeStorage {
   bool restart_checkpoint_verified = true;
   const char* daily_resume_status = "waiting_for_sources";
   const char* daily_resume_reason = "none";
+};
+
+struct CalibrationRestoreOwner {
+  RuntimeStorage* storage_ = nullptr;
+#include "production_supply_calibration_change.inc"
 };
 
 void production_recovery(RuntimeStorage& state, uint32_t epoch, bool valid_daily_observation,
@@ -55,6 +62,7 @@ void production_recovery(RuntimeStorage& state, uint32_t epoch, bool valid_daily
     input.room_c.provenance = MeasurementProvenance::PHYSICAL_RECEIPT;
   }
   const auto& in = input;
+  state.daily_quality = daily_heat_quality(state.config.quality, input.system_heat_enabled);
   const bool boiler_heat_observed =
       supplied_input != nullptr && input.boiler_heat.valid && input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE;
   // Run the real preceding sticky veto as well as the pending-recovery owner.
@@ -105,6 +113,7 @@ LearningSnapshot sample(uint32_t second, uint64_t mono) {
 }
 
 void prepare(RuntimeStorage& state, const QualityConfig& quality = QualityConfig{}) {
+  state.daily_quality = quality;
   SegmentAccumulator prefix;
   for (uint32_t t = 0; t <= 7200; t += 60)
     assert(observe_snapshot(prefix, sample(t, 1000ULL + t * 1000ULL), quality).status == LearningStatus::COLLECTING);
@@ -212,6 +221,47 @@ void test_actual_wait_owner_keeps_independent_heat_then_restores_once() {
   assert(accumulator.missing_energy_uncertainty_ws == first_debt);
   assert(accumulator.heat_integral == 20.0 * 500 + 10.0 * 0 + 10.0 * 2000);
   assert(accumulator.heat_observed_ms == 7220000 && accumulator.temperature_observed_ms == 7200000);
+  retained_data_unchanged(state);
+}
+
+void test_restart_gap_retains_the_checkpoint_heat_bound_after_boiler_is_disabled() {
+  QualityConfig hp_quality;
+  hp_quality.max_daily_missing_heat_w = 12230.56f;
+  hp_quality.max_observed_heat_w = 1.20f * hp_quality.max_daily_missing_heat_w;
+  RuntimeStorage state;
+  state.config.quality = state.learner.config.quality = hp_quality;
+  prepare(state, daily_heat_quality(hp_quality, true));
+  const auto raw = daily_source_fixture::source(7220, 3000.0f);
+  production_recovery(state, raw.epoch_s, true, true, true, false, 0, NAN, &raw);
+  auto& day = state.learner.batch_accumulator;
+  assert(!state.daily_restore_pending && day.restart_pending && day.gap_heat_bound_floor_w == 50000.0f);
+  const double before = day.missing_energy_uncertainty_ws;
+  const auto batch = build_learning_snapshot(raw, hp_quality);
+  assert(observe_snapshot(day, batch.snapshot, state.daily_quality).status == LearningStatus::COLLECTING);
+  const double expected = daily_gap_uncertainty_ws(50000.0, 0.0, batch.snapshot.heat_to_water_w, 20000U, 0U, 20000U);
+  assert(fabs(day.missing_energy_uncertainty_ws - before - expected) < 0.01);
+  assert(day.gap_heat_bound_floor_w == 0.0f);
+  retained_data_unchanged(state);
+}
+
+void test_supply_calibration_change_revokes_boot_and_live_checkpoints() {
+  RuntimeStorage state;
+  prepare(state);
+  boot_restart_ticket = state.boot_restart_ticket;
+  assert(boot_restart_ticket.matches(7, state.pending_daily));
+  CalibrationRestoreOwner owner;
+  owner.supply_calibration_changed();  // The backup arrives before the first learn tick.
+  assert(!boot_restart_ticket.matches(7, state.pending_daily));
+
+  owner.storage_ = &state;
+  assert(state.pending_daily.restore_daily(state.learner.batch_accumulator, context, QualityConfig{}));
+  state.restart_prepared = true;
+  daily_restart_ticket.arm(state.journal, true);
+  owner.supply_calibration_changed();
+  assert(!state.learner.batch_accumulator.active && !state.daily_restore_pending && !state.daily_restore_allowed);
+  assert(!state.boot_restart_ticket.matches(7, state.pending_daily));
+  production_retry_prepare(state);
+  assert(!daily_restart_ticket.matches(7, state.pending_daily));
   retained_data_unchanged(state);
 }
 
@@ -408,6 +458,8 @@ int main() {
   test_same_boot_prepared_wait_keeps_the_same_tick_boundary();
   test_wait_observed_then_missed_tick_never_becomes_measured_heat();
   test_actual_wait_owner_keeps_independent_heat_then_restores_once();
+  test_restart_gap_retains_the_checkpoint_heat_bound_after_boiler_is_disabled();
+  test_supply_calibration_change_revokes_boot_and_live_checkpoints();
   test_actual_pending_owner_wait_and_125_second_restore();
   test_negative_owner_boundaries_do_not_resume_or_change_history();
   test_known_interruption_with_unknown_clock_stays_revoked();

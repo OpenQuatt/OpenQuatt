@@ -248,8 +248,8 @@ void daily_dhw_only_preserves_collection_and_restart_eligibility() {
 LearningSourceInput system_observation(uint32_t second, int cm) {
   auto raw = observation(1000ULL + second * 1000ULL, 20000U * 86400U + second, 5.0f);
   raw.system_heat_enabled = true;
+  raw.boiler_no_heat_observed = true;
   raw.operation.control_mode = learning_control_mode(0, cm);
-  raw.hp_measurement_limit_w = 7338.336f;
   raw.circuit_flow_lph = raw.flow_lph;
   raw.system_supply_c = measured(44.0f, 4, PhysicalUnit::SYSTEM, raw.monotonic_ms);
   raw.system_supply_c.source.kind = PhysicalSourceKind::DIRECT_SENSOR;
@@ -308,8 +308,21 @@ void daily_system_heat_only_bridges_missing_measurements() {
 
   raw = system_observation(30, 2);
   raw.system_supply_c = {};
+  const oq_boiler::BoilerCommand off{
+      true, false, false, NAN, NAN, oq_boiler::COMMAND_SOURCE_NONE, static_cast<uint32_t>(raw.monotonic_ms)};
+  raw.boiler_heat = learning_no_boiler_heat_contract(true, 2, off, false, false, raw.monotonic_ms, false);
   const auto fallback = build_learning_snapshot(raw, quality);
   assert(fallback.measurement_valid && fabsf(fallback.snapshot.heat_to_water_w - 2200.0f) < 0.01f);
+  // A current local NONE contract cannot by itself exclude physical heat.
+  for (const auto& telemetry :
+       {PhysicalMeasurement<BoilerHeatState>{}, learning_boiler_status(0x0000, raw.monotonic_ms - 10001U, true, true),
+        learning_boiler_status(0x0002, raw.monotonic_ms, true, true)}) {
+    raw.boiler_no_heat_observed = learning_boiler_no_heat_observed(telemetry, raw.monotonic_ms);
+    assert(!raw.boiler_no_heat_observed && build_learning_snapshot(raw, quality).may_bridge_daily_gap);
+  }
+  const auto no_heat = learning_boiler_status(0x0000, raw.monotonic_ms, true, true);
+  raw.boiler_no_heat_observed = learning_boiler_no_heat_observed(no_heat, raw.monotonic_ms);
+  assert(raw.boiler_no_heat_observed && build_learning_snapshot(raw, quality).measurement_valid);
   raw.boiler_heat = {};
   assert(build_learning_snapshot(raw, quality).may_bridge_daily_gap);
 
@@ -338,6 +351,82 @@ void daily_system_heat_only_bridges_missing_measurements() {
   assert(defrost.measurement_valid && defrost.snapshot.heat_to_water_w < 0.0f);
 }
 
+void daily_idle_without_physical_flow_waits_only_for_the_allowed_gap() {
+  const QualityConfig quality;
+  SegmentAccumulator day;
+  assert(observe_source_input(day, system_observation(0, 2), quality).source.measurement_valid);
+  for (uint32_t seconds = 10; seconds <= 130; seconds += 10) {
+    auto raw = system_observation(seconds, 0);
+    raw.boiler_no_heat_observed = false;
+    raw.flow_lph.value = 0.0f;  // PUMPS_STOPPED, without physical flow evidence.
+    raw.circuit_flow_lph = {};
+    const auto observation = observe_source_input(day, raw, quality);
+    assert(observation.source.may_bridge_daily_gap);
+    assert(day.active == (seconds <= 120U));
+  }
+}
+
+void daily_boiler_limits_stay_separate_and_preserve_an_open_gap() {
+  PassiveRuntimeConfig config;
+  config.quality.max_daily_missing_heat_w = 6115.28f;
+  config.quality.max_observed_heat_w = 7338.336f;
+  const uint8_t context_bytes[]{1};
+  const PassiveContextView context{context_bytes, sizeof(context_bytes), 1};
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context, config, true);
+  const auto advance = [&](const LearningSourceInput& raw) {
+    const auto batch = build_learning_snapshot(raw, config.quality, SnapshotPurpose::STRUCTURAL_BATCH);
+    const auto dynamic = build_learning_snapshot(raw, config.quality, SnapshotPurpose::THERMAL_DYNAMIC);
+    PassiveTickInput tick;
+    tick.context = context;
+    tick.now_monotonic_ms = raw.monotonic_ms;
+    tick.now_epoch_s = raw.epoch_s;
+    tick.opted_in = tick.context_valid = tick.active_line_valid = true;
+    tick.active_line = {150.0f, 16.0f};
+    tick.batch_snapshot_available = batch.has_snapshot;
+    tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
+    tick.batch_source_status = batch.status;
+    tick.batch_snapshot = batch.snapshot;
+    tick.dynamic_snapshot_available = dynamic.has_snapshot;
+    tick.dynamic_snapshot = dynamic.snapshot;
+    const auto daily_quality = daily_heat_quality(config.quality, raw.system_heat_enabled);
+    tick_passive_runtime(state, tick, &daily_quality);
+    assert(state.config.quality.max_observed_heat_w == config.quality.max_observed_heat_w);
+    assert(state.config.quality.max_daily_missing_heat_w == config.quality.max_daily_missing_heat_w);
+    return batch;
+  };
+
+  auto raw = system_observation(0, 2);
+  raw.hp2.water_out_c.value = 40.0f;
+  assert(evaluate_calorimetry(raw, config.quality).status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE);
+  const auto system = advance(raw);
+  assert(system.measurement_valid && system.snapshot.heat_to_water_w > config.quality.max_observed_heat_w);
+  assert(state.batch_accumulator.active && !state.thermal_accumulator.active);
+
+  raw = system_observation(10, 2);
+  raw.hp2.water_out_c.value = 40.0f;
+  raw.system_supply_c = {};
+  const auto fallback = advance(raw);
+  assert(fallback.status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE && !fallback.measurement_valid);
+  assert(state.batch_accumulator.heat_gap_pending && state.batch_accumulator.gap_heat_bound_floor_w == 50000.0f);
+
+  raw = system_observation(20, 2);
+  raw.system_heat_enabled = false;
+  const auto recovered = advance(raw);
+  const auto& day = state.batch_accumulator;
+  assert(recovered.measurement_valid && !day.heat_gap_pending && day.gap_heat_bound_floor_w == 0.0f);
+  assert(day.start_epoch_s == system.snapshot.epoch_s);
+  const double expected = daily_gap_uncertainty_ws(50000.0, system.snapshot.heat_to_water_w,
+                                                   recovered.snapshot.heat_to_water_w, 20000U, 0U, 20000U);
+  assert(fabs(day.missing_energy_uncertainty_ws - expected) < 0.01);
+
+  raw = system_observation(30, 2);
+  raw.system_heat_enabled = false;
+  raw.flow_lph = {};
+  assert(advance(raw).may_bridge_daily_gap);
+  assert(day.heat_gap_pending && day.gap_heat_bound_floor_w == config.quality.max_daily_missing_heat_w);
+}
+
 // A host-side size guard for the pure data only. This is not an ESP32 footprint
 // or a substitute for the future strict-PSRAM and internal-heap HIL checks.
 static_assert(sizeof(SegmentRecord) * kMaxSegmentRecords + sizeof(AdviceFitWorkspace) + sizeof(SegmentAccumulator) <
@@ -348,6 +437,8 @@ int main() {
   daily_dhw_only_preserves_collection_and_restart_eligibility();
   daily_system_heat_survives_boiler_modes_and_ot_changes();
   daily_system_heat_only_bridges_missing_measurements();
+  daily_idle_without_physical_flow_waits_only_for_the_allowed_gap();
+  daily_boiler_limits_stay_separate_and_preserve_an_open_gap();
   raw_series_observations_to_advice();
   raw_daily_profiles_cross_zero_power_temperature();
   heating_cycles_keep_idle_time_and_pump_runout();

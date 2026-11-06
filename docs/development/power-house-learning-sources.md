@@ -43,11 +43,23 @@ tussen de retour bij HP1 en de systeemaanvoer na de ketel. CM3 en CM4 tellen mee
 zolang deze meting geldig is, onafhankelijk van de OpenTherm-status. Een
 vastgehouden aanvoerwaarde of een fallback naar de warmtepompuitgang levert geen
 systeemmeting op. Valt de systeemmeting weg, dan mag de warmte van de warmtepomp
-meetellen zodra het ketelcontract uitsluit dat de ketel cv-warmte toevoegt.
-Anders blijft de warmte voor dat interval onbekend en gelden de meetgatregels.
-Met aangesloten ketel gebruikt de onzekerheidsberekening de structurele
-vermogensgrens. Het ingestelde ketelvermogen is een regelwaarde en bewijst geen
-maximum voor ongemeten ketelwarmte.
+meetellen als de regeling geen ketelwarmte vraagt en een verse OpenTherm-status
+bevestigt dat de ketel geen cv-warmte levert. Zonder die bevestiging blijft de
+warmte voor dat interval onbekend en gelden de meetgatregels. Dat geldt ook bij R1.
+Bij stilstaande ODU-pompen kan verse pulsflow van de Q-controller circulatie
+aantonen als de bronselectie anders een synthetische nul oplevert. Een stille
+pulsingang levert in die situatie geen meting. Zonder actuele
+systeemmeting of OpenTherm-bevestiging kan langdurige stilstand de dagmeting
+onderbreken. Bij HA-aanvoer telt de laatste temperatuurontvangst hoogstens
+30 seconden mee. De HA-heartbeat houdt de verbinding actueel. Voor de dagmeting
+moet de aanvoerbron zelf minstens elke 30 seconden een meetwaarde doorgeven.
+Een gewijzigde aanvoerkalibratie bij het terugzetten van een backup begint een
+nieuwe dagmeting. Afgeronde dagen blijven bewaard.
+Met aangesloten ketel gebruikt de dagmeting 50 kW als grens voor gemeten
+systeemwarmte en als ondergrens voor de berekening van meetgatonzekerheid.
+Bij omschakelen blijft de hoogste al toegepaste grens gelden tot het open
+meetgat sluit. Het ingestelde ketelvermogen is een regelwaarde en bewijst
+geen maximum voor ongemeten ketelwarmte.
 
 CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
 meetellen. Voor pompbedrijf gelden de reguliere broncontroles en pauzes tijdens
@@ -237,13 +249,15 @@ Alleen oude schema7-checkpoints zonder opgeslagen piekvloer behouden voor de
 eerste overbrugging de conservatieve 50 kW-terugval; reeds opgeslagen U wordt
 nooit achteraf verlaagd.
 
-Het plausibiliteitsfilter voor nieuwe, getekende warmtemetingen gebruikt
+Het plausibiliteitsfilter voor warmtepompwarmte gebruikt
 `tabelmaximum × 1,20`: V1/V1.5 Single 7338,34 W / Duo 14676,67 W en V2 Single
 11006,58 W / Duo 22013,16 W. Exact de grens is toegestaan; positief en negatief
 worden symmetrisch behandeld. Dit is een engineeringmarge, geen gemeten bewijs
 dat iedere werkelijke waterzijdige piek binnen 20% blijft. Onbekende generatie
 gebruikt ook hier de hoogste ondersteunde generatie voor de ingestelde topologie.
-De status publiceert de actieve grens als `collection.batch_heat_measurement_limit_w`.
+Deze grens geldt ook voor de terugval op warmtepompwarmte bij een aangesloten
+ketel en voor de dynamische 1R1C-meting. De status publiceert de grens van de
+dagmeting als `collection.batch_heat_measurement_limit_w`.
 
 Een eindige uitschieter boven deze grens wordt pas na bron-/unit-/tijdcontroles
 `heat_out_of_range`. Hij telt niet als warmte of RLS-meting en wordt niet naar

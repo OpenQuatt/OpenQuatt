@@ -172,6 +172,18 @@ sensor:
       - timeout:
           timeout: 15s
           value: !lambda return 0.0f;
+    on_value:
+      - lambda: |-
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          const auto& raw = oq_sources::controller_flow;
+          // A filtered value retains the last pulse receipt's time. A
+          // zero/nonzero mismatch cannot certify the filtered publication.
+          if (raw.valid && (x == 0.0f) == (raw.value == 0.0f)) {
+            oq_sources::controller_filtered_flow.observe(x, raw.received_ms, true);
+          } else {
+            oq_sources::controller_filtered_flow = {};
+          }
+          #endif
 
 interval:
   - interval: 5s

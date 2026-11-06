@@ -144,7 +144,7 @@ struct LearningSourceInput {
   PhysicalMeasurement<float> circuit_flow_lph;
   PhysicalMeasurement<float> system_supply_c;
   bool system_heat_enabled = false;
-  float hp_measurement_limit_w = 0.0f;
+  bool boiler_no_heat_observed = false;
   HeatPumpRawMeasurements hp1;
   HeatPumpRawMeasurements hp2;
   PhysicalMeasurement<BoilerHeatState> boiler_heat;
@@ -485,10 +485,7 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
     result.status = status;
     return result;
   }
-  const float heat_limit_w = input.hp_measurement_limit_w > 0.0f
-                                 ? fminf(input.hp_measurement_limit_w, configured_measurement_heat_limit_w(quality))
-                                 : configured_measurement_heat_limit_w(quality);
-  if (fabsf(heat_w) > heat_limit_w) {
+  if (fabsf(heat_w) > configured_measurement_heat_limit_w(quality)) {
     // Keep the rejected finite magnitude solely as conservative gap evidence.
     // It is not an accepted measurement and must never enter energy or RLS.
     result.status = SnapshotSourceStatus::HEAT_OUT_OF_RANGE;
@@ -555,7 +552,8 @@ inline bool use_system_calorimetry(const LearningSourceInput& input, const Calor
   if (system.valid || !source_detail::scalar_gap_status(system.status) ||
       input.operation.control_mode == LearningControlMode::HEATING_WITH_BOILER)
     return true;
-  // A heat-pump-only fallback requires an independent, current no-heat contract.
+  // A local off command cannot exclude independently triggered boiler heat.
+  if (!input.boiler_no_heat_observed) return true;
   source_detail::MeasurementMeta metadata[1];
   size_t count = 0;
   return input.boiler_heat.value != BoilerHeatState::NO_HEAT ||
@@ -731,7 +729,9 @@ inline SourceObserveResult observe_source_input(SegmentAccumulator& state, const
     result.aggregate.status = LearningStatus::TIME_DISCONTINUITY;
     return result;
   }
-  result.aggregate = observe_snapshot(state, result.source.snapshot, quality, result.source.may_bridge_daily_gap);
+  result.aggregate =
+      observe_snapshot(state, result.source.snapshot, daily_heat_quality(quality, input.system_heat_enabled),
+                       result.source.may_bridge_daily_gap);
   return result;
 }
 

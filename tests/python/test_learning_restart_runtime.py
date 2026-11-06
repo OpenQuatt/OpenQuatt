@@ -23,6 +23,12 @@ class LearningRestartRuntimeTest(unittest.TestCase):
                 source, "if (state.restart_prepared) {\n      if (!coherent_daily_restart_tick"))
             (temporary / "production_retry_prepare.inc").write_text(production_function(
                 source, "if (state.restart_prepared) {\n      // OTA retry"))
+            (temporary / "production_supply_calibration_change.inc").write_text("\n".join(
+                production_function(source, signature) for signature in (
+                    "static void clear_daily_resume_status_(",
+                    "static void cancel_daily_resume_status_(",
+                    "void supply_calibration_changed()",
+                )))
             binary = temporary / "restart-owner"
             built = run_process(compiler_command(
                 "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I", str(temporary),

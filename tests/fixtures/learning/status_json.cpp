@@ -55,6 +55,7 @@ struct RuntimeStorage {
   PassiveRuntimeStorage learner;
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
+  QualityConfig daily_quality;
   LearningSourceInput input;
   PassiveTickInput tick;
   SnapshotDiagnostics source_diagnostics;
@@ -245,7 +246,7 @@ int main() {
   summary.thermal.heat_loss_w_per_k = summary.thermal.thermal_capacity_wh_per_k = -std::numeric_limits<float>::max();
   summary.thermal.accepted_samples = summary.thermal.readiness_reasons = UINT32_MAX;
   state.config.thermal_window.target_duration_ms = UINT64_MAX;
-  state.config.quality.max_daily_missing_heat_w = 18344.30078125f;
+  state.daily_quality.max_daily_missing_heat_w = 18344.30078125f;
   state.input.context_revision = UINT32_MAX;
   state.source_diagnostics.invalid_reasons = UINT32_MAX;
   state.journal.status = "persistence_unavailable";

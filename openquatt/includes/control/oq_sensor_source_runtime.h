@@ -55,56 +55,44 @@ class Runtime {
     return receipt;
   }
 
-  uint64_t system_flow_receipt_ms(uint64_t now_ms, uint32_t max_age_ms) const {
-    if (!resolved_flow_.valid || !isfinite(resolved_flow_.value)) return 0U;
-    const auto receipt_ms = [&](const oq_sources::RawFloatReceipt& receipt) {
-      // A cached nonzero average immediately after the last pulse cannot be
-      // paired with a zero-flow receipt to manufacture a measured sample.
-      return receipt.fresh(now_ms, max_age_ms) && (receipt.value == 0.0f) == (resolved_flow_.value == 0.0f)
-                 ? receipt.received_ms
-                 : 0U;
-    };
+  oq_sources::RawFloatReceipt system_flow_receipt(uint64_t now_ms, uint32_t max_age_ms) const {
+    if (!resolved_flow_.valid ||
+        !oq_sources::same_configuration(resolved_flow_.configuration, flow_configuration_key()) ||
+        flow_route(flow_selection().route) != resolved_flow_.route)
+      return {};
+    // Choose the normal flow route, but read the value and time together
+    // from the producer instead of re-timestamping the selected display cache.
+    oq_sources::RawFloatReceipt receipt;
     using Route = oq_sources::LearningSourceRoute;
     switch (resolved_flow_.route) {
-      case Route::CONTROLLER_FLOW:
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-        return receipt_ms(oq_sources::controller_flow);
-#else
-        return 0U;
+      case Route::CONTROLLER_FLOW:
+        receipt = oq_sources::current_controller_filtered_flow();
+        break;
+      case Route::SYNTHESIZED_ZERO_FLOW:
+        // With idle ODU pumps, only fresh pulses prove boiler circulation.
+        // A quiet or unconnected input cannot certify zero circuit flow.
+        if (oq_sources::controller_flow.value > 0.0f) receipt = oq_sources::current_controller_filtered_flow();
+        break;
 #endif
       case Route::CIC_FLOW:
-        return receipt_ms(id(cic_component).flow_rate_receipt());
+        if (cic_feed_valid()) receipt = id(cic_component).flow_rate_receipt();
+        break;
       case Route::HP1_FLOW:
-        return receipt_ms(oq_sources::hp1.flow);
+        receipt = oq_sources::hp1.flow;
+        break;
 #if OQ_TOPOLOGY_DUO
       case Route::HP2_FLOW:
-        return receipt_ms(oq_sources::hp2.flow);
+        receipt = oq_sources::hp2.flow;
+        break;
 #endif
-      case Route::FLOW_AGGREGATE: {
-        auto primary = oq_sources::hp1.flow;
-        float primary_value = id(hp1_flow).state;
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-        if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V1") {
-          primary = oq_sources::controller_flow;
-          primary_value = id(flow_rate_controller).state;
-        }
-#endif
-#if OQ_TOPOLOGY_DUO
-        const bool first_contributes = isfinite(primary_value) && primary_value > 0.0f;
-        const float secondary_value = id(hp2_flow).state;
-        const bool second_contributes = isfinite(secondary_value) && secondary_value > 0.0f;
-        if (second_contributes) {
-          const uint64_t second_ms = receipt_ms(oq_sources::hp2.flow);
-          if (!first_contributes) return second_ms;
-          const uint64_t first_ms = receipt_ms(primary);
-          return first_ms < second_ms ? first_ms : second_ms;
-        }
-#endif
-        return isfinite(primary_value) ? receipt_ms(primary) : 0U;
-      }
+      case Route::FLOW_AGGREGATE:
+        receipt = oq_sources::local_flow;
+        break;
       default:
-        return 0U;
+        break;
     }
+    return receipt.fresh(now_ms, max_age_ms) ? receipt : oq_sources::RawFloatReceipt{};
   }
 #endif
 
@@ -125,6 +113,9 @@ class Runtime {
     this->room_generation_.observe(room_configuration_key(false));
     this->setpoint_generation_.observe(room_configuration_key(true));
     this->resolved_flow_ = {};
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+    oq_sources::local_flow = {};
+#endif
     this->resolved_outside_ = {};
     this->resolved_room_ = {};
     this->resolved_setpoint_ = {};
