@@ -142,6 +142,12 @@ export const state = {
   ...createMotionState(getPrefersReducedMotion()),
 };
 
+export function invalidateHouseLearningShadow() {
+  state.houseLearningShadowEpoch += 1;
+  if (state.houseLearningStatus?.shadow) state.houseLearningStatus.shadow = null;
+  state.houseLearningLastFetchAt = 0;
+}
+
 export function restoreStoredQuickStartSetupInstall() {
   const record = getStoredQuickStartSetupInstall();
   if (!record || record.status === "complete" || record.status === "skipped") {

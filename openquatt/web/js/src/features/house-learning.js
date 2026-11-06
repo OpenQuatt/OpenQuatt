@@ -238,6 +238,7 @@ export async function refreshHouseLearningStatus(options = {}) {
   const requestGeneration = Number(state.houseLearningRequestId || 0);
   const before = JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
   const requestStartedAt = performance.now();
+  const shadowEpoch = state.houseLearningShadowEpoch;
   state.houseLearningEndpointChecking = true;
   state.houseLearningFetchPromise = (async () => {
     let probeCompleted = false;
@@ -262,6 +263,9 @@ export async function refreshHouseLearningStatus(options = {}) {
         const status = normalizeHouseLearningStatus(payload, requestStartedAt);
         if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
         state.houseLearningEndpointAvailable = true;
+        // Navigation can leave and return while the HTTPD still sends an
+        // already copied frame. Keep the learning status, fence its live comparison.
+        if (shadowEpoch !== state.houseLearningShadowEpoch) status.shadow = null;
         state.houseLearningStatus = status;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
@@ -284,7 +288,7 @@ export async function refreshHouseLearningStatus(options = {}) {
       if (requestGeneration === state.houseLearningRequestId) {
         if (probeCompleted) {
           state.houseLearningEndpointChecked = true;
-          state.houseLearningLastFetchAt = Date.now();
+          if (shadowEpoch === state.houseLearningShadowEpoch) state.houseLearningLastFetchAt = Date.now();
         }
         state.houseLearningEndpointChecking = false;
       }

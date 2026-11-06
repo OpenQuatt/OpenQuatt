@@ -56,6 +56,16 @@ class LearningProfileContractTest(unittest.TestCase):
                 enabled.append(profile.stem)
         self.assertEqual(enabled, ["heatpump_controller_q"])
 
+    def test_shadow_references_require_the_explicitly_enabled_target(self):
+        for file in ("includes/control/oq_power_house_runtime.h", "oq_common.yaml", "oq_warmup.yaml"):
+            with self.subTest(file=file):
+                source = (ROOT / "openquatt" / file).read_text()
+                guards = re.findall(r"^\s*(#if [^\n]*OQ_POWER_HOUSE_LEARNING_TARGET[^\n]*)$", source, re.M)
+                self.assertTrue(guards)
+                for guard in guards:
+                    self.assertEqual(guard,
+                                     "#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1")
+
     def test_firmware_without_explicit_profile_has_no_learning_types(self):
         source = '''
 #include "openquatt/includes/learning/oq_ph_passive_runtime_logic.h"

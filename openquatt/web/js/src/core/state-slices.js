@@ -151,6 +151,7 @@ export function createSettingsState() {
     houseLearningLastFetchAt: 0,
     houseLearningFetchPromise: null,
     houseLearningRequestId: 0,
+    houseLearningShadowEpoch: 0,
     houseLearningChart: null,
     houseLearningChartLoading: false,
     houseLearningChartError: "",

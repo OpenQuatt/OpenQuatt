@@ -29,6 +29,7 @@ const { getInitialPrimeKeys, refreshEntities, SETTINGS_GROUP_KEY_MAP } = await i
 const { commitSwitch } = await import("../js/src/core/entity-write-actions.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
 const { renderLearningView } = await import("../js/src/views/learning.js");
+const { setAppView } = await import("../js/src/core/navigation.js");
 const { setLocale } = await import("../js/src/i18n/index.js");
 
 function switchEntity(value = false) {
@@ -1350,6 +1351,40 @@ test("een stilvallende readback- of statusbody houdt de leerbediening niet geblo
     }
   } finally {
     window.setTimeout = originalTimeout;
+  }
+});
+
+test("een uitgestelde vergelijkingsbody kan terugnavigatie niet overleven", async () => {
+  state.appView = "learning";
+  state.learningForecastOpen = false;
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const originalFetch = globalThis.fetch;
+  const ready = statusPayload({
+    enabled: true, journal_status: "saved_verified", batch_advice_ready: true, context_revision: 8, shadow_ttl_ms: 10000,
+    shadow: {
+      schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+      source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+      available: true, reason: "ready", manual_w: 3100, candidate_w: 2750, delta_w: -350, auto_apply_allowed: false,
+    },
+  });
+  let release;
+  const body = new Promise(resolve => { release = resolve; });
+  globalThis.fetch = async () => ({ ok: true, json: () => body });
+  try {
+    const oldRequest = refreshHouseLearningStatus({ force: true });
+    setAppView("settings");
+    setAppView("learning");
+    release(ready);
+    await oldRequest;
+    assert.equal(state.houseLearningStatus.batchAdviceReady, true);
+    assert.equal(state.houseLearningStatus.shadow, null);
+    assert.equal(state.houseLearningLastFetchAt, 0);
+    await refreshHouseLearningStatus();
+    assert.equal(state.houseLearningStatus.shadow.available, true);
+    setAppView("settings");
+    assert.equal(state.houseLearningStatus.shadow, null);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

@@ -606,6 +606,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     watch_shadow_source_(id(room_setpoint_source));
     watch_shadow_source_(id(outside_temp_source));
     watch_shadow_source_(id(external_heat_demand_source));
+    id(external_heat_demand_selected).add_on_state_callback([this](float demand_w) {
+      if (std::isfinite(demand_w)) this->invalidate_shadow_(oq_power_house::ShadowDemandReason::EXTERNAL_OVERRIDE);
+    });
     watch_shadow_source_(id(heating_enable_source));
     id(cic_feed_url).add_on_state_callback([this](const std::string&) {
       this->invalidate_shadow_(oq_power_house::ShadowDemandReason::SOURCE_CHANGED);

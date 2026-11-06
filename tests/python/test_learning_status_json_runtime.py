@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import re
 import tempfile
+from textwrap import dedent
 import unittest
 
 from tests.support.cpp import compiler_command, COMPILE_TIMEOUT_SECONDS, RUN_TIMEOUT_SECONDS
@@ -70,6 +71,9 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
 
     def test_cached_shadow_is_revoked_at_read_without_changing_learning_status(self):
         source = (ROOT / "components/openquatt_house_learning_status/OpenQuattHouseLearningStatus.cpp").read_text()
+        learning = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
+        power_house = (ROOT / "openquatt/includes/control/oq_power_house_runtime.h").read_text()
+        common = (ROOT / "openquatt/oq_common.yaml").read_text()
         with tempfile.TemporaryDirectory(prefix="oq-learning-shadow-cache-") as directory:
             temporary = Path(directory)
             functions = "\n".join(production_function(source, signature) for signature in (
@@ -78,9 +82,17 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
                 "bool OpenQuattHouseLearningStatus::snapshot_status(",
             ))
             (temporary / "production_shadow_status.inc").write_text(functions)
+            (temporary / "production_shadow_invalidation.inc").write_text(
+                production_function(power_house, "void invalidate_demand_evaluation("))
+            (temporary / "production_external_override.inc").write_text(
+                production_function(learning, "id(external_heat_demand_selected).add_on_state_callback(") + ");")
+            pause_action = common.split("id: oq_runtime_polling_paused\n", 1)[1].split("- lambda: |-\n", 1)[1]
+            (temporary / "production_shadow_pause.inc").write_text(
+                dedent(pause_action.split("            // This lifecycle edge", 1)[0]))
             binary = temporary / "shadow-cache"
             built = run_process(
-                compiler_command("-fsanitize=undefined", "-fno-sanitize-recover=all",
+                compiler_command("-DOQ_POWER_HOUSE_LEARNING_TARGET=1", "-fsanitize=undefined",
+                                 "-fno-sanitize-recover=all",
                                  "-I", str(temporary), str(ROOT / "tests/fixtures/learning/shadow_cache.cpp"),
                                  "-o", str(binary)),
                 timeout=COMPILE_TIMEOUT_SECONDS, capture_output=True, text=True,

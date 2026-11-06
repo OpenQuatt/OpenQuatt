@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <string_view>
+
+#include "../../../openquatt/includes/control/oq_ph_shadow_demand_types.h"
 
 namespace {
 uint64_t now_ms = 0;
@@ -41,6 +44,43 @@ struct OpenQuattHouseLearningStatus {
 };
 
 #include "production_shadow_status.inc"
+
+using oq_power_house::ShadowDemandReason;
+
+namespace oq_power_house_runtime {
+struct Runtime {
+  OpenQuattHouseLearningStatus& oq_ph_learning_status_endpoint;
+  std::atomic<ShadowDemandReason> frame_invalid_reason_{ShadowDemandReason::SETTINGS_CHANGED};
+
+#define id(entity) entity
+#include "production_shadow_invalidation.inc"
+#undef id
+};
+
+Runtime* active = nullptr;
+Runtime& runtime() { return *active; }
+}  // namespace oq_power_house_runtime
+
+struct ExternalDemandSensor {
+  void add_on_state_callback(std::function<void(float)> callback) { on_state = callback; }
+  std::function<void(float)> on_state;
+};
+
+struct ShadowLifecycle {
+  void invalidate_shadow_(ShadowDemandReason reason) {
+    oq_power_house_runtime::runtime().invalidate_demand_evaluation(reason);
+  }
+
+  void connect(ExternalDemandSensor& external_heat_demand_selected) {
+#define id(entity) entity
+#include "production_external_override.inc"
+#undef id
+  }
+
+  static void polling_paused(bool x) {
+#include "production_shadow_pause.inc"
+  }
+};
 }  // namespace
 
 int main() {
@@ -79,6 +119,27 @@ int main() {
   assert(read() == expired);
   publish(cache.shadow_generation());
   assert(read().find("\"shadow_ttl_ms\":800}") != std::string_view::npos);
+
+  oq_power_house_runtime::Runtime owner{cache};
+  oq_power_house_runtime::active = &owner;
+  ExternalDemandSensor external;
+  ShadowLifecycle lifecycle;
+  lifecycle.connect(external);
+  const auto live_generation = cache.shadow_generation();
+  external.on_state(NAN);
+  ShadowLifecycle::polling_paused(false);
+  assert(cache.shadow_generation() == live_generation);
+  assert(read().find("\"candidate_w\":2750") != std::string_view::npos);
+  external.on_state(0.0f);  // A finite zero is an active external override.
+  assert(owner.frame_invalid_reason_.load() == ShadowDemandReason::EXTERNAL_OVERRIDE);
+  assert(read() == expired);  // No status tick has intervened.
+  publish(cache.shadow_generation());
+  ShadowLifecycle::polling_paused(true);
+  assert(owner.frame_invalid_reason_.load() == ShadowDemandReason::SERVICE_OR_OTA);
+  assert(read() == expired);
+  ShadowLifecycle::polling_paused(false);
+  assert(read() == expired);  // Resuming cannot revive old watts.
+
   assert(!cache.publish_status_json(ready.data(), ready.size(), ready.size(), 20000, cache.shadow_generation()));
   constexpr std::string_view plain = R"({"records":18})";
   assert(cache.publish_status_json(plain.data(), plain.size()));
