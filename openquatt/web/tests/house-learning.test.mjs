@@ -761,6 +761,30 @@ test("diagnostische export gebruikt de bestaande browserdownload", async () => {
   }
 });
 
+test("stilgevallen exportbody laat de grafiek en download na hun timeout opnieuw toe", async () => {
+  const originalTimer = window.setTimeout;
+  const originalFetch = globalThis.fetch;
+  window.setTimeout = (callback) => setTimeout(callback, 0);
+  globalThis.fetch = async (_path, { signal }) => ({
+    ok: true,
+    json: () => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+  });
+  try {
+    assert.equal(await loadHouseLearningChart(), false);
+    assert.equal(state.houseLearningChartLoading, false);
+    assert.equal(state.houseLearningChartError.vars.error.translationKey, "houseLearning.errors.chartTimeout");
+
+    await downloadHouseLearningExport();
+    assert.equal(state.busyAction, "");
+    assert.equal(state.houseLearningStatusError.vars.error.translationKey, "houseLearning.errors.exportTimeout");
+  } finally {
+    window.setTimeout = originalTimer;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen", () => {
   state.entities = {};
   state.houseLearningEndpointAvailable = true;
@@ -819,7 +843,7 @@ test("passief leren verbergt standaard alle meetdetails en beheeracties achter Ã
 test("de oude leerstatus-uitklapper opent de nieuwe technische details niet vanzelf", () => {
   state.entities = { houseLearningEnabled: switchEntity(true) };
   state.houseLearningEndpointAvailable = true;
-  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true }));
   state.houseLearningChart = [];
   const before = state.settingsAdvancedOpen;
   try {
@@ -872,7 +896,7 @@ test("de compacte leerschakelaar behoudt de bestaande loading- en schrijfgates",
 });
 
 test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigde polls te renderen", () => {
-  const status = normalizeHouseLearningStatus(statusPayload({ batch_status: "insufficient_spread", reference_room_c: 20 }));
+  const status = normalizeHouseLearningStatus(statusPayload({ enabled: true, batch_status: "insufficient_spread", reference_room_c: 20 }));
   state.houseLearningChart = [];
   assert.equal(status.batchStatus, "insufficient_spread");
   assert.equal(normalizeHouseLearningStatus(statusPayload({ batch_status: undefined })).batchStatus, "unknown");
@@ -960,20 +984,35 @@ test("preview-reset pauzeert leren en bevestigt gewiste opslag zoals de firmware
 test("grafiekpatch behoudt meetpuntfocus bij ongewijzigde data en volgt nieuwe fit", () => {
   state.entities = { houseLearningEnabled: switchEntity(true), houseColdTemp: { value: -10 }, houseOutdoorMax: { value: 16 }, housePower: { value: 5200 } };
   state.houseLearningEndpointAvailable = true;
-  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true }));
   state.houseLearningChart = [];
   state.houseLearningChartFetchedAt = 100;
   const statusNode = { innerHTML: "" };
   let signature;
   let writes = 0;
-  const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; } };
+  const point = { dataset: { oqHouseLearningTip: "Meetpunt van 5 Â°C" } };
+  const originalActive = document.activeElement;
+  let pointFocus = 0;
+  const chartNode = {
+    contains: active => active === point,
+    querySelectorAll: () => [{ dataset: point.dataset, focus: () => { pointFocus += 1; } }],
+    getAttribute: () => signature,
+    setAttribute: (_key, value) => { signature = value; },
+    set innerHTML(_value) { writes += 1; },
+  };
   const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : selector === "[data-oq-house-learning-chart-panel]" ? chartNode : null };
   state.root = { querySelector: () => panel };
   patchHouseLearningSettingsStatus();
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 1);
   state.houseLearningStatus.hBatch = 210;
-  patchHouseLearningSettingsStatus();
+  document.activeElement = point;
+  try {
+    patchHouseLearningSettingsStatus();
+    assert.equal(pointFocus, 1);
+  } finally {
+    document.activeElement = originalActive;
+  }
   assert.equal(writes, 2);
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   patchHouseLearningSettingsStatus();
@@ -1293,6 +1332,51 @@ test("leerschakelaar bevestigt de readback en verwerpt oude switch- en statusres
   assert.equal(state.entities.houseLearningEnabled.value, false);
   assert.equal(state.houseLearningStatus.records, 43);
   assert.match(state.controlNotice, /uitgeschakeld/);
+});
+
+test("geopende meetgegevens verbergen live details bij een afwijkende schakelstand", () => {
+  state.appView = "learning";
+  state.entities = { houseLearningEnabled: switchEntity(false) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningEndpointChecked = true;
+  state.houseLearningChart = [];
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, storage_ready: true, status: "collecting",
+    collection: { thermal_active: true, thermal_elapsed_s: 450, thermal_target_s: 1800 },
+  }));
+  const markup = renderLearningView();
+  assert.match(markup, /Wacht op de actuele leerstatus/);
+  assert.doesNotMatch(markup, /7:30|class="oq-house-learning-thermal"/);
+  assert.match(markup, /Diagnostische leerdata downloaden/);
+});
+
+test("leerschakelaar wacht op verwerking na een eerste oude readback", async () => {
+  state.appView = "learning";
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const originalFetch = globalThis.fetch;
+  let reads = 0;
+  let writes = 0;
+  globalThis.fetch = async (url) => {
+    if (url === "/openquatt/entities") {
+      const value = ++reads === 1;
+      return { ok: true, json: async () => ({ entities: { houseLearningEnabled: { value, state: value ? "ON" : "OFF" } }, missing: [] }) };
+    }
+    if (url === "/openquatt/learning/status") {
+      return { ok: true, json: async () => statusPayload({ enabled: false }) };
+    }
+    assert.equal(url, "/switch/Power%20House%20Passive%20Learning/turn_off");
+    writes += 1;
+    return { ok: true };
+  };
+  try {
+    await commitSwitch("houseLearningEnabled", false);
+    assert.equal(writes, 1);
+    assert.equal(reads, 2);
+    assert.equal(state.entities.houseLearningEnabled.value, false);
+    assert.match(state.controlNotice, /uitgeschakeld/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("een geaccepteerde leerschakelaar zonder geldige verse readback meldt geen succes", async () => {

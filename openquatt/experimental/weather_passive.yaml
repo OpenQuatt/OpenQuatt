@@ -12,7 +12,10 @@ openquatt_weather:
     name: "Weather Location"
     entity_category: config
   clock: oq_time
-  enabled_switch: oq_weather_experiment_enabled
+  enabled_switch:
+    id: oq_weather_experiment_enabled
+    name: "Weather Passive Experiment"
+    entity_category: config
   pause_sensor: oq_runtime_polling_paused
   web_auth: oq_web_auth_store
   status:
@@ -48,14 +51,6 @@ openquatt_weather:
   temperature_3h:
     name: "Passive Room Forecast 3h"
     entity_category: diagnostic
-
-switch:
-  - platform: template
-    id: oq_weather_experiment_enabled
-    name: "Weather Passive Experiment"
-    entity_category: config
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
 
 interval:
   - interval: 10s

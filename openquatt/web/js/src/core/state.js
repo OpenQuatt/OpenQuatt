@@ -102,6 +102,7 @@ export const state = {
   appView: "",
   learningForecastOpen: false,
   weatherConfigRevision: 0,
+  weatherOptOutUnconfirmed: false,
   weatherForecast: null,
   weatherForecastError: "",
   weatherForecastIndex: null,

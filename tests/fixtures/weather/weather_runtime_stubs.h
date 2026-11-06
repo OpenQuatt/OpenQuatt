@@ -27,6 +27,7 @@ struct Environment {
   unsigned write_opens = 0, write_calls = 0, commit_calls = 0, verified_reads = 0, fetch_calls = 0;
   unsigned next_handle = 1, write_handle = 0;
   std::vector<unsigned char> committed, staged;
+  int committed_consent = -1, staged_consent = -1;
   std::map<unsigned, int> handles;
   std::function<void()> on_write;
   std::function<void(const char*)> observe_nvs;
@@ -88,7 +89,15 @@ class BinarySensor {
 };
 }  // namespace binary_sensor
 namespace switch_ {
-class Switch : public binary_sensor::BinarySensor {};
+class Switch : public binary_sensor::BinarySensor {
+ public:
+  virtual ~Switch() = default;
+  void turn_on() { write_state(true); }
+  void turn_off() { write_state(false); }
+
+ protected:
+  virtual void write_state(bool) = 0;
+};
 }  // namespace switch_
 namespace sensor {
 class Sensor {
@@ -225,7 +234,11 @@ inline esp_err_t nvs_open(const char* name, int mode, nvs_handle_t* handle) {
   }
   *handle = env.next_handle++;
   env.handles[*handle] = mode;
-  if (mode == NVS_READWRITE) env.write_handle = *handle;
+  if (mode == NVS_READWRITE) {
+    env.write_handle = *handle;
+    env.staged.clear();
+    env.staged_consent = -1;
+  }
   return ESP_OK;
 }
 inline esp_err_t nvs_get_blob(nvs_handle_t handle, const char* key, void* value, size_t* size) {
@@ -260,13 +273,41 @@ inline esp_err_t nvs_set_blob(nvs_handle_t handle, const char* key, const void* 
   env.staged.assign(bytes, bytes + size);
   return ESP_OK;
 }
+inline esp_err_t nvs_get_u8(nvs_handle_t handle, const char* key, uint8_t* value) {
+  auto& env = weather_fixture::env;
+  assert(std::strcmp(key, "enabled") == 0 && env.handles.at(handle) == NVS_READONLY);
+  if (env.observe_nvs) env.observe_nvs("read");
+  if (env.fail_read) return ESP_FAIL;
+  if (env.committed_consent < 0) return ESP_ERR_NVS_NOT_FOUND;
+  *value = static_cast<uint8_t>(env.committed_consent);
+  if (env.commit_calls != 0) {
+    assert(handle != env.write_handle);
+    ++env.verified_reads;
+    if (env.corrupt_readback) *value ^= 1;
+  }
+  return ESP_OK;
+}
+inline esp_err_t nvs_set_u8(nvs_handle_t handle, const char* key, uint8_t value) {
+  auto& env = weather_fixture::env;
+  assert(std::strcmp(key, "enabled") == 0 && env.handles.at(handle) == NVS_READWRITE);
+  ++env.write_calls;
+  if (env.observe_nvs) env.observe_nvs("write");
+  auto callback = std::exchange(env.on_write, {});
+  if (callback) callback();
+  if (env.fail_write) return ESP_FAIL;
+  env.staged_consent = value;
+  return ESP_OK;
+}
 inline esp_err_t nvs_commit(nvs_handle_t handle) {
   auto& env = weather_fixture::env;
   assert(env.handles.at(handle) == NVS_READWRITE);
   ++env.commit_calls;
   if (env.observe_nvs) env.observe_nvs("commit");
   if (env.fail_commit) return ESP_FAIL;
-  env.committed = env.staged;
+  if (env.staged_consent >= 0)
+    env.committed_consent = env.staged_consent;
+  else
+    env.committed = env.staged;
   return ESP_OK;
 }
 inline void nvs_close(nvs_handle_t handle) { assert(weather_fixture::env.handles.erase(handle) == 1); }

@@ -2,7 +2,7 @@ import { patchForecastProgress } from "../settings/forecast-progress.js";
 import { createCancellationController, fetchWithTimeout } from "../core/browser-utils.js";
 import { getEntityValue, hasEntity } from "../core/entity-store.js";
 import { state } from "../core/state.js";
-import { getWeatherForecastEndpoint, normalizeWeatherForecast, weatherLocationReceipt } from "../core/weather-forecast.js";
+import { getWeatherForecastEndpoint, normalizeWeatherForecast, weatherConsentBlocksForecast, weatherLocationReceipt } from "../core/weather-forecast.js";
 import { patchWeatherForecast } from "../settings/weather-forecast.js";
 
 let pending = null;
@@ -31,7 +31,7 @@ export function invalidateWeatherForecast() {
 }
 
 export async function refreshWeatherForecast({ force = false } = {}) {
-  if (["save-weatherLocation", "switch-weatherEnabled"].includes(state.busyAction) || getEntityValue("weatherEnabled") !== true) {
+  if (weatherConsentBlocksForecast() || ["save-weatherLocation", "switch-weatherEnabled"].includes(state.busyAction) || getEntityValue("weatherEnabled") !== true) {
     if (pending || state.weatherForecast) invalidateWeatherForecast();
     return false;
   }
@@ -49,7 +49,7 @@ export async function refreshWeatherForecast({ force = false } = {}) {
   const requestController = createCancellationController();
   let retainCached = true;
   controller = requestController;
-  const stillCurrent = () => requestRevision === revision && shouldRefreshWeatherForecast()
+  const stillCurrent = () => requestRevision === revision && shouldRefreshWeatherForecast() && !weatherConsentBlocksForecast()
     && !["save-weatherLocation", "switch-weatherEnabled"].includes(state.busyAction) && state.drafts.weatherEnabled !== false
     && getEntityValue("weatherEnabled") === true && String(getEntityValue("weatherLocation") ?? "") === location
     && weatherLocationReceipt() === locationReceipt

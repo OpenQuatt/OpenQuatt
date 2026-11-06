@@ -2,15 +2,23 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import binary_sensor, sensor, socket, switch, text, text_sensor, time
 from esphome.components.esp32 import include_builtin_idf_component, require_certificate_bundle
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, CONF_RESTORE_MODE
 
-AUTO_LOAD = ["json", "sensor", "text", "text_sensor", "binary_sensor"]
+AUTO_LOAD = ["json", "sensor", "text", "text_sensor", "binary_sensor", "switch"]
 DEPENDENCIES = ["esp32", "psram", "time", "ota", "openquatt_web_auth", "web_server"]
 
 ns = cg.esphome_ns.namespace("openquatt_weather")
 OpenQuattWeather = ns.class_("OpenQuattWeather", cg.PollingComponent)
+WeatherEnabledSwitch = ns.class_("WeatherEnabledSwitch", switch.Switch)
 WeatherLocationText = ns.class_("WeatherLocationText", text.Text)
 WebAuth = cg.esphome_ns.namespace("openquatt_web_auth").class_("OpenQuattWebAuth", cg.Component)
+
+
+def _validate_consent_switch(config):
+    if config[CONF_RESTORE_MODE] != "DISABLED":
+        raise cv.Invalid("Weather consent uses dedicated verified storage", path=[CONF_RESTORE_MODE])
+    return config
+
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
@@ -18,7 +26,10 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(OpenQuattWeather),
             cv.Required("location"): text.text_schema(WeatherLocationText, mode="TEXT"),
             cv.Required("clock"): cv.use_id(time.RealTimeClock),
-            cv.Required("enabled_switch"): cv.use_id(switch.Switch),
+            cv.Required("enabled_switch"): cv.All(
+                switch.switch_schema(WeatherEnabledSwitch, block_inverted=True, default_restore_mode="DISABLED"),
+                _validate_consent_switch,
+            ),
             cv.Required("pause_sensor"): cv.use_id(binary_sensor.BinarySensor),
             cv.Required("web_auth"): cv.use_id(WebAuth),
             cv.Optional("status"): text_sensor.text_sensor_schema(),
@@ -48,7 +59,8 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_location_text(await text.new_text(config["location"], min_length=0, max_length=64)))
-    for key in ("clock", "enabled_switch", "pause_sensor"):
+    cg.add(var.set_enabled_switch(await switch.new_switch(config["enabled_switch"])))
+    for key in ("clock", "pause_sensor"):
         cg.add(getattr(var, f"set_{key}")(await cg.get_variable(config[key])))
     cg.add(var.set_web_auth(await cg.get_variable(config["web_auth"])))
     for key in ("status", "resolved_location", "issued_epoch"):

@@ -47,7 +47,12 @@ export function renderForecastProgress() {
   const available = horizons.some(({ valid }) => valid);
   const cached = available && !current;
   const gapKeys = [];
-  if (!enabled) gapKeys.push("learningWorkspace.forecast.enable");
+  const consent = state.entities.weatherStatus?.consent_state;
+  if (getEntityValue("weatherStatus") === "psram_allocation_failed") gapKeys.push("weather.status.memory");
+  else if (consent === "failed") gapKeys.push("weather.status.consentFailed");
+  else if (consent === "pending") gapKeys.push("weather.status.consentSaving");
+  else if (state.weatherOptOutUnconfirmed) gapKeys.push("weather.switchUnconfirmed");
+  else if (!enabled) gapKeys.push("learningWorkspace.forecast.enable");
   else if (changing) gapKeys.push("weather.status.saving");
   else if (!String(getEntityValue("weatherLocation") || "").trim()) gapKeys.push("weather.status.locationRequired");
   else if (getEntityValue("houseLearningEnabled") !== true) gapKeys.push("weather.status.learningRequired");

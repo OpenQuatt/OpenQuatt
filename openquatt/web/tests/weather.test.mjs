@@ -19,7 +19,7 @@ globalThis.window = {
 const { state } = await import("../js/src/core/state.js");
 const { normalizeWeatherLocation, confirmWeatherLocationWrite, saveWeatherLocation } = await import("../js/src/core/weather-location.js");
 const { commitWeatherLocation } = await import("../js/src/features/weather.js");
-const { commitText } = await import("../js/src/core/entity-write-actions.js");
+const { commitSwitch, commitText } = await import("../js/src/core/entity-write-actions.js");
 const { SETTINGS_BACKUP_EXCLUDED_KEYS } = await import("../js/src/core/config.js");
 const { hasWeatherSettings, renderWeatherSettings, patchWeatherSettings } = await import("../js/src/settings/weather.js");
 const { normalizeWeatherForecast } = await import("../js/src/core/weather-forecast.js");
@@ -66,6 +66,7 @@ test.beforeEach(() => {
   state.entities = capability();
   state.weatherForecast = null;
   state.weatherForecastError = "";
+  state.weatherOptOutUnconfirmed = false;
   state.inputDrafts = {};
   state.drafts = {};
   state.busyAction = "";
@@ -88,6 +89,82 @@ test.afterEach(() => {
   state.busyAction = "";
   setRenderCallback(null);
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
+});
+
+test("weather opt-out waits for durable consent readback after the queued write", async () => {
+  state.entities.weatherEnabled = entity(true);
+  state.entities.weatherStatus = { ...entity("observing"), consent_state: "on" };
+  let writes = 0, reads = 0;
+  globalThis.fetch = async (url, init) => {
+    if (url !== "/openquatt/entities") {
+      assert.equal(url, "/switch/Weather%20Passive%20Experiment/turn_off");
+      assert.equal(init.method, "POST");
+      writes += 1;
+      return response();
+    }
+    const current = ["on", "pending", "off"][reads++];
+    return response({ missing: [], entities: {
+      weatherEnabled: { value: current !== "off", state: current === "off" ? "OFF" : "ON" },
+      weatherStatus: { ...entity("disabled"), consent_state: current },
+    } });
+  };
+  await fastPolling(() => commitSwitch("weatherEnabled", false));
+  assert.equal(writes, 1);
+  assert.equal(reads, 3);
+  assert.equal(state.entities.weatherEnabled.value, false);
+  assert.equal(state.entities.weatherStatus.consent_state, "off");
+  assert.match(state.controlNotice, /uitgeschakeld/);
+});
+
+test("weather opt-out cannot be confirmed by failed persistence or a legacy switch readback", async () => {
+  for (const consent of ["failed", undefined]) {
+    state.entities.weatherEnabled = entity(true);
+    let writes = 0;
+    globalThis.fetch = async (url) => {
+      if (url !== "/openquatt/entities") {
+        assert.equal(url, "/switch/Weather%20Passive%20Experiment/turn_off");
+        writes += 1;
+        return response();
+      }
+      return response({ missing: [], entities: {
+        weatherEnabled: { value: consent === "failed", state: consent === "failed" ? "ON" : "OFF" },
+        weatherStatus: { ...entity("disabled"), consent_state: consent },
+      } });
+    };
+    await fastPolling(() => commitSwitch("weatherEnabled", false));
+    assert.equal(writes, 1);
+    assert.equal(state.controlNotice, "");
+    if (consent === "failed") {
+      assert.equal(state.entities.weatherEnabled.value, true);
+      assert.match(state.controlError, /kon niet worden opgeslagen/);
+      assert.match(weatherMarkup(), /Probeer het opnieuw vóór een herstart/);
+    } else {
+      assert.equal(state.entities.weatherEnabled.value, true);
+      assert.match(state.controlError, /nog niet bevestigd/);
+    }
+  }
+});
+
+test("an unreadable opt-out does not resume weather polling on a cached ON", async () => {
+  state.appView = "learning";
+  state.learningForecastOpen = true;
+  state.entities.weatherEnabled = entity(true);
+  state.entities.weatherStatus = { ...entity("observing"), consent_state: "on" };
+  validForecast();
+  let forecastReads = 0;
+  globalThis.fetch = async (url) => {
+    if (url === "/openquatt/weather/forecast") forecastReads += 1;
+    return response({}, url.endsWith("/turn_off") ? 200 : 503);
+  };
+  try {
+    await fastPolling(() => commitSwitch("weatherEnabled", false));
+    assert.equal(state.weatherOptOutUnconfirmed, true);
+    assert.equal(state.weatherForecast, null);
+    assert.equal(forecastReads, 0);
+    assert.match(weatherMarkup(), /nog niet bevestigd/);
+  } finally {
+    state.learningForecastOpen = false;
+  }
 });
 
 test("weather location validation keeps Dutch coordinates and UTF-8 byte limits", () => {

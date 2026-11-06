@@ -14,11 +14,29 @@
 namespace esphome::openquatt_weather {
 
 enum class SaveState : uint8_t { NONE, PENDING, STORED, FAILED };
+enum class ConsentState : uint8_t { NONE, OFF, ON, PENDING, FAILED };
+
+inline const char* consent_state_name(ConsentState state) {
+  switch (state) {
+    case ConsentState::OFF:
+      return "off";
+    case ConsentState::ON:
+      return "on";
+    case ConsentState::PENDING:
+      return "pending";
+    case ConsentState::FAILED:
+      return "failed";
+    case ConsentState::NONE:
+      return nullptr;
+  }
+  return nullptr;
+}
 
 struct TextSnapshotValue {
   char text[128]{};
   char save_request[33]{};
   SaveState save_state = SaveState::NONE;
+  ConsentState consent_state = ConsentState::NONE;
 };
 
 struct TextSnapshotMetadata {
@@ -43,7 +61,8 @@ class WeatherTextSnapshots {
     }
   }
 
-  void publish(const void* entity, const char* value, const char* request = "", SaveState state = SaveState::NONE) {
+  void publish(const void* entity, const char* value, const char* request = "", SaveState state = SaveState::NONE,
+               ConsentState consent = ConsentState::NONE) {
     Guard guard(*this);
     for (auto& entry : entries_) {
       if (!entity || entry.entity != entity) continue;
@@ -54,6 +73,7 @@ class WeatherTextSnapshots {
       std::strncpy(entry.value.save_request, request, sizeof(entry.value.save_request) - 1);
       entry.value.save_request[sizeof(entry.value.save_request) - 1] = '\0';
       entry.value.save_state = state;
+      entry.value.consent_state = consent;
       return;
     }
   }

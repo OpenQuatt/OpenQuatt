@@ -36,13 +36,14 @@ export const WEB_BUNDLE_BUDGETS = [
     // Preserve444 B raw headroom; all relative gzip limits remain unchanged.
     // Learning page, two measurement bars and retained-day progress in both locales:
     // +6,919 B raw / +1,750 B gzip versus dev 6dd491f5 (Node 24.14.1).
+    // Bounded readback, export and focus handling add 556 B raw / 134 B gzip.
     // Preserve 444 B of raw headroom and the existing relative gzip limits.
     // Outlook, localized settings, atomic scenario and the interactive weather charts.
-    // Against PR #924 on Node 24.14.1: +29,299 B raw and +9,441 B gzip.
-    // Allow this one-time migration up to the measured size with 61 B gzip headroom.
-    // Read-only demand comparison and both locales: +5,259 B raw and +1,520 B gzip versus Vooruitblik.
-    raw: 1_442_857,
-    gzipBaselineCeiling: 403_320,
+    // Against PR #924 on Node 24.14.1: +30,740 B raw and +9,865 B gzip.
+    // The migration includes verified consent and keeps 61 B of gzip headroom.
+    // Demand comparison: +5,762 B raw and +1,654 B gzip versus Vooruitblik.
+    raw: 1_445_357,
+    gzipBaselineCeiling: 403_878,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.

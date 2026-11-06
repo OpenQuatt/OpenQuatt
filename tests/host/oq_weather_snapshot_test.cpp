@@ -97,21 +97,24 @@ int main() {
 
   ForecastSnapshot cache, request;
   ForecastSnapshotAccess access;
-  assert(!access.available() && !access.begin_request(1000));
+  assert(!access.available() && !access.begin_request([] { return 1000U; }));
   access.bind(&cache, &request);
   access.publish([](auto& dest) {
     dest = snapshot();
     std::strcpy(dest.configured_location, "Brummen");
   });
-  assert(access.begin_request(1000));
+  assert(access.begin_request([] { return 1000U; }));
   access.publish([](auto& dest) {
     dest.generation = 2;
     std::strcpy(dest.configured_location, "Utrecht");
   });
   assert(request.generation == 1 && std::strcmp(request.configured_location, "Brummen") == 0);
-  assert(!access.begin_request(1000));
+  assert(!access.begin_request([] { return 1000U; }));
   access.end_request();
-  assert(access.begin_request(1000));
+  assert(access.begin_request([&request] {
+    assert(request.generation == 2);  // Sample time only after copying the new frame.
+    return 1000U;
+  }));
   assert(request.generation == 2 && std::strcmp(request.configured_location, "Utrecht") == 0);
   access.end_request();
   value = issued_snapshot();

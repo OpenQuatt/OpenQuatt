@@ -85,12 +85,15 @@ class ForecastSnapshotAccess {
     publish(*cache_);
     cache_mutex_.unlock();
   }
-  bool begin_request(uint64_t now_ms) {
+  template <typename Clock>
+  bool begin_request(Clock now_ms) {
     if (!available() || !request_mutex_.try_lock()) return false;
     cache_mutex_.lock();
     *request_ = *cache_;
     cache_mutex_.unlock();
-    age_forecast_snapshot(*request_, now_ms);
+    // The publisher may have installed a newer frame while this GET waited
+    // for the cache lock. Sample the clock after taking the snapshot.
+    age_forecast_snapshot(*request_, now_ms());
     return true;
   }
   const ForecastSnapshot& request() const { return *request_; }

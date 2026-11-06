@@ -119,6 +119,20 @@ class WeatherComponentRuntimeTest(unittest.TestCase):
             with self.subTest(allocation=allocation):
                 self.scenario(f"receipt_{allocation}_failure")
 
+    def test_consent_boot_and_verified_round_trip(self):
+        self.scenario("consent_round_trip")
+        self.scenario("consent_invalid_boot")
+
+    def test_revocation_failure_stops_network_and_preserves_explicit_off_retry(self):
+        for boundary in ("task", "open", "write", "commit", "read", "mismatch"):
+            with self.subTest(boundary=boundary):
+                self.scenario(f"consent_failure_{boundary}")
+
+    def test_consent_supersession_and_ota_deferral_keep_newest_intent_pending(self):
+        for scenario in ("consent_latest_queued", "consent_latest_started", "consent_ota"):
+            with self.subTest(scenario=scenario):
+                self.scenario(scenario)
+
     def test_restored_switch_keeps_weather_invalid_until_fresh_fetch_and_valid_clock(self):
         for state in ("on", "off", "on_ota"):
             with self.subTest(state=state):

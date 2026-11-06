@@ -90,9 +90,10 @@ struct Harness {
   Device device;
   openquatt_weather::WeatherLocationText location;
   time::RealTimeClock clock;
-  switch_::Switch enabled;
+  openquatt_weather::WeatherEnabledSwitch enabled;
   binary_sensor::BinarySensor paused;
-  text_sensor::TextSensor resolved, status;
+  text_sensor::TextSensor resolved, status, issued_epoch;
+  sensor::Sensor temperatures[3];
   openquatt_web_auth::OpenQuattWebAuth auth;
   explicit Harness(bool psram_failure = false) {
     env = {};
@@ -105,6 +106,10 @@ struct Harness {
     device.set_pause_sensor(&paused);
     device.set_resolved_location(&resolved);
     device.set_status(&status);
+    device.set_issued_epoch(&issued_epoch);
+    device.set_temperature_30m(&temperatures[0]);
+    device.set_temperature_1h(&temperatures[1]);
+    device.set_temperature_3h(&temperatures[2]);
     device.setup();
     device.register_endpoint();
     assert(web_server_base::endpoint_server.handlers.size() == 1);
@@ -118,8 +123,19 @@ struct Harness {
     return request;
   }
   void start() {
-    enabled.publish_state(true);
+    enabled.turn_on();
+    device.finish_job();
+    assert(enabled.state);
     device.install();
+  }
+  void stop() {
+    enabled.turn_off();
+    device.finish_job();
+    if (enabled.state) {
+      device.loop();  // A cancelled location save may leave the mailbox idle.
+      device.finish_job();
+    }
+    assert(!enabled.state);
   }
 };
 
@@ -173,7 +189,7 @@ void schema_and_guards() {
 void socket_and_busy() {
   Harness h;
   h.start();
-  assert(h.device.forecast_endpoint().begin_request(env.now_ms));
+  assert(h.device.forecast_endpoint().begin_request([] { return env.now_ms; }));
   auto busy = h.get();
   assert(busy.response.status == 429);
   h.device.forecast_endpoint().end_request();
@@ -233,7 +249,7 @@ void model_time_and_lifecycle() {
   h.device.set_location_query("Utrecht");
   h.device.refresh();
   assert(h.get().response.body.find("\"dew_point_c\":null") != std::string::npos);
-  h.enabled.publish_state(false);
+  h.stop();
   h.device.refresh();
   assert(h.get().response.body.find("\"dew_point_c\":null") != std::string::npos);
   assert(h.get().response.body.find("\"enabled\":false") != std::string::npos);
@@ -343,7 +359,7 @@ void atomic_scenario_failure_gates() {
     h.start();
     h.device.observation();
     assert(h.device.has_scalar());
-    if (gate == "off") h.enabled.publish_state(false);
+    if (gate == "off") h.stop();
     if (gate == "pause") h.paused.publish_state(true);
     if (gate == "ota") {
       ota::OTAComponent owner;
@@ -361,11 +377,15 @@ void atomic_scenario_failure_gates() {
       h.device.observation(false);
     }
     if (gate == "clock") {
-      env.epoch += 60;
+      env.epoch += 5;  // Within weather tolerance, outside issue clock coherence.
       h.device.refresh();
     }
-    if (gate == "invalid_query") assert(h.device.has_scalar());
-    std::puts(h.get().response.body.c_str());
+    if (gate == "invalid_query" || gate == "clock") assert(h.device.has_scalar());
+    assert(h.issued_epoch.state.empty());
+    for (const auto& sensor : h.temperatures) assert(std::isnan(sensor.state));
+    const auto frame = h.get();
+    if (gate == "clock") assert(frame.response.body.find("\"reason\":\"clock_invalid\"") != std::string::npos);
+    std::puts(frame.response.body.c_str());
   }
 }
 
@@ -373,11 +393,15 @@ void invalid_location_receipt_cannot_precede_atomic_invalidation() {
   Harness h;
   h.start();
   h.device.observation();
+  assert(!h.issued_epoch.state.empty());
+  for (const auto& sensor : h.temperatures) assert(std::isfinite(sensor.state));
   bool observed = false;
   h.location.frontend = [&] {
     openquatt_weather::TextSnapshotValue receipt;
     assert(openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(&h.location), receipt));
     assert(receipt.save_state == openquatt_weather::SaveState::FAILED);
+    assert(h.issued_epoch.state.empty());
+    for (const auto& sensor : h.temperatures) assert(std::isnan(sensor.state));
     const auto frame = h.get();
     std::puts(frame.response.body.c_str());
     observed = true;
@@ -401,7 +425,7 @@ void wind_research_gates() {
       env.epoch += 1801;
       h.device.refresh();
     }
-    if (gate == "disabled") h.enabled.publish_state(false);
+    if (gate == "disabled") h.stop();
     if (gate == "location") h.device.set_location_query("Utrecht");
     if (gate == "ota") {
       ota::OTAComponent owner;

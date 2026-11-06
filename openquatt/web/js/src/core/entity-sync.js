@@ -800,8 +800,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     return chunks;
   }
 
-  export async function fetchBulkEntityChunk(chunk) {
-    const timeoutMs = getEntityRequestTimeoutMs();
+  export async function fetchBulkEntityChunk(chunk, timeoutMs = getEntityRequestTimeoutMs()) {
     const fetchOptions = {
       method: "POST",
       cache: "no-store",
@@ -1023,11 +1022,14 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
+    const previousControlError = state.controlError;
     const timeWriteRevision = state.timeWriteRevision;
     const weatherRevision = state.weatherConfigRevision;
     const weatherWriteBusy = ["switch-weatherEnabled", "save-weatherLocation"].includes(state.busyAction);
     const learningRequestId = state.houseLearningRequestId;
     const learningSwitchBusy = state.busyAction === "switch-houseLearningEnabled";
+    const canUpdateControlError = () => !learningSwitchBusy && learningRequestId === state.houseLearningRequestId
+      && !weatherWriteBusy && weatherRevision === state.weatherConfigRevision && state.controlError === previousControlError;
     const performancePromptWriteRevision = state.performanceTelemetryPromptWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
@@ -1047,7 +1049,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
       if (!state.busyAction) {
         noteEntityRefreshSuccess();
-        state.controlError = "";
+        if (canUpdateControlError()) state.controlError = "";
       }
       return;
     }
@@ -1092,7 +1094,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
         if (key === "houseLearningEnabled"
             && (learningSwitchBusy || state.busyAction === "switch-houseLearningEnabled"
               || learningRequestId !== state.houseLearningRequestId)) return;
-        if (["weatherEnabled", "weatherLocation"].includes(key)
+        if (["weatherEnabled", "weatherLocation", "weatherStatus"].includes(key)
             && (weatherWriteBusy || ["switch-weatherEnabled", "save-weatherLocation"].includes(state.busyAction)
               || weatherRevision !== state.weatherConfigRevision)) return;
         // A poll started before/during a time write must not restore the old time.
@@ -1121,14 +1123,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
     syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
     if (firstError) {
       noteEntityRefreshFailure(firstError);
-      if (state.deviceReconnectMode) {
-        state.controlError = "";
-      } else {
-        state.controlError = t("entitySync.refreshIncomplete", { error: firstError });
+      if (!state.busyAction && canUpdateControlError()) {
+        state.controlError = state.deviceReconnectMode ? "" : t("entitySync.refreshIncomplete", { error: firstError });
       }
     } else if (!state.busyAction) {
       noteEntityRefreshSuccess();
-      state.controlError = "";
+      if (canUpdateControlError()) state.controlError = "";
     }
   }
 
@@ -1137,6 +1137,11 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...(previous || {}),
       ...(payload || {}),
     };
+    if (key === "weatherStatus") {
+      next.consent_state = typeof payload?.value === "string" ? payload.consent_state : null;
+      if (next.consent_state === "off") state.weatherOptOutUnconfirmed = false;
+      if (previous?.consent_state !== next.consent_state) invalidateWeatherForecast();
+    }
     if (previous && (key === "weatherLocation" || key === "weatherEnabled")
         && (next.value !== previous.value || next.save_request !== previous.save_request
           || next.save_status !== previous.save_status)) invalidateWeatherForecast();
