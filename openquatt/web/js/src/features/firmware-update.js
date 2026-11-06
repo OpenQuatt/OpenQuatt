@@ -1,7 +1,7 @@
 import { hasEntity } from "../core/app-shared.js";
 import { FIRMWARE_MODAL_KEYS, FIRMWARE_OTA_START_QUIET_MS, FIRMWARE_RELEASE_URLS } from "../core/config.js";
 import { getEntityValue } from "../core/entity-store.js";
-import { refreshEntities } from "../core/entity-sync.js";
+import { isKnownOptionalMissingEntity, refreshEntities } from "../core/entity-sync.js";
 import { awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh, getDeviceReconnectCopy, getDeviceReconnectStatusCopy, getDeviceReconnectStatusLabel, getDeviceReconnectTitle, scheduleOtaRefresh } from "../core/device-reconnect.js";
 import { startEntityPolling, stopEntityPolling } from "../core/entity-polling-controls.js";
 import { updateFirmwareState } from "../core/feature-state.js";
@@ -1039,13 +1039,20 @@ import { t } from "../i18n/index.js";
   export async function pollFirmwareUpdateState(options = {}) {
     const expectedBuildLabel = String(options.expectedBuildLabel || "").trim();
     const afterCheckRevision = String(options.afterCheckRevision || "");
-    const attempts = afterCheckRevision ? 25 : 6;
+    let attempts = afterCheckRevision ? 25 : 6;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       options.signal?.throwIfAborted();
       await wait(attempt === 0 ? 900 : 1200, options.signal);
       options.signal?.throwIfAborted();
-      await refreshEntities(FIRMWARE_MODAL_KEYS, "all", { forceMissing: true });
+      const keys = attempt === 0 ? [...FIRMWARE_MODAL_KEYS, "weatherEnabled"] : FIRMWARE_MODAL_KEYS;
+      await refreshEntities(keys, "all", { forceMissing: true });
       options.signal?.throwIfAborted();
+      // Allow the firmware's weather deadline and retry interval before the manifest starts.
+      const weather = state.entities.weatherEnabled;
+      if (attempt === 0 && ((weather?.value ?? weather?.state) === true
+          || (!weather && !isKnownOptionalMissingEntity("weatherEnabled")))) {
+        attempts = 25 + Math.ceil(20500 / 1200);
+      }
       const entityAligned = isFirmwareEntityAlignedWithChannel();
       const targetAligned = !expectedBuildLabel || isFirmwareUpdateEntityForBuild(expectedBuildLabel);
       const knownTarget = hasKnownFirmwareTargetVersion();

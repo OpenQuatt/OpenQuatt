@@ -83,6 +83,9 @@ herstart de vorige opgeslagen stand weer gelden. Probeer het opnieuw bij een
 opslagfout. Bij de eerste upgrade vanaf de eerdere weerproef staat de functie
 uit. Zet haar opnieuw aan als je wilt blijven delen met Open-Meteo.
 
+De controller voert een firmwarecontrole en een weeropvraag na elkaar uit.
+Een handmatige firmwarecontrole kan daardoor even wachten op Open-Meteo.
+
 Het scherm toont 36 uur aan buitentemperatuur en wind. Wijs in de grafiek een uur
 aan, gebruik de pijltjestoetsen of open **Bekijk uurwaarden**.
 

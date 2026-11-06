@@ -3,7 +3,14 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <string>
+#include <utility>
+
+#ifdef USE_OPENQUATT_WEATHER
+#include "OpenQuattWeatherPolicy.h"
+#include "WeatherHttpsSlot.h"
+#endif
 
 #define LOG_STR(value) value
 #define ESP_LOGD(...) ((void)0)
@@ -35,14 +42,32 @@ class PollingComponent {
   virtual float get_setup_priority() const { return 0; }
   void cancel_interval(unsigned) {}
   void status_set_error(const char* value) { error = value; }
+  bool status_has_error() const { return !error.empty(); }
+  void set_timeout(unsigned id, unsigned delay, std::function<void()>&& callback) {
+    assert(id == 1 && delay == 250 && !timeout);
+    timeout = std::move(callback);
+  }
+  void cancel_timeout(unsigned id) {
+    assert(id == 1);
+    timeout = {};
+  }
+  void fire_timeout() {
+    assert(timeout);
+    auto callback = std::move(timeout);
+    timeout = {};
+    callback();
+  }
+  std::function<void()> timeout;
   std::string error;
 };
 namespace update {
+enum UpdateState { UPDATE_STATE_INSTALLING, UPDATE_STATE_NO_UPDATE };
 class UpdateEntity {
  public:
   virtual ~UpdateEntity() = default;
   virtual void perform(bool) {}
   virtual void check() {}
+  UpdateState state_ = UPDATE_STATE_NO_UPDATE;
 };
 }  // namespace update
 namespace ota {
@@ -70,6 +95,10 @@ void HttpRequestUpdate::update_task(void*) {}
 
 // GENERATED_UPDATE
 
+void complete_manifest([[maybe_unused]] HttpRequestUpdate* this_update) {
+  // GENERATED_COMPLETION
+}
+
 std::string resolve_url(HttpRequestUpdate& component, const std::string& path) {
   auto* this_update = &component;
   struct {
@@ -82,6 +111,7 @@ std::string resolve_url(HttpRequestUpdate& component, const std::string& path) {
 }  // namespace esphome::http_request
 
 int main() {
+  using esphome::http_request::complete_manifest;
   using esphome::http_request::HttpRequestUpdate;
   using esphome::http_request::resolve_url;
   HttpRequestUpdate component;
@@ -115,12 +145,21 @@ int main() {
   component.check();
   assert(task_starts == started);
   assert(component.task_source_url_ == pr900);
-  component.update_task_handle_ = nullptr;
+  complete_manifest(&component);
 #endif
   component.check();
   assert(component.task_source_url_ == pr901);
+  assert(component.get_source_url() == pr901);
 #ifdef USE_ESP32
-  component.update_task_handle_ = nullptr;
+  assert(!component.manifest_result_matches(pr901));
+  complete_manifest(&component);
+#endif
+  assert(component.manifest_result_matches(pr901));
+  component.set_source_url(pr900.c_str());
+  assert(!component.manifest_result_matches(pr901));
+  assert(!component.manifest_result_matches(pr900));
+  component.set_source_url(pr901.c_str());
+#ifdef USE_ESP32
   task_create_ok = false;
   component.check();
   assert(component.update_task_handle_ == nullptr);
@@ -128,5 +167,44 @@ int main() {
   task_create_ok = true;
   component.check();
   assert(component.update_task_handle_ != nullptr);
+  complete_manifest(&component);
+#endif
+#ifdef USE_OPENQUATT_WEATHER
+  using esphome::openquatt_weather::https_slot;
+  // A queued manifest allocates no worker or URL copy while the weather
+  // request owns the slot. Repeated checks leave only one retry.
+  assert(https_slot.try_acquire());
+  component.set_source_url(pr900.c_str());
+  const unsigned starts_before_weather = task_starts;
+  component.check();
+  component.check();
+  assert(task_starts == starts_before_weather && component.timeout);
+  assert(component.task_source_url_ == pr901);
+  assert(component.manifest_check_timeout_ms() > 20000);
+  component.fire_timeout();
+  assert(task_starts == starts_before_weather && component.timeout);
+  https_slot.release();
+  assert(!https_slot.try_acquire_weather());
+  component.fire_timeout();
+  assert(task_starts == starts_before_weather + 1 && !component.timeout);
+  assert(component.task_source_url_ == pr900 && component.manifest_check_timeout_ms() == 20000);
+  assert(!https_slot.try_acquire());
+  complete_manifest(&component);
+  assert(https_slot.try_acquire());
+  component.check();
+  esphome::network::connected = false;
+  https_slot.release();
+  component.fire_timeout();
+  assert(task_starts == starts_before_weather + 1 && !component.timeout);
+  assert(https_slot.try_acquire_weather());
+  https_slot.release();
+  esphome::network::connected = true;
+  assert(https_slot.try_acquire());
+  component.check();
+  component.set_manifest_check_paused([]() { return true; });
+  https_slot.release();
+  component.fire_timeout();
+  assert(task_starts == starts_before_weather + 1 && !component.timeout);
+  assert(component.manifest_check_timeout_ms() == 20000);
 #endif
 }

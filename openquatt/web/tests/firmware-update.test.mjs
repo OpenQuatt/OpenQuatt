@@ -28,6 +28,7 @@ const {
   isFirmwareInstallCompletionConfirmed,
   isFirmwareUpdateAvailable,
   isFirmwareUpdateJustCompleted,
+  pollFirmwareUpdateState,
   primeFirmwareInstallProgressHints,
   renderUpdateModal,
 } = await import("../js/src/features/firmware-update.js");
@@ -576,7 +577,7 @@ test("normal OTA completes after its target version is inactive and installed", 
   assert.equal(isFirmwareInstallCompletionConfirmed(), true);
 });
 
-for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "timeout", "reset-target", "missing-revision", "invalid-revision", "failed-baseline"]) {
+for (const scenario of ["slow-new-version", "weather-queued", "weather-queued-channel", "unchanged-version", "no-update", "timeout", "reset-target", "missing-revision", "invalid-revision", "failed-baseline"]) {
   test(`manual firmware check: ${scenario}`, async (t) => {
     const originalFetch = globalThis.fetch;
     const originalTimeout = window.setTimeout;
@@ -606,6 +607,9 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
 
     let polls = 0;
     const writes = [];
+    const channelCheck = scenario === "weather-queued-channel";
+    const weatherEnabled = channelCheck || scenario === "weather-queued";
+    const completionPoll = weatherEnabled ? 27 : 3;
     const oldVersion = state.entities.firmwareUpdate.latest_version;
     const newVersion = scenario === "unchanged-version" ? oldVersion : scenario === "no-update" ? "v0.49.0-pr.555.1321+222bde1" : "v0.54.0-dev.900+3b9074b";
     globalThis.fetch = async (url, options = {}) => {
@@ -620,22 +624,37 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
         polls += 1;
         assert.equal(state.updateCheckBusy, true);
       }
-      const complete = isPoll && polls >= 3 && scenario !== "timeout";
+      const complete = isPoll && polls >= completionPoll && scenario !== "timeout";
       const entities = Object.fromEntries(keys.map((key) => [key, { ...(state.entities[key] || {}) }]));
+      const missing = [];
+      if (keys.includes("weatherEnabled")) {
+        if (weatherEnabled) entities.weatherEnabled = { state: "ON", value: true };
+        else {
+          delete entities.weatherEnabled;
+          missing.push("weatherEnabled");
+        }
+      }
       if (isPoll) {
         entities.firmwareUpdate = {
           manifest_revision: complete ? 1 : 0,
-          state: complete && scenario === "no-update" ? "NO UPDATE" : "UPDATE AVAILABLE",
+          state: channelCheck && !complete ? "CHECKING" : complete && scenario === "no-update" ? "NO UPDATE" : "UPDATE AVAILABLE",
           current_version: "v0.49.0-pr.555.1321+222bde1",
-          latest_version: complete ? newVersion : oldVersion,
-          value: complete ? newVersion : oldVersion,
+          latest_version: complete ? newVersion : channelCheck ? "" : oldVersion,
+          value: complete ? newVersion : channelCheck ? "" : oldVersion,
           release_url: "https://github.com/OpenQuatt/OpenQuatt/releases/tag/dev-latest",
         };
       }
       if (scenario === "missing-revision") delete entities.firmwareUpdate.manifest_revision;
       if (scenario === "invalid-revision") entities.firmwareUpdate.manifest_revision = -1;
-      return { ok: true, json: async () => ({ entities, missing: [] }) };
+      return { ok: true, json: async () => ({ entities, missing }) };
     };
+    if (channelCheck) {
+      state.updateCheckBusy = true;
+      assert.equal(await pollFirmwareUpdateState(), true);
+      assert.equal(polls, completionPoll);
+      assert.equal(state.entities.firmwareUpdate.latest_version, newVersion);
+      return;
+    }
     const operation = triggerFirmwareUpdateCheck();
     await triggerFirmwareUpdateCheck(); // An overlapping click must not start another request.
     await operation;
@@ -654,7 +673,7 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
       assert.equal(state.controlNotice, "");
       assert.match(state.controlError, /Geen nieuw controleresultaat/);
     } else {
-      assert.equal(polls, 3);
+      assert.equal(polls, completionPoll);
       assert.equal(state.controlError, "");
       assert.equal(state.controlNotice, "Firmwarecontrole bijgewerkt.");
       assert.equal(state.entities.firmwareUpdate.latest_version, newVersion);
