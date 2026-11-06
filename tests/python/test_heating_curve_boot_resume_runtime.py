@@ -41,8 +41,10 @@ HARNESS = r'''
 #include "openquatt/includes/control/oq_cooling_limiter_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_incident_actuator_logic.h"
+#include "openquatt/includes/control/oq_defrost_logic.h"
 #include "openquatt/includes/incidents/oq_hp_incident_engine.h"
 #include "openquatt/includes/odu/oq_odu_compressor_levels.h"
+#include "openquatt/includes/sources/oq_source_receipt_runtime.h"
 #include "components/openquatt_decision_log/OpenQuattHeatingStop.h"
 // CURVE_SUPPORT
 #define id(x) x
@@ -53,6 +55,7 @@ HARNESS = r'''
 #endif
 uint32_t clock_ms=100000;
 uint32_t millis() { return clock_ms; }
+namespace oq_sources { uint64_t monotonic_ms() { return clock_ms; } }
 struct Sensor { float state=0; };
 int oq_control_mode_code=2, oq_heat_mode_code=1;
 int oq_cooling_stop_reason_code=0;
@@ -63,6 +66,9 @@ uint32_t hp1_last_real_heat_start_ms=0, hp1_last_level_change_ms=0;
 bool hp1_prev_heating_mode_active=false;
 Sensor hp1_4_way_valve, hp1_defrost, hp1_prot_oil_return;
 #if OQ_TOPOLOGY_DUO
+bool hp1_is_online=true, hp2_is_online=true;
+int oq_actuator_hp1_req=0, oq_actuator_hp2_req=0;
+int oq_request_strategy_code=0, oq_request_hp1_level=0, oq_request_hp2_level=0;
 int hp2_last_applied_level=0, hp2_last_commanded_physical_level=0, hp2_minutes=100;
 uint32_t hp2_last_stop_ms=0, hp2_last_start_ms=0;
 uint32_t hp2_last_real_heat_start_ms=0, hp2_last_level_change_ms=0;
@@ -124,12 +130,6 @@ struct Safety { bool abort=false, ready=true; } safety[2];
 inline bool ota_hold(bool) { return false; }
 inline Safety capture(bool hp1) { return safety[hp1?0:1]; }
 // BOOT_UPDATE
-}
-namespace oq_sources {
-struct Raw { struct { bool valid=false; int value=0; } status_2119; } hp1;
-#if OQ_TOPOLOGY_DUO
-Raw hp2;
-#endif
 }
 namespace oq_frequency_runtime {
 struct Context {
@@ -203,6 +203,7 @@ struct Cycle {
   int request_mode_code=2;
   bool manual_service_active=false,request_thermal_active=true;
   bool cooling_stop_armed=false,restart_by_minimum_off_time=false,cooling_stop_planned=false;
+  uint8_t duo_defrost_start_block_mask=0;
   struct { bool confirmation_pending=false; uint32_t remaining_ms=0; } cooling;
   std::string request_mode_option="Heating";
 };
@@ -250,6 +251,9 @@ void reset(bool hp1_running) {
   oq_cooling_stop_reason_code=0; manual_positive_intent=false; hp1_odu_defrost={};
 #if OQ_TOPOLOGY_DUO
   hp2_odu_defrost={};
+  oq_actuator_hp1_req=oq_actuator_hp2_req=0;
+  oq_request_strategy_code=oq_request_hp1_level=oq_request_hp2_level=0;
+  oq_sources::hp1={}; oq_sources::hp2={};
 #endif
   hp1_last_applied_level=hp1_last_commanded_physical_level=0;
 #if OQ_TOPOLOGY_DUO
@@ -429,12 +433,19 @@ int main() {
       actuator.resume_boot_cycle_(owner_hp1, true, clock_ms);
       Sensor& signal = owner_hp1 ? (valve_signal ? hp1_4_way_valve : hp1_defrost)
                                   : (valve_signal ? hp2_4_way_valve : hp2_defrost);
+      auto& receipts = owner_hp1 ? oq_sources::hp1 : oq_sources::hp2;
+      auto& receipt = valve_signal ? receipts.status_2108 : receipts.defrost;
       signal.state = 1;
+      receipt.observe(valve_signal ? 0x0040 : 1, clock_ms, true);
+      oq_request_strategy_code=oq_request::STRATEGY_CURVE;
+      oq_request_hp1_level=oq_request_hp2_level=1;
+      oq_actuator_hp1_req=oq_actuator_hp2_req=1;
       Cycle cycle;
       const int peer = owner_hp1 ? 1 : 0;
       assert(actuator.apply_level_(!owner_hp1, 1, false, cycle) == 0);
       assert(physical[peer] == 0 && starts[peer] == 0);
       signal.state = 0;
+      receipt.observe(0, clock_ms, true);
       assert(actuator.apply_level_(!owner_hp1, 1, false, cycle) == 1);
       assert(physical[peer] == 1 && starts[peer] == 1);
     }

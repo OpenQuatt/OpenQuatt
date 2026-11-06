@@ -11,6 +11,7 @@
 
 #include "../performance/hp_perf_frequency.h"
 #include "oq_compressor_frequency_runtime.h"
+#include "oq_defrost_logic.h"
 #include "oq_heat_intent_runtime.h"
 #include "oq_heating_curve_duo_floor_logic.h"
 #include "oq_heating_curve_duo_hold_logic.h"
@@ -345,8 +346,13 @@ class Runtime {
     const float demand_u = oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), capped, config.demand_max_f);
     const bool demand_active = demand_u > 0.0f;
 #if OQ_TOPOLOGY_DUO
-    const bool hp1_valve_defrost = id(hp1_4_way_valve).state;
-    const bool hp2_valve_defrost = id(hp2_4_way_valve).state;
+    const uint64_t observation_ms = oq_sources::monotonic_ms();
+    const auto hp1_defrost_observation = oq_defrost::duo_staging_observation(
+        id(hp1_is_online), oq_sources::hp1.status_2108, oq_sources::hp1.defrost, observation_ms);
+    const auto hp2_defrost_observation = oq_defrost::duo_staging_observation(
+        id(hp2_is_online), oq_sources::hp2.status_2108, oq_sources::hp2.defrost, observation_ms);
+    const bool hp1_valve_defrost = hp1_defrost_observation.valve_active;
+    const bool hp2_valve_defrost = hp2_defrost_observation.valve_active;
     const float dispatch_u = config.demand_max_f > 0 ? static_cast<float>(capped) / config.demand_max_f : 0.0f;
     const auto tuning = this->tuning_();
     const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
@@ -356,8 +362,7 @@ class Runtime {
     const bool demand_rundown = oq_curve::update_demand_rundown(capped, this->previous_capped_demand_);
     bool hp1_model_available = false;
     bool hp2_model_available = false;
-    const bool defrost_active =
-        hp1_valve_defrost || hp2_valve_defrost || id(hp1_defrost).state || id(hp2_defrost).state;
+    const bool defrost_active = hp1_defrost_observation.active || hp2_defrost_observation.active;
     const auto model = oq_water_performance::capture(frequency, target_c, defrost_active);
     std::array<float, level_cap + 1> hp1_power{}, hp2_power{};
     const auto build_power = [&](bool hp1, auto& powers, bool& model_available) {

@@ -36,6 +36,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "openquatt/includes/control/oq_defrost_logic.h"
 #include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
 #include "openquatt/includes/control/oq_cooling_limiter_logic.h"
@@ -61,6 +62,8 @@ bool oq_water_temp_hard_trip_active=false, oq_lowflow_fault_active=false;
 int oq_cooling_stop_reason_code=0;
 uint32_t clock_ms=100000;
 uint32_t millis() { return clock_ms; }
+namespace oq_sources { uint64_t monotonic_ms() { return clock_ms; } }
+bool hp1_is_online=true, hp2_is_online=true;
 struct Sensor { bool state=true; } hp1_4_way_valve, hp2_4_way_valve;
 Sensor hp1_defrost{false}, hp2_defrost{false};
 struct ModeSensor { float state=2; } hp1_working_mode, hp2_working_mode;
@@ -76,6 +79,7 @@ bool oq_dual_hp_enabled=false;
 float oq_dual_hp_enable_hold_elapsed_accum_min=0, oq_dual_hp_disable_hold_elapsed_accum_min=0;
 float oq_dual_hp_emergency_hold_elapsed_accum_min=0;
 int oq_curve_single_owner_hp=0, oq_control_mode_code=1, oq_actuator_hp1_req=0, oq_actuator_hp2_req=0;
+int oq_request_strategy_code=0, oq_request_hp1_level=0, oq_request_hp2_level=0;
 uint32_t oq_duo_request_hold_until_ms=0, oq_heat_last_loop_ms=0;
 int oq_heat_mode_code=0, oq_heat_last_mode_code=-1;
 int oq_cooling_request_hp1_level=0, oq_cooling_request_hp2_level=0;
@@ -164,6 +168,7 @@ struct Cycle {
   int request_mode_code=2;
   bool manual_service_active=false, request_thermal_active=true;
   bool cooling_stop_armed=false, restart_by_minimum_off_time=false, cooling_stop_planned=false;
+  uint8_t duo_defrost_start_block_mask=0;
   struct { bool confirmation_pending=false; uint32_t remaining_ms=0; } cooling;
   std::string request_mode_option="Heating";
 };
@@ -171,7 +176,8 @@ struct ActuatorRuntime {
   int previous[2]={17,17}, physical[2]={17,17};
   uint32_t safe_write[2]={0,0};
   bool confirmation[2]={false,false}, allow_active_writes=false;
-  std::string guard;
+  std::string guard, block_log;
+  uint8_t candidate_reason=0;
   oq_odu::RetainedLevel retained[2]={{17,17},{17,17}};
   struct Limit {
     uint32_t remaining=3600000;
@@ -184,7 +190,7 @@ struct ActuatorRuntime {
   int requested_mode_code(bool, bool, int mode, bool, bool) { return mode; }
   std::string& service_guard_(Cycle&, bool) { return guard; }
   uint16_t cap_seconds_(uint32_t v) { return static_cast<uint16_t>(v); }
-  void log_block_change(bool, const std::string&) {}
+  void log_block_change(bool, const std::string& reason) { block_log=reason; }
   template<class... T> void publish_defrost_hold_start(T...) {}
   void apply_active_mode_hold(bool, const oq_odu::RetainedLevel&, const std::string&) { events.push_back("retained"); }
   void publish_optimizer_reason(const char*) {}
@@ -193,7 +199,7 @@ struct ActuatorRuntime {
     assert(!active || allow_active_writes);
     events.push_back(active?"mode-active":(force?"mode0-force":"mode0"));
   }
-  template<class... T> void publish_candidate_blocked(T...) {}
+  void publish_candidate_blocked(bool, uint8_t reason, int, uint16_t) { candidate_reason=reason; }
   template<class... T> void note_cooling_start_refuse_(T...) {}
   void write_level(bool hp, int level, bool force) {
     assert(level==0 || allow_active_writes);
@@ -213,8 +219,11 @@ namespace oq_frequency_runtime { Context capture() { return ::frequency(); } }
 void reset() {
   oq_control_mode_code=1; oq_heat_mode_code=0; oq_heat_last_mode_code=-1; oq_heat_last_loop_ms=0;
   oq_actuator_hp1_req=oq_actuator_hp2_req=0; startup_test_mask=0;
+  oq_request_strategy_code=oq_request_hp1_level=oq_request_hp2_level=0;
   events.clear(); oq_water_temp_hard_trip_active=oq_lowflow_fault_active=false;
   oq_cooling_stop_reason_code=0;
+  hp1_is_online=hp2_is_online=true;
+  oq_sources::hp1={}; oq_sources::hp2={};
   hp1_working_mode={}; hp2_working_mode={};
   hp1_set_working_mode={}; hp2_set_working_mode={};
   oq_incident_manager={}; hp1_odu_defrost={}; hp2_odu_defrost={}; clock_ms=100000;
@@ -465,6 +474,57 @@ int main() {
   assert(a.apply_level_(true,modulated.hp1_level,false,c)==1);
   assert(a.apply_level_(false,modulated.hp2_level,false,c)==2 && a.physical[1]==2);
   assert(std::find(events.begin(),events.end(),"start")==events.end());
+  // Exercise the actuator between publishing a Duo request and the next dispatch tick.
+  for(bool is_hp1 : {false,true}) for(bool valve : {false,true}) {
+    reset(); oq_request_strategy_code=oq_request::STRATEGY_CURVE;
+    oq_request_hp1_level=oq_request_hp2_level=1;
+    oq_actuator_hp1_req=oq_actuator_hp2_req=1;
+    const int idle=is_hp1?0:1;
+    const uint8_t mask=is_hp1?1:2;
+    auto& peer_online=is_hp1?hp2_is_online:hp1_is_online;
+    auto& peer=is_hp1?oq_sources::hp2:oq_sources::hp1;
+    auto& active=valve?peer.status_2108:peer.defrost;
+    auto& peer_request=is_hp1?oq_actuator_hp2_req:oq_actuator_hp1_req;
+    auto& peer_strategy_request=is_hp1?oq_request_hp2_level:oq_request_hp1_level;
+    (is_hp1?hp2_defrost:hp1_defrost).state=!valve;
+    (is_hp1?hp2_4_way_valve:hp1_4_way_valve).state=valve;
+    (is_hp1?hp1_odu_defrost:hp2_odu_defrost).cycle.active=false;
+    (is_hp1?hp1_odu_defrost:hp2_odu_defrost).hold=false;
+    oq_incident_manager.rest_ms[idle]=0;
+    oq_incident_manager.hp[idle]={true,false,false,true,false,oq_incidents::RunState::STOPPED};
+    ActuatorRuntime a; Cycle c; c.frequency=f;
+    a.allow_active_writes=true;
+    a.previous[idle]=a.physical[idle]=0; a.retained[idle]={};
+    a.start_limits_[idle].remaining=0;
+    const auto start=[&]() {
+      c.config.now_ms=clock_ms;
+      c.duo_defrost_start_block_mask=0;
+      events.clear();
+      return a.apply_level_(is_hp1,1,false,c);
+    };
+    const auto check_start=[&]() {
+      assert(start()==1 && a.physical[idle]==1);
+      assert(std::count(events.begin(),events.end(),"start")==1);
+      assert(c.duo_defrost_start_block_mask==0 && a.block_log.empty());
+      assert(a.candidate_reason==openquatt_decision_log::REASON_UNKNOWN);
+      a.physical[idle]=0;
+    };
+    active.observe(valve?0x0040:1,clock_ms,true);
+    assert(start()==0 && a.physical[idle]==0);
+    assert(std::find(events.begin(),events.end(),"start")==events.end());
+    assert(c.duo_defrost_start_block_mask==mask && !a.block_log.empty());
+    assert(a.candidate_reason==openquatt_decision_log::REASON_CANDIDATE_IN_DEFROST);
+    peer_online=false; check_start();  // Offline even with an old, still recent sample.
+    peer_online=true; clock_ms+=oq_defrost::FRESH_MS+1; check_start();  // Stale while online.
+    active.invalidate(); check_start();  // Reconnected, without a new observation.
+    active.observe(valve?0x0040:1,clock_ms,true);
+    peer_strategy_request=0; check_start();  // Single handoff even when slew retains the peer command.
+    peer_strategy_request=1;
+    peer_request=0; check_start();  // Duo requested, but only the healthy pump can actually start.
+    peer_request=1;
+    assert(start()==0 && c.duo_defrost_start_block_mask==mask);
+    active.observe(0,clock_ms,true); check_start();  // New telemetry clears the block and diagnostics.
+  }
   // Execute the real engine: repeated notification cannot rebase its stop
   // watchdog. Normal STOPPING does not imply its revalidation pending flag.
   oq_incidents::HpIncidentEngine engine;
