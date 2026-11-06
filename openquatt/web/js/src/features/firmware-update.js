@@ -1047,20 +1047,20 @@ import { t } from "../i18n/index.js";
       const keys = attempt === 0 ? [...FIRMWARE_MODAL_KEYS, "weatherEnabled"] : FIRMWARE_MODAL_KEYS;
       await refreshEntities(keys, "all", { forceMissing: true });
       options.signal?.throwIfAborted();
-      // Allow the firmware's weather deadline and retry interval before the manifest starts.
-      const weather = state.entities.weatherEnabled;
-      if (attempt === 0 && ((weather?.value ?? weather?.state) === true
-          || (!weather && !isKnownOptionalMissingEntity("weatherEnabled")))) {
-        attempts = 25 + Math.ceil(20500 / 1200);
+      if (attempt === 0) {
+        const weather = state.entities.weatherEnabled;
+        if (weather ? (weather.value ?? weather.state) === true : !isKnownOptionalMissingEntity("weatherEnabled")) {
+          // 25 manifest polls plus 18 for the weather deadline and retry interval.
+          attempts = 43;
+        }
       }
-      const entityAligned = isFirmwareEntityAlignedWithChannel();
-      const targetAligned = !expectedBuildLabel || isFirmwareUpdateEntityForBuild(expectedBuildLabel);
-      const knownTarget = hasKnownFirmwareTargetVersion();
-      const checking = isFirmwareUpdateChecking();
-      const status = getUpdateStatus();
+      // Reading the status also synchronizes any live OTA progress hints.
+      const checked = !isFirmwareUpdateChecking() && getUpdateStatus() !== t("firmwareUpdate.statusNotChecked");
       const revision = getFirmwareManifestRevision();
-      const freshResult = !afterCheckRevision || (revision && revision !== afterCheckRevision);
-      if (freshResult && entityAligned && targetAligned && (knownTarget || (!checking && status !== t("firmwareUpdate.statusNotChecked")))) {
+      if ((!afterCheckRevision || (revision && revision !== afterCheckRevision))
+          && isFirmwareEntityAlignedWithChannel()
+          && (!expectedBuildLabel || isFirmwareUpdateEntityForBuild(expectedBuildLabel))
+          && (hasKnownFirmwareTargetVersion() || checked)) {
         return true;
       }
     }
