@@ -195,12 +195,9 @@ Bij `Duo` werkt deze strategie eenvoudiger dan bij `Power House`.
 
 Praktisch:
 
-- OpenQuatt begint normaal met één warmtepomp;
-- de tweede unit komt pas bij als de vraag hoog genoeg en lang genoeg aanwezig blijft;
-- loopt de draaiende warmtepomp nog op, dan komt de tweede unit pas bij zodra die warmtepomp volgens het prestatiemodel minstens zoveel levert als de kleinste Duo-combinatie; zo springt de tweede unit niet bij om kort daarna weer te stoppen. Kan de draaiende warmtepomp niet verder oplopen, bijvoorbeeld door `Silent max frequency`, een actieve storing of ontdooien, dan geldt deze wachttijd niet;
-- er zit dus bewust wachttijd en hysterese in.
-
-Dat voorkomt onrustig schakelen tussen één en twee warmtepompen.
+- Bij een start vanuit stilstand krijgt de beschikbare warmtepomp met de minste draaiuren voorrang.
+- In `RECOVERY` kan de tweede pomp bijspringen als de eerste haar toegestane maximum bereikt, het aanvoertekort aanhoudt en Duo volgens het prestatiemodel extra warmte kan leveren. Ontdooien zet de wachttijd voor het bijschakelen van een stilstaande pomp terug op nul.
+- In `MAINTAIN` kan de PID-vraag beide pompen rond het aanvoerdoel laten draaien. Daalt de vraag voldoende en volstaat één pomp, dan schakelt Duo na de ingestelde wachttijd terug naar de beschikbare pomp met de minste draaiuren.
 
 ## Wat hoef je meestal niet meteen aan te raken?
 

@@ -622,6 +622,16 @@ class Runtime {
       this->log_block_change(is_hp1, block_reason);
     }
 
+#if OQ_TOPOLOGY_DUO
+    // The actuator can retry an older curve request before dispatch sees the defrost.
+    if (applied > 0 && previous == 0 && cycle.request_mode_code == 2 && !cycle.manual_service_active &&
+        id(oq_heat_mode_code) == 1 &&
+        (is_hp1 ? (id(hp2_defrost).state || id(hp2_4_way_valve).state)
+                : (id(hp1_defrost).state || id(hp1_4_way_valve).state))) {
+      applied = level = 0;
+      candidate_reason = openquatt_decision_log::REASON_CANDIDATE_IN_DEFROST;
+    }
+#endif
     int cap_hz = -1;
     const bool use_frequency_policy = !cycle.manual_service_active;
     if (applied > 0 && use_frequency_policy) {

@@ -195,7 +195,7 @@ Defrost hp2_odu_defrost;
 #endif
 namespace openquatt_decision_log {
 enum { REASON_UNKNOWN, REASON_HP_FAULT, REASON_CANDIDATE_UNAVAILABLE, REASON_CANDIDATE_IN_REST,
-       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE };
+       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE, REASON_CANDIDATE_IN_DEFROST };
 }
 struct Cycle {
   struct { uint32_t now_ms=clock_ms; } config;
@@ -421,6 +421,24 @@ int main() {
 #endif
   }
 #if OQ_TOPOLOGY_DUO
+  // A stale actuator request must not start the idle peer before dispatch processes a defrost.
+  for (bool owner_hp1 : {true, false}) {
+    for (bool valve_signal : {true, false}) {
+      reset(owner_hp1);
+      ActuatorRuntime actuator;
+      actuator.resume_boot_cycle_(owner_hp1, true, clock_ms);
+      Sensor& signal = owner_hp1 ? (valve_signal ? hp1_4_way_valve : hp1_defrost)
+                                  : (valve_signal ? hp2_4_way_valve : hp2_defrost);
+      signal.state = 1;
+      Cycle cycle;
+      const int peer = owner_hp1 ? 1 : 0;
+      assert(actuator.apply_level_(!owner_hp1, 1, false, cycle) == 0);
+      assert(physical[peer] == 0 && starts[peer] == 0);
+      signal.state = 0;
+      assert(actuator.apply_level_(!owner_hp1, 1, false, cycle) == 1);
+      assert(physical[peer] == 1 && starts[peer] == 1);
+    }
+  }
   for(bool hp1_first:{true,false}) {
     reset(hp1_first); CurveRuntime curve; ActuatorRuntime actuator;
     const int first=hp1_first?0:1,second=1-first;
