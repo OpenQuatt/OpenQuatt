@@ -21,6 +21,9 @@ arrange any required hardware tests and verify the results before merging.
   peripheral, reset, or timing behaviour that the available tests cannot verify.
   Run the relevant scenarios and a smoke test. Resolve safety questions about
   the change before merging to `dev`, which publishes development firmware.
+- Run a physical power-on test when required by the
+  [HIL restart guidance](docs/development/hil-testing.md#herstarten-bij-geheugenmetingen).
+  Record the tested reset path and any remaining coverage gaps in the PR.
 - Require hardware memory measurements when a change can materially affect
   runtime memory use, fragmentation, or stack margins. Examples include larger
   buffers, changes to allocation placement, new tasks, and changes to which
