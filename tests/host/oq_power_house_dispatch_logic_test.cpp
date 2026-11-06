@@ -18,16 +18,15 @@ HpInput hp(int previous = 0, bool available = true) {
     result.levels[level] = {true, true, true, 1000.0f * level, 100.0f * level, static_cast<uint8_t>(level * 9)};
   return result;
 }
-DispatchInput input(bool duo = false) { return {60000, 3, 3000.0f, duo, true, true, hp(), hp()}; }
-DispatchTuning tuning() { return {9000.0f, 10000.0f, 5.0f, 150.0f, 450.0f, 6, 1}; }
+DispatchInput input(bool duo = false) { return {60000, 3000.0f, duo, true, true, hp(), hp()}; }
+DispatchTuning tuning() { return {9000.0f, 10000.0f, 5.0f, 150.0f, 450.0f, 1930.5f, 1}; }
 void test_cold_weather_request_reaches_dispatch_and_deficit() {
   const oq_power_house::DemandInput demand_input{60000U, -15, -10, 16, 7020, 20, 20, NAN, 1, false};
-  const oq_power_house::DemandTuning demand_tuning{0.5f, 3000, 0.1f, 0.3f, 10, 5, 20};
+  const oq_power_house::DemandTuning demand_tuning{0.5f, 3000, 0.1f, 0.3f, 10, 5};
   const auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, {});
   for (bool duo : {false, true}) {
     auto in = input(duo);
-    in.demand_level = demand.raw_demand;
-    in.requested_w = oq_power_house::power_capped_request_w(demand.requested_w, in.demand_level, 20, 7020);
+    in.requested_w = demand.requested_w;
     assert(fabsf(in.requested_w - 8370.0f) < 0.01f);
     auto out = decide_dispatch(in, tuning(), {});
     assert(out.output_valid && out.expected_w > 7020.0f && out.deficit_w == 0.0f);
@@ -44,7 +43,7 @@ void test_cold_weather_request_reaches_dispatch_and_deficit() {
 void expect_safe(const DispatchDecision& out, const DispatchInput& in, const DispatchTuning& cfg) {
   assert(out.hp1_level >= 0 && out.hp1_level <= kMaxLevel && out.hp2_level >= 0 && out.hp2_level <= kMaxLevel);
   assert((in.duo || out.hp2_level == 0) && out.owner_hp == owner(out.hp1_level, out.hp2_level));
-  if (in.demand_level <= 0) assert(out.hp1_level == 0 && out.hp2_level == 0);
+  if (in.requested_w == 0.0f) assert(out.hp1_level == 0 && out.hp2_level == 0);
   if (in.hp1.candidate.must_stop) assert(out.hp1_level == 0);
   if (in.hp2.candidate.must_stop) assert(out.hp2_level == 0);
   if (!in.hp1.candidate.minimum_off_ready && in.hp1.candidate.previous_applied_level <= 0) assert(out.hp1_level == 0);
@@ -97,12 +96,12 @@ void test_actuator_hold_constrains_owner_swap() {
     assert(out.owner_hp != running_owner && topology(out.hp1_level, out.hp2_level) == 1);
     expect_safe(out, in, tuning());
     running.candidate.must_stop = false;
-    in.demand_level = 0;
+    in.requested_w = 0.0f;
     out = decide_dispatch(in, tuning(), {});
     assert(out.hp1_level == 0 && out.hp2_level == 0);
 
     // Expiry restores the existing optimizer without a new timer or latch.
-    in.demand_level = 3;
+    in.requested_w = 2000.0f;
     running.stop_inhibited = false;
     assert(decide_dispatch(in, tuning(), {}).owner_hp != running_owner);
 
@@ -133,12 +132,12 @@ void test_timing_and_matrix() {
   state = observe_protection(state, {21U, false, false, false, 3, 3});
   assert(tail_active(state.oil_return, 25U, 5U));
   for (bool duo : {false, true})
-    for (int demand : {0, 1, 10, 20})
+    for (float demand_w : {0.0f, 0.1f, 2162.7f, 2187.0f, 7000.0f})
       for (int previous : {-1, 0, 3, 11})
         for (int stops = 0; stops < 4; ++stops)
           for (float cap : {0.0f, 299.0f, 300.0f, 10000.0f}) {
             auto in = input(duo);
-            in.demand_level = demand;
+            in.requested_w = demand_w;
             in.hp1.candidate = {previous, true, (stops & 1) != 0, true};
             in.hp2.candidate = {previous, true, (stops & 2) != 0, true};
             auto cfg = tuning();
@@ -219,7 +218,6 @@ void test_performance_supply_fallback() {
 void test_single_and_failures() {
   auto cfg = tuning();
   auto in = input(true);
-  in.demand_level = 20;
   in.performance_valid = false;
   in.hp1.candidate.previous_applied_level = 4;
   in.hp2.candidate.previous_applied_level = 3;
@@ -240,8 +238,7 @@ void test_single_and_failures() {
   in.performance_valid = true;
   out = decide_dispatch(in, cfg, {});
   assert(out.hp1_level == 0 && out.hp2_level == 0 && !out.output_valid);
-  in.requested_w = 3000;
-  in.demand_level = 0;
+  in.requested_w = 0.0f;
   in.performance_valid = false;
   assert(!decide_dispatch(in, cfg, {}).output_valid);
   in = input(true);
@@ -340,7 +337,6 @@ void test_duo_holds_and_boost() {
   cfg = tuning();
   cfg.soft_limit_w = cfg.peak_limit_w = 1000;
   in = input(true);
-  in.demand_level = 7;
   in.requested_w = 7000;
   in.hp1.valve_defrost = true;
   for (auto* selected : {&in.hp1, &in.hp2})
@@ -351,6 +347,13 @@ void test_duo_holds_and_boost() {
   out = decide_dispatch(in, cfg, {});
   assert(out.reason == Reason::DEFROST_BOOST && out.hp1_level + out.hp2_level == 4);
   expect_safe(out, in, cfg);
+  cfg.defrost_boost_min_w = in.requested_w;
+  assert(decide_dispatch(in, cfg, {}).reason == Reason::DEFROST_BOOST);
+  cfg.defrost_boost_min_w = std::nextafter(in.requested_w, INFINITY);
+  assert(decide_dispatch(in, cfg, {}).reason != Reason::DEFROST_BOOST);
+  cfg.defrost_boost_min_w = NAN;
+  assert(decide_dispatch(in, cfg, {}).reason != Reason::DEFROST_BOOST);
+  cfg.defrost_boost_min_w = tuning().defrost_boost_min_w;
   cfg.soft_limit_w = cfg.peak_limit_w = 550;
   out = decide_dispatch(in, cfg, {});
   assert(out.reason != Reason::DEFROST_BOOST && out.hp1_level + out.hp2_level == 3);

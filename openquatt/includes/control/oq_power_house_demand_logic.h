@@ -28,7 +28,6 @@ struct DemandTuning {
   float temperature_guard_c = 0.0f, reaction_w_per_k = NAN;
   float comfort_below_c = NAN, comfort_above_c = NAN;
   float rise_time_min = NAN, fall_time_min = NAN;
-  int demand_max = 0;
 };
 struct DemandState {
   float last_w = 0.0f;
@@ -56,7 +55,6 @@ struct DemandContributions {
 struct DemandDecision {
   DemandState next;
   float requested_w = 0.0f;
-  int raw_demand = 0;
   bool external = false;
   bool valid = false;
   DemandContributions contributions;
@@ -110,37 +108,18 @@ inline CadenceDecision decide_cadence(uint32_t now_ms, uint32_t last_ms, uint32_
   if (elapsed_ms < target_ms) return {};
   return {true, static_cast<float>(elapsed_ms) / 1000.0f};
 }
-// Saturate before converting requests above the reference scale to a level.
-inline int ceil_demand_level(float requested_w, float demand_scale_w, int demand_max) {
-  if (!isfinite(requested_w) || requested_w <= 0.0f || !isfinite(demand_scale_w) || demand_scale_w <= 0.0f ||
-      demand_max <= 0)
-    return 0;
-  const float scaled = demand_max * (requested_w / demand_scale_w);
-  return scaled >= static_cast<float>(demand_max) ? demand_max : static_cast<int>(ceilf(scaled));
-}
-// A full normalized demand is not a watt ceiling. Lower levels retain the
-// existing power-limiter conversion, including a zero-level stop.
-inline float power_capped_request_w(float requested_w, int capped_demand, int demand_max, float demand_scale_w) {
-  if (!isfinite(requested_w) || requested_w < 0.0f || !isfinite(demand_scale_w) || demand_scale_w <= 0.0f ||
-      demand_max <= 0)
-    return NAN;
-  if (capped_demand <= 0) return 0.0f;
-  if (capped_demand >= demand_max) return requested_w;
-  return fminf(requested_w, demand_scale_w * static_cast<float>(capped_demand) / demand_max);
-}
 // Shared control path. Only the feedforward line may differ; the installation
-// envelope owns clipping, normalization and slew independently of that line.
+// envelope owns clipping and slew independently of that line.
 inline DemandDecision decide_demand_with_power(const DemandInput& in, const DemandTuning& tuning,
                                                const DemandState& state, float modelled_w,
                                                const PowerHouseEnvelope& envelope, const WarmupBoost& boost = {}) {
   DemandDecision out;
   out.next.last_ms = in.now_ms == 0 ? UINT32_MAX : in.now_ms;
-  const bool valid = isfinite(modelled_w) && valid_house_envelope(envelope) && isfinite(in.room_c) &&
-                     isfinite(in.setpoint_c) && isfinite(in.water_limit_factor) &&
-                     isfinite(tuning.temperature_guard_c) && tuning.temperature_guard_c >= 0.0f &&
-                     isfinite(tuning.reaction_w_per_k) && tuning.reaction_w_per_k >= 0.0f &&
-                     isfinite(tuning.comfort_below_c) && isfinite(tuning.comfort_above_c) &&
-                     isfinite(tuning.rise_time_min) && isfinite(tuning.fall_time_min) && tuning.demand_max > 0;
+  const bool valid =
+      isfinite(modelled_w) && valid_house_envelope(envelope) && isfinite(in.room_c) && isfinite(in.setpoint_c) &&
+      isfinite(in.water_limit_factor) && isfinite(tuning.temperature_guard_c) && tuning.temperature_guard_c >= 0.0f &&
+      isfinite(tuning.reaction_w_per_k) && tuning.reaction_w_per_k >= 0.0f && isfinite(tuning.comfort_below_c) &&
+      isfinite(tuning.comfort_above_c) && isfinite(tuning.rise_time_min) && isfinite(tuning.fall_time_min);
   if (!valid) return out;
   const Feedforward feedforward = select_feedforward(clamp_power(modelled_w, 0.0f, envelope.request_max_w),
                                                      in.external_w, in.external_valid, envelope.request_max_w);
@@ -211,20 +190,12 @@ inline DemandDecision decide_demand_with_power(const DemandInput& in, const Dema
   else if (dt_s > 0.0f && raw_w < last_w)
     limited_w = fmaxf(raw_w, last_w - envelope.slew_scale_w * dt_s / (fall_min * 60.0f));
   out.requested_w = limited_w * clamp_power(in.water_limit_factor, 0.0f, 1.0f);
-  const float scaled_demand = tuning.demand_max * (out.requested_w / envelope.demand_scale_w);
-  // A separate request ceiling can exceed the demand scale. Saturate before
-  // converting to integer, including an overflowing positive ratio.
-  out.raw_demand = scaled_demand >= static_cast<float>(tuning.demand_max) ? tuning.demand_max
-                                                                          : static_cast<int>(lroundf(scaled_demand));
-  if (out.raw_demand < 0) out.raw_demand = 0;
-  if (out.raw_demand > tuning.demand_max) out.raw_demand = tuning.demand_max;
   out.external = feedforward.external;
   out.valid = true;
   out.next = {out.requested_w, out.next.last_ms, memory_c};
   return out;
 }
-// Legacy compatibility deliberately retains the original divide-then-multiply
-// evaluation order. Computing H first can move a half-level rounding boundary.
+// Retain the legacy house-line evaluation order for the continuous watt request.
 inline DemandDecision decide_demand(const DemandInput& in, const DemandTuning& tuning, const DemandState& state,
                                     const WarmupBoost& boost = {}) {
   const bool valid_reference =

@@ -7,7 +7,7 @@
 namespace {
 using namespace oq_power_house;
 DemandInput input(uint32_t now_ms) { return {now_ms, 3, -10, 16, 6000, 20, 20, NAN, 1, false}; }
-DemandTuning tuning() { return {0.5f, 3000, 0.1f, 0.3f, 10, 5, 20}; }
+DemandTuning tuning() { return {0.5f, 3000, 0.1f, 0.3f, 10, 5}; }
 bool near(float value, float expected) { return fabsf(value - expected) < 0.01f; }
 
 void test_inputs_arrive_in_any_order() {
@@ -19,7 +19,7 @@ void test_inputs_arrive_in_any_order() {
     DemandState state;
     auto phase = StartupPhase::WAITING_INPUTS;
     const auto missing = decide_startup_demand(in, tuning(), state, phase);
-    assert(!missing.valid && isnan(missing.requested_w) && missing.raw_demand == 0);
+    assert(!missing.valid && isnan(missing.requested_w));
     assert(missing.next.last_ms == 0 && missing.next.last_w == 0 && missing.next.comfort_memory_c == 0);
     for (int index = 0; index < 3; ++index) {
       in.now_ms = 30000U + 30000U * index;
@@ -31,7 +31,7 @@ void test_inputs_arrive_in_any_order() {
         assert(state.last_ms == 0 && state.last_w == 0);
       } else {
         assert(phase == StartupPhase::READY && out.valid && near(out.requested_w, 3000));
-        assert(out.raw_demand == 10 && state.last_ms == in.now_ms);
+        assert(state.last_ms == in.now_ms);
       }
     }
   }
@@ -57,7 +57,7 @@ void test_timeout_is_from_boot_and_survives_rollover() {
   assert(phase == StartupPhase::WAITING_INPUTS && isnan(out.requested_w));
   in.now_ms = kStartupInputWaitMs;
   out = decide_startup_demand(in, tuning(), out.next, phase);
-  assert(phase == StartupPhase::INPUT_TIMEOUT && !out.valid && out.requested_w == 0 && out.raw_demand == 0);
+  assert(phase == StartupPhase::INPUT_TIMEOUT && !out.valid && out.requested_w == 0);
   assert(out.next.last_ms == 0);
   in.now_ms = UINT32_MAX;
   out = decide_startup_demand(in, tuning(), out.next, phase);
