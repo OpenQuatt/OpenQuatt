@@ -2,12 +2,17 @@
 
 #include <esp_http_server.h>
 
+#include <atomic>
 #include <string>
 
+#include "PsramBuffer.h"
 #include "esphome/components/globals/globals_component.h"
 #include "esphome/components/web_server/web_server.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/component.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "snapshot_buffer_writer.h"
 #include "warmup_progress_snapshot.h"
 
 namespace esphome {
@@ -15,6 +20,7 @@ namespace openquatt_service_status {
 
 class OpenQuattServiceStatus : public Component {
  public:
+  ~OpenQuattServiceStatus();
   using BoolGlobal = globals::GlobalsComponent<bool>;
   using FloatGlobal = globals::GlobalsComponent<float>;
   using IntGlobal = globals::GlobalsComponent<int>;
@@ -90,12 +96,24 @@ class OpenQuattServiceStatus : public Component {
   }
 
   void setup() override;
+  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override;
 
   void write_status(httpd_req_t* req) const;
 
  protected:
+  bool serialize_snapshot_(SnapshotBufferWriter& writer) const;
+  void refresh_snapshot_();
+
+  // Only the main loop reads the source globals or writes pending_snapshot_.
+  // HTTPD copies published_snapshot_ while locked, then sends its own copy.
+  SemaphoreHandle_t snapshot_lock_{nullptr};
+  openquatt_common::PsramBuffer<char> pending_snapshot_;
+  openquatt_common::PsramBuffer<char> published_snapshot_;
+  std::atomic<uint32_t> published_size_{0U};
+  uint32_t published_at_ms_{0U};  // Protected by snapshot_lock_.
+  uint32_t last_snapshot_ms_{0U};
   WarmupProgressSnapshot warmup_progress_;
   web_server::WebServer* web_server_{nullptr};
   IntGlobal* control_mode_code_{nullptr};

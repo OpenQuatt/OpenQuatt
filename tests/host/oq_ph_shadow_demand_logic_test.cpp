@@ -16,9 +16,8 @@ DemandEvaluationFrame frame() {
   f.monotonic_ms = 100000;
   f.cadence_ms = 30000;
   f.input = {100000, 0, -10, 15, 3750, 19.8f, 20, NAN, 1, false};
-  f.tuning = {0, 1500, 0.1f, 0.3f, 8, 3, 100};
+  f.tuning = {0, 1500, 0.1f, 0.3f, 8, 3};
   f.previous = {2900, 90000, 0.05f};
-  f.envelope = house_envelope_from_legacy(3750);
   f.manual_w = decide_demand(f.input, f.tuning, f.previous).requested_w;
   f.reason = ShadowDemandReason::READY;
   return f;
@@ -45,7 +44,8 @@ void fail_closed_and_immutable() {
   auto b = batch();
   const auto original_frame = f;
   const auto original_batch = b;
-  const auto expected = decide_demand_with_line(f.input, f.tuning, f.previous, b.candidate, f.envelope);
+  const auto expected =
+      decide_demand_with_line(f.input, f.tuning, f.previous, b.candidate, house_envelope_from_legacy(f.input.rated_w));
   const auto result = evaluate(f, b);
   assert(result.available() && result.manual_w == f.manual_w && result.candidate_w == expected.requested_w);
   assert(result.delta_w == result.candidate_w - result.manual_w);

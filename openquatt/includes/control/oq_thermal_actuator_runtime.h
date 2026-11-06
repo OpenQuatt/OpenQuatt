@@ -1052,7 +1052,10 @@ class Runtime {
         central_reason = openquatt_decision_log::REASON_HEATING_CENTRAL_PAUSE;
       reason = stop::reason_for_stop(
           {source_unavailable, id(oq_lowflow_fault_active), water_limit, disabled, id(oq_strategy_heat_request_active),
-           curve, !curve && !id(oq_lowload_heat_latch), id(oq_power_cap_f) <= 0 && id(oq_demand_raw) > 0,
+           curve, !curve && !id(oq_lowload_heat_latch),
+           curve ? id(oq_power_cap_f) <= 0 && id(oq_demand_raw) > 0
+                 : id(oq_phouse_req_w) > 0.0f &&
+                       oq_supervisory_power_runtime::runtime().request_limit_w(id(house_rated_power_w).state) <= 0.0f,
            curve && (is_hp1 ? id(oq_curve_dispatch_hp2_level) : id(oq_curve_dispatch_hp1_level)) > 0, snapshot.reason,
            curve ? oq_heating_curve_runtime::runtime().dispatch_stop_reason()
                  : static_cast<uint8_t>(id(oq_ph_request_reason_code)),

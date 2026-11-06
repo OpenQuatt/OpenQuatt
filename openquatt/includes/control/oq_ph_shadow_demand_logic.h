@@ -49,8 +49,8 @@ inline ShadowDemandResult evaluate_shadow_demand(const DemandEvaluationFrame& fr
     out.reason = ShadowDemandReason::OUTSIDE_RANGE;
     return out;
   }
-  const auto candidate =
-      decide_demand_with_line(frame.input, frame.tuning, frame.previous, batch.candidate, frame.envelope);
+  const auto candidate = decide_demand_with_line(frame.input, frame.tuning, frame.previous, batch.candidate,
+                                                 house_envelope_from_legacy(frame.input.rated_w));
   if (!candidate.valid || candidate.external || !isfinite(frame.manual_w) || frame.manual_w < 0.0f ||
       !isfinite(candidate.requested_w) || !isfinite(candidate.requested_w - frame.manual_w)) {
     out.reason = ShadowDemandReason::INVALID_INPUTS;

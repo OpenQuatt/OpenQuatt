@@ -46,15 +46,22 @@ berekenen; deze code bewijst geen draaiende compressor.
 
 | Output | Contract |
 | --- | --- |
-| `oq_demand_raw` | Genormaliseerde verwarmingsvraag `0..20`, onafhankelijk van fysieke V2-standnummers. |
+| `oq_demand_raw`, `oq_heating_demand_filtered` | Ruwe en gefilterde stooklijnvraag (`0..20`), onafhankelijk van fysieke V2-standnummers. |
+| `oq_cooling_demand_raw` | Ruwe koelvraag (`0..10`), begrensd door `Cooling Demand Max`. |
+| `oq_demand_filtered` | Genormaliseerde vraag van de actieve stooklijn- of koelregeling. |
 | `oq_strategy_phase_code` | Strategie-lokale fase; de betekenis moet per strategie worden vastgelegd. |
-| `oq_strategy_requested_power_w` | Gevraagde watts wanneer deze strategie daarop regelt, anders `NAN`. |
+| `oq_strategy_requested_power_w` | Effectieve warmtevraag in W bij vermogensregeling, anders `NAN`. |
 | `oq_strategy_supply_target_temp` | Aanvoerdoel wanneer deze strategie daarop regelt, anders `NAN`. |
 | `oq_strategy_heat_request_active` | Warmte-intentie die supervisory gebruikt; geen hardwarevrijgave. |
 | `oq_strategy_hp_expected_power_w`, `oq_strategy_hp_max_power_w`, `oq_strategy_hp_saturated` | Capaciteitsdiagnostiek voor consumenten die dit ondersteunen; geen verzonnen meetwaarden. |
 | `oq_strategy_output_valid` | Alleen waar wanneer de relevante inputs en berekening geldig zijn. |
 | `oq_strategy_output_source_code` | Identiteit van de producer, overeenkomstig de strategiecode. |
 | `oq_strategy_output_updated_ms` | Tijdstip van de berekende output; nul betekent nog niet gepubliceerd. |
+
+Power House past het wattplafond uit `request_limit_w` toe voor de compressorselectie.
+De begrensde vraag staat in `oq_strategy_requested_power_w`. De runtime zet
+`oq_demand_raw`, `oq_demand_filtered` en `oq_heating_demand_filtered` daarbij op nul.
+De sensoren `Demand raw` en `Demand filtered` publiceren dan `NaN`.
 
 Publiceer de samenhangende velden in dezelfde loopcontext en zet de geldigheid
 pas na het invullen van de bijbehorende output. Een inactieve strategie wist

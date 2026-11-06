@@ -91,7 +91,8 @@ const reasons = (values, fallback) => {
 const estimateNote = (value, ready) => value == null ? t("houseLearning.estimate.none") : ready ? t("houseLearning.estimate.sufficient") : t("houseLearning.estimate.provisional");
 const statusIsStale = (status) => {
   const age = Math.floor(Date.now() / 1000) - status.tickEpoch;
-  return !Number.isFinite(status.tickEpoch) || status.tickEpoch <= 0 || age < 0 || age > 30;
+  // The controller and the browser use separate clocks.
+  return !Number.isFinite(status.tickEpoch) || status.tickEpoch <= 0 || Math.abs(age) > 30;
 };
 
 const canAssessModel = (status) => status?.enabled === true && status.storageReady && !statusIsStale(status)

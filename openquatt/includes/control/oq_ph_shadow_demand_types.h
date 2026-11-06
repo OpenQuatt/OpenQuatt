@@ -73,7 +73,6 @@ struct DemandEvaluationFrame {
   DemandInput input;
   DemandTuning tuning;
   DemandState previous;
-  PowerHouseEnvelope envelope;
   float manual_w = NAN;
   ShadowDemandReason reason = ShadowDemandReason::INACTIVE;
 };
