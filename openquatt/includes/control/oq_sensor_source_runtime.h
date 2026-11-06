@@ -24,7 +24,8 @@ class Runtime {
   oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
 
 #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
-  // Match the selected, calibrated value to its original producer receipt.
+  // Use the selected source and its calibration with the producer's own
+  // timestamp. The producer and the display sensor publish independently.
   // Neither an outdoor-unit fallback nor a held value measures after the boiler.
   oq_sources::RawFloatReceipt system_supply_receipt() const {
     if (!id(oq_water_supply_temp_current_source_ready) || id(oq_water_supply_temp_selected_hold_active) ||
@@ -51,7 +52,6 @@ class Runtime {
     if (!receipt.valid) return {};
     const auto record = calibration_record(source.code);
     if (oq_supply_calibration::record_matches(record, source)) receipt.value += record.offset_c;
-    if (receipt.value != id(water_supply_temp_selected).state) return {};
     return receipt;
   }
 

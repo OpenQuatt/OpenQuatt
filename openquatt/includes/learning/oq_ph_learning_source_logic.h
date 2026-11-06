@@ -357,7 +357,8 @@ inline bool reports_actual_cooling(const HeatPumpRawMeasurements& hp, PhysicalUn
   size_t count = 0;
   if (append_unit_measurement(hp.mode, unit, now_ms, metadata, count) != SnapshotSourceStatus::OK) return false;
   return !hp.defrost_active.value ||
-         append_unit_measurement(hp.defrost_active, unit, now_ms, metadata, count) != SnapshotSourceStatus::OK;
+         append_unit_measurement(hp.defrost_active, unit, now_ms, metadata, count) != SnapshotSourceStatus::OK ||
+         validate_skew(metadata, count) != SnapshotSourceStatus::OK;
 }
 
 inline SnapshotSourceStatus validate_heat_pump_state(const HeatPumpRawMeasurements& heat_pump,
