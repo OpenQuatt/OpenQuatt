@@ -13,9 +13,21 @@ Een bron levert een waarde aan OpenQuatt, bijvoorbeeld de kamertemperatuur. Het 
 
 ## Open-Meteo als buitenbron
 
-Met het optionele Q-pakket voor de Open-Meteo-buitenbron verschijnt **Open-Meteo**
-onder **Sensorselectie → Buitentemperatuur**. Stel eerst de locatie in en zet
-weersverwachting aan bij [Vooruitblik](leren.md#vooruitblik).
+Neem voor een eigen Q-firmwarebuild `weather_outside_source.yaml` op onder
+`packages`. Vanuit een configuratie in `configs/heatpump_controller_q/` gebruik
+je deze include.
+
+```yaml
+packages:
+  weather: !include ../../openquatt/experimental/weather_outside_source.yaml
+```
+
+Dit pakket bevat Vooruitblik. Vervang een eventuele bestaande include van
+`weather_passive.yaml` door deze include. Stel na het installeren de locatie in
+en zet weersverwachting aan bij [Vooruitblik](leren.md#vooruitblik).
+Kies daarna **Auto** of **Open-Meteo** onder **Sensorselectie → Buitentemperatuur**.
+Gebruik je al **Auto** en staat weersverwachting aan, dan telt Open-Meteo na
+installatie van het pakket automatisch mee.
 
 De bron gebruikt de actuele kwartierwaarde van het KNMI-weermodel via
 Open-Meteo. **Auto** neemt die mee bij de keuze van de laagste geldige waarde.
