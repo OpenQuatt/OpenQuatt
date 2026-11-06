@@ -196,8 +196,8 @@ Bij `Duo` werkt deze strategie eenvoudiger dan bij `Power House`.
 Praktisch:
 
 - Bij een start vanuit stilstand krijgt de beschikbare warmtepomp met de minste draaiuren voorrang.
-- In `RECOVERY` kan de tweede pomp bijspringen als de eerste haar toegestane maximum bereikt, het aanvoertekort aanhoudt en Duo volgens het prestatiemodel extra warmte kan leveren. Ontdooien zet de wachttijd voor het bijschakelen van een stilstaande pomp terug op nul.
-- In `MAINTAIN` kan de PID-vraag beide pompen rond het aanvoerdoel laten draaien. Daalt de vraag voldoende en volstaat één pomp, dan schakelt Duo na de ingestelde wachttijd terug naar de beschikbare pomp met de minste draaiuren.
+- In `RECOVERY` kan de tweede pomp bijspringen als de eerste haar toegestane maximum bereikt, het aanvoertekort aanhoudt en Duo volgens het prestatiemodel extra warmte kan leveren. Zodra beide pompen draaien, kan de PID hun volledige beschikbare vermogen vragen. Ontdooien zet de wachttijd voor het bijschakelen van een stilstaande pomp terug op nul.
+- In `MAINTAIN` kan de PID-vraag beide pompen rond het aanvoerdoel laten draaien. Daalt de vraag voldoende en volstaat één pomp, dan moduleert Duo eerst terug. Daarna volgt de ingestelde wachttijd en blijft de beschikbare pomp met de minste draaiuren draaien.
 
 ## Wat hoef je meestal niet meteen aan te raken?
 

@@ -150,6 +150,11 @@ void test_restart_lock_and_regimes() {
   in.applied_total_level = 7;
   out = decide_demand(in, tuning(), active(0));
   assert(out.next.regime_code == 1 && out.demand == 8 && near(out.demand_continuous, 8.0f));
+  in.duo_running = true;
+  in.applied_total_level = 18;
+  out = decide_demand(in, tuning(), active(1));
+  assert(out.next.regime_code == 1 && out.demand == 4 && near(out.demand_continuous, 4.0f));
+  in.duo_running = false;
   in.supply_c = 34.85f;
   out = decide_demand(in, tuning(), active(1));
   assert(out.next.regime_code == 2 && out.demand == 3);

@@ -17,6 +17,9 @@ class HeatingCurveDuoHoldRuntimeTest(unittest.TestCase):
         runtime = (ROOT / "openquatt/includes/control/oq_heating_curve_runtime.h").read_text()
         end = runtime.index(";", runtime.index("    const bool dual_enabled =")) + 1
         block = runtime[runtime.index("    const int dual_on_hold_min ="):end]
+        scale_start = runtime.index("    const bool both_applied =")
+        scale_end = runtime.index(";", runtime.index("    const float target_power_w =", scale_start)) + 1
+        scale = runtime[scale_start:scale_end]
         reset = re.search(r"  void reset_dual_holds_\(\).*?\n  }", runtime, re.S).group()
         eligibility_start = runtime.index("    const bool hold_allowed =")
         eligibility_last = "    if (!hold_allowed) this->reset_dual_holds_();"
@@ -48,6 +51,7 @@ struct Harness {
   int hp1_fixed_level=0, hp2_fixed_level=0, previous_hp1=8, previous_hp2=0;
   int owner_max=8;
   float dispatch_cap=1.0f, continuous_cap=1.0f, high_gap_c=4.0f;
+  float applied_duo_power_w=NAN, selected_duo_power_w=0;
   struct Tuning {
     int dual_startup_grace_s=0, dual_emergency_hold_min=1;
     float dual_emergency_temp_err_c=1.5f, dual_disable_temp_err_max_c=0.5f;
@@ -56,21 +60,24 @@ struct Harness {
   bool tick(uint32_t now_ms) {
     // ELIGIBILITY_BLOCK
     const int single_owner=1, hp1_pair_max=1, hp2_pair_max=1;
+    const struct { int demand_max_f=20; } config;
     const float owner_capacity_w=10000, duo_floor_w=3000, duo_capacity_w=15000;
     const float dispatch_u=disable ? 0.4f : dispatch_cap;
     const float demand_u=std::min(dispatch_u,continuous_cap);
     const float temperature_error_c=disable ? -1.0f : (large_gap ? high_gap_c : 0.3f);
     const bool defrost_active=hp1_defrost || hp1_valve_defrost || hp2_valve_defrost;
-    const float target_power_w=oq_curve::phase_target_power_w(heat_phase, demand_u, owner_capacity_w, duo_capacity_w);
+    // POWER_SCALE_BLOCK
     const Available hp1_candidate, hp2_candidate;
     const float single_w=std::min(target_power_w, owner_capacity_w);
     const oq_curve::DispatchCandidate best_single{true, 8, 0, single_w, target_power_w-single_w, 1, 0};
-    const auto candidate=[&](int, int, float target_w) {
-      const float power_w=extra_power_available ? target_w : owner_capacity_w;
+    const auto candidate=[&](int first, int second, float target_w) {
+      const bool is_applied_pair=first==previous_hp1 && second==previous_hp2 && std::isfinite(applied_duo_power_w);
+      const float power_w=is_applied_pair ? applied_duo_power_w : (extra_power_available ? target_w : owner_capacity_w);
       return oq_curve::DispatchCandidate{true, 7, 7, power_w, std::fabs(power_w-target_w), 2, 0};
     };
     const auto level_power_w=[](bool, int) { return 10000.0f; };
     // TIMING_BLOCK
+    selected_duo_power_w = dual_enabled ? best_duo.power_w : 0.0f;
     if (dual_enabled && heat_phase && large_gap && !defrost_active && dispatch_u>=0.95f)
       assert(best_duo.power_w>owner_capacity_w);
     return dual_enabled;
@@ -154,6 +161,7 @@ void recovery_latches_without_waiting_for_the_normal_enable_hold() {
   h.large_gap=false;
   assert(h.tick(63000));
   assert(oq_dual_hp_emergency_hold_elapsed_accum_min == 0.0f);
+  h.heat_phase=false;
   h.disable=true;
   assert(h.tick(64000));
   assert(!h.tick(124000)); // the normal Duo off hold still applies
@@ -230,6 +238,50 @@ void defrost_clears_a_latched_start_of_an_idle_peer() {
   h.large_gap = false;
   assert(!h.tick(31000));
   assert(!h.tick(91000));
+}
+void running_duo_can_use_full_capacity_near_the_recovery_exit() {
+  reset_globals();
+  Harness h;
+  h.heat_phase = true;
+  h.large_gap = false;  // 0.30 °C below target, just outside the Balanced exit band.
+  h.previous_hp1 = h.previous_hp2 = 7;
+  oq_dual_hp_enabled = true;
+  assert(h.tick(1000));
+  assert(h.selected_duo_power_w == 15000.0f);
+}
+void running_duo_waits_for_maintain_before_shedding() {
+  reset_globals();
+  Harness h;
+  h.heat_phase = true;
+  h.large_gap = false;
+  h.dispatch_cap = 0.60f;
+  h.previous_hp1 = h.previous_hp2 = 7;
+  oq_dual_hp_enabled = true;
+  assert(h.tick(1000));
+  assert(h.tick(61000));
+  assert(oq_dual_hp_disable_hold_elapsed_accum_min == 0.0f);
+  h.heat_phase = false;
+  h.dispatch_cap = 0.50f;
+  assert(h.tick(62000));
+  assert(!h.tick(122000));
+}
+void duo_off_hold_waits_for_the_applied_pair_to_modulate_down() {
+  reset_globals();
+  Harness h;
+  h.previous_hp1 = h.previous_hp2 = 7;
+  h.disable = true;
+  h.applied_duo_power_w = 11000.0f;
+  oq_dual_hp_enabled = true;
+  assert(h.tick(1000));
+  assert(h.tick(61000));
+  assert(oq_dual_hp_disable_hold_elapsed_accum_min == 0.0f);
+  h.disable = false;
+  h.large_gap = false;
+  h.dispatch_cap = 0.30f;
+  h.applied_duo_power_w = 5900.0f;  // Below the cap-band top despite a lower current demand step.
+  assert(h.tick(62000));
+  assert(h.tick(121999));
+  assert(!h.tick(122000));
 }
 void maintain_keeps_duo_at_target_then_sheds_once() {
   reset_globals();
@@ -308,11 +360,14 @@ int main() {
   recovery_waits_for_the_owner_and_respects_the_demand_cap();
   recovery_can_start_at_the_profile_temperature_threshold();
   defrost_clears_a_latched_start_of_an_idle_peer();
+  running_duo_can_use_full_capacity_near_the_recovery_exit();
+  running_duo_waits_for_maintain_before_shedding();
+  duo_off_hold_waits_for_the_applied_pair_to_modulate_down();
   maintain_keeps_duo_at_target_then_sheds_once();
   inactive_and_manual_modes_cannot_preload_holds();
   wrap_and_saturation();
 }
-'''.replace("    // TIMING_BLOCK", block).replace("  // RESET_METHOD", reset).replace("    // ELIGIBILITY_BLOCK", eligibility)
+'''.replace("    // POWER_SCALE_BLOCK", scale).replace("    // TIMING_BLOCK", block).replace("  // RESET_METHOD", reset).replace("    // ELIGIBILITY_BLOCK", eligibility)
         with tempfile.TemporaryDirectory(prefix="oq-curve-hold-") as directory:
             source = Path(directory) / "curve_duo_hold.cpp"
             binary = Path(directory) / "curve_duo_hold"
