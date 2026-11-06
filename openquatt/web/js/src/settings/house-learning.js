@@ -238,7 +238,8 @@ function localizeStateMessage(message) {
 }
 
 export function renderHouseLearningStatusMarkup(status = state.houseLearningStatus, section = "all") {
-  if (section === "secondary" && (!status || state.houseLearningReset === "pending" || state.houseLearningReset === "error" || state.houseLearningReset === "uncertain")) return "";
+  if (section === "secondary" && (!status || learningStatusPending(status)
+      || state.houseLearningReset === "pending" || state.houseLearningReset === "error" || state.houseLearningReset === "uncertain")) return "";
   if (state.houseLearningReset === "pending") {
     return `<p class="oq-settings-action-note" role="status">${escapeHtml(t("houseLearning.reset.clearing"))}</p>`;
   }
@@ -397,14 +398,19 @@ function patchLearningMarkup(node, markup) {
   const info = focused && active.dataset?.infoId;
   const action = focused && active.dataset?.oqAction;
   const selector = control === "houseLearningEnabled" ? '[data-control-key="houseLearningEnabled"]'
-    : ["house-learning-window", "house-learning-readiness", "house-learning-thermal"].includes(info)
+    : ["house-learning-window", "house-learning-readiness", "house-learning-thermal", "house-learning-chart"].includes(info)
     ? `[data-info-id="${info}"]`
     : ["load-house-learning-chart", "download-house-learning"].includes(action) ? `[data-oq-action="${action}"]`
     : focused && active.dataset?.oqButtonKey === "houseLearningReset" ? '[data-oq-button-key="houseLearningReset"]'
     : focused && active.dataset?.settingsAdvanced === "house-learning-technical" ? 'summary[data-settings-advanced="house-learning-technical"]' : null;
+  const point = focused && active.dataset?.oqHouseLearningTip;
   node.innerHTML = markup;
   learningMarkup.set(node, markup);
-  if (selector) node.querySelector(selector)?.focus({ preventScroll: true });
+  if (point) {
+    const replacement = [...node.querySelectorAll("[data-oq-house-learning-tip]")]
+      .find(candidate => candidate.dataset.oqHouseLearningTip === point);
+    (replacement || node.querySelector('[data-oq-action="load-house-learning-chart"]'))?.focus({ preventScroll: true });
+  } else if (selector) node.querySelector(selector)?.focus({ preventScroll: true });
 }
 
 export function patchHouseLearningSettingsStatus() {

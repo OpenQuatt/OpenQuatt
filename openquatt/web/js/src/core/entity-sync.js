@@ -798,8 +798,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     return chunks;
   }
 
-  export async function fetchBulkEntityChunk(chunk) {
-    const timeoutMs = getEntityRequestTimeoutMs();
+  export async function fetchBulkEntityChunk(chunk, timeoutMs = getEntityRequestTimeoutMs()) {
     const fetchOptions = {
       method: "POST",
       cache: "no-store",
@@ -1021,9 +1020,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
+    const previousControlError = state.controlError;
     const timeWriteRevision = state.timeWriteRevision;
     const learningRequestId = state.houseLearningRequestId;
     const learningSwitchBusy = state.busyAction === "switch-houseLearningEnabled";
+    const canUpdateControlError = () => !learningSwitchBusy && learningRequestId === state.houseLearningRequestId
+      && state.controlError === previousControlError;
     const performancePromptWriteRevision = state.performanceTelemetryPromptWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
@@ -1043,7 +1045,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
       if (!state.busyAction) {
         noteEntityRefreshSuccess();
-        state.controlError = "";
+        if (canUpdateControlError()) state.controlError = "";
       }
       return;
     }
@@ -1114,14 +1116,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
     syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
     if (firstError) {
       noteEntityRefreshFailure(firstError);
-      if (state.deviceReconnectMode) {
-        state.controlError = "";
-      } else {
-        state.controlError = t("entitySync.refreshIncomplete", { error: firstError });
+      if (!state.busyAction && canUpdateControlError()) {
+        state.controlError = state.deviceReconnectMode ? "" : t("entitySync.refreshIncomplete", { error: firstError });
       }
     } else if (!state.busyAction) {
       noteEntityRefreshSuccess();
-      state.controlError = "";
+      if (canUpdateControlError()) state.controlError = "";
     }
   }
 

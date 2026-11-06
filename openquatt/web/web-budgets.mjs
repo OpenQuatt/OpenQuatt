@@ -36,8 +36,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Preserve444 B raw headroom; all relative gzip limits remain unchanged.
     // Learning page, two measurement bars and retained-day progress in both locales:
     // +6,919 B raw / +1,750 B gzip versus dev 6dd491f5 (Node 24.14.1).
+    // Bounded readback, export and focus handling add 556 B raw / 134 B gzip.
     // Preserve 444 B of raw headroom and the existing relative gzip limits.
-    raw: 1_408_299,
+    raw: 1_408_855,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

@@ -272,6 +272,24 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
   return "";
 }
 
+async function confirmSwitchReadback(key, enabled) {
+  const [chunk] = buildBulkEntityChunks([key], "all");
+  const deadline = performance.now() + 2000;
+  for (const delay of [0, 100, 250, 500]) {
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) return false;
+    const payload = await fetchBulkEntityChunk(chunk, remaining).catch(() => null);
+    const readback = payload?.entities?.[key];
+    if (Array.isArray(payload?.missing) && !payload.missing.includes(key)
+      && readback?.value === enabled && readback.state === (enabled ? "ON" : "OFF")) {
+      state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function commitSwitch(key, enabled) {
   const entity = ENTITY_DEFS[key];
   if (!entity) {
@@ -286,7 +304,12 @@ export async function commitSwitch(key, enabled) {
     return;
   }
 
-  if (key === "houseLearningEnabled" && (state.busyAction || state.houseLearningReset === "pending")) return;
+  const isLearningSwitch = key === "houseLearningEnabled";
+  if (isLearningSwitch && (state.busyAction || state.houseLearningReset === "pending")) return;
+  if (isLearningSwitch) {
+    state.houseLearningRequestId += 1;
+    state.houseLearningEndpointChecking = false;
+  }
 
   state.busyAction = `switch-${key}`;
   state.controlNotice = "";
@@ -296,28 +319,23 @@ export async function commitSwitch(key, enabled) {
   try {
     const action = enabled ? "turn_on" : "turn_off";
     const path = buildEntityPath(entity.domain, entity.name, action);
-    const response = key === "houseLearningEnabled"
+    const response = isLearningSwitch
       ? await fetchWithTimeout(path, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS)
       : await fetch(path, { method: "POST" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    if (key === "houseLearningEnabled") {
+    if (isLearningSwitch) {
       const staleStatus = state.houseLearningFetchPromise;
       // Fence status and switch reads issued before the controller acknowledged the write.
       state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
       state.houseLearningEndpointChecking = false;
       state.houseLearningStatus = null;
       render();
-      const [chunk] = buildBulkEntityChunks([key], "all");
-      const payload = await fetchBulkEntityChunk(chunk).catch(() => null);
-      const readback = payload?.entities?.[key];
-      const valid = Array.isArray(payload?.missing) && !payload.missing.includes(key)
-        && typeof readback?.value === "boolean" && readback.state === (readback.value ? "ON" : "OFF");
-      if (valid) state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+      const confirmed = await confirmSwitchReadback(key, enabled);
       if (staleStatus) await staleStatus;
       await refreshHouseLearningStatus({ force: true });
-      if (!valid || readback.value !== enabled) throw new Error(t("learning.switchUnconfirmed"));
+      if (!confirmed) throw new Error(t("learning.switchUnconfirmed"));
       state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
       return;
     }
