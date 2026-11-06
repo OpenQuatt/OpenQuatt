@@ -23,6 +23,91 @@ class Runtime {
   oq_sources::ResolvedLearningSource resolved_outside_temperature() const { return this->resolved_outside_; }
   oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
 
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+  // Match the selected, calibrated value to its original producer receipt.
+  // Neither an outdoor-unit fallback nor a held value measures after the boiler.
+  oq_sources::RawFloatReceipt system_supply_receipt() const {
+    if (!id(oq_water_supply_temp_current_source_ready) || id(oq_water_supply_temp_selected_hold_active) ||
+        id(oq_water_supply_temp_fallback_runtime_active) || !id(water_supply_temp_selected).has_state())
+      return {};
+    const auto source = current_calibration_source();
+    oq_sources::RawFloatReceipt receipt;
+    switch (source.code) {
+      case oq_supply_calibration::SOURCE_LOCAL_PT1000:
+        receipt = oq_sources::local_supply_pt1000;
+        break;
+      case oq_supply_calibration::SOURCE_LOCAL_DS18B20:
+        receipt = oq_sources::local_supply_ds18b20;
+        break;
+      case oq_supply_calibration::SOURCE_CIC:
+        if (cic_feed_valid()) receipt = id(cic_component).water_supply_temperature_receipt();
+        break;
+      case oq_supply_calibration::SOURCE_HA_INPUT:
+        if (ha_valid(id(water_supply_temp_valid_ha), id(water_supply_temp_ha))) receipt = oq_sources::ha_water_supply;
+        break;
+      default:
+        break;
+    }
+    if (!receipt.valid) return {};
+    const auto record = calibration_record(source.code);
+    if (oq_supply_calibration::record_matches(record, source)) receipt.value += record.offset_c;
+    if (receipt.value != id(water_supply_temp_selected).state) return {};
+    return receipt;
+  }
+
+  uint64_t system_flow_receipt_ms(uint64_t now_ms, uint32_t max_age_ms) const {
+    if (!resolved_flow_.valid || !isfinite(resolved_flow_.value)) return 0U;
+    const auto receipt_ms = [&](const oq_sources::RawFloatReceipt& receipt) {
+      // A cached nonzero average immediately after the last pulse cannot be
+      // paired with a zero-flow receipt to manufacture a measured sample.
+      return receipt.fresh(now_ms, max_age_ms) && (receipt.value == 0.0f) == (resolved_flow_.value == 0.0f)
+                 ? receipt.received_ms
+                 : 0U;
+    };
+    using Route = oq_sources::LearningSourceRoute;
+    switch (resolved_flow_.route) {
+      case Route::CONTROLLER_FLOW:
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+        return receipt_ms(oq_sources::controller_flow);
+#else
+        return 0U;
+#endif
+      case Route::CIC_FLOW:
+        return receipt_ms(id(cic_component).flow_rate_receipt());
+      case Route::HP1_FLOW:
+        return receipt_ms(oq_sources::hp1.flow);
+#if OQ_TOPOLOGY_DUO
+      case Route::HP2_FLOW:
+        return receipt_ms(oq_sources::hp2.flow);
+#endif
+      case Route::FLOW_AGGREGATE: {
+        auto primary = oq_sources::hp1.flow;
+        float primary_value = id(hp1_flow).state;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+        if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V1") {
+          primary = oq_sources::controller_flow;
+          primary_value = id(flow_rate_controller).state;
+        }
+#endif
+#if OQ_TOPOLOGY_DUO
+        const bool first_contributes = isfinite(primary_value) && primary_value > 0.0f;
+        const float secondary_value = id(hp2_flow).state;
+        const bool second_contributes = isfinite(secondary_value) && secondary_value > 0.0f;
+        if (second_contributes) {
+          const uint64_t second_ms = receipt_ms(oq_sources::hp2.flow);
+          if (!first_contributes) return second_ms;
+          const uint64_t first_ms = receipt_ms(primary);
+          return first_ms < second_ms ? first_ms : second_ms;
+        }
+#endif
+        return isfinite(primary_value) ? receipt_ms(primary) : 0U;
+      }
+      default:
+        return 0U;
+    }
+  }
+#endif
+
   // One coherent selected snapshot, with live producer currentness. Transport
   // details stay here; consumers must not inspect receipts or entity caches.
   oq_sources::RoomControlSnapshot room_control_snapshot(bool ot_room_fresh, bool ot_setpoint_fresh,

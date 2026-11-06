@@ -245,6 +245,99 @@ void daily_dhw_only_preserves_collection_and_restart_eligibility() {
   }
 }
 
+LearningSourceInput system_observation(uint32_t second, int cm) {
+  auto raw = observation(1000ULL + second * 1000ULL, 20000U * 86400U + second, 5.0f);
+  raw.system_heat_enabled = true;
+  raw.operation.control_mode = learning_control_mode(0, cm);
+  raw.hp_measurement_limit_w = 7338.336f;
+  raw.circuit_flow_lph = raw.flow_lph;
+  raw.system_supply_c = measured(44.0f, 4, PhysicalUnit::SYSTEM, raw.monotonic_ms);
+  raw.system_supply_c.source.kind = PhysicalSourceKind::DIRECT_SENSOR;
+  return raw;
+}
+
+void daily_system_heat_survives_boiler_modes_and_ot_changes() {
+  for (const auto topology : {HydronicTopology::SINGLE, HydronicTopology::DUO_SERIES}) {
+    QualityConfig quality;
+    SegmentAccumulator day;
+    SegmentRecord record;
+    for (uint32_t second = 0; second <= 86400U; second += 60U) {
+      const int cm = second < 28800U ? 2 : second < 57600U ? 3 : 4;
+      auto raw = system_observation(second, cm);
+      raw.topology = topology;
+      if (topology == HydronicTopology::SINGLE) raw.hp2 = {};
+      const auto boiler_status = second % 180U == 0 ? 0x0002U : second % 180U == 60 ? 0x0008U : 0x000CU;
+      raw.boiler_heat = learning_boiler_status(boiler_status, raw.monotonic_ms, second % 240U != 0, true);
+      if (cm == 4) {
+        // The heat pumps are idle. Their outlets and operating receipts aren't needed to measure the whole circuit.
+        raw.hp1.water_out_c = {};
+        raw.hp2.water_out_c = {};
+        raw.hp1.mode = raw.hp2.mode = {};
+      }
+      const auto result = observe_source_input(day, raw, quality);
+      assert(result.source.measurement_valid);
+      assert(known_daily_restart_interruption(raw, true, quality) == false);
+      const auto thermal = build_learning_snapshot(raw, quality, SnapshotPurpose::THERMAL_DYNAMIC);
+      assert(!thermal.measurement_valid || (cm == 2 && thermal.snapshot.heat_to_water_w < 2300.0f));
+      if (result.aggregate.has_record) record = result.aggregate.record;
+    }
+    assert(record.duration_s == 86400U);
+    assert(fabsf(record.mean_heat_w - 1000.0f / 3600.0f * 4180.0f * 14.0f) < 0.02f);
+    assert(record.daily_quality.heat_coverage_bp == 10000U);
+  }
+}
+
+void daily_system_heat_only_bridges_missing_measurements() {
+  const QualityConfig quality;
+  SegmentAccumulator day;
+  auto raw = system_observation(0, 3);
+  raw.boiler_heat = {};
+  assert(observe_source_input(day, raw, quality).source.measurement_valid);
+
+  raw = system_observation(10, 3);
+  raw.system_supply_c = {};
+  const auto gap = observe_source_input(day, raw, quality);
+  assert(day.active && day.source_gap_pending && day.heat_gap_pending);
+  assert(gap.source.may_bridge_daily_gap && isnan(gap.source.snapshot.partial_heat_to_water_w));
+  assert(daily_boot_sources_pending(raw, gap.source, quality));
+
+  raw = system_observation(20, 4);
+  const auto recovery = observe_source_input(day, raw, quality);
+  assert(recovery.source.measurement_valid && !day.source_gap_pending && day.missing_energy_uncertainty_ws > 0.0);
+  assert(day.start_epoch_s == 20000U * 86400U);
+
+  raw = system_observation(30, 2);
+  raw.system_supply_c = {};
+  const auto fallback = build_learning_snapshot(raw, quality);
+  assert(fallback.measurement_valid && fabsf(fallback.snapshot.heat_to_water_w - 2200.0f) < 0.01f);
+  raw.boiler_heat = {};
+  assert(build_learning_snapshot(raw, quality).may_bridge_daily_gap);
+
+  raw = system_observation(40, 3);
+  raw.circuit_flow_lph = {};
+  assert(build_learning_snapshot(raw, quality).may_bridge_daily_gap);
+  raw = system_observation(50, 3);
+  raw.circuit_flow_lph.value = 0.0f;
+  assert(build_learning_snapshot(raw, quality).measurement_valid);
+  assert(build_learning_snapshot(raw, quality).snapshot.heat_to_water_w == 0.0f);
+
+  raw = system_observation(60, 3);
+  raw.system_supply_c.provenance = MeasurementProvenance::HELD;
+  const auto held = build_learning_snapshot(raw, quality);
+  assert(held.status == SnapshotSourceStatus::UNTRUSTED_PROVENANCE && !held.may_bridge_daily_gap);
+
+  raw = system_observation(70, 3);
+  raw.operation.service_or_ota = true;
+  assert(build_learning_snapshot(raw, quality).status == SnapshotSourceStatus::SERVICE_OR_OTA_ACTIVE);
+  raw = system_observation(80, 3);
+  raw.hp1.mode.value = HeatPumpMode::COOLING;
+  assert(build_learning_snapshot(raw, quality).status == SnapshotSourceStatus::COOLING_ACTIVE);
+  raw.hp1.defrost_active.value = true;
+  raw.system_supply_c.value = 28.0f;
+  const auto defrost = build_learning_snapshot(raw, quality);
+  assert(defrost.measurement_valid && defrost.snapshot.heat_to_water_w < 0.0f);
+}
+
 // A host-side size guard for the pure data only. This is not an ESP32 footprint
 // or a substitute for the future strict-PSRAM and internal-heap HIL checks.
 static_assert(sizeof(SegmentRecord) * kMaxSegmentRecords + sizeof(AdviceFitWorkspace) + sizeof(SegmentAccumulator) <
@@ -253,6 +346,8 @@ static_assert(sizeof(SegmentRecord) * kMaxSegmentRecords + sizeof(AdviceFitWorks
 
 int main() {
   daily_dhw_only_preserves_collection_and_restart_eligibility();
+  daily_system_heat_survives_boiler_modes_and_ot_changes();
+  daily_system_heat_only_bridges_missing_measurements();
   raw_series_observations_to_advice();
   raw_daily_profiles_cross_zero_power_temperature();
   heating_cycles_keep_idle_time_and_pump_runout();

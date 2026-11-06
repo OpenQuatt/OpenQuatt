@@ -307,7 +307,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     tick.active_line_valid = oq_power_house::valid_house_line(tick.active_line);
     tick.batch_snapshot_available = batch.has_snapshot;
     tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
-    tick.batch_source_status = batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT && !input.boiler_heat.valid
+    tick.batch_source_status = batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT &&
+                                       !batch.may_bridge_daily_gap && !input.boiler_heat.valid
                                    ? state.boiler_source_status
                                    : batch.status;
     tick.batch_snapshot = batch.snapshot;
@@ -585,6 +586,37 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     in.setpoint_c = resolved_learning_measurement(state.sources[1], now_ms);
     in.outside_c = resolved_learning_measurement(state.sources[2], now_ms);
     in.flow_lph = resolved_learning_measurement(state.sources[3], now_ms);
+    in.system_heat_enabled = id(oq_aux_heat_source_present).has_state() && id(oq_aux_heat_source_present).state;
+    if (in.system_heat_enabled) {
+      in.hp_measurement_limit_w = configured_measurement_heat_limit_w(state.config.quality);
+      // A missing measurement can hide boiler output. The configured dispatch
+      // target is not a proven maximum for independently triggered boiler heat.
+      state.config.quality.max_daily_missing_heat_w = state.config.quality.max_abs_heat_w;
+      state.config.quality.max_observed_heat_w = state.config.quality.max_abs_heat_w;
+      state.learner.config.quality = state.config.quality;
+      const auto& sources = oq_sensor_source::runtime();
+      in.circuit_flow_lph = in.flow_lph;
+      in.circuit_flow_lph.received_monotonic_ms = sources.system_flow_receipt_ms(now_ms, kHpLearningTiming.max_age_ms);
+      in.circuit_flow_lph.valid = in.flow_lph.valid && in.circuit_flow_lph.received_monotonic_ms != 0U;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+      // Boiler-only circulation can produce flow while both ODU pumps are
+      // stopped. The source resolver's synthetic zero is not a measurement.
+      if (state.sources[3].route == oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW) {
+        const auto& flow = oq_sources::controller_flow;
+        const float controller_lph = id(flow_rate_controller).state;
+        in.circuit_flow_lph = receipt_measurement(
+            flow, controller_lph, {PhysicalSourceKind::DIRECT_SENSOR, 1U, PhysicalUnit::SYSTEM}, 1U, kHpLearningTiming,
+            id(flow_rate_controller).has_state() && isfinite(controller_lph) &&
+                (flow.value == 0.0f) == (controller_lph == 0.0f));
+      }
+#endif
+      const auto supply = sources.system_supply_receipt();
+      in.system_supply_c = receipt_measurement(
+          supply, supply.value,
+          {PhysicalSourceKind::DIRECT_SENSOR, static_cast<uint32_t>(id(oq_water_supply_temp_current_source_code)),
+           PhysicalUnit::SYSTEM},
+          id(oq_water_supply_temp_current_source_fingerprint), {30000, 30000});
+    }
     in.hp1 = learning_hp_measurements(oq_sources::hp1, PhysicalUnit::HP1, id(hp1_water_in_temp_offset).state,
                                       id(hp1_water_out_temp_offset).state, state.context_revision);
 #if OQ_TOPOLOGY_DUO
@@ -630,9 +662,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     op.captured_monotonic_ms = now_ms;
     const int cm = id(oq_control_mode_code);
     op.control_mode_valid = true;
-    op.control_mode = id(oq_heat_mode_code) == 0 && learning_control_mode_allows_measurement(cm)
-                          ? LearningControlMode::HEATING
-                          : LearningControlMode::OTHER;
+    op.control_mode = learning_control_mode(id(oq_heat_mode_code), cm);
     op.active_limit_valid =
         learning_strategy_output_current(id(oq_strategy_output_valid), id(oq_strategy_output_source_code),
                                          id(oq_strategy_active_code), millis(), id(oq_strategy_output_updated_ms)) &&

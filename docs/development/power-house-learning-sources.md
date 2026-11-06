@@ -32,19 +32,27 @@ watertemperatuursensoren via het servicemenu kan de meetnauwkeurigheid verbetere
 
 ## Wanneer een record ontstaat
 
-Voor een volledig temperatuurframe zijn geldige geselecteerde waarden voor kamer,
-setpoint, buiten en flow nodig, met bruikbare water- en HP-statusmetingen voor de
-calorimetrie. Bij een kort ontbrekend temperatuurveld blijft onafhankelijk geldige
-warmte meetellen via een eigen cursor, inclusief nul en negatieve warmte. Daarvoor
-blijven bekende geschikte bedrijfsvoering en geldige calorimetrie vereist.
-De regeling moet in verwarmingsmodus staan, zonder service, OTA of actuele
-ketelwarmte. Een geldige bron is dus niet hetzelfde als een volledig learning-record:
-de vermogensmeting en bedrijfstoestand moeten ook bruikbaar zijn.
+Een volledig temperatuurframe gebruikt de geselecteerde waarden voor kamer,
+setpoint en buiten. De regeling moet in verwarmingsmodus staan, buiten service
+en OTA. Een kort ontbrekend temperatuurveld kan onafhankelijk gemeten warmte
+laten meetellen via de eigen warmtecursor, inclusief nul en negatieve warmte.
+
+Bij een aangesloten cv-ketel in serie gebruikt de dagmeting het totale vermogen
+naar het water. Dat volgt uit het gemeten debiet en het temperatuurverschil
+tussen de retour bij HP1 en de systeemaanvoer na de ketel. CM3 en CM4 tellen mee
+zolang deze meting geldig is, onafhankelijk van de OpenTherm-status. Een
+vastgehouden aanvoerwaarde of een fallback naar de warmtepompuitgang levert geen
+systeemmeting op. Valt de systeemmeting weg, dan mag de warmte van de warmtepomp
+meetellen zodra het ketelcontract uitsluit dat de ketel cv-warmte toevoegt.
+Anders blijft de warmte voor dat interval onbekend en gelden de meetgatregels.
+Met aangesloten ketel gebruikt de onzekerheidsberekening de structurele
+vermogensgrens. Het ingestelde ketelvermogen is een regelwaarde en bewijst geen
+maximum voor ongemeten ketelwarmte.
 
 CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
 meetellen. CM98 alleen is geen service- of ketelwarmtesignaal. Het actuele
-ketelcontract, service-/OTA-pauzes en alle bron- en vermogenscontroles blijven
-gelden; werkelijk gemeten warmte tijdens pompbedrijf wordt niet naar nul gezet.
+service-/OTA-pauzes en broncontroles blijven gelden. Werkelijk gemeten warmte
+tijdens pompbedrijf wordt met teken meegenomen.
 
 De woninglijn verzamelt volledige perioden van 24 uur. Normale CM0/CM1-pauzes,
 setpointwijzigingen en normale ontdooicycli tellen mee. Geldig nuldebiet levert nul
@@ -57,8 +65,8 @@ kamertrend of hoge onzekerheid. Zulke dagen krijgen geen modeladviesgewicht.
 Bestaande vieruursrecords behouden hun oorspronkelijke kwaliteitscontrole.
 
 De dynamische 1R1C-route verwerkt kortere perioden van opwarmen en afkoelen. Deze
-route sluit actieve begrenzing en beschermingsfasen uit; dat onderbreekt niet
-vanzelf de dagmeting voor de woninglijn. Beide routes blijven passief.
+route gebruikt warmtepompwarmte en sluit ketelbedrijf, actieve begrenzing en
+beschermingsfasen uit. Beide routes blijven passief.
 Ontbrekende metingen worden nooit vervangen door nul. De voorwaarden voor korte
 meetonderbrekingen en hervatten na een herstart staan hieronder.
 

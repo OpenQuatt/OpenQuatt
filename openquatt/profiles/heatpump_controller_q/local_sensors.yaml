@@ -118,6 +118,11 @@ sensor:
     rtd_nominal_resistance: ${hpcq_pt1000_nominal_resistance_ohm}
     rtd_wires: ${hpcq_pt1000_rtd_wires}
     mains_filter: "50 Hz"
+    on_value:
+      - lambda: |-
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          oq_sources::local_supply_pt1000.observe(x, oq_sources::monotonic_ms(), isfinite(x));
+          #endif
     filters:
       - lambda: |-
           if (isnan(x)) return x;

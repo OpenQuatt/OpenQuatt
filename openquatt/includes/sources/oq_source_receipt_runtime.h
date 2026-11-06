@@ -54,6 +54,12 @@ struct LocalOutsideSelection {
 
 inline LocalOutsideSelection local_outside_selection{};
 
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+inline RawFloatReceipt local_supply_ds18b20{};
+inline RawFloatReceipt local_supply_pt1000{};
+inline RawFloatReceipt ha_water_supply{};
+#endif
+
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
 inline RawFloatReceipt controller_flow{};
 #endif

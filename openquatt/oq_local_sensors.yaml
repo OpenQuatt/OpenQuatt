@@ -29,6 +29,11 @@ sensor:
     update_interval: 5s
     one_wire_id: oq_local_temp_bus
     index: 0
+    on_value:
+      - lambda: |-
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          oq_sources::local_supply_ds18b20.observe(x, oq_sources::monotonic_ms(), isfinite(x));
+          #endif
 
   - platform: template
     id: water_supply_temp_esp
