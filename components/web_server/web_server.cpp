@@ -1383,22 +1383,7 @@ void WebServer::handle_text_request(AsyncWebServerRequest* request, const UrlMat
 #ifdef USE_OPENQUATT_WEATHER
     if (openquatt_weather::is_weather_location(static_cast<EntityBase*>(obj)) &&
         request->hasArg(ESPHOME_F("save_request"))) {
-      const auto token = request->arg(ESPHOME_F("save_request"));
-      const auto value = request->arg(ESPHOME_F("value"));
-      if (!request->hasArg(ESPHOME_F("value")) ||
-          !openquatt_weather::valid_save_request(token.c_str(), token.length()) || value.length() > 64 ||
-          std::memchr(value.c_str(), '\0', value.length())) {
-        request->send(400);
-        return;
-      }
-      struct LocationRequest {
-        const void* entity;
-        char value[65]{}, token[33]{};
-      } pending{static_cast<EntityBase*>(obj)};
-      std::memcpy(pending.value, value.c_str(), value.length());
-      std::memcpy(pending.token, token.c_str(), token.length());
-      DEFER_ACTION(pending, openquatt_weather::control_weather_location(pending.entity, pending.value, pending.token));
-      request->send(200);
+      this->handle_weather_location_set_(request, obj);
       return;
     }
 #endif
@@ -1414,6 +1399,28 @@ void WebServer::handle_text_request(AsyncWebServerRequest* request, const UrlMat
   }
   request->send(404);
 }
+
+#ifdef USE_OPENQUATT_WEATHER
+// Keep the write payload and its deferred copy out of the HTTP read frame.
+__attribute__((noinline)) void WebServer::handle_weather_location_set_(AsyncWebServerRequest* request,
+                                                                       text::Text* obj) {
+  const auto token = request->arg(ESPHOME_F("save_request"));
+  const auto value = request->arg(ESPHOME_F("value"));
+  if (!request->hasArg(ESPHOME_F("value")) || !openquatt_weather::valid_save_request(token.c_str(), token.length()) ||
+      value.length() > 64 || std::memchr(value.c_str(), '\0', value.length())) {
+    request->send(400);
+    return;
+  }
+  struct LocationRequest {
+    const void* entity;
+    char value[65]{}, token[33]{};
+  } pending{static_cast<EntityBase*>(obj)};
+  std::memcpy(pending.value, value.c_str(), value.length());
+  std::memcpy(pending.token, token.c_str(), token.length());
+  DEFER_ACTION(pending, openquatt_weather::control_weather_location(pending.entity, pending.value, pending.token));
+  request->send(200);
+}
+#endif
 
 void WebServer::text_state_json_generator(WebServer* web_server, void* source, json::JsonBuilder& builder) {
   web_server->text_json_((text::Text*)(source), ((text::Text*)(source))->state, DETAIL_STATE, builder);
