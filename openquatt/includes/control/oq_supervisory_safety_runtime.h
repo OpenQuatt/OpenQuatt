@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
+#include "oq_sensor_source_runtime.h"
 #include "oq_supervisory_safety_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
@@ -29,13 +30,14 @@ class Runtime {
       this->hydrated_ = true;
     }
 
+    const float outside_safety_c = oq_sensor_source::runtime().outside_safety_temperature();
     const oq_supervisory_safety::Input input{
         tick.now_ms,
         tick.flow_guard_required,
         id(flow_rate_selected).has_state(),
         id(flow_rate_selected).state,
-        id(outside_temp_selected).has_state(),
-        id(outside_temp_selected).state,
+        std::isfinite(outside_safety_c),
+        outside_safety_c,
     };
     const oq_supervisory_safety::Config config{
         tick.minimum_flow_lph,

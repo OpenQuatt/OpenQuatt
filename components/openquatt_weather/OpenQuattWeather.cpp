@@ -39,6 +39,19 @@ bool OpenQuattWeather::allowed_() const {
          !ota_paused_ && !configuration_error_ && !pending_save_;
 }
 
+float OpenQuattWeather::current_outside_temperature() const {
+  if (!storage_ || !allowed_()) return NAN;
+  const auto now = clock_->now();
+  const auto& series = storage_[0].current;
+  const uint64_t now_ms = monotonic_ms();
+  if (!now.is_valid() || !oq_weather::usable_current(series, now.timestamp, now_ms) ||
+      !oq_weather::valid_current(series.current, series.fetched_epoch))
+    return NAN;
+  const uint64_t age_at_fetch_ms = static_cast<uint64_t>(series.fetched_epoch - series.current.time_epoch) * 1000U;
+  const uint64_t age_ms = age_at_fetch_ms + (now_ms - series.fetched_ms);
+  return age_ms <= static_cast<uint64_t>(oq_weather::kCurrentMaxAgeS) * 1000U ? series.current.temperature_c : NAN;
+}
+
 void OpenQuattWeather::publish_location_(const char* value, const char* request, SaveState state) {
   text_snapshots_.publish(static_cast<EntityBase*>(location_text_), value, request, state);
   location_text_->publish_state(value);

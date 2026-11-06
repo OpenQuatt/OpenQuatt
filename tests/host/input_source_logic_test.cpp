@@ -100,6 +100,11 @@ void test_room_setpoint_contract_is_signal_specific() {
 }
 
 void test_outside_lowest_valid_selection() {
+  // These values also label the effective-source diagnostic in the web app.
+  static_assert(static_cast<uint8_t>(Source::OUTDOOR) == 3 && static_cast<uint8_t>(Source::HA) == 5 &&
+                static_cast<uint8_t>(Source::API) == 6 && static_cast<uint8_t>(Source::MQTT) == 7 &&
+                static_cast<uint8_t>(Source::OPEN_METEO) == 13);
+
   NumericSources sources;
   sources.ha = numeric_sample(true, true, 8.0f);
   sources.outdoor = numeric_sample(true, true, 5.0f);
@@ -109,9 +114,26 @@ void test_outside_lowest_valid_selection() {
   HoldState hold;
   auto selected = select_outside(Source::AUTO, sources, 1000, 300000, hold);
   assert(selected.valid && selected.route == Source::OUTDOOR && selected.value == 5.0f);
-  sources.outdoor = {};
-  selected = select_outside(Source::AUTO, sources, 2000, 300000, hold);
+  sources.open_meteo = numeric_sample(true, true, 5.0f);
+  assert(select_outside(Source::AUTO, sources, 2000, 300000, hold).route == Source::OUTDOOR);
+  sources.open_meteo = numeric_sample(true, true, 4.0f);
+  selected = select_outside(Source::AUTO, sources, 3000, 300000, hold);
+  assert(selected.valid && selected.route == Source::OPEN_METEO && selected.value == 4.0f);
+  assert(select_lowest_outside(sources, false).route == Source::OUTDOOR);
+  sources.open_meteo = numeric_sample(true, true, 12.0f);
+  selected = select_outside(Source::OPEN_METEO, sources, 4000, 300000, hold);
+  assert(selected.valid && selected.route == Source::OPEN_METEO && selected.value == 12.0f);
+  assert(select_lowest_outside(sources, false).value == 5.0f);
+  sources = {};
+  sources.open_meteo = numeric_sample(true, true, 4.0f);
+  assert(select_outside(Source::AUTO, sources, 5000, 300000, hold).route == Source::OPEN_METEO);
+  assert(!select_lowest_outside(sources, false).valid);
+  sources.api = numeric_sample(true, true, 6.0f);
+  sources.open_meteo = {};
+  selected = select_outside(Source::AUTO, sources, 6000, 300000, hold);
   assert(selected.valid && selected.route == Source::API && selected.value == 6.0f);
+  selected = select_outside(Source::OPEN_METEO, sources, 6000, 300000, hold);
+  assert(!selected.valid && !selected.held && std::isnan(selected.value));
 }
 
 void test_enable_source_selection() {

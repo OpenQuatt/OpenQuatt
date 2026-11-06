@@ -41,7 +41,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Outlook, localized settings, atomic scenario and the interactive weather charts.
     // Against PR #924 on Node 24.14.1: +30,740 B raw and +9,865 B gzip.
     // The migration includes verified consent and keeps 61 B of gzip headroom.
-    raw: 1_439_595,
+    // Optional Open-Meteo source and effective route add 1,243 B raw / 343 B gzip.
+    raw: 1_440_838,
     gzipBaselineCeiling: 403_878,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

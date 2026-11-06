@@ -833,6 +833,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
       case R::MQTT_SETPOINT:
       case R::MQTT_OUTSIDE:
         return "MQTT";
+      case R::OPEN_METEO_OUTSIDE:
+        return "Open-Meteo";
       case R::HP1_FLOW:
       case R::HP1_OUTSIDE:
         return "HP1";
