@@ -1030,6 +1030,19 @@ import { fetchWithTimeout } from "./browser-utils.js";
     return revision === entityWriteRevision;
   }
 
+  let busyWriteRevision = 0;
+
+  export function startEntityWriteAction(action) {
+    const revision = beginEntityWriteAction();
+    busyWriteRevision = revision;
+    state.busyAction = action;
+    return revision;
+  }
+
+  export function ownsBusyAction(revision, action) {
+    return busyWriteRevision === revision && state.busyAction === action;
+  }
+
   function controlErrorGuard() {
     const previousControlError = state.controlError;
     const writeRevision = entityWriteRevision;

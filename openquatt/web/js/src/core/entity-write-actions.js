@@ -6,7 +6,7 @@ import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEA
 import { armRestartRefresh, awaitRestartEvidence, beginDeviceReconnect, clearRestartRefresh } from "./device-reconnect.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
-import { beginEntityWriteAction, buildBulkEntityChunks, ENTITY_REQUEST_TIMEOUT_MS, fetchBulkEntityChunk, getSettingsRefreshKeys, isEntityWriteActionCurrent, isLikelyDeviceConnectionError, mergeEntityPayload, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
+import { beginEntityWriteAction, buildBulkEntityChunks, ENTITY_REQUEST_TIMEOUT_MS, fetchBulkEntityChunk, getSettingsRefreshKeys, isEntityWriteActionCurrent, isLikelyDeviceConnectionError, mergeEntityPayload, ownsBusyAction, refreshEntities, refreshIncidentMonitoringData, startEntityWriteAction, syncEntities } from "./entity-sync.js";
 import {
   createIncidentActionRequestId,
   postIncidentActionRequest,
@@ -24,19 +24,6 @@ import { refreshSettingsStorageStateSoon, SETTINGS_STORAGE_KEYS } from "../featu
 import { refreshWebServerLogHistory } from "../features/webserver-logs.js";
 import { waitForPerformanceTelemetryChoiceConfirmation } from "./performance-telemetry-domain.js";
 import { waitForUsageTelemetryChoiceConfirmation } from "./usage-telemetry-domain.js";
-
-let busyWriteRevision = 0;
-
-function startEntityWriteAction(action) {
-  const revision = beginEntityWriteAction();
-  busyWriteRevision = revision;
-  state.busyAction = action;
-  return revision;
-}
-
-function ownsBusyAction(revision, action) {
-  return busyWriteRevision === revision && state.busyAction === action;
-}
 
 async function commitTelemetrySwitch({ key, choiceKey, extraRefreshKeys = [], waitForChoiceConfirmation, entity, enabled }) {
   const confirmChoice = (expectedEnabled) => waitForChoiceConfirmation({
