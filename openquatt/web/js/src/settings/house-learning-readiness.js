@@ -55,18 +55,32 @@ const BATCH_REASON_KEYS = {
 };
 
 export function renderHouseLearningReadiness(records, learned = {}, observedRecords = records) {
-  const progress = getHouseLearningReadiness(records);
+  let progress = getHouseLearningReadiness(records);
+  if (learned.fit) {
+    const fit = learned.fit;
+    const spread = fit.p10 == null || fit.p90 == null ? null : fit.p90 - fit.p10;
+    progress = {
+      ...progress, count: fit.trainCount + fit.checkCount, trainCount: fit.trainDays, checkCount: fit.checkDays,
+      p10: fit.p10, p90: fit.p90, spread,
+      missingDays: Math.max(0, TRAIN_DAYS - fit.trainDays) + Math.max(0, CHECK_DAYS - fit.checkDays),
+      missingChecks: Math.max(0, CHECK_DAYS - fit.checkDays),
+      missingSpread: spread == null ? null : Math.max(0, REQUIRED_SPREAD_C - spread),
+      distributionReady: !["insufficient_spread", "day_dominance"].includes(learned.batchStatus),
+    };
+  }
   const available = Number.isFinite(learned.h) && learned.h > 0 && Number.isFinite(learned.t0);
   const reasonKey = Object.hasOwn(BATCH_REASON_KEYS, learned.batchStatus) ? BATCH_REASON_KEYS[learned.batchStatus] : null;
   let copy;
   if (reasonKey) copy = t(reasonKey);
-  else if (available) copy = t(learned.ready ? "houseLearning.readiness.readyCopy" : "houseLearning.readiness.provisionalCopy");
+  else if (available && learned.ready) copy = t("houseLearning.readiness.readyCopy");
+  else if (progress.missingChecks) copy = t("houseLearning.readiness.needChecks", { count: number(progress.missingChecks) });
   else if (progress.missingDays) copy = t("houseLearning.readiness.needDays", { count: number(progress.missingDays) });
   else if (progress.missingSpread > 0) copy = t("houseLearning.readiness.needSpread", { value: number(progress.missingSpread) });
   else if (!progress.distributionReady) copy = t("houseLearning.readiness.needDistribution");
   else if (learned.batchStatus === "insufficient_data") copy = t("houseLearning.readiness.controllerNeedsDays");
   else if (learned.batchStatus === "insufficient_spread" || learned.batchStatus === "day_dominance") copy = t("houseLearning.readiness.controllerNeedsSpread");
   else copy = t("houseLearning.readiness.furtherChecks");
+  if (available && !learned.ready) copy = t("houseLearning.readiness.provisionalCopy") + " " + copy;
   const title = t(available ? learned.ready ? "houseLearning.readiness.readyTitle" : "houseLearning.readiness.provisionalTitle" : "houseLearning.readiness.waitingTitle");
   const metric = (label, value, required, complete, state, note, fraction) => `<div class="oq-house-learning-readiness-metric${complete ? " is-complete" : ""}">
     <dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)} <span>${escapeHtml(required)}</span></dd>
@@ -78,7 +92,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
   const observedDays = observedRecords.filter(record => record.recordKind === 1 && Number.isFinite(record.outsideC));
   const unknownQuality = observedDays.some(record => record.quality?.valid
     && [record.quality.heatCoverageBp, record.quality.temperatureCoverageBp, record.quality.heatUncertaintyMeanW].includes(null));
-  if (unknownQuality) {
+  if (unknownQuality && !learned.fit) {
     const knownCount = observedDays.filter(record => record.quality?.valid
       && record.quality.heatCoverageBp !== null && record.quality.temperatureCoverageBp !== null
       && record.quality.heatUncertaintyMeanW !== null).length;
@@ -110,7 +124,9 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
     <p>${escapeHtml(copy)}</p>
     <dl class="oq-house-learning-readiness-metrics">
       ${metric(t("houseLearning.readiness.days"), number(progress.count), t("houseLearning.readiness.requiredDays", { count: number(TRAIN_DAYS + CHECK_DAYS) }), !progress.missingDays, countState,
-        t("houseLearning.readiness.split", { train: number(progress.trainCount), check: number(progress.checkCount) }), progress.count / (TRAIN_DAYS + CHECK_DAYS))}
+        t("houseLearning.readiness.split", { train: number(progress.trainCount), check: number(progress.checkCount) }), learned.fit
+          ? (Math.min(progress.trainCount, TRAIN_DAYS) + Math.min(progress.checkCount, CHECK_DAYS)) / (TRAIN_DAYS + CHECK_DAYS)
+          : progress.count / (TRAIN_DAYS + CHECK_DAYS))}
       ${metric(t("houseLearning.readiness.spread"), progress.spread == null ? "—" : `${number(progress.spread)} °C`, t("houseLearning.readiness.requiredSpread", { value: number(REQUIRED_SPREAD_C) }), progress.spread != null && !progress.missingSpread, spreadState,
         progress.p10 == null ? t("houseLearning.readiness.waitTrainDays") : t("houseLearning.readiness.range", { low: number(progress.p10), high: number(progress.p90), count: number(progress.trainCount) }), (progress.spread ?? 0) / REQUIRED_SPREAD_C)}
     </dl>

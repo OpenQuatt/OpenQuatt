@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../../openquatt/includes/learning/oq_ph_learning_fit.h"
+#include "../../openquatt/includes/learning/oq_ph_model_validation.h"
 
 namespace {
 using namespace oq_power_house;
@@ -160,14 +161,18 @@ void test_fail_closed_dataset_gates() {
   AdviceFitWorkspace workspace;
   assert(begin_advice_fit(records, 8, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INSUFFICIENT_DATA);
   for (auto& record : records) record.mean_outside_c = 5.0f;
-  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INSUFFICIENT_SPREAD);
+  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::FIT_FAILED);
+  assert(!workspace.result.candidate_available && !workspace.result.advice_ready);
   make_dataset(records);
   records[4].context_revision = 9;
   assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::MIXED_CONTEXT);
   make_dataset(records);
   FitConfig config;
   config.max_raw_day_fraction = 0.10f;
-  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, config, workspace) == LearningStatus::DAY_DOMINANCE);
+  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, config, workspace) == LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::DAY_DOMINANCE);
+  assert(workspace.result.candidate_available && !workspace.result.advice_ready);
   make_dataset(records);
   const auto swap = records[4];
   records[4] = records[5];
@@ -193,7 +198,41 @@ void test_temperature_dominance() {
   for (uint8_t day = 0; day < 27; ++day) records[day] = fitted_record(day, day < 3 ? -5.0f : day >= 21 ? 14.0f : 5.0f);
   AdviceFitWorkspace workspace;
   assert(begin_advice_fit(records, 27, records[26].end_epoch_s, {150.0f, 15.0f}, {}, {}, workspace) ==
-         LearningStatus::DAY_DOMINANCE);
+         LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::DAY_DOMINANCE);
+  assert(workspace.result.candidate_available && !workspace.result.advice_ready);
+}
+
+void test_narrow_training_range_produces_only_a_provisional_line() {
+  SegmentRecord records[21];
+  for (uint8_t day = 0; day < 21; ++day) {
+    records[day] = fitted_record(day, day < 18 ? 8.0f + 0.6f * (day % 7) : 5.0f - 1.5f * (day - 18));
+    if (day < 18) records[day].daily_quality = {};
+  }
+  SegmentRecord before[21];
+  memcpy(before, records, sizeof(records));
+  AdviceFitWorkspace workspace;
+  assert(begin_advice_fit(records, 21, records[20].end_epoch_s, {150, 15}, {}, {}, workspace) ==
+         LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::INSUFFICIENT_SPREAD);
+  assert(workspace.result.candidate_available && !workspace.result.advice_ready);
+  assert(workspace.result.train_days == 18 && workspace.result.holdout_days == 3);
+  const auto validation = validate_house_models(workspace.result, ThermalModelState{}, {}, 1000, 1);
+  assert(validation.status == ModelValidationStatus::BATCH_UNAVAILABLE);
+  assert(!validation.batch_advice_ready && !validation.cross_validated_advice_ready && !validation.auto_apply_allowed);
+  assert(workspace.result.legacy_train_segments == 18);
+  assert(fabsf(workspace.result.candidate.heat_loss_w_per_k - 200) < 0.01f);
+  assert(fabsf(workspace.result.train_p90_c - workspace.result.train_p10_c - 3.6f) < 0.01f);
+  assert(workspace.result.train_min_c == 8 && fabsf(workspace.result.train_max_c - 11.6f) < 0.01f);
+  assert(memcmp(before, records, sizeof(records)) == 0);
+
+  // Checking-day labels cannot influence the displayed training estimate.
+  for (uint8_t index = 18; index < 21; ++index) records[index].mean_heat_w += 2000;
+  assert(begin_advice_fit(records, 21, records[20].end_epoch_s, {150, 15}, {}, {}, workspace) ==
+         LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::INSUFFICIENT_SPREAD);
+  assert(fabsf(workspace.result.candidate.heat_loss_w_per_k - 200) < 0.01f);
+  assert(!workspace.result.advice_ready);
 }
 
 void test_exact_retention_boundary_allows_sparse_season() {
@@ -221,6 +260,7 @@ int main() {
   test_no_improvement_is_not_advice_ready();
   test_fail_closed_dataset_gates();
   test_temperature_dominance();
+  test_narrow_training_range_produces_only_a_provisional_line();
   test_exact_retention_boundary_allows_sparse_season();
   static_assert(kMaxRecordsVisitedPerHuberFit == 1536);
   static_assert(kMaxSegmentRecords == 128);

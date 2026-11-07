@@ -62,6 +62,21 @@ test.afterEach(() => {
   setRenderCallback(null);
 });
 
+test("fitvoortgang blijft optioneel en accepteert alleen samenhangende firmwarevelden", () => {
+  const fit = { train_segments: 18, holdout_segments: 3, train_days: 18, holdout_days: 3,
+    train_p10_c: 8.28, train_p90_c: 11.88, train_min_c: 7.55, train_max_c: 12.34 };
+  const status = normalizeHouseLearningStatus(statusPayload({ records: 21, batch_fit: fit }));
+  assert.deepEqual(status.batchFit, { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
+    p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 });
+  assert.equal(status.batchAdviceReady, false);
+  assert.equal(normalizeHouseLearningStatus(statusPayload()).batchFit, null);
+  for (const change of [{ train_days: -1 }, { holdout_segments: "3" }, { train_days: 19 },
+    { train_segments: 129 }, { train_min_c: null }, { train_max_c: 4 }, { train_p90_c: NaN }]) {
+    assert.equal(normalizeHouseLearningStatus(statusPayload({ records: 21,
+      batch_fit: { ...fit, ...change } })).batchFit, null);
+  }
+});
+
 function statusPayload(overrides = {}) {
   return {
     schema: 1,
@@ -914,6 +929,12 @@ test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigd
   status.batchStatus = "unstable_fit";
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 2);
+  status.batchFit = { trainCount: 18, checkCount: 2, trainDays: 18, checkDays: 2,
+    minC: 7.55, maxC: 12.34, p10: 8.28, p90: 11.88 };
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 3, "nieuwe firmware-leersplit en bereik vernieuwen de uitleg");
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 3, "een ongewijzigde leersplit behoudt de grafiek en focus");
   assert.match(secondaryNode.innerHTML, /Bronnen en technische details/);
 });
 

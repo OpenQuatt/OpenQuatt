@@ -58,6 +58,8 @@ struct AdviceResult {
   float validated_temp_max_c = NAN;
   float train_p10_c = NAN;
   float train_p90_c = NAN;
+  float train_min_c = NAN;
+  float train_max_c = NAN;
   float holdout_candidate_mae_w = NAN;
   float holdout_active_mae_w = NAN;
   float holdout_candidate_signed_bias_w = NAN;  // Predicted minus measured.
@@ -89,6 +91,7 @@ struct AdviceFitWorkspace {
   QualityConfig quality_config;
   FitConfig config;
   FitPhase phase = FitPhase::IDLE;
+  LearningStatus advice_blocker = LearningStatus::OK;
   uint8_t day_count = 0;
   uint8_t train_day_count = 0;
   uint8_t next_lodo_day = 0;
@@ -219,7 +222,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
 
   // The latest eligible known days define one chronological boundary. Legacy
   // assumptions can train only before it, never validate or leak from the future.
-  uint32_t boundary_day = 0;
+  uint32_t boundary_day = UINT32_MAX;
   uint32_t previous_known_day = UINT32_MAX;
   size_t known_segments = 0;
   size_t known_days = 0;
@@ -228,17 +231,17 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     if (!daily_record_holdout_eligible(record, workspace.quality_config)) continue;
     ++known_segments;
     const uint32_t day = record_day(record);
+    boundary_day = day;
     if (day != previous_known_day) {
       ++known_days;
       previous_known_day = day;
     }
     if (known_segments >= workspace.config.min_holdout_segments && known_days >= workspace.config.min_holdout_days) {
-      boundary_day = day;
       break;
     }
   }
   if (known_segments < workspace.config.min_holdout_segments || known_days < workspace.config.min_holdout_days)
-    return LearningStatus::INSUFFICIENT_DATA;
+    workspace.advice_blocker = LearningStatus::INSUFFICIENT_DATA;
   workspace.record_count = 0;
   for (size_t index = 0; index < selected_count; ++index) {
     const uint8_t original_index = workspace.selected_record_indices[index];
@@ -271,21 +274,25 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     ++workspace.day_record_counts[workspace.day_count - 1];
   }
   workspace.result.context_revision = context_revision;
-  if (workspace.day_count < workspace.config.min_train_days + workspace.config.min_holdout_days)
-    return LearningStatus::INSUFFICIENT_DATA;
-
   for (uint8_t day = 0; day < workspace.day_count; ++day)
     if (workspace.day_ids[day] < boundary_day) ++workspace.train_day_count;
+  workspace.result.train_segments = static_cast<uint8_t>(workspace.train_count);
+  workspace.result.holdout_segments = static_cast<uint8_t>(workspace.record_count - workspace.train_count);
+  workspace.result.train_days = workspace.train_day_count;
+  workspace.result.holdout_days = workspace.day_count - workspace.train_day_count;
   if (workspace.train_count < workspace.config.min_train_segments ||
-      workspace.record_count - workspace.train_count < workspace.config.min_holdout_segments ||
       workspace.train_day_count < workspace.config.min_train_days)
     return LearningStatus::INSUFFICIENT_DATA;
+  if (workspace.day_count < workspace.config.min_train_days + workspace.config.min_holdout_days ||
+      workspace.record_count - workspace.train_count < workspace.config.min_holdout_segments)
+    workspace.advice_blocker = LearningStatus::INSUFFICIENT_DATA;
 
   uint8_t max_day_records = 0;
   for (uint8_t day = 0; day < workspace.train_day_count; ++day)
     if (workspace.day_record_counts[day] > max_day_records) max_day_records = workspace.day_record_counts[day];
-  if (static_cast<float>(max_day_records) / workspace.train_count > workspace.config.max_raw_day_fraction)
-    return LearningStatus::DAY_DOMINANCE;
+  if (workspace.advice_blocker == LearningStatus::OK &&
+      static_cast<float>(max_day_records) / workspace.train_count > workspace.config.max_raw_day_fraction)
+    workspace.advice_blocker = LearningStatus::DAY_DOMINANCE;
 
   double train_weight = 0.0;
   double maximum_day_weight = 0.0;
@@ -308,7 +315,9 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
   if (!(train_weight > 0.0) || !isfinite(train_weight)) return LearningStatus::INVALID_MEASUREMENT;
   workspace.result.train_quality_weight_sum = static_cast<float>(train_weight);
   workspace.result.max_train_day_weight_fraction = static_cast<float>(maximum_day_weight / train_weight);
-  if (maximum_day_weight / train_weight > workspace.config.max_raw_day_fraction) return LearningStatus::DAY_DOMINANCE;
+  if (workspace.advice_blocker == LearningStatus::OK &&
+      maximum_day_weight / train_weight > workspace.config.max_raw_day_fraction)
+    workspace.advice_blocker = LearningStatus::DAY_DOMINANCE;
 
   for (size_t index = 0; index < workspace.train_count; ++index) {
     const float value = effective_outside_c(fit_record(workspace, index));
@@ -323,8 +332,13 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
   const size_t p90_index = (9U * (workspace.train_count - 1U) + 9U) / 10U;
   workspace.result.train_p10_c = workspace.sorted_train_temperatures[p10_index];
   workspace.result.train_p90_c = workspace.sorted_train_temperatures[p90_index];
-  if (workspace.result.train_p90_c - workspace.result.train_p10_c < workspace.config.min_outside_p90_p10_k)
-    return LearningStatus::INSUFFICIENT_SPREAD;
+  workspace.result.train_min_c = workspace.sorted_train_temperatures[0];
+  workspace.result.train_max_c = workspace.sorted_train_temperatures[workspace.train_count - 1U];
+  const float spread = workspace.result.train_p90_c - workspace.result.train_p10_c;
+  if (spread < workspace.config.min_outside_p90_p10_k) {
+    if (workspace.advice_blocker == LearningStatus::OK) workspace.advice_blocker = LearningStatus::INSUFFICIENT_SPREAD;
+    return LearningStatus::OK;
+  }
 
   uint8_t bins[3]{};
   const float bin_width = (workspace.result.train_p90_c - workspace.result.train_p10_c) / 3.0f;
@@ -338,16 +352,15 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     if (bin > 2) bin = 2;
     ++bins[bin];
   }
-  for (uint8_t bin : bins)
-    if (bin < workspace.config.min_segments_per_temperature_bin) return LearningStatus::INSUFFICIENT_SPREAD;
-  for (uint8_t bin : bins)
-    if (static_cast<float>(bin) / workspace.train_count > workspace.config.max_temperature_bin_fraction)
-      return LearningStatus::DAY_DOMINANCE;
-
-  workspace.result.train_segments = static_cast<uint8_t>(workspace.train_count);
-  workspace.result.holdout_segments = static_cast<uint8_t>(workspace.record_count - workspace.train_count);
-  workspace.result.train_days = workspace.train_day_count;
-  workspace.result.holdout_days = workspace.day_count - workspace.train_day_count;
+  if (workspace.advice_blocker == LearningStatus::OK) {
+    for (uint8_t bin : bins)
+      if (bin < workspace.config.min_segments_per_temperature_bin)
+        workspace.advice_blocker = LearningStatus::INSUFFICIENT_SPREAD;
+    for (uint8_t bin : bins)
+      if (workspace.advice_blocker == LearningStatus::OK &&
+          static_cast<float>(bin) / workspace.train_count > workspace.config.max_temperature_bin_fraction)
+        workspace.advice_blocker = LearningStatus::DAY_DOMINANCE;
+  }
   return LearningStatus::OK;
 }
 
@@ -472,9 +485,16 @@ inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
       workspace.phase = FitPhase::DONE;
       return workspace.result.status;
     }
-    workspace.result.candidate_available = true;
     if (!detail::plausible_line(workspace.result.candidate, workspace.config)) {
       workspace.result.status = LearningStatus::CANDIDATE_IMPLAUSIBLE;
+      workspace.phase = FitPhase::DONE;
+      return workspace.result.status;
+    }
+    workspace.result.candidate_available = true;
+    // A diagnostic line can exist before the evidence qualifies for advice.
+    // Its training set remains strictly earlier than the reserved checking days.
+    if (workspace.advice_blocker != LearningStatus::OK) {
+      workspace.result.status = workspace.advice_blocker;
       workspace.phase = FitPhase::DONE;
       return workspace.result.status;
     }
