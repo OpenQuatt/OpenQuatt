@@ -413,7 +413,11 @@ class OpenQuattMqttConfig : public Component {
 
   static constexpr uint32_t SENSOR_PUBLISH_INTERVAL_MS = 10000;
   static constexpr uint32_t NON_RETAINED_STATEFUL_STALE_MS = 30UL * 60UL * 1000UL;
+#ifdef OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+  static constexpr int MQTT_TASK_STACK_SIZE = 6144;
+#else
   static constexpr int MQTT_TASK_STACK_SIZE = 12288;
+#endif
   static constexpr bool MQTT_WORKER_STACK_IN_PSRAM = true;
   static constexpr uint32_t MQTT_WORKER_TASK_STACK_SIZE = 24576;
   static constexpr uint32_t MQTT_RECONCILE_RETRY_MS = 5000;
