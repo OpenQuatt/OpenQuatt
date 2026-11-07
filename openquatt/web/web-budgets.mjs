@@ -45,8 +45,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Outlook, localized settings, atomic scenario and the interactive weather charts.
     // On current PR1: +30,871 B raw / +9,824 B gzip (Node24.14.1).
     // Keep the existing 9,922 B migration allowance.
-    // Inherit only PR1's 588 B raw budget increase; merge guards leave 214 B raw headroom.
-    // Merged raw/gzip: 1,443,260 / 405,129 B; PR1 gzip base: 395,270 B (Node24.14.1).
+    // Inherit only PR1's 588 B raw budget increase; merge guards leave 122 B raw headroom.
+    // Merged raw/gzip: 1,443,352 / 405,092 B; PR1 gzip base: 395,270 B (Node24.14.1).
     // Move the absolute ceiling with that base, preserving the feature allowance.
     raw: 1_443_474,
     gzipBaselineCeiling: 405_192,
