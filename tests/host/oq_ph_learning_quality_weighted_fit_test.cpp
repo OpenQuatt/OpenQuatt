@@ -151,13 +151,13 @@ void legacy_is_train_only_and_never_crosses_holdout_boundary() {
   assert(begin_advice_fit(records, 12, records[11].end_epoch_s, {150, 15}, {}, {}, workspace) ==
          LearningStatus::FIT_IN_PROGRESS);
   assert(finish(workspace) == LearningStatus::INSUFFICIENT_DATA);
-  assert(workspace.result.candidate_available && !workspace.result.advice_ready);
+  assert(!workspace.result.candidate_available && !workspace.result.advice_ready);
   assert(workspace.result.train_days == 12 && workspace.result.holdout_days == 0);
   records[10].daily_quality = records[11].daily_quality = {10000, 10000, 0};
   assert(begin_advice_fit(records, 12, records[11].end_epoch_s, {150, 15}, {}, {}, workspace) ==
          LearningStatus::FIT_IN_PROGRESS);
   assert(finish(workspace) == LearningStatus::INSUFFICIENT_DATA);
-  assert(workspace.result.candidate_available && !workspace.result.advice_ready);
+  assert(!workspace.result.candidate_available && !workspace.result.advice_ready);
   assert(workspace.result.train_days == 10 && workspace.result.holdout_days == 2);
 }
 
@@ -187,7 +187,7 @@ void weighted_day_dominance_is_checked_in_addition_to_counts() {
   assert(begin_advice_fit(records, 9, records[8].end_epoch_s, {150, 15}, {}, config, workspace) ==
          LearningStatus::FIT_IN_PROGRESS);
   assert(finish(workspace) == LearningStatus::DAY_DOMINANCE);
-  assert(workspace.result.candidate_available && !workspace.result.advice_ready);
+  assert(!workspace.result.candidate_available && !workspace.result.advice_ready);
   assert(workspace.result.max_train_day_weight_fraction > 0.28f);
 }
 

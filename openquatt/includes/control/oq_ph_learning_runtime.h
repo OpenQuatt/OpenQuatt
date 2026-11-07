@@ -1040,8 +1040,11 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.add(",\"t0_batch\":");
     json.number(summary.batch.candidate_available ? summary.batch.candidate.zero_power_temp_c : NAN);
     json.add(
-        ",\"batch_fit\":{\"train_segments\":%u,\"holdout_segments\":%u,\"train_days\":%u,\"holdout_days\":%u,\"train_"
+        ",\"batch_fit\":{\"metadata_prepared\":%s,\"train_segments\":%u,\"holdout_segments\":%u,\"train_days\":%u,"
+        "\"holdout_days\":%u,\"train_"
         "p10_c\":",
+        enabled && state.learner.status != PassiveRuntimeStatus::PAUSED && summary.batch.metadata_prepared ? "true"
+                                                                                                           : "false",
         static_cast<unsigned>(summary.batch.train_segments), static_cast<unsigned>(summary.batch.holdout_segments),
         static_cast<unsigned>(summary.batch.train_days), static_cast<unsigned>(summary.batch.holdout_days));
     json.number(summary.batch.train_p10_c);

@@ -6,6 +6,7 @@ import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
 import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsInfoToggle, renderSettingsSystemRow } from "./controls.js";
 import { renderHouseLearningChart } from "./house-learning-chart.js";
+import { selectDisplayedHouseLine } from "./house-learning-readiness.js";
 import { getSettingsSwitchModel } from "./field-models.js";
 
 const metric = (value, unit = "") => value != null && Number.isFinite(Number(value))
@@ -101,6 +102,13 @@ const canAssessModel = (status) => status?.enabled === true && status.storageRea
 
 function learningStatusPending(status = state.houseLearningStatus) {
   return status?.storageReady && hasEntity("houseLearningEnabled") && status.enabled !== isEntityActive("houseLearningEnabled");
+}
+
+function houseLearningLine(status = state.houseLearningStatus) {
+  return { h: status?.hBatch, t0: status?.t0Batch,
+    ready: canAssessModel(status) && !learningStatusPending(status) && status.batchAdviceReady,
+    referenceRoomC: status?.referenceRoomC, batchStatus: status?.batchStatus,
+    fit: status?.batchFit, preview: status?.batchPreview };
 }
 
 function renderCurrentLearningStatus() {
@@ -360,7 +368,11 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, measurementWaitingNote(status))[2],
     status.rlsSamples ? t(status.rlsSamples === 1 ? "houseLearning.model.acceptedPeriodOne" : "houseLearning.model.acceptedPeriodMany", { count: formatNumber(status.rlsSamples) }) : "",
   ].filter(Boolean).join("\n\n");
-  const dailyModel = modelAssessment(status, status.hBatch > 0 && Number.isFinite(status.t0Batch), status.batchAdviceReady);
+  const learnedLine = houseLearningLine(status);
+  const dailyLine = selectDisplayedHouseLine(learnedLine);
+  const dailyModel = modelAssessment(status, dailyLine.h > 0 && Number.isFinite(dailyLine.t0), learnedLine.ready);
+  // RLS readiness does not independently validate heat capacity. Keep this model
+  // provisional until the firmware can provide that separate validation.
   const thermalModel = modelAssessment(status, status.uRls > 0 && status.cRlsWhPerK > 0,
     status.rlsReady && status.capacityValidated && !status.rlsReadinessReasons.length);
   const primary = `<div class="oq-learning-models">
@@ -389,8 +401,7 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
     state.houseLearningChartLoading, state.houseLearningChartError,
-    state.houseLearningStatus?.hBatch, state.houseLearningStatus?.t0Batch, state.houseLearningStatus?.batchAdviceReady, state.houseLearningStatus?.referenceRoomC,
-    state.houseLearningStatus?.batchStatus, state.houseLearningStatus?.batchFit, state.houseLearningStatus?.batchPreview, (canAssessModel(state.houseLearningStatus) && !learningStatusPending()),
+    houseLearningLine(),
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
@@ -407,7 +418,7 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
   const chart = state.houseLearningChart !== null ? renderHouseLearningChart(
     state.houseLearningChart,
     { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
-    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: (canAssessModel(state.houseLearningStatus) && !learningStatusPending()) && state.houseLearningStatus.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC, batchStatus: state.houseLearningStatus?.batchStatus, fit: state.houseLearningStatus?.batchFit, preview: state.houseLearningStatus?.batchPreview },
+    houseLearningLine(),
   ) : "";
   const actionLabel = t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : open ? "houseLearning.chart.hide" : "houseLearning.chart.show");
   return `<button class="oq-house-learning-chart-head" type="button" data-oq-action="load-house-learning-chart" aria-label="${escapeHtml(actionLabel)}" aria-expanded="${open}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>

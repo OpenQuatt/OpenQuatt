@@ -3,7 +3,9 @@
 Open **Leren** om de meetvoortgang, de woninglijn en het model voor opwarmen en
 afkoelen te bekijken. Op ondersteunde Heatpump Controller Q Single en Duo gebruik
 je hier ook de schakelaar **Passief leren**. Het leren verandert je instellingen
-niet. De gekozen stand blijft bewaard bij een herstart of firmware-update.
+niet. **Passief leren** staat standaard aan. De gekozen stand blijft bewaard bij
+een herstart of firmware-update, ook als je leren bewust uitschakelt. Bij de eerste
+update vanaf de eerdere versie die altijd uit startte, wordt leren ingeschakeld.
 
 ## Twee meetperioden
 
@@ -23,6 +25,10 @@ blijft de voortgang behouden. De onzekerheid bij het overbruggen van ontbrekende
 warmtemetingen wordt apart weergegeven. Op firmware met de huidige kwaliteitsregels
 geldt de onzekerheidsgrens voor modeladvies. Een afgeronde dag kan dus wel in de
 grafiek staan en buiten het advies vallen.
+
+Cv-ketelwarmte, koelen en service onderbreken de dagmeting. Bevestigd uitsluitend
+OpenTherm-tapwaterbedrijf onderbreekt de meting niet. Cv-activiteit en een vlam
+zonder duidelijke bestemming blijven uitgesloten.
 
 Na een geplande herstart kan de controller de dagmeting hervatten als er een geldig
 meetcheckpoint is, de meetcontext gelijk blijft en de herstart binnen vijf minuten
@@ -81,8 +87,9 @@ warmtevraag nul wordt. De regeling gebruikt die waarde niet als schakelgrens.
 Via **Diagnostische leerdata downloaden** bewaar je een lokale JSON-export.
 **Leerdata wissen** pauzeert het leren en wist de leerhistorie. Bij een fysieke
 ombouw van Single naar Duo of omgekeerd wis je de leerdata voordat je de
-nieuwe opstelling gaat beoordelen. Bij ingeschakelde technische statistieken
-wordt alleen de aan/uit-stand van passief leren gedeeld.
+nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet.
+Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van
+passief leren gedeeld.
 
 
 ## Vooruitblik

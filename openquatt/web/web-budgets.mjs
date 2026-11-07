@@ -44,12 +44,16 @@ export const WEB_BUNDLE_BUDGETS = [
     // Preserve444 B raw headroom; relative gzip limits remain unchanged.
     // Outlook, localized settings, atomic scenario and the interactive weather charts.
     // On current PR1: +30,871 B raw / +9,824 B gzip (Node24.14.1).
-    // Keep the existing 9,922 B migration allowance and 444 B raw headroom.
-    // PR1 gzip base grew 393,956 -> 394,914 B; move the absolute ceiling by the same958 B.
-    raw: 1_448_649,
-    gzipBaselineCeiling: 404_836,
-    // Demand comparison: +5,763 B raw / +2,128 B gzip vs PR2 (Node24.14.1).
-    // Preserve 444 B raw headroom and unchanged relative gzip limits.
+    // Keep the existing 9,922 B migration allowance.
+    // Inherit only PR1's 588 B raw budget increase; merge guards leave 214 B raw headroom.
+    // Merged raw/gzip: 1,443,260 / 405,129 B; PR1 gzip base: 395,270 B (Node24.14.1).
+    // Move the absolute ceiling with that base, preserving the feature allowance.
+    // Demand comparison retains its existing 5,763 B raw allowance over PR2.
+    // Measured delta over PR2: 5,762 B raw / 2,088 B gzip (Node24.14.1).
+    // Until the parent PR merges, the dev-targeted stack includes that exact gzip delta.
+    // Preserve the inherited 63 B migration margin and the regular relative limits.
+    raw: 1_449_237,
+    gzipBaselineCeiling: 407_280,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.

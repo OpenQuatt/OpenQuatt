@@ -216,6 +216,29 @@ test("voorlopige legacyfit benoemt ontbrekende onafhankelijke controledagen", ()
   assert.doesNotMatch(html, /Geleerde woninglijn beschikbaar/);
 });
 
+test("onvoldoende trainingsdagen gaan vóór een tekort aan controledagen", () => {
+  const html = renderHouseLearningReadiness(records([4, 10]), { batchStatus: "insufficient_data", fit: {
+    trainCount: 0, checkCount: 2, trainDays: 0, checkDays: 2,
+    p10: null, p90: null, minC: null, maxC: null,
+  } });
+  assert.match(html, /Nog 7 volledige dagmetingen nodig/);
+  assert.doesNotMatch(html, /Nog 1 bruikbare controledag/);
+});
+
+test("vijf voorbereide leerdagen tonen hun echte temperatuurspreiding", () => {
+  const html = renderHouseLearningReadiness(records([4, 5, 7, 9, 10, 4, 7, 10]), {
+    batchStatus: "insufficient_data", fit: {
+      trainCount: 5, checkCount: 3, trainDays: 5, checkDays: 3,
+      p10: 4, p90: 10, minC: 4, maxC: 10,
+    },
+  });
+  assert.match(html, /Leren: 5 · Controleren: 3/);
+  assert.match(html, /6 °C <span>\/ 6 °C nodig/);
+  assert.doesNotMatch(html, /Nog geen trainingsdagen/);
+  assert.match(html, /Nog 1 volledige dagmeting nodig/);
+  assert.doesNotMatch(html, /Nog 1 (?:volledige )?dagmetingen/);
+});
+
 test("bewaarde dagen met onbekende kwaliteit tonen indicatieve balken zonder goedkeuring", () => {
   setLocale("nl", config);
   const data = records([4, 6, 8, 10]).map(record => ({ ...record, quality: { valid: true,
