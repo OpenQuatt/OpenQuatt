@@ -118,7 +118,7 @@
               HCQ: Wi-Fi instellen
             </button>
             <button class="install-route-tab" id="route-install-tab" type="button" role="tab" aria-selected="false" aria-controls="route-install-panel" data-install-route-tab="install">
-              Andere module of herstel
+              Installeer firmware
             </button>
           </div>
 
@@ -171,13 +171,13 @@
               <div class="install-layout">
                 <section class="install-card install-flow">
                   <p class="install-section-label">HCQ herstellen of opnieuw installeren</p>
-                  <p class="install-step-copy">Gebruik deze route alleen als OpenQuatt opnieuw moet worden geïnstalleerd of de normale herstelroute dat vraagt.</p>
+                  <p class="install-step-copy">Gebruik deze route om OpenQuatt opnieuw op de controller te flashen.</p>
                   <section class="install-step" id="topology-step">
                     <div class="install-step-head">
                       <p class="install-step-number">1</p>
                       <div>
                         <h2>Kies je opstelling</h2>
-                        <p class="install-step-copy">Hiermee bepaal je of de firmware als Single of Duo wordt opgebouwd.</p>
+                        <p class="install-step-copy">Kies de opstelling van je warmtepomp.</p>
                       </div>
                     </div>
 
@@ -185,54 +185,12 @@
                       <label class="choice-card">
                         <input type="radio" name="topology" value="single" />
                         <span class="choice-title">Single</span>
-                        <span class="choice-body">Opstelling met een warmtepomp, zonder Duo-specifieke logica.</span>
+                        <span class="choice-body">Eén warmtepomp.</span>
                       </label>
                       <label class="choice-card">
                         <input type="radio" name="topology" value="duo" />
                         <span class="choice-title">Duo</span>
-                        <span class="choice-body">Opstelling met twee warmtepompen in de gecompileerde topologie.</span>
-                      </label>
-                    </div>
-                  </section>
-
-                  <section class="install-step" id="hardware-step">
-                    <div class="install-step-head">
-                      <p class="install-step-number">2</p>
-                      <div>
-                        <h2>Kies je ESP-module</h2>
-                        <p class="install-step-copy">Hiermee bepaal je de exacte bordindeling en het juiste factory-image.</p>
-                      </div>
-                    </div>
-
-                    <div class="choice-grid" id="hardware-grid">
-                      <label class="choice-card">
-                        <input type="radio" name="hardware" value="heatpump_controller_q" />
-                        <span class="choice-title">Heatpump Controller Q-edition</span>
-                        <span class="choice-body">De gecombineerde firmware kiest bij opstart automatisch Ethernet of Wi-Fi.</span>
-                      </label>
-                    </div>
-                    <p class="install-step-copy">De Heatpump Controller Q-edition is verkrijgbaar via de <a href="https://electropaultje.nl/product/heatpump-controller-q-edition/">productpagina van Electropaultje</a>.</p>
-                  </section>
-
-                  <section class="install-step" id="connection-step">
-                    <div class="install-step-head">
-                      <p class="install-step-number">3</p>
-                      <div>
-                        <h2>Kies je verbinding</h2>
-                        <p class="install-step-copy">De installer activeert alleen verbindingen waarvoor in de stabiele release een factory-image beschikbaar is.</p>
-                      </div>
-                    </div>
-
-                    <div class="choice-grid" id="connection-grid">
-                      <label class="choice-card" data-unavailable>
-                        <input type="radio" name="connection" value="wifi" disabled />
-                        <span class="choice-title">Wi-Fi</span>
-                        <span class="choice-body">De huidige standaardroute voor OpenQuatt-installaties.</span>
-                      </label>
-                      <label class="choice-card" data-unavailable>
-                        <input type="radio" name="connection" value="eth" disabled />
-                        <span class="choice-title">Ethernet</span>
-                        <span class="choice-body">Alleen beschikbaar voor modules met een afzonderlijke Ethernetbuild.</span>
+                        <span class="choice-body">Twee warmtepompen.</span>
                       </label>
                     </div>
                   </section>
@@ -241,10 +199,7 @@
                 <aside class="install-summary-wrap">
                   <section class="install-card install-summary-card" id="flash-step">
                     <p class="install-section-label">Gekozen firmware</p>
-                    <h2 id="selection-title">Kies eerst je opstelling, module en verbinding</h2>
-                    <p class="summary-copy" id="selection-copy">
-                      Deze installatiehulp maakt automatisch een eenmalig ESP Web Tools-manifest voor het profiel dat je hier kiest.
-                    </p>
+                    <h2 id="selection-title">Kies eerst je opstelling</h2>
 
                     <dl class="summary-list">
                       <div>
@@ -256,25 +211,13 @@
                         <dd id="selection-topology">Niet gekozen</dd>
                       </div>
                       <div>
-                        <dt>Hardware</dt>
-                        <dd id="selection-hardware">Niet gekozen</dd>
-                      </div>
-                      <div>
-                        <dt>Verbinding</dt>
-                        <dd id="selection-connection">Niet gekozen</dd>
-                      </div>
-                      <div>
-                        <dt>Chipfamilie</dt>
-                        <dd id="selection-chip">Niet gekozen</dd>
-                      </div>
-                      <div>
                         <dt>Factory-image</dt>
                         <dd id="selection-file">Niet gekozen</dd>
                       </div>
                     </dl>
 
                     <div class="install-panel" id="install-panel" data-ready="false">
-                      <p class="install-state" id="install-state">Kies eerst opstelling, module en verbinding om de installatieknop te activeren.</p>
+                      <p class="install-state" id="install-state">Kies Single of Duo om de installatieknop te activeren.</p>
                       <esp-web-install-button id="install-button">
                         <button class="install-cta" slot="activate">Installeer OpenQuatt</button>
                         <span class="install-fallback" slot="unsupported">
