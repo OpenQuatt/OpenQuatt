@@ -299,6 +299,9 @@ void OpenQuattWeather::worker_entry_(void* argument) {
       }
     } else {
       state.result_ok = self->fetch_();
+      // fetch_ has destroyed its TLS/socket on every return path. Release here:
+      // HTTP OTA may be waiting on the main loop, before it can consume READY.
+      https_slot.release();
     }
     state.duration_ms = static_cast<uint32_t>(monotonic_ms() - started);
     state.stack_free = uxTaskGetStackHighWaterMark(nullptr);
@@ -431,11 +434,9 @@ void OpenQuattWeather::loop() {
   } else if (state.job != Job::SAVE_LOCATION) {
     ++cancelled_requests_;
   }
-  const bool finished_https = state.job == Job::RESOLVE_LOCATION || state.job == Job::FETCH;
   phase_.store(oq_weather::MailboxPhase::IDLE, std::memory_order_release);
   request_pending_save_();
   publish_();
-  if (finished_https) https_slot.release();
 }
 
 void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& observation) {
