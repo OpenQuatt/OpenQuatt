@@ -79,9 +79,12 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             functions = "\n".join(production_function(source, signature) for signature in (
                 "void OpenQuattHouseLearningStatus::invalidate_shadow(",
                 "bool OpenQuattHouseLearningStatus::publish_status_json(",
+                "bool OpenQuattHouseLearningStatus::publish_shadow_json(",
                 "bool OpenQuattHouseLearningStatus::snapshot_status(",
             ))
             (temporary / "production_shadow_status.inc").write_text(functions)
+            (temporary / "production_shadow_refresh.inc").write_text(
+                production_function(learning, "void refresh_shadow("))
             (temporary / "production_shadow_invalidation.inc").write_text(
                 production_function(power_house, "void invalidate_demand_evaluation("))
             (temporary / "production_external_override.inc").write_text(

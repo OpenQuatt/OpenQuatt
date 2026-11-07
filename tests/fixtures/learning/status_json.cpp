@@ -39,9 +39,10 @@ struct Endpoint {
     return true;
   }
   bool publish_status_json(const char* text, size_t length, size_t shadow_offset, uint64_t shadow_expiry,
-                           uint32_t shadow_generation) {
+                           uint32_t shadow_generation, uint32_t context_revision) {
     assert(shadow_offset > 0U && shadow_offset < length && text[shadow_offset] == ',');
     assert(shadow_expiry == 15000U && shadow_generation == 1U);
+    assert(context_revision == UINT32_MAX);
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
     if (length > largest.size()) largest.assign(text, length);
     latest.assign(text, length);

@@ -12,7 +12,7 @@ globalThis.window = {
   localStorage: { getItem: () => null },
 };
 
-const { state } = await import("../js/src/core/state.js");
+const { invalidateHouseLearningShadow, state } = await import("../js/src/core/state.js");
 const {
   HOUSE_LEARNING_STATUS_INTERVAL_MS,
   downloadHouseLearningExport,
@@ -37,6 +37,7 @@ function switchEntity(value = false) {
 }
 
 test.afterEach(() => {
+  invalidateHouseLearningShadow();
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
   document.hidden = false;
   state.nativeOpen = false;

@@ -52,8 +52,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // Measured delta over PR2: 5,762 B raw / 2,074 B gzip (Node24.14.1).
     // Until the parent PR merges, the dev-targeted stack includes that exact gzip delta.
     // Preserve the inherited 100 B migration margin and the regular relative limits.
-    raw: 1_449_237,
-    gzipBaselineCeiling: 407_266,
+    // Bounded expiry refresh and write invalidation: +1,501 B raw / +469 B gzip
+    // versus 63002f64 on Node24.14.1; keep the existing raw/gzip headroom.
+    raw: 1_450_738,
+    gzipBaselineCeiling: 407_735,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.

@@ -148,22 +148,52 @@ void OpenQuattHouseLearningStatus::invalidate_shadow() {
   }
 }
 
-bool OpenQuattHouseLearningStatus::publish_status_json(const char* json, size_t length, size_t shadow_offset,
-                                                       uint64_t shadow_expires_ms, uint32_t shadow_generation) {
+bool OpenQuattHouseLearningStatus::publish_status_json(const char* json, size_t length, size_t shadow_prefix_length,
+                                                       uint64_t shadow_expires_ms, uint32_t shadow_generation,
+                                                       uint32_t context_revision) {
   if (!this->storage_available() || xTaskGetCurrentTaskHandle() != this->main_loop_task_ || json == nullptr ||
       length == 0U || length >= this->status_buffer_.size() || std::memchr(json, '\0', length) != nullptr ||
-      (shadow_offset != 0U && (shadow_offset >= length || json[shadow_offset] != ',' || json[length - 1U] != '}' ||
-                               shadow_expires_ms == 0U || shadow_generation == 0U)) ||
+      (shadow_prefix_length != 0U &&
+       (shadow_prefix_length >= length || json[shadow_prefix_length] != ',' || json[length - 1U] != '}' ||
+        context_revision == 0U || (shadow_expires_ms != 0U && shadow_generation == 0U))) ||
       !this->cache_lock_())
     return false;
   std::memcpy(this->status_buffer_.data(), json, length);
   this->status_buffer_[length] = '\0';
   this->status_length_ = length;
-  this->shadow_offset_ = shadow_offset;
+  this->shadow_prefix_length_ = shadow_prefix_length;
   this->shadow_expires_ms_ = shadow_expires_ms;
   this->status_shadow_generation_ = shadow_generation;
+  this->status_context_revision_ = context_revision;
   this->cache_unlock_();
   return true;
+}
+
+bool OpenQuattHouseLearningStatus::publish_shadow_json(const char* json, size_t length, uint64_t shadow_expires_ms,
+                                                       uint32_t shadow_generation, uint32_t context_revision) {
+  // A failed refresh must not leave the previous available comparison visible.
+  if (!this->storage_available() || xTaskGetCurrentTaskHandle() != this->main_loop_task_ || json == nullptr ||
+      length == 0U || length >= this->status_buffer_.size() || json[0] != ',' || json[length - 1U] != '}' ||
+      std::memchr(json, '\0', length) != nullptr || context_revision == 0U ||
+      (shadow_expires_ms != 0U && shadow_generation == 0U) || !this->cache_lock_()) {
+    this->invalidate_shadow();
+    return false;
+  }
+  const size_t prefix_length = this->shadow_prefix_length_;
+  const bool valid =
+      prefix_length != 0U && prefix_length < this->status_length_ && prefix_length < this->status_buffer_.size() &&
+      length < this->status_buffer_.size() - prefix_length && context_revision == this->status_context_revision_;
+  if (valid) {
+    std::memcpy(this->status_buffer_.data() + prefix_length, json, length);
+    this->status_length_ = prefix_length + length;
+    this->status_buffer_[this->status_length_] = '\0';
+    this->shadow_expires_ms_ = shadow_expires_ms;
+    this->status_shadow_generation_ = shadow_generation;
+  } else {
+    this->invalidate_shadow();
+  }
+  this->cache_unlock_();
+  return valid;
 }
 
 bool OpenQuattHouseLearningStatus::publish_export_json(const char* json, size_t length) {
@@ -204,15 +234,15 @@ bool OpenQuattHouseLearningStatus::snapshot_status(size_t* length) const {
     return false;
   }
   uint32_t ttl_ms = 0U;
-  const bool has_shadow = this->shadow_offset_ != 0U;
-  if (has_shadow) {
+  const bool leased_shadow = this->shadow_prefix_length_ != 0U && this->shadow_expires_ms_ != 0U;
+  if (leased_shadow) {
     const auto now_ms = static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
     const auto generation = this->shadow_generation();
     if (generation == this->status_shadow_generation_ && generation != UINT32_MAX &&
         this->shadow_expires_ms_ > now_ms && this->shadow_expires_ms_ - now_ms <= UINT32_MAX) {
       ttl_ms = static_cast<uint32_t>(this->shadow_expires_ms_ - now_ms);
     }
-    copy_length = ttl_ms == 0U ? this->shadow_offset_ : copy_length - 1U;
+    copy_length = ttl_ms == 0U ? this->shadow_prefix_length_ : copy_length - 1U;
   }
   char* const destination = this->request_buffer_.data();
   std::memcpy(destination, this->status_buffer_.data(), copy_length);
@@ -220,7 +250,7 @@ bool OpenQuattHouseLearningStatus::snapshot_status(size_t* length) const {
 
   // Expired or invalidated comparisons never leave the cache. The TTL in a
   // valid response is calculated at the read, not at status publication.
-  if (has_shadow) {
+  if (leased_shadow) {
     const size_t capacity = this->request_buffer_.size() - copy_length;
     const int written = ttl_ms == 0U ? std::snprintf(destination + copy_length, capacity, ",\"shadow_expired\":true}")
                                      : std::snprintf(destination + copy_length, capacity, ",\"shadow_ttl_ms\":%u}",

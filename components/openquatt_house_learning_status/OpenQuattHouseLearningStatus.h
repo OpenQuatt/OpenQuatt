@@ -30,8 +30,11 @@ class OpenQuattHouseLearningStatus : public Component {
 
   // These publishers copy a complete UTF-8 JSON document into immutable endpoint
   // storage. Call them only from the ESPHome main loop task.
-  bool publish_status_json(const char* json, size_t length, size_t shadow_offset = 0U, uint64_t shadow_expires_ms = 0U,
-                           uint32_t shadow_generation = 0U);
+  bool publish_status_json(const char* json, size_t length, size_t shadow_prefix_length = 0U,
+                           uint64_t shadow_expires_ms = 0U, uint32_t shadow_generation = 0U,
+                           uint32_t context_revision = 0U);
+  bool publish_shadow_json(const char* json, size_t length, uint64_t shadow_expires_ms, uint32_t shadow_generation,
+                           uint32_t context_revision);
   uint32_t shadow_generation() const { return this->shadow_generation_.load(std::memory_order_acquire); }
   void invalidate_shadow();
   bool publish_export_json(const char* json, size_t length);
@@ -63,9 +66,10 @@ class OpenQuattHouseLearningStatus : public Component {
   PsramBuffer<char> export_buffer_{};
   mutable PsramBuffer<char> request_buffer_{};
   size_t status_length_{0U};
-  size_t shadow_offset_{0U};
+  size_t shadow_prefix_length_{0U};
   uint64_t shadow_expires_ms_{0U};
   uint32_t status_shadow_generation_{0U};
+  uint32_t status_context_revision_{0U};
   std::atomic<uint32_t> shadow_generation_{1U};
   size_t export_length_{0U};
   StaticSemaphore_t cache_mutex_storage_{};

@@ -57,7 +57,8 @@ class LearningProfileContractTest(unittest.TestCase):
         self.assertEqual(enabled, ["heatpump_controller_q"])
 
     def test_shadow_references_require_the_explicitly_enabled_target(self):
-        for file in ("includes/control/oq_power_house_runtime.h", "oq_common.yaml", "oq_warmup.yaml"):
+        for file in ("includes/control/oq_power_house_runtime.h", "oq_common.yaml", "oq_warmup.yaml",
+                     "oq_power_house_strategy.yaml"):
             with self.subTest(file=file):
                 source = (ROOT / "openquatt" / file).read_text()
                 guards = re.findall(r"^\s*(#if [^\n]*OQ_POWER_HOUSE_LEARNING_TARGET[^\n]*)$", source, re.M)
@@ -65,6 +66,15 @@ class LearningProfileContractTest(unittest.TestCase):
                 for guard in guards:
                     self.assertEqual(guard,
                                      "#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1")
+
+    def test_shadow_publication_runs_after_control_returns(self):
+        source = (ROOT / "openquatt/oq_power_house_strategy.yaml").read_text()
+        control = source.index("oq_power_house_runtime::runtime().tick(")
+        refresh = source.index("oq_ph_learning::runtime().refresh_shadow();")
+        self.assertIn("});", source[control:refresh])
+        self.assertNotIn("delay:", source[control:refresh])
+        runtime = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
+        self.assertIn("__attribute__((noinline)) void refresh_shadow()", runtime)
 
     def test_firmware_without_explicit_profile_has_no_learning_types(self):
         source = '''

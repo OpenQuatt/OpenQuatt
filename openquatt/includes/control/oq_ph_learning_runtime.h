@@ -118,6 +118,23 @@ struct RuntimeStorage {
 
 class Runtime : public esphome::ota::OTAGlobalStateListener {
  public:
+  // Called after the control tick returns. Keep its bounded publication frame
+  // separate from the control calculation and reuse the strict-PSRAM scratch.
+  __attribute__((noinline)) void refresh_shadow() {
+    if (!storage_) return;
+    auto& state = storage_[0];
+    const auto shadow = shadow_demand_(state);
+    JsonWriter json(state.json, sizeof(state.json));
+    json.add(",\"shadow\":");
+    oq_power_house::write_shadow_demand_json(json, shadow);
+    json.add("}");
+    const size_t length = json.size();
+    if (length == 0U || !id(oq_ph_learning_status_endpoint)
+                             .publish_shadow_json(state.json, length, shadow.expires_ms, shadow.generation,
+                                                  state.input.context_revision))
+      id(oq_ph_learning_status_endpoint).invalidate_shadow();
+  }
+
   void pause(LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
     invalidate_shadow_(oq_power_house::ShadowDemandReason::INACTIVE);
     daily_restart_ticket.clear();
@@ -1151,14 +1168,14 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), static_cast<unsigned>(sizeof(RuntimeStorage)),
         static_cast<unsigned long long>(state.max_tick_us));
     const auto shadow = shadow_demand_(state);
-    const size_t shadow_offset = shadow.available() ? json.size() : 0U;
+    const size_t shadow_prefix_length = json.size();
     json.add(",\"shadow\":");
     oq_power_house::write_shadow_demand_json(json, shadow);
     json.add("}");
     const size_t length = json.size();
-    if (length == 0U ||
-        !id(oq_ph_learning_status_endpoint)
-             .publish_status_json(state.json, length, shadow_offset, shadow.expires_ms, shadow.generation)) {
+    if (length == 0U || !id(oq_ph_learning_status_endpoint)
+                             .publish_status_json(state.json, length, shadow_prefix_length, shadow.expires_ms,
+                                                  shadow.generation, state.input.context_revision)) {
       publish_status_error_();
     }
   }

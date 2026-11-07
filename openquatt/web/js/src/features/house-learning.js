@@ -3,6 +3,7 @@ import { hasEntity } from "../core/app-shared.js";
 import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
+import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
 import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
 import { t } from "../i18n/index.js";
@@ -169,6 +170,51 @@ export function shouldRefreshHouseLearningStatusSurface() {
   return !document.hidden && !state.nativeOpen && state.appView === "learning" && !state.learningForecastOpen && hasEntity("houseLearningEnabled");
 }
 
+// One expiry follow-up and at most two short retries per normal status poll.
+// Keep the normal 10-second fallback cadence even when a follow-up finishes later.
+let shadowRefresh = null;
+const SHADOW_REFRESH_DELAY_MS = 200;
+const SHADOW_REFRESH_LIMIT = 3;
+
+function clearShadowRefresh() {
+  if (state.houseLearningShadowTimer != null) window.clearTimeout(state.houseLearningShadowTimer);
+  state.houseLearningShadowTimer = null;
+  shadowRefresh = null;
+}
+
+function shadowRefreshCurrent(plan) {
+  return plan && plan === shadowRefresh && plan.epoch === state.houseLearningShadowEpoch
+    && plan.requestId === state.houseLearningRequestId && plan.status === state.houseLearningStatus
+    && shouldRefreshHouseLearningStatusSurface()
+    && !state.busyAction && !["pending", "uncertain"].includes(state.houseLearningReset);
+}
+
+function scheduleShadowRefresh(previous) {
+  const status = state.houseLearningStatus;
+  const plan = previous || {
+    epoch: state.houseLearningShadowEpoch, requestId: state.houseLearningRequestId,
+    pollAt: state.houseLearningLastFetchAt, attempts: 0,
+  };
+  shadowRefresh = plan;
+  plan.lastFetchAt = state.houseLearningLastFetchAt;
+  plan.status = status;
+  if (!shadowRefreshCurrent(plan)) { clearShadowRefresh(); return; }
+  const shadow = status?.shadow;
+  if (!status?.enabled || !status.batchAdviceReady || !shadow
+    || (!shadow.available && shadow.reason !== "stale_frame") || plan.attempts >= SHADOW_REFRESH_LIMIT) return;
+  const delay = shadow.available ? Math.max(SHADOW_REFRESH_DELAY_MS, shadow.expiresAt - performance.now() + SHADOW_REFRESH_DELAY_MS)
+    : SHADOW_REFRESH_DELAY_MS;
+  state.houseLearningShadowTimer = window.setTimeout(() => {
+    if (plan !== shadowRefresh) return;
+    state.houseLearningShadowTimer = null;
+    if (!shadowRefreshCurrent(plan)) { clearShadowRefresh(); return; }
+    plan.attempts += 1;
+    void refreshHouseLearningStatus({ force: true, shadowFollowup: plan }).then(changed => {
+      if (changed && shadowRefreshCurrent(plan) && !patchLearningDom()) render();
+    });
+  }, Math.ceil(delay));
+}
+
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
 export const getHouseLearningExportEndpoint = () => `${getBasePath()}/openquatt/learning/export`;
 
@@ -263,12 +309,17 @@ export function handleHouseLearningAction(action, button, pressNamedButton) {
 
 export async function refreshHouseLearningStatus(options = {}) {
   const resetReconcile = options.resetReconcile === true;
-  if (!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) return false;
+  const shadowFollowup = options.shadowFollowup;
+  if (shadowFollowup && !shadowRefreshCurrent(shadowFollowup)) return false;
+  if (!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) { clearShadowRefresh(); return false; }
   if (state.houseLearningReset === "pending" && !resetReconcile) return false;
   if (state.houseLearningFetchPromise) return state.houseLearningFetchPromise;
-  if (!options.force && Date.now() - Number(state.houseLearningLastFetchAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
+  const intervalAt = shadowRefreshCurrent(shadowRefresh) && shadowRefresh.lastFetchAt === state.houseLearningLastFetchAt
+    ? shadowRefresh.pollAt : state.houseLearningLastFetchAt;
+  if (!options.force && Date.now() - Number(intervalAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
     return false;
   }
+  if (!shadowFollowup) clearShadowRefresh();
   const initialCapabilityCheck = !state.houseLearningEndpointAvailable && !state.houseLearningEndpointChecked;
   const requestGeneration = Number(state.houseLearningRequestId || 0);
   const before = JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
@@ -300,7 +351,8 @@ export async function refreshHouseLearningStatus(options = {}) {
         state.houseLearningEndpointAvailable = true;
         // Navigation can leave and return while the HTTPD still sends an
         // already copied frame. Keep the learning status, fence its live comparison.
-        if (shadowEpoch !== state.houseLearningShadowEpoch) status.shadow = null;
+        if (shadowEpoch !== state.houseLearningShadowEpoch || state.busyAction
+          || ["pending", "uncertain"].includes(state.houseLearningReset)) status.shadow = null;
         state.houseLearningStatus = status;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
@@ -339,6 +391,9 @@ export async function refreshHouseLearningStatus(options = {}) {
     return await state.houseLearningFetchPromise;
   } finally {
     state.houseLearningFetchPromise = null;
+    if (!resetReconcile && requestGeneration === state.houseLearningRequestId && shadowEpoch === state.houseLearningShadowEpoch) {
+      scheduleShadowRefresh(shadowFollowup);
+    }
   }
 }
 
@@ -354,6 +409,7 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
   ));
   if (!confirmReset()) return false;
   invalidateWeatherForecast();
+  clearShadowRefresh();
 
   const staleRequest = state.houseLearningFetchPromise;
   state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;

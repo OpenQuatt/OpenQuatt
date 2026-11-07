@@ -145,6 +145,8 @@ export const state = {
 
 export function invalidateHouseLearningShadow() {
   state.houseLearningShadowEpoch += 1;
+  if (state.houseLearningShadowTimer != null) globalThis.window?.clearTimeout?.(state.houseLearningShadowTimer);
+  state.houseLearningShadowTimer = null;
   if (state.houseLearningStatus?.shadow) state.houseLearningStatus.shadow = null;
   state.houseLearningLastFetchAt = 0;
 }
