@@ -417,7 +417,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
-      return (float) id(oq_demand_raw);
+      return id(oq_strategy_active_code) == 3 ? NAN : (float) id(oq_demand_raw);
 
   - platform: template
     id: oq_demand_filtered_sensor
@@ -428,7 +428,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
-      return (float) id(oq_demand_filtered);
+      return id(oq_strategy_active_code) == 3 ? NAN : (float) id(oq_demand_filtered);
 
   - platform: template
     id: oq_hp1_compressor_level_sensor

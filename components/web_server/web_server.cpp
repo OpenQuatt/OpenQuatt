@@ -673,6 +673,27 @@ void WebServer::sensor_json_(sensor::Sensor* obj, float value, JsonDetail start_
 }
 #endif
 
+#if defined(USE_OPENQUATT_WEATHER) && (defined(USE_TEXT_SENSOR) || defined(USE_TEXT))
+// Keep the weather snapshot in a separate frame so ordinary entities never reserve it.
+static __attribute__((noinline)) void set_weather_text_json(JsonObject root, EntityBase* obj, JsonDetail detail,
+                                                            bool text_sensor) {
+  openquatt_weather::TextSnapshotValue snapshot;
+  if (!openquatt_weather::copy_weather_text_snapshot(obj, snapshot)) return;
+  if (text_sensor) {
+    if (const char* consent = openquatt_weather::consent_state_name(snapshot.consent_state))
+      root[ESPHOME_F("consent_state")] = consent;
+  } else if (openquatt_weather::is_weather_location(obj)) {
+    root[ESPHOME_F("save_request")] = snapshot.save_request;
+    const char* status = snapshot.save_state == openquatt_weather::SaveState::STORED    ? "stored"
+                         : snapshot.save_state == openquatt_weather::SaveState::PENDING ? "pending"
+                         : snapshot.save_state == openquatt_weather::SaveState::FAILED  ? "failed"
+                                                                                        : "none";
+    root[ESPHOME_F("save_status")] = status;
+  }
+  set_json_icon_state_value(root, obj, text_sensor ? "text_sensor" : "text", snapshot.text, snapshot.text, detail);
+}
+#endif
+
 #ifdef USE_TEXT_SENSOR
 void WebServer::on_text_sensor_update(text_sensor::TextSensor* obj) {
   if (!this->include_internal_ && obj->is_internal()) return;
@@ -706,17 +727,13 @@ void WebServer::text_sensor_json_(text_sensor::TextSensor* obj, const std::strin
   JsonObject root = builder.root();
 
 #ifdef USE_OPENQUATT_WEATHER
-  openquatt_weather::TextSnapshotValue snapshot;
-  const bool weather = openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(obj), snapshot);
-  const char* text = weather ? snapshot.text : value.c_str();
-  if (weather) {
-    if (const char* consent = openquatt_weather::consent_state_name(snapshot.consent_state))
-      root[ESPHOME_F("consent_state")] = consent;
-  }
-#else
-  const char* text = value.c_str();
+  if (openquatt_weather::is_weather_text(static_cast<EntityBase*>(obj))) {
+    set_weather_text_json(root, obj, start_config, /*text_sensor=*/true);
+  } else
 #endif
-  set_json_icon_state_value(root, obj, "text_sensor", text, text, start_config);
+  {
+    set_json_icon_state_value(root, obj, "text_sensor", value.c_str(), value.c_str(), start_config);
+  }
   if (start_config == DETAIL_ALL) {
     this->add_sorting_info_(root, obj);
   }
@@ -1366,22 +1383,7 @@ void WebServer::handle_text_request(AsyncWebServerRequest* request, const UrlMat
 #ifdef USE_OPENQUATT_WEATHER
     if (openquatt_weather::is_weather_location(static_cast<EntityBase*>(obj)) &&
         request->hasArg(ESPHOME_F("save_request"))) {
-      const auto token = request->arg(ESPHOME_F("save_request"));
-      const auto value = request->arg(ESPHOME_F("value"));
-      if (!request->hasArg(ESPHOME_F("value")) ||
-          !openquatt_weather::valid_save_request(token.c_str(), token.length()) || value.length() > 64 ||
-          std::memchr(value.c_str(), '\0', value.length())) {
-        request->send(400);
-        return;
-      }
-      struct LocationRequest {
-        const void* entity;
-        char value[65]{}, token[33]{};
-      } pending{static_cast<EntityBase*>(obj)};
-      std::memcpy(pending.value, value.c_str(), value.length());
-      std::memcpy(pending.token, token.c_str(), token.length());
-      DEFER_ACTION(pending, openquatt_weather::control_weather_location(pending.entity, pending.value, pending.token));
-      request->send(200);
+      this->handle_weather_location_set_(request, obj);
       return;
     }
 #endif
@@ -1398,6 +1400,28 @@ void WebServer::handle_text_request(AsyncWebServerRequest* request, const UrlMat
   request->send(404);
 }
 
+#ifdef USE_OPENQUATT_WEATHER
+// Keep the write payload and its deferred copy out of the HTTP read frame.
+__attribute__((noinline)) void WebServer::handle_weather_location_set_(AsyncWebServerRequest* request,
+                                                                       text::Text* obj) {
+  const auto token = request->arg(ESPHOME_F("save_request"));
+  const auto value = request->arg(ESPHOME_F("value"));
+  if (!request->hasArg(ESPHOME_F("value")) || !openquatt_weather::valid_save_request(token.c_str(), token.length()) ||
+      value.length() > 64 || std::memchr(value.c_str(), '\0', value.length())) {
+    request->send(400);
+    return;
+  }
+  struct LocationRequest {
+    const void* entity;
+    char value[65]{}, token[33]{};
+  } pending{static_cast<EntityBase*>(obj)};
+  std::memcpy(pending.value, value.c_str(), value.length());
+  std::memcpy(pending.token, token.c_str(), token.length());
+  DEFER_ACTION(pending, openquatt_weather::control_weather_location(pending.entity, pending.value, pending.token));
+  request->send(200);
+}
+#endif
+
 void WebServer::text_state_json_generator(WebServer* web_server, void* source, json::JsonBuilder& builder) {
   web_server->text_json_((text::Text*)(source), ((text::Text*)(source))->state, DETAIL_STATE, builder);
 }
@@ -1412,22 +1436,14 @@ void WebServer::text_json_(text::Text* obj, const std::string& value, JsonDetail
   // reaches the JSON and the mask cannot be written back as the value
   const bool password = obj->traits.get_mode() == text::TextMode::TEXT_MODE_PASSWORD;
 #ifdef USE_OPENQUATT_WEATHER
-  openquatt_weather::TextSnapshotValue snapshot;
-  const bool weather =
-      !password && openquatt_weather::copy_weather_text_snapshot(static_cast<EntityBase*>(obj), snapshot);
-  const char* text = password ? "" : weather ? snapshot.text : value.c_str();
-  if (weather && openquatt_weather::is_weather_location(static_cast<EntityBase*>(obj))) {
-    root[ESPHOME_F("save_request")] = snapshot.save_request;
-    const char* status = snapshot.save_state == openquatt_weather::SaveState::STORED    ? "stored"
-                         : snapshot.save_state == openquatt_weather::SaveState::PENDING ? "pending"
-                         : snapshot.save_state == openquatt_weather::SaveState::FAILED  ? "failed"
-                                                                                        : "none";
-    root[ESPHOME_F("save_status")] = status;
-  }
-#else
-  const char* text = password ? "" : value.c_str();
+  if (!password && openquatt_weather::is_weather_text(static_cast<EntityBase*>(obj))) {
+    set_weather_text_json(root, obj, start_config, /*text_sensor=*/false);
+  } else
 #endif
-  set_json_icon_state_value(root, obj, "text", password ? "********" : text, password ? "" : text, start_config);
+  {
+    set_json_icon_state_value(root, obj, "text", password ? "********" : value.c_str(), password ? "" : value.c_str(),
+                              start_config);
+  }
   root[ESPHOME_F("min_length")] = obj->traits.get_min_length();
   root[ESPHOME_F("max_length")] = obj->traits.get_max_length();
   root[ESPHOME_F("pattern")] = obj->traits.get_pattern_c_str();

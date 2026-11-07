@@ -190,7 +190,7 @@ inline constexpr BaseType_t pdPASS = 1, pdTRUE = 1, tskIDLE_PRIORITY = 0;
 inline constexpr TickType_t portMAX_DELAY = UINT32_MAX;
 inline BaseType_t xTaskCreate(void (*)(void*), const char*, unsigned stack_bytes, void*, unsigned,
                               TaskHandle_t* handle) {
-  assert(stack_bytes == 8192);
+  assert(stack_bytes == 6144);
   ++weather_fixture::env.task_creations;
   if (weather_fixture::env.fail_task_creation) return 0;
   *handle = reinterpret_cast<TaskHandle_t>(uintptr_t{1});

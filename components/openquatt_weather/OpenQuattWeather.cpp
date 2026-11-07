@@ -1,4 +1,5 @@
 #include "OpenQuattWeather.h"
+#include "WeatherHttpsSlot.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -12,6 +13,7 @@
 namespace esphome::openquatt_weather {
 
 static const char* const TAG = "openquatt.weather";
+static constexpr uint32_t WEATHER_TASK_STACK_SIZE = 6144;
 static uint64_t monotonic_ms() { return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL; }
 
 static const char* const CONSENT_PENDING = "consent_persistence_pending";
@@ -243,13 +245,16 @@ void OpenQuattWeather::request_(Job job) {
   const bool saving = job == Job::SAVE_CONSENT || job == Job::SAVE_LOCATION;
   if (saving ? ota_paused_ || (pause_ && pause_->state) : !allowed_()) return;
   if (phase_.load(std::memory_order_acquire) != oq_weather::MailboxPhase::IDLE) return;
+  if (!saving && !https_slot.try_acquire_weather()) return;  // Keep the request due for the next poll.
   auto& state = storage_[0];
   if (!worker_ && !worker_attempted_) {
     worker_attempted_ = true;
-    if (xTaskCreate(worker_entry_, "oq_weather", 8192, this, tskIDLE_PRIORITY + 1, &worker_) != pdPASS)
+    if (xTaskCreate(worker_entry_, "oq_weather", WEATHER_TASK_STACK_SIZE, this, tskIDLE_PRIORITY + 1, &worker_) !=
+        pdPASS)
       worker_ = nullptr;
   }
   if (!worker_) {
+    if (!saving) https_slot.release();
     if (job == Job::SAVE_CONSENT) {
       consent_state_ = ConsentState::FAILED;
       publish_text_(status_, CONSENT_FAILED);
@@ -426,9 +431,11 @@ void OpenQuattWeather::loop() {
   } else if (state.job != Job::SAVE_LOCATION) {
     ++cancelled_requests_;
   }
+  const bool finished_https = state.job == Job::RESOLVE_LOCATION || state.job == Job::FETCH;
   phase_.store(oq_weather::MailboxPhase::IDLE, std::memory_order_release);
   request_pending_save_();
   publish_();
+  if (finished_https) https_slot.release();
 }
 
 void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& observation) {
@@ -600,8 +607,8 @@ void OpenQuattWeather::dump_config() {
   ESP_LOGCONFIG(TAG, "Experimental passive forecast; no control outputs");
   ESP_LOGCONFIG(TAG, "  Model: %s, hourly temperatures: %u", oq_weather::kModel,
                 static_cast<unsigned>(oq_weather::kHours));
-  ESP_LOGCONFIG(TAG, "  Strict PSRAM: %u B; internal worker stack: 8192 B (created on first job)",
-                static_cast<unsigned>(sizeof(Storage)));
+  ESP_LOGCONFIG(TAG, "  Strict PSRAM: %u B; internal worker stack: %u B (created on first job)",
+                static_cast<unsigned>(sizeof(Storage)), static_cast<unsigned>(WEATHER_TASK_STACK_SIZE));
 }
 
 }  // namespace esphome::openquatt_weather

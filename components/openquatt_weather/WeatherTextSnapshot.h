@@ -80,24 +80,22 @@ class WeatherTextSnapshots {
 
   bool copy(const void* entity, TextSnapshotValue& result) {
     Guard guard(*this);
-    for (const auto& entry : entries_) {
-      if (!entity || entry.entity != entity) continue;
-      result = entry.value;
-      return true;
-    }
-    return false;
+    const auto* entry = find_entry_(entity);
+    if (!entry) return false;
+    result = entry->value;
+    return true;
   }
 
   bool copy_metadata(const void* entity, TextSnapshotMetadata& result) {
     // EntityBase identity and metadata are immutable after bind/release-store.
     // In particular, HTTP never reads the SDK bitfield also used for has_state.
-    for (const auto& entry : entries_) {
-      if (!entity || entry.entity != entity) continue;
-      result = entry.metadata;
-      return true;
-    }
-    return false;
+    const auto* entry = find_entry_(entity);
+    if (!entry) return false;
+    result = entry->metadata;
+    return true;
   }
+
+  bool contains(const void* entity) const { return find_entry_(entity) != nullptr; }
 
   using LocationHandler = void (*)(void*, const char*, const char*);
   void bind_location_handler(void* context, LocationHandler handler) {
@@ -145,6 +143,15 @@ class WeatherTextSnapshots {
     TextSnapshotMetadata metadata;
     TextSnapshotValue value;
   } entries_[kSlots];
+  const Entry* find_entry_(const void* entity) const {
+    if (entity) {
+      for (const auto& entry : entries_) {
+        if (entry.entity == entity) return &entry;
+      }
+    }
+    return nullptr;
+  }
+
   void* location_context_ = nullptr;
   LocationHandler location_handler_ = nullptr;
 };
@@ -152,6 +159,10 @@ class WeatherTextSnapshots {
 // The component and this internal-RAM registry live for the firmware lifetime.
 // Publication is release/acquire; bind() is never called after registration.
 inline std::atomic<WeatherTextSnapshots*> published_weather_snapshots{nullptr};
+inline bool is_weather_text(const void* entity) {
+  auto* snapshots = published_weather_snapshots.load(std::memory_order_acquire);
+  return snapshots && snapshots->contains(entity);
+}
 inline bool copy_weather_text_snapshot(const void* entity, TextSnapshotValue& result) {
   auto* snapshots = published_weather_snapshots.load(std::memory_order_acquire);
   return snapshots && snapshots->copy(entity, result);

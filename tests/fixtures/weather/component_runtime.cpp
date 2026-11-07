@@ -135,6 +135,33 @@ float published_dew_point(Harness& h) {
   return current.valid ? current.dew_point_c : NAN;
 }
 
+void weather_waits_for_manifest(bool cancel) {
+  using openquatt_weather::https_slot;
+  reset_environment("52.09000, 6.15556");
+  env.network_connected = true;
+  Harness h(true);
+  assert(https_slot.try_acquire());
+  h.device.update();
+  assert(h.device.idle() && env.task_creations == 0 && env.fetch_calls == 0);
+  https_slot.release();
+  h.device.update();
+  assert(h.device.queued() && !https_slot.try_acquire());
+  if (cancel) {
+    h.ota_started();
+    assert(!https_slot.try_acquire());
+  }
+  h.device.run_notified_worker();
+  assert(!https_slot.try_acquire());
+  h.device.loop();
+  assert(https_slot.try_acquire());
+  // Local consent persistence may still run while a manifest owns the slot.
+  if (cancel) h.ota_aborted();
+  h.enabled.turn_off();
+  h.finish_job();
+  assert(!h.enabled.state && !https_slot.try_acquire());
+  https_slot.release();
+}
+
 void restored_switch_never_restores_weather(bool enabled_at_boot, bool cancel_with_ota) {
   reset_environment("52.09000, 6.15556");
   weather_fixture::successful_weather_fetch = true;
@@ -730,6 +757,10 @@ int main(int argc, char** argv) {
     restored_switch_never_restores_weather(false, false);
   else if (scenario == "restore_on_ota")
     restored_switch_never_restores_weather(true, true);
+  else if (scenario == "manifest_slot_failure")
+    weather_waits_for_manifest(false);
+  else if (scenario == "manifest_slot_cancel")
+    weather_waits_for_manifest(true);
   else
     assert(false && "unknown scenario");
 }

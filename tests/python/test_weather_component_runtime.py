@@ -73,6 +73,11 @@ class WeatherComponentRuntimeTest(unittest.TestCase):
     def test_psram_failure_does_not_use_internal_ram_or_start_worker(self):
         self.scenario("psram_failure")
 
+    def test_manifest_and_weather_serialize_until_failure_or_cancellation_settles(self):
+        for result in ("failure", "cancel"):
+            with self.subTest(result=result):
+                self.scenario(f"manifest_slot_{result}")
+
     def test_enable_across_signed_and_unsigned_32bit_uptime_rearms_fetch_and_reuses_worker(self):
         self.scenario("long_disabled")
 

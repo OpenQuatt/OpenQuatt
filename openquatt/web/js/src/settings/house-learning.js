@@ -91,7 +91,8 @@ const reasons = (values, fallback) => {
 const estimateNote = (value, ready) => value == null ? t("houseLearning.estimate.none") : ready ? t("houseLearning.estimate.sufficient") : t("houseLearning.estimate.provisional");
 const statusIsStale = (status) => {
   const age = Math.floor(Date.now() / 1000) - status.tickEpoch;
-  return !Number.isFinite(status.tickEpoch) || status.tickEpoch <= 0 || age < 0 || age > 30;
+  // The controller and the browser use separate clocks.
+  return !Number.isFinite(status.tickEpoch) || status.tickEpoch <= 0 || Math.abs(age) > 30;
 };
 
 const canAssessModel = (status) => status?.enabled === true && status.storageReady && !statusIsStale(status)
@@ -338,7 +339,7 @@ function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.h
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
     state.houseLearningChartLoading, state.houseLearningChartError,
     state.houseLearningStatus?.hBatch, state.houseLearningStatus?.t0Batch, state.houseLearningStatus?.batchAdviceReady, state.houseLearningStatus?.referenceRoomC,
-    state.houseLearningStatus?.batchStatus, (canAssessModel(state.houseLearningStatus) && !learningStatusPending()),
+    state.houseLearningStatus?.batchStatus, state.houseLearningStatus?.batchFit, state.houseLearningStatus?.batchPreview, (canAssessModel(state.houseLearningStatus) && !learningStatusPending()),
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
@@ -355,7 +356,7 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
   const chart = state.houseLearningChart !== null ? renderHouseLearningChart(
     state.houseLearningChart,
     { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
-    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: (canAssessModel(state.houseLearningStatus) && !learningStatusPending()) && state.houseLearningStatus.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC, batchStatus: state.houseLearningStatus?.batchStatus },
+    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: (canAssessModel(state.houseLearningStatus) && !learningStatusPending()) && state.houseLearningStatus.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC, batchStatus: state.houseLearningStatus?.batchStatus, fit: state.houseLearningStatus?.batchFit, preview: state.houseLearningStatus?.batchPreview },
   ) : "";
   const actionLabel = t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : open ? "houseLearning.chart.hide" : "houseLearning.chart.show");
   return `<button class="oq-house-learning-chart-head" type="button" data-oq-action="load-house-learning-chart" aria-label="${escapeHtml(actionLabel)}" aria-expanded="${open}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>
