@@ -4,7 +4,7 @@
 
 namespace esphome::openquatt_weather {
 
-// One slot for manifest checks and Open-Meteo, including location lookup.
+// One slot for manifest checks, HTTP OTA and Open-Meteo, including location lookup.
 class HttpsSlot {
  public:
   bool try_acquire() { return !busy_.exchange(true, std::memory_order_acquire); }

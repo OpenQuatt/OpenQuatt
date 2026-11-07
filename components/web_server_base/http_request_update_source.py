@@ -1,4 +1,4 @@
-"""Build-local manifest URL ownership and HTTPS scheduling for ESPHome 2026.10.0."""
+"""Build-local manifest ownership and serialized HTTPS OTA for ESPHome 2026.10.0."""
 
 from __future__ import annotations
 
@@ -131,9 +131,55 @@ _PATCHES = {
     ),
 }
 
+_OTA_PATCHES = {
+    "ota_http_request.cpp": (
+        (
+            '#include "ota_http_request.h"\n',
+            '#include "ota_http_request.h"\n'
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            '#include "esphome/components/openquatt_weather/WeatherHttpsSlot.h"\n'
+            "#endif\n",
+            1,
+        ),
+        (
+            "uint8_t OtaHttpRequestComponent::do_ota_() {\n",
+            "uint8_t OtaHttpRequestComponent::do_ota_() {\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "  // OTA_STARTED has cancelled weather. Its worker releases only after TLS cleanup.\n"
+            "  const uint32_t admission_started = millis();\n"
+            "  bool acquired = openquatt_weather::https_slot.try_acquire();\n"
+            "  while (!acquired && static_cast<uint32_t>(millis() - admission_started) < 2000U) {\n"
+            "    App.feed_wdt();\n"
+            "    delay(1);\n"
+            "    if (static_cast<uint32_t>(millis() - admission_started) < 2000U)\n"
+            "      acquired = openquatt_weather::https_slot.try_acquire();\n"
+            "  }\n"
+            "  if (!acquired) {\n"
+            '    ESP_LOGW(TAG, "HTTPS still busy; OTA download not started");\n'
+            "    return OTA_CONNECTION_ERROR;\n"
+            "  }\n"
+            "  struct HttpsLease {\n"
+            "    ~HttpsLease() { openquatt_weather::https_slot.release(); }\n"
+            "  } https_lease;\n"
+            "#endif\n",
+            1,
+        ),
+        (
+            "  if (container == nullptr || container->status_code != HTTP_STATUS_OK) {\n"
+            "    return OTA_CONNECTION_ERROR;\n"
+            "  }\n",
+            "  if (container == nullptr || container->status_code != HTTP_STATUS_OK) {\n"
+            "    if (container != nullptr) container->end();\n"
+            "    return OTA_CONNECTION_ERROR;\n"
+            "  }\n",
+            1,
+        ),
+    ),
+}
+
 
 def _transform(name: str, source: str) -> tuple[str, bool]:
-    replacements = _PATCHES[name]
+    replacements = (_PATCHES if name in _PATCHES else _OTA_PATCHES)[name]
     # The include anchor is also a prefix of its replacement.
     def original_present(old: str, new: str, count: int) -> bool:
         return source.count(old) == count and new not in source
@@ -162,6 +208,12 @@ def _patch_generated_sources(core: Any) -> None:
         prepared.append((path, patched, changed))
     if len({changed for _, _, changed in prepared}) != 1:
         raise RuntimeError("OpenQuatt manifest URL ownership fix: partially patched update component; review both files.")
+    # Validate all sources before replacing any. OTA is a separate patch group:
+    # an existing generated update pair may already have the ownership fix.
+    for name in _OTA_PATCHES:
+        path = Path(core.relative_src_path("esphome", "components", "http_request", "ota", name))
+        patched, changed = _transform(name, path.read_bytes().decode("utf-8"))
+        prepared.append((path, patched, changed))
     for path, source, changed in prepared:
         if not changed:
             continue
@@ -175,7 +227,7 @@ def _patch_generated_sources(core: Any) -> None:
         finally:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
-    _LOGGER.info("OpenQuatt: owned manifest URLs and immutable update-task snapshot active")
+    _LOGGER.info("OpenQuatt: owned manifest URLs, immutable update snapshots and serialized HTTPS OTA active")
 
 
 def install_update_source_patch(core: Any, writer: Any) -> None:
