@@ -1018,14 +1018,32 @@ import { fetchWithTimeout } from "./browser-utils.js";
     }
   }
 
+  let entityWriteRevision = 0;
+
+  export function beginEntityWriteAction() {
+    return ++entityWriteRevision;
+  }
+
+  export function isEntityWriteActionCurrent(revision) {
+    return revision === entityWriteRevision;
+  }
+
+  function controlErrorGuard() {
+    const previousControlError = state.controlError;
+    const writeRevision = entityWriteRevision;
+    const learningRequestId = state.houseLearningRequestId;
+    const learningSwitchBusy = state.busyAction === "switch-houseLearningEnabled";
+    return () => !learningSwitchBusy && state.busyAction !== "switch-houseLearningEnabled"
+      && writeRevision === entityWriteRevision && learningRequestId === state.houseLearningRequestId
+      && state.controlError === previousControlError;
+  }
+
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
-    const previousControlError = state.controlError;
+    const canUpdateControlError = controlErrorGuard();
     const timeWriteRevision = state.timeWriteRevision;
     const learningRequestId = state.houseLearningRequestId;
     const learningSwitchBusy = state.busyAction === "switch-houseLearningEnabled";
-    const canUpdateControlError = () => !learningSwitchBusy && learningRequestId === state.houseLearningRequestId
-      && state.controlError === previousControlError;
     const performancePromptWriteRevision = state.performanceTelemetryPromptWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
@@ -1043,10 +1061,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
     if (!entityRefreshKeys.length) {
       applyDerivedState();
       syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
-      if (!state.busyAction) {
-        noteEntityRefreshSuccess();
-        if (canUpdateControlError()) state.controlError = "";
-      }
+      if (!state.busyAction) noteEntityRefreshSuccess();
+      if (canUpdateControlError()) state.controlError = "";
       return;
     }
 
@@ -1116,11 +1132,11 @@ import { fetchWithTimeout } from "./browser-utils.js";
     syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
     if (firstError) {
       noteEntityRefreshFailure(firstError);
-      if (!state.busyAction && canUpdateControlError()) {
+      if (canUpdateControlError()) {
         state.controlError = state.deviceReconnectMode ? "" : t("entitySync.refreshIncomplete", { error: firstError });
       }
-    } else if (!state.busyAction) {
-      noteEntityRefreshSuccess();
+    } else {
+      if (!state.busyAction) noteEntityRefreshSuccess();
       if (canUpdateControlError()) state.controlError = "";
     }
   }
@@ -1226,6 +1242,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       return;
     }
 
+    const canUpdateControlError = controlErrorGuard();
     const appView = state.appView;
     const isPrefetchOverview = options.prefetchView === "overview" && !options.forceBulk && appView === "settings";
     const syncView = isPrefetchOverview ? "overview" : appView;
@@ -1541,7 +1558,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
         render();
       }
     } catch (error) {
-      if (!isPrefetchOverview) {
+      if (!isPrefetchOverview && canUpdateControlError()) {
         state.controlError = t("entitySync.statusLoadFailed", { error: error.message });
         render();
       }

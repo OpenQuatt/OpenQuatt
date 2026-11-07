@@ -11,6 +11,10 @@ const MIN_PER_BIN = 2;
 const MAX_BIN_FRACTION = 0.67;
 const number = (value) => formatNumber(value, { maximumFractionDigits: 2 });
 
+export function selectDisplayedHouseLine(learned = {}) {
+  return learned.ready !== true && learned.preview !== undefined ? learned.preview || {} : learned;
+}
+
 function temperatureRange(days) {
   const temperatures = days.map(record => record.outsideC).sort((a, b) => a - b);
   const p10 = temperatures.length ? temperatures[Math.floor((temperatures.length - 1) / 10)] : null;
@@ -68,7 +72,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
       distributionReady: !["insufficient_spread", "day_dominance"].includes(learned.batchStatus),
     };
   }
-  const line = learned.ready !== true && learned.preview !== undefined ? learned.preview || {} : learned;
+  const line = selectDisplayedHouseLine(learned);
   const available = Number.isFinite(line.h) && line.h > 0 && Number.isFinite(line.t0);
   const previewCopy = learned.preview && available && !learned.ready
     ? t("houseLearning.readiness.previewAllDays", { count: number(learned.preview.count) })
@@ -77,8 +81,8 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
   let copy;
   if (reasonKey) copy = t(reasonKey);
   else if (available && learned.ready) copy = t("houseLearning.readiness.readyCopy");
-  else if (progress.missingChecks) copy = t("houseLearning.readiness.needChecks", { count: number(progress.missingChecks) });
-  else if (progress.missingDays) copy = t("houseLearning.readiness.needDays", { count: number(progress.missingDays) });
+  else if (progress.trainCount >= TRAIN_DAYS && progress.missingChecks) copy = t("houseLearning.readiness.needChecks", { count: number(progress.missingChecks) });
+  else if (progress.missingDays) copy = t(progress.missingDays === 1 ? "houseLearning.readiness.needDay" : "houseLearning.readiness.needDays", { count: number(progress.missingDays) });
   else if (progress.missingSpread > 0) copy = t("houseLearning.readiness.needSpread", { value: number(progress.missingSpread) });
   else if (!progress.distributionReady) copy = t("houseLearning.readiness.needDistribution");
   else if (learned.batchStatus === "insufficient_data") copy = t("houseLearning.readiness.controllerNeedsDays");
@@ -118,7 +122,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
       </dl>
     </section>`;
   }
-  const countState = t(progress.missingDays ? "houseLearning.readiness.missingDays" : "houseLearning.readiness.sufficient", { count: number(progress.missingDays) });
+  const countState = t(progress.missingDays === 1 ? "houseLearning.readiness.missingDay" : progress.missingDays ? "houseLearning.readiness.missingDays" : "houseLearning.readiness.sufficient", { count: number(progress.missingDays) });
   const spreadState = t(progress.spread == null ? "houseLearning.readiness.notAvailable" : progress.missingSpread > 0 ? "houseLearning.readiness.missingSpread" : "houseLearning.readiness.sufficient", { value: number(progress.missingSpread ?? 0) });
   const help = [t("houseLearning.readiness.method"), progress.spread > 0
     ? t("houseLearning.readiness.distribution", { cold: number(progress.bins[0]), middle: number(progress.bins[1]), warm: number(progress.bins[2]), minimum: number(MIN_PER_BIN) }) : "",

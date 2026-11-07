@@ -63,14 +63,15 @@ test.afterEach(() => {
 });
 
 test("fitvoortgang blijft optioneel en accepteert alleen samenhangende firmwarevelden", () => {
-  const fit = { train_segments: 18, holdout_segments: 3, train_days: 18, holdout_days: 3,
+  const fit = { metadata_prepared: true, train_segments: 18, holdout_segments: 3, train_days: 18, holdout_days: 3,
     train_p10_c: 8.28, train_p90_c: 11.88, train_min_c: 7.55, train_max_c: 12.34 };
   const status = normalizeHouseLearningStatus(statusPayload({ records: 21, batch_fit: fit }));
   assert.deepEqual(status.batchFit, { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
     p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 });
   assert.equal(status.batchAdviceReady, false);
   assert.equal(normalizeHouseLearningStatus(statusPayload()).batchFit, null);
-  for (const change of [{ train_days: -1 }, { holdout_segments: "3" }, { train_days: 19 },
+  for (const change of [{ metadata_prepared: false }, { metadata_prepared: undefined }, { metadata_prepared: 1 },
+    { train_days: -1 }, { holdout_segments: "3" }, { train_days: 19 },
     { train_segments: 129 }, { train_min_c: null }, { train_max_c: 4 }, { train_p90_c: NaN }]) {
     assert.equal(normalizeHouseLearningStatus(statusPayload({ records: 21,
       batch_fit: { ...fit, ...change } })).batchFit, null);
@@ -1481,4 +1482,50 @@ test("display preview is optional and cannot replace the independent advice cand
   const unavailable = normalizeHouseLearningStatus({...raw,batch_preview:{...preview,h:null,t0:null}});
   assert.equal(unavailable.batchPreview.h,null);
   assert.equal(unavailable.hBatch,213);
+});
+
+test("onvoorbereide fitmetadata wist de geladen dagmetingen niet", async () => {
+  const { renderHouseLearningReadiness } = await import("../js/src/settings/house-learning-readiness.js");
+  const records = Array.from({ length: 12 }, (_, index) => ({
+    recordKind: 1, outsideC: 4 + index, startEpoch: 1700000000 + index * 86400,
+  }));
+  for (const metadata_prepared of [false, undefined]) {
+    const status = normalizeHouseLearningStatus(statusPayload({ records: 12, batch_fit: {
+      metadata_prepared, train_segments: 0, holdout_segments: 0, train_days: 0, holdout_days: 0,
+      train_p10_c: null, train_p90_c: null, train_min_c: null, train_max_c: null,
+    } }));
+    assert.equal(status.batchFit, null);
+    const html = renderHouseLearningReadiness(records, { fit: status.batchFit });
+    assert.match(html, /12 <span>\/ 9 nodig/);
+    assert.match(html, /Leren: 9 · Controleren: 3/);
+    assert.doesNotMatch(html, /Leren: 0|0 <span>\/ 9 nodig/);
+  }
+});
+
+test("statuskaart en grafiek kiezen dezelfde voorlopige lijn", async () => {
+  const { getHouseLearningChartModel } = await import("../js/src/settings/house-learning-chart.js");
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const preview = { h: 190, t0: 18, segments: 8, days: 8, min_c: 4, max_c: 10 };
+  for (const overrides of [
+    { h_batch: null, t0_batch: null, batch_preview: preview, available: true },
+    { h_batch: 213, t0_batch: 17.4, batch_preview: { ...preview, h: null, t0: null }, available: false },
+  ]) {
+    const status = normalizeHouseLearningStatus(statusPayload({ enabled: true, journal_status: "saved_verified", records: 8, ...overrides }));
+    const html = renderHouseLearningStatusMarkup(status, "primary");
+    const chart = getHouseLearningChartModel([], {}, { h: status.hBatch, t0: status.t0Batch,
+      preview: status.batchPreview, ready: false });
+    assert.equal(chart.learnedValid, overrides.available);
+    assert.match(html, overrides.available ? /Modelstatus · Voorlopige schatting/ : /Modelstatus · Nog geen schatting/);
+  }
+});
+
+test("RLS-fitgereedheid vervangt geen onafhankelijke warmteopslagvalidatie", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const raw = statusPayload({ enabled: true, journal_status: "saved_verified",
+    u_rls: 220, c_rls_wh_per_k: 8000, rls_ready: true, rls_readiness_reasons: [] });
+  for (const capacity_validated of [false, true]) {
+    const html = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...raw, capacity_validated }), "primary");
+    const thermal = html.slice(html.indexOf("Opwarmen en afkoelen"));
+    assert.match(thermal, capacity_validated ? /Modelstatus · Beoordeeld/ : /Modelstatus · Voorlopige schatting/);
+  }
 });

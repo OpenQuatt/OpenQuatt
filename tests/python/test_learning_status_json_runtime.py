@@ -102,6 +102,7 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
                 "h": 211.25, "t0": 17.125, "segments": 21, "days": 21, "min_c": 1.97, "max_c": 12.34,
             })
             self.assertEqual(payload["batch_fit"], {
+                "metadata_prepared": True,
                 "train_segments": 18, "holdout_segments": 3, "train_days": 18, "holdout_days": 3,
                 "train_p10_c": 8.28, "train_p90_c": 11.88, "train_min_c": 7.55, "train_max_c": 12.34,
             })
