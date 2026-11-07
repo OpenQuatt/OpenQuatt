@@ -23,6 +23,7 @@ struct RuntimeStorage {
   PassiveRuntimeStorage learner;
   PassiveRuntimeConfig config;
   QualityConfig daily_quality;
+  bool system_supply_observed = false;
   LearningJournalStore journal;
   LearningJournalRecords pending_daily;
   SegmentAccumulator pending_daily_heat;
@@ -38,6 +39,9 @@ struct RuntimeStorage {
 
 struct CalibrationRestoreOwner {
   RuntimeStorage* storage_ = nullptr;
+  void early_restart() {
+#include "production_pre_storage_restart.inc"
+  }
 #include "production_supply_calibration_change.inc"
 };
 
@@ -252,6 +256,14 @@ void test_supply_calibration_change_revokes_boot_and_live_checkpoints() {
   CalibrationRestoreOwner owner;
   owner.supply_calibration_changed();  // The backup arrives before the first learn tick.
   assert(!boot_restart_ticket.matches(7, state.pending_daily));
+
+  daily_restart_ticket.arm(state.journal, true, true);
+  boot_restart_ticket = daily_restart_ticket.consume(true);
+  owner.supply_calibration_changed();
+  assert(boot_restart_ticket.system_supply_observed() && !boot_restart_ticket.matches(7, state.pending_daily));
+  owner.early_restart();
+  const auto repeated_boot = daily_restart_ticket.consume(true);
+  assert(repeated_boot.system_supply_observed() && !repeated_boot.matches(7, state.pending_daily));
 
   owner.storage_ = &state;
   assert(state.pending_daily.restore_daily(state.learner.batch_accumulator, context, QualityConfig{}));

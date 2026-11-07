@@ -584,6 +584,29 @@ void test_restart_ticket_is_one_use_and_bound_to_verified_day() {
   rtc.arm(store, true);
   rtc.clear();  // An aborted OTA cannot leave a grant for a later reset.
   assert(!rtc.consume(true).matches(reboot.sequence, view));
+  rtc.arm(store, true, true);
+  const auto system_boot = rtc.consume(true);
+  assert(system_boot.system_supply_observed() && system_boot.matches(reboot.sequence, view));
+  assert(!rtc.consume(true).system_supply_observed());
+  auto invalid_magic = system_boot;
+  invalid_magic.magic ^= 0x80;
+  assert(!invalid_magic.matches(reboot.sequence, view));
+  rtc.arm(store, true, true);
+  assert(!rtc.consume(false).system_supply_observed());
+  assert(!boot.system_supply_observed());
+  invalid_magic = system_boot;
+  invalid_magic.magic = 0x4F514452U;  // Legacy ticket does not identify its heat path.
+  assert(!invalid_magic.matches(reboot.sequence, view));
+  rtc.arm(store, false, true);  // Failed write preserves presence, never an old grant.
+  const auto presence_only = rtc.consume(true);
+  assert(presence_only.system_supply_observed() && !presence_only.matches(reboot.sequence, view));
+  auto revoked = system_boot;
+  revoked.revoke_checkpoint();
+  assert(revoked.system_supply_observed() && !revoked.matches(reboot.sequence, view));
+  store.persisted_daily_checkpoint_epoch = 0;
+  rtc.arm(store, true, true);  // No running day still preserves the sensor requirement.
+  const auto no_day = rtc.consume(true);
+  assert(no_day.system_supply_observed() && !no_day.matches(reboot.sequence, view));
 }
 
 void test_failed_day_invalidation_cannot_reuse_previous_restart_ticket() {

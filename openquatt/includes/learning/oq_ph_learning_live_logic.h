@@ -45,6 +45,14 @@ inline bool observe_valid_source_revisions(uint32_t previous[4], const oq_source
 constexpr MeasurementTimingContract kHpLearningTiming{45000, 30000};
 constexpr MeasurementTimingContract kRoomLearningTiming{120000, 30000};
 
+// The default boiler option does not prove that a post-boiler sensor exists.
+// Once observed, keep requiring it through outages and planned restarts.
+inline bool daily_system_heat_enabled(bool boiler_connected, bool& supply_observed,
+                                      const oq_sources::RawFloatReceipt& supply, uint64_t now_ms) {
+  if (boiler_connected && supply.fresh(now_ms, 30000)) supply_observed = true;
+  return boiler_connected && supply_observed;
+}
+
 inline void apply_compile_time_topology(LearningSourceInput& input, bool topology_duo) {
   input.topology = topology_duo ? HydronicTopology::DUO_SERIES : HydronicTopology::SINGLE;
 }
@@ -128,6 +136,25 @@ inline bool live_measurement_fresh(const PhysicalMeasurement<T>& measurement, ui
   return measurement.valid && measurement.source_generation != 0U && measurement.received_monotonic_ms != 0U &&
          measurement.received_monotonic_ms <= now_ms && measurement.timing.max_age_ms != 0U &&
          now_ms - measurement.received_monotonic_ms <= measurement.timing.max_age_ms;
+}
+
+inline bool learning_pump_stopped(const oq_sources::RawFloatReceipt& status, uint64_t now_ms) {
+  return status.fresh(now_ms, kHpLearningTiming.max_skew_ms) && status.value >= 0.0f && status.value <= 65535.0f &&
+         (static_cast<uint16_t>(status.value) & 0x0800U) == 0U;
+}
+
+inline PhysicalMeasurement<float> learning_system_flow(const PhysicalMeasurement<float>& physical,
+                                                       const PhysicalMeasurement<float>& selected,
+                                                       oq_sources::LearningSourceRoute route,
+                                                       const PhysicalMeasurement<BoilerHeatState>& boiler,
+                                                       uint64_t now_ms, bool pumps_stopped) {
+  // Stopped ODU pumps alone cannot exclude boiler circulation. Reuse the
+  // existing no-boiler contract only for zero flow, never for a missing supply.
+  if (!physical.valid && pumps_stopped && route == oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW &&
+      selected.value == 0.0f && live_measurement_fresh(selected, now_ms) && live_measurement_fresh(boiler, now_ms) &&
+      boiler.value == BoilerHeatState::NO_HEAT)
+    return selected;
+  return physical;
 }
 
 template <typename T>

@@ -37,8 +37,10 @@ setpoint en buiten. De regeling moet in verwarmingsmodus staan, buiten service
 en OTA. Een kort ontbrekend temperatuurveld kan onafhankelijk gemeten warmte
 laten meetellen via de eigen warmtecursor, inclusief nul en negatieve warmte.
 
-Bij een aangesloten cv-ketel in serie gebruikt de dagmeting het totale vermogen
-naar het water. Dat volgt uit het gemeten debiet en het temperatuurverschil
+Met ingeschakelde keteloptie en een waargenomen aanvoersensor na de ketel
+gebruikt de dagmeting het totale vermogen naar het water. De standaard
+keteloptie alleen activeert deze bron niet: zonder waargenomen ketelsensor
+blijft het bestaande warmtepomppad met zijn controles op ketelwarmte gelden. Dat volgt uit het gemeten debiet en het temperatuurverschil
 tussen de retour bij HP1 en de systeemaanvoer na de ketel. CM3 en CM4 tellen mee
 zolang deze meting geldig is, onafhankelijk van de OpenTherm-status. Een
 vastgehouden aanvoerwaarde of een fallback naar de warmtepompuitgang levert geen
@@ -47,21 +49,22 @@ interval onbekend en gelden de meetgatregels. Er is geen terugval op
 warmtepompwarmte op basis van de OpenTherm-status. Dat geldt ook bij R1.
 Bij stilstaande ODU-pompen kan verse pulsflow van de Q-controller circulatie
 aantonen als de bronselectie anders een synthetische nul oplevert. Een stille
-pulsingang levert in die situatie geen meting. Zonder actuele
-systeemmeting kan langdurige stilstand de dagmeting
-onderbreken. Bij HA-aanvoer telt de laatste temperatuurontvangst hoogstens
+pulsingang bewijst op zichzelf geen nuldebiet. De normale stilstandsnul mag
+wel meetellen als het bestaande regelcontract bevestigt dat de ketel geen warmte
+levert. Aanvoer en retour moeten ook dan actueel zijn. Bij actieve of onbekende
+ketelwarmte blijft ontbrekend debiet een meetgat. Bij HA-aanvoer telt de laatste temperatuurontvangst hoogstens
 30 seconden mee. De HA-heartbeat houdt de verbinding actueel. Voor de dagmeting
 moet de aanvoerbron zelf minstens elke 30 seconden een meetwaarde doorgeven.
 Een gewijzigde aanvoerkalibratie bij het terugzetten van een backup begint een
 nieuwe dagmeting. Afgeronde dagen blijven bewaard.
-Met ingeschakelde keteloptie accepteert de dagmeting gemeten systeemwarmte tot en
+Bij actieve systeemmeting accepteert de dagmeting gemeten systeemwarmte tot en
 met ±50 kW. Waarden daarbuiten worden afgekeurd, niet afgeknipt. Deze harde
 bronfout breekt een lopende dagmeting af. Voor ontbrekende warmte gebruikt de
 onzekerheidsberekening 50 kW als ondergrens voor de
 vermogensgrens. Een open meetgat bewaart de hoogste toegepaste grens, ook als de
 keteloptie tussentijds wordt uitgeschakeld. Zo verlaagt een instellingwijziging
-eerder ontstane onzekerheid niet. Zonder keteloptie blijft voor het accepteren
-van warmtepompwarmte de lagere generatie- en topologiegrens gelden.
+eerder ontstane onzekerheid niet. Voor het accepteren van warmtepompwarmte
+blijft de lagere generatie- en topologiegrens gelden.
 Het ingestelde ketelvermogen is een regelwaarde en bewijst geen maximum voor
 ongemeten ketelwarmte.
 
@@ -152,6 +155,10 @@ aparte kwaliteitsbeoordeling. Temperaturen worden geïnterpoleerd; hiervoor best
 geen afzonderlijke foutgarantie. Bij te lange uitval of een hard veto begint een
 nieuwe dag. De 1R1C-leerstand blijft behouden; het onvoltooide 30-minuteninterval begint
 opnieuw. Een ticket wordt deze boot eenmaal gebruikt en mag niet worden hergebruikt.
+Het ticket bewaart ook of een systeemaanvoersensor al is waargenomen; een
+herstart tijdens sensoruitval schakelt daardoor niet naar warmtepompwarmte.
+Tickets van firmware zonder dit bronbewijs hervatten de onvoltooide dag niet.
+Afgeronde metingen en de 1R1C-leerstand blijven behouden.
 
 Voorbeeld: na 18 uur meten volgt een bevestigde geplande softwareherstart. Bij geldige
 bronnen na 180 seconden kan dezelfde dag hervatten. Bij stroomuitval, fysieke reset,

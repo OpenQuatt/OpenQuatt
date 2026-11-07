@@ -338,18 +338,92 @@ void daily_system_heat_only_bridges_missing_measurements() {
   assert(defrost.measurement_valid && defrost.snapshot.heat_to_water_w < 0.0f);
 }
 
-void daily_idle_without_physical_flow_waits_only_for_the_allowed_gap() {
+void daily_without_system_sensor_keeps_hp_measurements() {
+  const QualityConfig quality;
+  bool supply_observed = false;
+  SegmentAccumulator day;
+  for (uint32_t second = 0; second <= 180; second += 10) {
+    auto raw = system_observation(second, 2);
+    raw.system_supply_c = {};
+    raw.system_heat_enabled = daily_system_heat_enabled(true, supply_observed, {}, raw.monotonic_ms);
+    const auto result = observe_source_input(day, raw, quality);
+    assert(!raw.system_heat_enabled && result.source.measurement_valid);
+    assert(result.source.snapshot.heat_to_water_w == evaluate_calorimetry(raw, quality).heat_to_water_w);
+    assert(day.active && !day.source_gap_pending);
+  }
+  auto raw = system_observation(190, 2);
+  oq_sources::RawFloatReceipt supply;
+  supply.observe(44.0f, raw.monotonic_ms, true);
+  assert(daily_system_heat_enabled(true, supply_observed, supply, raw.monotonic_ms));
+  assert(observe_source_input(day, raw, quality).source.measurement_valid);
+  raw = system_observation(200, 2);
+  raw.system_supply_c = {};
+  raw.system_heat_enabled = daily_system_heat_enabled(true, supply_observed, {}, raw.monotonic_ms);
+  assert(raw.system_heat_enabled);
+  const auto missing = observe_source_input(day, raw, quality);
+  assert(!missing.source.measurement_valid && missing.source.may_bridge_daily_gap && day.active);
+  raw = system_observation(210, 2);
+  assert(observe_source_input(day, raw, quality).source.measurement_valid);
+  assert(day.start_epoch_s == 20000U * 86400U);
+  assert(!daily_system_heat_enabled(false, supply_observed, {}, raw.monotonic_ms));
+  assert(daily_system_heat_enabled(true, supply_observed, {}, raw.monotonic_ms));
+
+  supply_observed = false;
+  assert(!daily_system_heat_enabled(true, supply_observed, supply, raw.monotonic_ms + 30001));
+  supply.invalidate();
+  assert(!daily_system_heat_enabled(true, supply_observed, supply, raw.monotonic_ms));
+}
+
+void daily_idle_without_boiler_heat_counts_zero_beyond_the_gap_limit() {
   const QualityConfig quality;
   SegmentAccumulator day;
   assert(observe_source_input(day, system_observation(0, 2), quality).source.measurement_valid);
-  for (uint32_t seconds = 10; seconds <= 130; seconds += 10) {
+  for (uint32_t seconds = 10; seconds <= 180; seconds += 10) {
     auto raw = system_observation(seconds, 0);
-    raw.flow_lph.value = 0.0f;  // PUMPS_STOPPED, without physical flow evidence.
-    raw.circuit_flow_lph = {};
-    const auto observation = observe_source_input(day, raw, quality);
-    assert(observation.source.may_bridge_daily_gap);
-    assert(day.active == (seconds <= 120U));
+    raw.flow_lph.value = 0.0f;
+    raw.circuit_flow_lph =
+        learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, raw.boiler_heat,
+                             raw.monotonic_ms, true);
+    const auto result = observe_source_input(day, raw, quality);
+    assert(result.source.measurement_valid && result.source.snapshot.heat_to_water_w == 0.0f);
+    assert(day.active && !day.source_gap_pending && day.start_epoch_s == 20000U * 86400U);
   }
+
+  auto raw = system_observation(190, 0);
+  raw.flow_lph.value = 0.0f;
+  const auto flow = [&](const PhysicalMeasurement<BoilerHeatState>& boiler) {
+    return learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, boiler,
+                                raw.monotonic_ms, true);
+  };
+  assert(!flow({}).valid);
+  auto boiler = raw.boiler_heat;
+  boiler.value = BoilerHeatState::HEAT_ACTIVE;
+  assert(!flow(boiler).valid);
+  boiler = raw.boiler_heat;
+  boiler.received_monotonic_ms = 1;
+  assert(!flow(boiler).valid);
+  assert(!learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::CONTROLLER_FLOW, raw.boiler_heat,
+                               raw.monotonic_ms, true)
+              .valid);
+  assert(!learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW,
+                               raw.boiler_heat, raw.monotonic_ms, false)
+              .valid);
+  oq_sources::RawFloatReceipt pump;
+  pump.observe(0.0f, raw.monotonic_ms, true);
+  assert(learning_pump_stopped(pump, raw.monotonic_ms));
+  assert(!learning_pump_stopped(pump, raw.monotonic_ms + 30001));
+  pump.observe(0x0800, raw.monotonic_ms, true);
+  assert(!learning_pump_stopped(pump, raw.monotonic_ms));
+  pump.invalidate();
+  assert(!learning_pump_stopped(pump, raw.monotonic_ms));
+  raw.circuit_flow_lph = flow(raw.boiler_heat);
+  raw.system_supply_c = {};
+  assert(!build_learning_snapshot(raw, quality).measurement_valid);  // No zero shortcut for a lost supply sensor.
+  raw = system_observation(200, 0);
+  raw.flow_lph.value = 1.0f;
+  assert(!learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW,
+                               raw.boiler_heat, raw.monotonic_ms, true)
+              .valid);
 }
 
 void daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_measurement() {
@@ -468,7 +542,8 @@ int main() {
   daily_dhw_only_preserves_collection_and_restart_eligibility();
   daily_system_heat_survives_boiler_modes_and_ot_changes();
   daily_system_heat_only_bridges_missing_measurements();
-  daily_idle_without_physical_flow_waits_only_for_the_allowed_gap();
+  daily_without_system_sensor_keeps_hp_measurements();
+  daily_idle_without_boiler_heat_counts_zero_beyond_the_gap_limit();
   daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_measurement();
   daily_boiler_limits_stay_separate_and_preserve_an_open_gap();
   raw_series_observations_to_advice();

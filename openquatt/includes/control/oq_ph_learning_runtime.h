@@ -80,6 +80,7 @@ struct RuntimeStorage {
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
   QualityConfig daily_quality;
+  bool system_supply_observed = false;
   oq_sources::ResolvedLearningSource sources[4];
   uint8_t context[kMaxPassiveContextBytes]{};
   size_t context_size = 0;
@@ -116,7 +117,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
  public:
   void pause(LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
     daily_restart_ticket.clear();
-    boot_restart_ticket = {};
+    boot_restart_ticket.revoke_checkpoint();
     if (!storage_) return;
     auto& state = storage_[0];
     state.boot_restart_ticket = {};
@@ -134,22 +135,26 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   // Called synchronously on the main loop, before polling pauses or shutdown
   // changes physical outputs. No task, internal-heap allocation or retry loop.
   void prepare_restart() {
-    if (!storage_) return;
+    if (!storage_) {
+      daily_restart_ticket.remember_system_supply(boot_restart_ticket.system_supply_observed());
+      return;
+    }
     auto& state = storage_[0];
     if (state.restart_prepared) {
       // OTA retry can start before the paused learner runs again. Reuse only
       // the verified prefix without a second save. Retain measured RAM heat,
       // but mark the new polling pause as missing before another attempt.
       oq_power_house::learning::detail::mark_daily_heat_gap(state.learner.batch_accumulator, state.daily_quality);
-      daily_restart_ticket.arm(state.journal, state.restart_checkpoint_verified);
+      daily_restart_ticket.arm(state.journal, state.restart_checkpoint_verified, state.system_supply_observed);
       return;
     }
     if (state.reset_requested) tick();  // A pending explicit reset wins over persistence.
+    daily_restart_ticket.arm(state.journal, false, state.system_supply_observed);
     const auto clock = id(oq_time).now();
     if (state.daily_restore_pending || !state.learner.initialized || state.reset_requested || !clock.is_valid()) return;
     const bool saved = save_checkpoint_(state, clock.timestamp, oq_sources::monotonic_ms(), true);
     state.restart_checkpoint_verified = saved;
-    daily_restart_ticket.arm(state.journal, saved);
+    daily_restart_ticket.arm(state.journal, saved, state.system_supply_observed);
     // Keep the RAM prefix even if storage failed; a failed OTA can resume it.
     state.restart_prepared = true;
     state.daily_resume_last_observation_ms = 0;
@@ -212,7 +217,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     // A backup can change only the supply offset. Revoke the current day
     // and its restart grant without discarding 1R1C or retained history.
     daily_restart_ticket.clear();
-    boot_restart_ticket = {};
+    boot_restart_ticket.revoke_checkpoint();
     if (!storage_) return;
     auto& state = storage_[0];
     state.boot_restart_ticket = {};
@@ -545,6 +550,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
     auto& state = storage_[0];
     state.boot_restart_ticket = boot_ticket;
+    state.system_supply_observed = boot_ticket.system_supply_observed();
     esphome::ota::get_global_ota_callback()->add_global_state_listener(this);
     state.partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
     state.journal.setup(state.partition != nullptr &&
@@ -614,7 +620,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     in.setpoint_c = resolved_learning_measurement(state.sources[1], now_ms);
     in.outside_c = resolved_learning_measurement(state.sources[2], now_ms);
     in.flow_lph = resolved_learning_measurement(state.sources[3], now_ms);
-    in.system_heat_enabled = id(oq_aux_heat_source_present).has_state() && id(oq_aux_heat_source_present).state;
+    const auto supply = oq_sensor_source::runtime().system_supply_receipt();
+    in.system_heat_enabled =
+        daily_system_heat_enabled(id(oq_aux_heat_source_present).has_state() && id(oq_aux_heat_source_present).state,
+                                  state.system_supply_observed, supply, now_ms);
     state.daily_quality = daily_heat_quality(state.config.quality, in.system_heat_enabled);
     if (in.system_heat_enabled) {
       const auto& sources = oq_sensor_source::runtime();
@@ -623,7 +632,6 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
           flow, flow.value,
           {PhysicalSourceKind::DIRECT_SENSOR, static_cast<uint32_t>(state.sources[3].route), PhysicalUnit::SYSTEM},
           in.flow_lph.source_generation, kHpLearningTiming);
-      const auto supply = sources.system_supply_receipt();
       in.system_supply_c = receipt_measurement(
           supply, supply.value,
           {PhysicalSourceKind::DIRECT_SENSOR, static_cast<uint32_t>(id(oq_water_supply_temp_current_source_code)),
@@ -669,6 +677,14 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
 #endif
     in.boiler_heat = learning_boiler_heat(opentherm_selected, boiler_contract, boiler_telemetry);
+    if (in.system_heat_enabled) {
+      bool pumps_stopped = learning_pump_stopped(oq_sources::hp1.status_2108, now_ms);
+#if OQ_TOPOLOGY_DUO
+      pumps_stopped = pumps_stopped && learning_pump_stopped(oq_sources::hp2.status_2108, now_ms);
+#endif
+      in.circuit_flow_lph = learning_system_flow(in.circuit_flow_lph, in.flow_lph, state.sources[3].route,
+                                                 in.boiler_heat, now_ms, pumps_stopped);
+    }
     if (boiler_contract.valid && !in.boiler_heat.valid)
       state.boiler_source_status = SnapshotSourceStatus::BOILER_ACTIVE;
     auto& op = in.operation;
