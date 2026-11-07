@@ -366,6 +366,50 @@ void daily_idle_without_physical_flow_waits_only_for_the_allowed_gap() {
   }
 }
 
+void daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_fallback() {
+  QualityConfig quality;
+  quality.max_daily_missing_heat_w = 12230.56f;
+  quality.max_observed_heat_w = 1.20f * quality.max_daily_missing_heat_w;
+  // At 900 L/h, the production calorimetry multiplies the temperature delta
+  // by exactly 1045 W/K. These temperatures produce exactly 50000 float watts.
+  const float delta_c = 50000.0f / 1045.0f;
+  for (const float sign : {-1.0f, 1.0f}) {
+    const auto source = [&](uint32_t second, float delta) {
+      auto raw = system_observation(second, 3);
+      raw.circuit_flow_lph.value = 900.0f;
+      raw.hp1.water_in_c.value = sign > 0.0f ? 0.0f : delta;
+      raw.system_supply_c.value = sign > 0.0f ? delta : 0.0f;
+      return raw;
+    };
+    SegmentAccumulator day;
+    const auto boundary = observe_source_input(day, source(0, delta_c), quality);
+    assert(boundary.source.measurement_valid && boundary.source.status == SnapshotSourceStatus::OK);
+    assert(boundary.source.snapshot.heat_to_water_w == sign * 50000.0f && day.active);
+    const auto continued = observe_source_input(day, source(5, delta_c), quality);
+    assert(continued.source.measurement_valid && day.active && day.heat_integral != 0.0);
+
+    const auto outside = observe_source_input(day, source(10, nextafterf(delta_c, INFINITY)), quality);
+    assert(outside.source.status == SnapshotSourceStatus::INVALID_VALUE);
+    assert(!outside.source.measurement_valid && !outside.source.may_bridge_daily_gap);
+    assert(isnan(outside.source.snapshot.heat_to_water_w) && isnan(outside.source.snapshot.partial_heat_to_water_w));
+    assert(outside.aggregate.status == LearningStatus::INVALID_MEASUREMENT && !outside.aggregate.has_record);
+    assert(!day.active && day.heat_integral == 0.0);
+
+    auto fallback = source(20, delta_c);
+    fallback.operation.control_mode = learning_control_mode(0, 2);
+    fallback.system_supply_c = {};
+    fallback.flow_lph.value = 900.0f;
+    fallback.hp1.water_out_c.value = fallback.hp1.water_in_c.value;
+    fallback.hp2.water_in_c.value = fallback.hp1.water_in_c.value;
+    fallback.hp2.water_out_c.value = sign > 0.0f ? delta_c : 0.0f;
+    const auto hp = build_learning_snapshot(fallback, quality);
+    assert(fallback.system_heat_enabled && fallback.boiler_no_heat_observed);
+    assert(hp.status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE && !hp.measurement_valid && hp.may_bridge_daily_gap);
+    assert(isnan(hp.snapshot.heat_to_water_w) && isnan(hp.snapshot.partial_heat_to_water_w));
+    assert(hp.snapshot.gap_heat_observed_abs_w == 50000.0f);
+  }
+}
+
 void daily_boiler_limits_stay_separate_and_preserve_an_open_gap() {
   PassiveRuntimeConfig config;
   config.quality.max_daily_missing_heat_w = 6115.28f;
@@ -438,6 +482,7 @@ int main() {
   daily_system_heat_survives_boiler_modes_and_ot_changes();
   daily_system_heat_only_bridges_missing_measurements();
   daily_idle_without_physical_flow_waits_only_for_the_allowed_gap();
+  daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_fallback();
   daily_boiler_limits_stay_separate_and_preserve_an_open_gap();
   raw_series_observations_to_advice();
   raw_daily_profiles_cross_zero_power_temperature();

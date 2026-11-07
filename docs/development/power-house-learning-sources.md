@@ -56,8 +56,9 @@ moet de aanvoerbron zelf minstens elke 30 seconden een meetwaarde doorgeven.
 Een gewijzigde aanvoerkalibratie bij het terugzetten van een backup begint een
 nieuwe dagmeting. Afgeronde dagen blijven bewaard.
 Met ingeschakelde keteloptie accepteert de dagmeting gemeten systeemwarmte tot en
-met ±50 kW. Waarden daarbuiten worden afgekeurd, niet afgeknipt. Voor ontbrekende
-warmte gebruikt de onzekerheidsberekening 50 kW als ondergrens voor de
+met ±50 kW. Waarden daarbuiten worden afgekeurd, niet afgeknipt. Deze harde
+bronfout breekt een lopende dagmeting af. Voor ontbrekende warmte gebruikt de
+onzekerheidsberekening 50 kW als ondergrens voor de
 vermogensgrens. Een open meetgat bewaart de hoogste toegepaste grens, ook als de
 keteloptie tussentijds wordt uitgeschakeld. Zo verlaagt een instellingwijziging
 eerder ontstane onzekerheid niet. Bij terugval op warmtepompwarmte blijft voor
