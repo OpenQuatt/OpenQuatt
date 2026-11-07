@@ -55,11 +55,15 @@ onderbreken. Bij HA-aanvoer telt de laatste temperatuurontvangst hoogstens
 moet de aanvoerbron zelf minstens elke 30 seconden een meetwaarde doorgeven.
 Een gewijzigde aanvoerkalibratie bij het terugzetten van een backup begint een
 nieuwe dagmeting. Afgeronde dagen blijven bewaard.
-Met aangesloten ketel gebruikt de dagmeting 50 kW als grens voor gemeten
-systeemwarmte en als ondergrens voor de berekening van meetgatonzekerheid.
-Bij omschakelen blijft de hoogste al toegepaste grens gelden tot het open
-meetgat sluit. Het ingestelde ketelvermogen is een regelwaarde en bewijst
-geen maximum voor ongemeten ketelwarmte.
+Met ingeschakelde keteloptie accepteert de dagmeting gemeten systeemwarmte tot en
+met ±50 kW. Waarden daarbuiten worden afgekeurd, niet afgeknipt. Voor ontbrekende
+warmte gebruikt de onzekerheidsberekening 50 kW als ondergrens voor de
+vermogensgrens. Een open meetgat bewaart de hoogste toegepaste grens, ook als de
+keteloptie tussentijds wordt uitgeschakeld. Zo verlaagt een instellingwijziging
+eerder ontstane onzekerheid niet. Bij terugval op warmtepompwarmte blijft voor
+het accepteren van meetwaarden de lagere generatie- en topologiegrens gelden.
+Het ingestelde ketelvermogen is een regelwaarde en bewijst geen maximum voor
+ongemeten ketelwarmte.
 
 CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
 meetellen. Voor pompbedrijf gelden de reguliere broncontroles en pauzes tijdens
@@ -238,7 +242,7 @@ Status en export benoemen de vroegere 2400 Wh-grens met
 het bewaren van de dag. Voor exact 100 W is geen empirische woningonderbouwing;
 deze eerste adviespolicy blijft bewust apart van de feitelijke metingen.
 
-De conditionele ontbrekende-warmtegrens komt uit het volledige performancedomein:
+Voor warmtepompwarmte komt de conditionele ontbrekende-warmtegrens uit het volledige performancedomein:
 V1/V1.5 Single 6115,28 W / Duo 12230,56 W; V2 Single 9172,15 W / Duo 18344,30 W.
 De effectieve grens is het maximum van tabelbasis, geldige absolute eindvermogens
 en waargenomen piekvloer. Voor een gat is U begrensd met `B × duur + integraal(abs(Q))`;
@@ -269,10 +273,12 @@ Bij geverifieerd bootherstel kan zo'n uitschieter wachten binnen de bestaande
 Een uitschieter vóór geldige UTC/journalherstel blijft een hard bootveto: er is
 dan nog geen herstelaccumulator waarin zijn piekevidence behouden kan worden.
 
-De oude structurele 50 kW-grens blijft uitsluitend voor compatibiliteit met
-eerder opgeslagen records, checkpoints, piekvloeren en U. Daardoor wist een
-lagere nieuwe meetgrens geen echte historie of RLS. Waarden buiten dat oude
-domein blijven hard ongeldig; ze leveren geen bruikbare piekevidence.
+Voor uitsluitend warmtepompwarmte blijft de oude structurele 50 kW-grens voor
+compatibiliteit met eerder opgeslagen records, checkpoints, piekvloeren en U.
+Daardoor wist een lagere nieuwe meetgrens geen echte historie of RLS. Waarden
+buiten dat oude domein blijven hard ongeldig; ze leveren geen bruikbare
+piekevidence. De systeemmeting met ingeschakelde keteloptie gebruikt daarnaast
+nog steeds de actieve ±50 kW-meetgrens en de onzekerheidsgrens hierboven.
 
 De webgrafiek bewaart alle punten en toont de kwaliteit in de tooltip. Alleen
 servergeschikte punten beïnvloeden de adviesvoortgang; historische kwaliteit blijft
