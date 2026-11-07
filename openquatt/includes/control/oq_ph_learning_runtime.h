@@ -940,7 +940,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                                     !state.learner.blocked && state.learner.status != PassiveRuntimeStatus::PAUSED;
     const bool batch_active = collecting_enabled && state.tick.batch_snapshot_available &&
                               passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
-                              validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+                              validate_snapshot(state.tick.batch_snapshot, state.daily_quality) == LearningStatus::OK;
     const bool thermal_active = collecting_enabled && thermal_window.active && thermal_window.last.epoch_s == epoch;
     json.add("{\"schema\":1,\"build\":\"" __DATE__ " " __TIME__
              " ph-passive-1\",\"mode\":\"passive\",\"enabled\":%s,"
@@ -1129,7 +1129,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     collection.enabled = enabled;
     collection.active = collecting && state.tick.batch_snapshot_available &&
                         passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
-                        validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+                        validate_snapshot(state.tick.batch_snapshot, state.daily_quality) == LearningStatus::OK;
     collection.gap_pending = collecting && window.source_gap_pending;
     collection.restore_pending = state.daily_restore_pending;
     collection.elapsed_s = state.daily_restore_pending   ? state.pending_daily.daily_checkpoint_elapsed_s()

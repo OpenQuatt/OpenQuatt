@@ -9,6 +9,9 @@
 #include "../../../openquatt/includes/learning/oq_ph_learning_persistence_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
+#ifdef OQ_TEST_DAILY_ACTIVITY_JSON
+#include "../../host/oq_ph_daily_source_fixture.h"
+#endif
 
 using namespace oq_ph_learning;
 using namespace oq_power_house::learning;
@@ -29,6 +32,7 @@ int oq_control_mode_code = INT32_MIN;
 int esp_reset_reason() { return INT32_MIN; }
 struct Endpoint {
   std::string largest;
+  std::string latest;
   unsigned publications = 0;
   std::string exported;
   bool publish_export_json(const char* text, size_t length) {
@@ -38,6 +42,7 @@ struct Endpoint {
   }
   bool publish_status_json(const char* text, size_t length) {
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
+    latest.assign(text, length);
     if (length > largest.size()) largest.assign(text, length);
     ++publications;
     return true;
@@ -190,7 +195,56 @@ void test_daily_resume_cause_before_journal_load() {
   assert(strcmp(state.daily_resume_status, "none") == 0 && strcmp(state.daily_resume_reason, "none") == 0);
 }
 
-#ifdef OQ_TEST_EXPORT_JSON
+#if defined(OQ_TEST_DAILY_ACTIVITY_JSON)
+int main() {
+  bool comma = false;
+  std::cout << '[';
+  for (const bool system_heat : {true, false}) {
+    for (const float heat_w : {-30000.0f, 30000.0f}) {
+      RuntimeStorage state;
+      state.config.quality.max_daily_missing_heat_w = 12230.56f;
+      state.config.quality.max_observed_heat_w = 1.20f * state.config.quality.max_daily_missing_heat_w;
+      state.daily_quality = daily_heat_quality(state.config.quality, system_heat);
+      const PassiveContextView context{daily_source_fixture::kContext, sizeof(daily_source_fixture::kContext), 1};
+      initialize_passive_runtime(state.learner, context, state.config, true);
+      for (const uint32_t second : {0U, 10U}) {
+        auto raw = daily_source_fixture::source(second, heat_w);
+        raw.system_heat_enabled = system_heat;
+        raw.circuit_flow_lph = raw.flow_lph;
+        raw.system_supply_c = raw.hp2.water_out_c;
+        raw.system_supply_c.source = {PhysicalSourceKind::DIRECT_SENSOR, 4, PhysicalUnit::SYSTEM};
+        const auto batch = build_learning_snapshot(raw, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH);
+        const auto dynamic = build_learning_snapshot(raw, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC);
+        state.input = raw;
+        state.tick = daily_source_fixture::production_tick(raw);
+        state.tick.batch_snapshot_available = batch.has_snapshot;
+        state.tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
+        state.tick.batch_source_status = state.batch_source_status = batch.status;
+        state.tick.batch_snapshot = batch.snapshot;
+        state.tick.dynamic_snapshot_available = dynamic.has_snapshot;
+        state.tick.dynamic_snapshot = dynamic.snapshot;
+        tick_passive_runtime(state.learner, state.tick, &state.daily_quality);
+      }
+      assert(state.learner.batch_accumulator.active == system_heat);
+      assert(!state.learner.thermal_accumulator.active && state.learner.thermal_state.accepted_samples == 0);
+      if (system_heat) {
+        assert(validate_snapshot(state.tick.batch_snapshot, state.config.quality) ==
+               LearningStatus::INVALID_MEASUREMENT);
+        assert(validate_snapshot(state.tick.batch_snapshot, state.daily_quality) == LearningStatus::OK);
+      }
+      state.summary = passive_runtime_summary(state.learner, state.tick.now_monotonic_ms);
+      Production::publish_status_(state, true, state.tick.now_epoch_s);
+      Production::publish_export_(state, true, state.tick.now_epoch_s);
+      if (comma) std::cout << ',';
+      comma = true;
+      std::cout << "{\"system_heat\":" << (system_heat ? "true" : "false") << ",\"heat_w\":" << heat_w
+                << ",\"status\":" << oq_ph_learning_status_endpoint.latest
+                << ",\"export\":" << oq_ph_learning_status_endpoint.exported << '}';
+    }
+  }
+  std::cout << "]\n";
+}
+#elif defined(OQ_TEST_EXPORT_JSON)
 int main() {
   RuntimeStorage state;
   state.learner.record_count = kMaxSegmentRecords;
