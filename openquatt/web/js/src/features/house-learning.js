@@ -66,6 +66,24 @@ export function normalizeHouseLearningStatus(payload = {}) {
       ? { route: String(item.route || "unknown"), valid: item.valid === true }
       : { route: "unknown", valid: false };
   };
+  const fit = payload.batch_fit;
+  const counts = fit && ["train_segments", "holdout_segments", "train_days", "holdout_days"].map(key => fit[key]);
+  const validCounts = counts?.every(value => Number.isInteger(value) && value >= 0 && value <= 128)
+    && fit.train_days <= fit.train_segments && fit.holdout_days <= fit.holdout_segments
+    && fit.train_segments + fit.holdout_segments <= payload.records;
+  const ranges = fit && ["train_p10_c", "train_p90_c", "train_min_c", "train_max_c"].map(key => fit[key]);
+  const validRanges = ranges?.every(value => value === null || Number.isFinite(value))
+    && (ranges.every(value => value === null)
+      || ranges.every(Number.isFinite) && fit.train_min_c <= fit.train_p10_c
+        && fit.train_p10_c <= fit.train_p90_c && fit.train_p90_c <= fit.train_max_c);
+  const preview = payload.batch_preview;
+  const validPreview = preview && [preview.segments, preview.days].every(value => Number.isInteger(value) && value >= 0 && value <= 128)
+    && preview.days <= preview.segments && preview.segments <= payload.records
+    && [preview.h, preview.t0, preview.min_c, preview.max_c].every(value => value === null || Number.isFinite(value))
+    && ((preview.h === null && preview.t0 === null)
+      || preview.h > 0 && preview.t0 !== null && preview.days >= 6 && preview.segments >= 6)
+    && ((preview.min_c === null && preview.max_c === null && preview.segments === 0)
+      || preview.min_c !== null && preview.max_c !== null && preview.min_c <= preview.max_c);
   return {
     enabled: payload.enabled === true,
     controlMode: numberOrNull(payload.control_mode),
@@ -81,6 +99,16 @@ export function normalizeHouseLearningStatus(payload = {}) {
     legacyRecordCount: countOrNull(payload.legacy_record_count),
     referenceRoomC: typeof payload.reference_room_c === "number" ? numberOrNull(payload.reference_room_c) : null,
     batchAdviceReady: payload.batch_advice_ready === true,
+    batchFit: validCounts && validRanges ? {
+      trainCount: fit.train_segments, checkCount: fit.holdout_segments,
+      trainDays: fit.train_days, checkDays: fit.holdout_days,
+      p10: fit.train_p10_c, p90: fit.train_p90_c, minC: fit.train_min_c, maxC: fit.train_max_c,
+    } : null,
+    // Undefined means older firmware. Null means a present but unusable preview.
+    batchPreview: Object.hasOwn(payload, "batch_preview") ? validPreview ? {
+      h: preview.h, t0: preview.t0, count: preview.segments, days: preview.days,
+      minC: preview.min_c, maxC: preview.max_c,
+    } : null : undefined,
     adviceReady: payload.advice_ready === true,
     hBatch: numberOrNull(payload.h_batch),
     t0Batch: numberOrNull(payload.t0_batch),

@@ -20,7 +20,12 @@ using TaskHandle_t = void*;
 static constexpr int pdPASS = 1;
 static bool task_create_ok = true;
 static unsigned task_starts = 0;
-int xTaskCreate(void (*)(void*), const char*, unsigned, void*, unsigned, TaskHandle_t* handle) {
+int xTaskCreate(void (*)(void*), const char*, unsigned stack_bytes, void*, unsigned, TaskHandle_t* handle) {
+#ifdef USE_OPENQUATT_WEATHER
+  assert(stack_bytes == 6144);
+#else
+  assert(stack_bytes == 8192);
+#endif
   ++task_starts;
   *handle = task_create_ok ? reinterpret_cast<void*>(1) : nullptr;
   return task_create_ok ? pdPASS : 0;

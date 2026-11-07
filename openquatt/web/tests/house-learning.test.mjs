@@ -62,6 +62,21 @@ test.afterEach(() => {
   setRenderCallback(null);
 });
 
+test("fitvoortgang blijft optioneel en accepteert alleen samenhangende firmwarevelden", () => {
+  const fit = { train_segments: 18, holdout_segments: 3, train_days: 18, holdout_days: 3,
+    train_p10_c: 8.28, train_p90_c: 11.88, train_min_c: 7.55, train_max_c: 12.34 };
+  const status = normalizeHouseLearningStatus(statusPayload({ records: 21, batch_fit: fit }));
+  assert.deepEqual(status.batchFit, { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
+    p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 });
+  assert.equal(status.batchAdviceReady, false);
+  assert.equal(normalizeHouseLearningStatus(statusPayload()).batchFit, null);
+  for (const change of [{ train_days: -1 }, { holdout_segments: "3" }, { train_days: 19 },
+    { train_segments: 129 }, { train_min_c: null }, { train_max_c: 4 }, { train_p90_c: NaN }]) {
+    assert.equal(normalizeHouseLearningStatus(statusPayload({ records: 21,
+      batch_fit: { ...fit, ...change } })).batchFit, null);
+  }
+});
+
 function statusPayload(overrides = {}) {
   return {
     schema: 1,
@@ -915,6 +930,12 @@ test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigd
   status.batchStatus = "unstable_fit";
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 2);
+  status.batchFit = { trainCount: 18, checkCount: 2, trainDays: 18, checkDays: 2,
+    minC: 7.55, maxC: 12.34, p10: 8.28, p90: 11.88 };
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 3, "nieuwe firmware-leersplit en bereik vernieuwen de uitleg");
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 3, "een ongewijzigde leersplit behoudt de grafiek en focus");
   assert.match(secondaryNode.innerHTML, /Bronnen en technische details/);
 });
 
@@ -1445,4 +1466,20 @@ test("een stilvallende readback- of statusbody houdt de leerbediening niet geblo
   } finally {
     window.setTimeout = originalTimeout;
   }
+});
+
+test("display preview is optional and cannot replace the independent advice candidate", () => {
+  const preview = {h:190,t0:18,segments:21,days:21,min_c:1.97,max_c:12.34};
+  const raw = statusPayload({records:21,h_batch:213,t0_batch:17.4,batch_preview:preview});
+  const normalized = normalizeHouseLearningStatus(raw);
+  assert.deepEqual(normalized.batchPreview,{h:190,t0:18,count:21,days:21,minC:1.97,maxC:12.34});
+  assert.equal(normalized.hBatch,213); assert.equal(normalized.t0Batch,17.4);
+  assert.equal(normalized.batchAdviceReady,false); assert.equal(normalized.adviceReady,false);
+  assert.equal(normalizeHouseLearningStatus(statusPayload()).batchPreview,undefined);
+  for (const change of [{segments:22},{days:-1},{h:"190"},{h:null},{t0:NaN},{min_c:13},{days:5},{segments:129}]) {
+    assert.equal(normalizeHouseLearningStatus({...raw,batch_preview:{...preview,...change}}).batchPreview,null);
+  }
+  const unavailable = normalizeHouseLearningStatus({...raw,batch_preview:{...preview,h:null,t0:null}});
+  assert.equal(unavailable.batchPreview.h,null);
+  assert.equal(unavailable.hBatch,213);
 });

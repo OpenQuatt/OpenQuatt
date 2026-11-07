@@ -85,9 +85,12 @@ _PATCHES = {
             "    });\n"
             "    return;\n"
             "  }\n"
+            "  constexpr uint32_t stack_size = 6144;\n"
+            "#else\n"
+            "  constexpr uint32_t stack_size = 8192;\n"
             "#endif\n"
             "  this->task_source_url_ = this->source_url_;\n"
-            '  if (xTaskCreate(HttpRequestUpdate::update_task, "update_task", 8192, (void *) this, 1,\n'
+            '  if (xTaskCreate(HttpRequestUpdate::update_task, "update_task", stack_size, (void *) this, 1,\n'
             "                  &this->update_task_handle_) != pdPASS) {\n"
             "    this->update_task_handle_ = nullptr;\n"
             "#ifdef USE_OPENQUATT_WEATHER\n"

@@ -30,8 +30,23 @@ test("ingestelde lijn volgt de structurele formule zonder intern nuldefault", ()
 test("grafiek toont een blauwe configuratielijn zonder meetpunten en markeert een voorlopige fit", () => {
   const markup = renderHouseLearningChart([], { coldC: -10, zeroC: 16, ratedW: 5200 }, { h: 186, t0: 16.8, ready: false });
   assert.match(markup, /chart-line--configured/);
-  assert.match(markup, /volledig een extrapolatie/);
-  assert.match(markup, /voorlopig en nog niet gevalideerd/);
+  assert.doesNotMatch(markup, /<path[^>]+chart-line--learned/);
+  assert.match(markup, /gemeten temperatuurbereik van de leerdagen beschikbaar/);
+});
+
+test("voorlopige lijn wordt volledig gestippeld doorgetrokken buiten het firmware-leerbereik", () => {
+  const data = normalizeHouseLearningExport(payload);
+  const learned = { h: 213, t0: 17.4, ready: false,
+    fit: { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
+      p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 } };
+  const model = getHouseLearningChartModel(data, {}, learned);
+  const html = renderHouseLearningChart(data, {}, learned);
+  const paths = [...html.matchAll(/<path d="([^"]+)" class="oq-house-learning-chart-line oq-house-learning-chart-line--learned-dashed"/g)];
+  assert.equal(paths.length, 1);
+  assert.ok(paths[0][1].startsWith(`M ${model.x(model.minX).toFixed(1)} `));
+  assert.ok(paths[0][1].includes(`L ${model.x(model.maxX).toFixed(1)} `));
+  assert.doesNotMatch(html, /class="oq-house-learning-chart-line oq-house-learning-chart-line--learned"/);
+  assert.doesNotMatch(renderHouseLearningChart(data, {}, { ...learned, fit: null }), /<path[^>]+chart-line--learned/);
 });
 
 test("groene lijn wordt binnen het meetbereik doorgetrokken en daarbuiten gestreept", () => {
@@ -66,10 +81,11 @@ test("geleerde lijn raakt nul op T₀ en blijft daarboven nul", () => {
   assert.ok(model.axisMaxY >= 200 * (16 - model.minX));
 });
 
-test("één meetpunt verbergt een beschikbare fit niet; zonder fit geen groene lijn", () => {
+test("een voorlopige lijn vereist een gemeten bereik; een goedgekeurde lijn mag extrapoleren", () => {
   const records = normalizeHouseLearningExport(payload).slice(0, 1);
   const configured = { coldC: -10, zeroC: 16, ratedW: 5200 };
-  assert.match(renderHouseLearningChart(records, configured, { h: 200, t0: 16 }), /<path[^>]+chart-line--learned-dashed/);
+  assert.doesNotMatch(renderHouseLearningChart(records, configured, { h: 200, t0: 16 }), /<path[^>]+chart-line--learned/);
+  assert.match(renderHouseLearningChart(records, configured, { h: 200, t0: 16, ready: true }), /<path[^>]+chart-line--learned-dashed/);
   const withoutFit = renderHouseLearningChart(records, configured, {});
   assert.doesNotMatch(withoutFit, /<path[^>]+chart-line--learned|chart-swatch--learned/);
   assert.match(withoutFit, /chart-swatch--configured/);
@@ -102,11 +118,12 @@ test("lege grafiek verklaart waarom 30-minutenperioden geen meetpunten opleveren
 });
 
 
-test("beschikbare woninglijnschatting blijft zichtbaar bij ontbrekende Power House-instellingen", () => {
-  const markup = renderHouseLearningChart([], {}, { h: 186, t0: 16.8, ready: false });
+test("voorlopige lijn gebruikt het bereik van de firmware bij ontbrekende Power House-instellingen", () => {
+  const markup = renderHouseLearningChart([], {}, { h: 186, t0: 16.8, ready: false,
+    fit: { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3, p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 } });
   assert.match(markup, /<path[^>]+chart-line--learned-dashed/);
   assert.match(markup, /Power House-lijn is onvolledig/);
-  assert.match(markup, /volledig een extrapolatie/);
+  assert.doesNotMatch(markup, /volledig een extrapolatie/);
   assert.match(markup, /voorlopig en nog niet gevalideerd/);
   assert.doesNotMatch(markup, /Nog geen grafiek beschikbaar|chart-swatch--configured|chart-swatch--records|De blauwe lijn toont/);
   assert.match(markup, /chart-swatch--learned/);
@@ -297,7 +314,8 @@ test("legacy meetpunten blijven zichtbaar maar verbreden het dagfitbereik niet",
 
   const legacyOnly = renderHouseLearningChart(records.slice(0, 1), {}, fit);
   assert.doesNotMatch(legacyOnly, /<rect |class="oq-house-learning-chart-line oq-house-learning-chart-line--learned"/);
-  assert.match(legacyOnly, /volledig een extrapolatie/);
+  assert.match(legacyOnly, /gemeten temperatuurbereik van de leerdagen beschikbaar/);
+  assert.doesNotMatch(legacyOnly, /<path[^>]+chart-line--learned/);
 });
 
 test("nieuwe meetpunten met ongeldige effectieve buitenwaarde of onbekende soort worden niet verzonnen", () => {
@@ -351,4 +369,28 @@ test("grote signed waarden houden de y-as begrensd in aantal rasterlijnen", () =
   assert.ok((model.axisMaxY - model.axisMinY) / model.yStep <= 10);
   assert.ok(model.axisMinY <= -25000);
   assert.ok(Number.isFinite(model.y(-25000)));
+});
+
+test("all-days preview includes the cold checking range without granting advice", () => {
+  const learned = { h: 213, t0: 17.4, ready: false, referenceRoomC: 20, batchStatus: "insufficient_spread",
+    fit: { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
+      p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 },
+    preview: { h: 190, t0: 18, count: 21, days: 21, minC: 1.97, maxC: 12.34 } };
+  const model = getHouseLearningChartModel([], {}, learned);
+  assert.equal(model.h, 190); assert.equal(model.ready, false);
+  const nl = renderHouseLearningChart([], {}, learned);
+  const path = [...nl.matchAll(/<path d="([^"]+)" class="oq-house-learning-chart-line oq-house-learning-chart-line--learned-dashed"/g)];
+  assert.equal(path.length, 1);
+  assert.equal(path[0][1].split(" ")[1], model.x(model.minX).toFixed(1));
+  assert.ok(path[0][1].endsWith(`L ${model.x(model.maxX).toFixed(1)} ${model.y(0).toFixed(1)}`));
+  assert.match(nl, /buiten het gemeten bereik doorgetrokken/);
+  assert.match(nl, /alle 21 bruikbare dagmetingen, gewogen naar meetkwaliteit/);
+  assert.match(nl, /Leren: 18 · Controleren: 3/);
+  assert.match(nl, /3,6 °C/);
+  assert.doesNotMatch(nl, /Geleerde woninglijn beschikbaar/);
+  setLocale("en", {persist:false,applyDocument:false,notify:false});
+  assert.match(renderHouseLearningChart([], {}, learned), /all 21 usable daily measurements, weighted by measurement quality/);
+  const approved = getHouseLearningChartModel([], {}, {...learned, ready:true});
+  assert.equal(approved.h, 213); assert.equal(approved.t0, 17.4);
+  assert.equal(getHouseLearningChartModel([], {}, {...learned, preview:null}).learnedValid, false);
 });

@@ -339,7 +339,7 @@ function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.h
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
     state.houseLearningChartLoading, state.houseLearningChartError,
     state.houseLearningStatus?.hBatch, state.houseLearningStatus?.t0Batch, state.houseLearningStatus?.batchAdviceReady, state.houseLearningStatus?.referenceRoomC,
-    state.houseLearningStatus?.batchStatus, (canAssessModel(state.houseLearningStatus) && !learningStatusPending()),
+    state.houseLearningStatus?.batchStatus, state.houseLearningStatus?.batchFit, state.houseLearningStatus?.batchPreview, (canAssessModel(state.houseLearningStatus) && !learningStatusPending()),
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
@@ -356,7 +356,7 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
   const chart = state.houseLearningChart !== null ? renderHouseLearningChart(
     state.houseLearningChart,
     { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
-    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: (canAssessModel(state.houseLearningStatus) && !learningStatusPending()) && state.houseLearningStatus.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC, batchStatus: state.houseLearningStatus?.batchStatus },
+    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: (canAssessModel(state.houseLearningStatus) && !learningStatusPending()) && state.houseLearningStatus.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC, batchStatus: state.houseLearningStatus?.batchStatus, fit: state.houseLearningStatus?.batchFit, preview: state.houseLearningStatus?.batchPreview },
   ) : "";
   const actionLabel = t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : open ? "houseLearning.chart.hide" : "houseLearning.chart.show");
   return `<button class="oq-house-learning-chart-head" type="button" data-oq-action="load-house-learning-chart" aria-label="${escapeHtml(actionLabel)}" aria-expanded="${open}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>

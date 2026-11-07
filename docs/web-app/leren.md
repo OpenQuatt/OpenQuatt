@@ -34,6 +34,15 @@ blijven beschikbaar. Zie voor de voorwaarden en bronafwijzingen het
 ## Wanneer is er een geleerde woninglijn?
 
 Open **Meetgegevens** voor de grafiek en de voorwaarden voor een woninglijn.
+Een plausibele lijn kan vanaf zes bruikbare dagmetingen alvast als **voorlopige
+woninglijn** verschijnen. Deze schatting gebruikt alle geschikte dagen, ook de
+nieuwste dagen met bekende meetkwaliteit. Betere meetkwaliteit geeft een dag
+meer gewicht; oudere dagen met onbekende meetkwaliteit tellen minder zwaar mee.
+De groene lijn is volledig gestippeld en loopt over de hele grafiek. Buiten het
+gemeten temperatuurbereik is dit een doortrekking van de schatting. Het gekleurde
+vlak markeert het bereik van de bruikbare meetpunten. De uitleg vermeldt welke
+controles nog ontbreken. Deze schatting stuurt de regeling niet aan.
+
 De balken tonen het aantal dagmetingen en de temperatuurspreiding. De huidige
 richtwaarden zijn minstens negen geschikte dagmetingen, waarvan zes om te leren
 en drie voor onafhankelijke controle, en minstens 6 °C spreiding tussen P10 en
@@ -41,9 +50,15 @@ P90 van de leerdagen. P10 en P90 zijn de grenzen rond het middelste deel van de
 temperaturen. De controller kijkt ook naar de verdeling van de temperaturen,
 meetkwaliteit en de uitkomst op de controledagen.
 
-Als oudere dagen een onbekende meetkwaliteit hebben, tonen de balken het aantal
-en de spreiding van alle opgeslagen dagen. Die waarden helpen je de meetgeschiedenis
-te begrijpen. Dagen met onbekende meetkwaliteit leveren geen onafhankelijke controle.
+De firmware reserveert de nieuwste drie geschikte dagen met bekende meetkwaliteit
+voor onafhankelijke controle van het modeladvies. Die aparte adviesberekening
+gebruikt de controledagen niet bij het bepalen van de lijn of de spreiding van
+de leerdagen. De voorlopige schatting en de adviesberekening kunnen daardoor
+verschillende lijnen en temperatuurbereiken hebben. Oudere dagen met onbekende
+meetkwaliteit mogen met een lager gewicht helpen bij het leren.
+Op oudere firmware zonder voortgang van de fit tonen de balken bij onbekende
+meetkwaliteit het aantal en de spreiding van alle opgeslagen dagen.
+Dagen met onbekende meetkwaliteit leveren geen onafhankelijke controle.
 Open **Meetgegevens** opnieuw om nieuw opgeslagen punten op te halen.
 
 De blauwe lijn is de ingestelde woninglijn. De punten zijn metingen. Bij een
@@ -52,8 +67,9 @@ gemiddelde warmtevermogen. Waar beschikbaar zie je ook hoeveel warmte- en
 temperatuurmetingen geldig waren, de warmte-onzekerheid en het modelgewicht.
 Een dag met een lager modelgewicht telt minder zwaar mee bij het schatten van de
 lijn. Oude vieruursmetingen blijven herkenbaar in de grafiek en tellen niet mee
-als dagmeting. Een groene lijn toont de geleerde woninglijn. Het gestippelde
-deel loopt buiten het gemeten temperatuurbereik.
+als dagmeting. Na goedkeuring is de groene lijn binnen het gemeten bereik
+doorgetrokken en daarbuiten gestippeld. Een voorlopige lijn blijft overal
+gestippeld, ook binnen het gemeten bereik.
 
 ## Details en leerdata
 

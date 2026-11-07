@@ -951,6 +951,30 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.number(summary.batch.candidate_available ? summary.batch.candidate.heat_loss_w_per_k : NAN);
     json.add(",\"t0_batch\":");
     json.number(summary.batch.candidate_available ? summary.batch.candidate.zero_power_temp_c : NAN);
+    json.add(
+        ",\"batch_fit\":{\"train_segments\":%u,\"holdout_segments\":%u,\"train_days\":%u,\"holdout_days\":%u,\"train_"
+        "p10_c\":",
+        static_cast<unsigned>(summary.batch.train_segments), static_cast<unsigned>(summary.batch.holdout_segments),
+        static_cast<unsigned>(summary.batch.train_days), static_cast<unsigned>(summary.batch.holdout_days));
+    json.number(summary.batch.train_p10_c);
+    json.add(",\"train_p90_c\":");
+    json.number(summary.batch.train_p90_c);
+    json.add(",\"train_min_c\":");
+    json.number(summary.batch.train_min_c);
+    json.add(",\"train_max_c\":");
+    json.number(summary.batch.train_max_c);
+    json.add("}");
+    const auto& preview = summary.batch.preview;
+    json.add(",\"batch_preview\":{\"h\":");
+    json.number(preview.available ? preview.line.heat_loss_w_per_k : NAN);
+    json.add(",\"t0\":");
+    json.number(preview.available ? preview.line.zero_power_temp_c : NAN);
+    json.add(",\"segments\":%u,\"days\":%u,\"min_c\":", static_cast<unsigned>(preview.segments),
+             static_cast<unsigned>(preview.days));
+    json.number(preview.min_c);
+    json.add(",\"max_c\":");
+    json.number(preview.max_c);
+    json.add("}");
     json.add(",\"u_rls\":");
     json.number(summary.thermal.accepted_samples > 0 ? summary.thermal.heat_loss_w_per_k : NAN);
     // Numerical readiness is not independent validation of physical capacity.
