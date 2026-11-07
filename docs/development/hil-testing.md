@@ -163,6 +163,21 @@ historie en flash geen incompatibel opslagformaat terug om een vergelijking af
 te dwingen; leg de ontbrekende dekking vast. De eisen aan allocatiefouten,
 blijvend herstel en aantoonbare geheugen- en stackmarges blijven gelden.
 
+Gebruik bij het vergelijken van geheugenmetingen deze afspraken:
+
+1. Meet vóór, tijdens en na de relevante activiteit. Onderzoek een onverklaarde
+   dip door één belastingfactor per proef te wijzigen.
+2. Leg per fase vast welke activiteiten werkelijk overlapten, bijvoorbeeld
+   met de begin- en eindtijden van verzoeken. Vergelijk hetzelfde tijdvenster
+   sinds boot en dezelfde clientbelasting, afgezien van de onderzochte factor.
+3. Herhaal het meetpaar als het oordeel afhangt van één afwijking. Noteer de
+   spreiding en beoordeel ook het herstel, het grootste vrije blok, de
+   stackmarges en eventuele allocatiefouten.
+4. Hergebruik een meting als firmware, hardwareprofiel, configuratie,
+   meetinstrumentatie, resetpad en gerealiseerde belasting overeenkomen met de
+   beoogde meetopzet. Verwijs naar het oorspronkelijke rapport en tel een
+   gedeelde baselinemeting één keer.
+
 Een fysieke power-on-test blijft verplicht bij wijzigingen aan bootloader of
 startup, reset/sleep, platform-/ESP-IDF-versies, PSRAM-initialisatie/configuratie,
 hardware/voeding, initialisatie van externe peripherals of resetafhankelijk

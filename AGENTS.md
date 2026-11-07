@@ -42,7 +42,7 @@
 - Remember that globals, `new`, `std::string` and `std::vector` do not automatically use PSRAM; objects stored in PSRAM may still own internal allocations.
 - Keep ISR/DMA data, cache-disabled paths and low-level Wi-Fi/TLS/ESP-MQTT stacks in compatible internal memory unless the platform contract and HIL prove external-stack use is safe.
 - Prefer a persistent worker task over repeated task create/delete cycles. Avoid globally changing malloc-placement thresholds as a substitute for targeted ownership.
-- For memory-affecting changes, compare baseline and candidate with the same configuration and instrumentation after a verified full application restart; an OTA reboot qualifies. Use the same reset path/reason, OTA image state (first boot after OTA or later), and restart-handoff/recovery state. Cover startup/first connections, relevant reconnects and realistic HA/web/API/MQTT/Modbus/OpenTherm/OTA load. Confirm firmware identity and fresh boot evidence; an upload acknowledgement alone is not proof. A compile-time RAM report is not sufficient. See [HIL restart coverage](docs/development/hil-testing.md#herstarten-bij-geheugenmetingen).
+- When the [PR validation rules](CONTRIBUTING.md#pull-request-validation) require hardware memory measurements, compare baseline and candidate with the same configuration and instrumentation after a verified full application restart. An OTA reboot qualifies. Use the same reset path/reason, OTA image state (first boot after OTA or later), and restart-handoff/recovery state. Cover startup/first connections, relevant reconnects and realistic combined load across the applicable HA/web/API/MQTT/Modbus/OpenTherm/OTA paths. Confirm firmware identity and fresh boot evidence. An upload acknowledgement alone does not verify a fresh boot. A compile-time RAM report is not sufficient. See [HIL restart coverage](docs/development/hil-testing.md#herstarten-bij-geheugenmetingen).
 - Require physical power-on testing when changes affect bootloader/startup, reset/sleep, platform/ESP-IDF versions, PSRAM initialization/configuration, hardware/power, external peripheral initialization or reset-dependent retained state (e.g. RTC/`.noinit`). Also require it when a concrete unresolved dependency on reset type could affect the changed path. Record the reset path tested and remaining coverage limits.
 - Treat unexplained regressions, allocation failures or a minimum/largest-block result without demonstrated margin for the worst simultaneous allocation as release-blocking. Maintain profile-specific budgets once healthy HIL baselines are established.
 
@@ -55,6 +55,7 @@
 - Do not prefix PR titles with `[codex]`; use a concise human-readable title instead.
 - Write PR titles in Dutch unless the user explicitly requests another language.
 - Use `.github/pull_request_template.md` for PR bodies and fill every relevant section.
+- Follow the [PR validation rules](CONTRIBUTING.md#pull-request-validation) when choosing checks. Record any required hardware validation in the PR for maintainers to arrange.
 - In PRs, issues and review comments, write canonical project commands without personal shell wrappers.
 
 ## Releases

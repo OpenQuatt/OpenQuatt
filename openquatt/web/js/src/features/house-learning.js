@@ -68,7 +68,8 @@ export function normalizeHouseLearningStatus(payload = {}) {
   };
   const fit = payload.batch_fit;
   const counts = fit && ["train_segments", "holdout_segments", "train_days", "holdout_days"].map(key => fit[key]);
-  const validCounts = counts?.every(value => Number.isInteger(value) && value >= 0 && value <= 128)
+  const validCounts = fit?.metadata_prepared === true
+    && counts?.every(value => Number.isInteger(value) && value >= 0 && value <= 128)
     && fit.train_days <= fit.train_segments && fit.holdout_days <= fit.holdout_segments
     && fit.train_segments + fit.holdout_segments <= payload.records;
   const ranges = fit && ["train_p10_c", "train_p90_c", "train_min_c", "train_max_c"].map(key => fit[key]);
