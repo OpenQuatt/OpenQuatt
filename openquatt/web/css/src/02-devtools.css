@@ -1,10 +1,18 @@
+/* Carries the dark theme class without adding a box of its own. */
+.oq-helper-devdock-theme {
+  display: contents;
+}
+
+/* Border-box keeps the width and height limits true to the screen edges. */
 .oq-helper-devdock {
   position: fixed;
   top: 14px;
   left: 14px;
   z-index: 40;
-  width: min(320px, calc(100vw - 28px));
+  box-sizing: border-box;
+  width: min(346px, calc(100vw - 28px));
   padding: 12px;
+  color: var(--oq-helper-ink);
   border: 1px solid var(--oq-helper-line);
   border-radius: 20px;
   background:
@@ -19,6 +27,14 @@
     radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 34%),
     linear-gradient(180deg, rgba(21, 32, 46, 0.98), rgba(18, 28, 41, 0.98));
   box-shadow: 0 20px 44px rgba(2, 6, 23, 0.28);
+}
+
+/* The open dock never runs past the bottom of the screen; it scrolls on its own. */
+.oq-helper-devdock:not(.oq-helper-devdock--collapsed) {
+  max-height: calc(100vh - 28px);
+  max-height: calc(100dvh - 28px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .oq-helper-devdock--collapsed {
@@ -109,7 +125,7 @@
 }
 
 .oq-helper-devdock .oq-helper-hub-dev-grid {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .oq-helper-devdock .oq-helper-hub-dev-meta {
@@ -124,9 +140,10 @@
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
 }
 
+/* minmax(0, 1fr) lets a select shrink below its longest option instead of overflowing the panel. */
 .oq-helper-hub-dev-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -136,6 +153,7 @@
 }
 
 .oq-helper-hub-dev-label {
+  color: var(--oq-helper-soft);
   font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -143,15 +161,21 @@
 }
 
 .oq-helper-hub-dev-select {
+  --oq-dev-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%2394a3b8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   appearance: none;
+  width: 100%;
+  min-width: 0;
   min-height: 35px;
   border: 1px solid var(--oq-helper-line);
   border-radius: 13px;
-  background: var(--oq-helper-card);
+  background: var(--oq-dev-select-arrow) no-repeat right 12px center / 12px 12px, var(--oq-helper-card);
   color: var(--oq-helper-ink);
   font: inherit;
   font-weight: 600;
-  padding: 0 12px;
+  padding: 0 32px 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .oq-helper-hub-dev {
@@ -219,6 +243,11 @@
   color: #d9e3f2;
 }
 
+.oq-helper-shell--dark .oq-helper-hub-dev-select {
+  background: var(--oq-dev-select-arrow) no-repeat right 12px center / 12px 12px,
+    linear-gradient(180deg, rgba(12, 20, 36, 0.92), rgba(10, 17, 30, 0.96));
+}
+
 .oq-helper-devdock-toggle:hover,
 .oq-helper-devdock-toggle:focus-visible,
 .oq-helper-hub-dev-button:hover,
@@ -267,7 +296,12 @@
     position: fixed;
     top: 10px;
     left: 10px;
-    width: min(300px, calc(100vw - 20px));
+    width: min(326px, calc(100vw - 20px));
+  }
+
+  .oq-helper-devdock:not(.oq-helper-devdock--collapsed) {
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
   }
 
   .oq-helper-devdock--collapsed {

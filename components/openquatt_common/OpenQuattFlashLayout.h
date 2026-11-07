@@ -37,6 +37,11 @@ struct OpenQuattFlashLayout {
   static constexpr size_t HOUSE_LEARNING_SLOT_COUNT = 2U;
   static constexpr uint32_t HOUSE_LEARNING_END_OFFSET =
       HOUSE_LEARNING_OFFSET + HOUSE_LEARNING_SLOT_COUNT * HOUSE_LEARNING_SLOT_SIZE;
+
+  // Ring of three sectors for the settings change log; one 4 KiB sector stays unassigned.
+  static constexpr uint32_t CHANGE_LOG_OFFSET = HOUSE_LEARNING_END_OFFSET;
+  static constexpr size_t CHANGE_LOG_SECTOR_COUNT = 3U;
+  static constexpr uint32_t CHANGE_LOG_END_OFFSET = CHANGE_LOG_OFFSET + (CHANGE_LOG_SECTOR_COUNT * SECTOR_SIZE);
 };
 
 static_assert(OpenQuattFlashLayout::DECISION_LOG_OFFSET % OpenQuattFlashLayout::SECTOR_SIZE == 0,
@@ -50,5 +55,9 @@ static_assert(OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET % OpenQuattFlashLayout
               "Passive learning journal slots must use complete erase sectors");
 static_assert(OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= 0x1E0000,
               "Passive learning journal must fit without moving existing archives");
+static_assert(OpenQuattFlashLayout::CHANGE_LOG_OFFSET % OpenQuattFlashLayout::SECTOR_SIZE == 0,
+              "Change log storage must start on an erase-sector boundary");
+static_assert(OpenQuattFlashLayout::CHANGE_LOG_END_OFFSET <= 0x1E0000,
+              "Change log storage must fit without moving existing archives");
 
 }  // namespace esphome::openquatt_common

@@ -4,13 +4,14 @@ import { getEntityValue } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
-import { startMotionLoop } from "../core/motion.js";
+import { syncMotionAnimations } from "../core/motion.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
+import { getHeatPumpStatusPresentation } from "../core/incident-monitoring.js";
 import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { formatNumericState } from "../core/formatting.js";
-import { getHeatPumpPanelStatusLabel, getOverviewStatusCards, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
+import { getHeatPumpPanelStatusLabel, getOverviewStatusModel, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
 import { formatNumber, t } from "../i18n/index.js";
@@ -725,6 +726,17 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
+  // A heat pump is marked when it reports failure codes or when installation monitoring sees a fault for it.
+  export function isHeatPumpAlertActive(title, schematicModel) {
+    if (schematicModel?.warningActive) return true;
+    const snapshot = state.incidentMonitoringError ? null : state.incidentMonitoringSnapshot;
+    const subject = title === "HP2" ? "hp2" : "hp1";
+    const heatPump = snapshot?.valid && Array.isArray(snapshot.heatPumps)
+      ? snapshot.heatPumps.find((item) => item.subject === subject)
+      : null;
+    return Boolean(heatPump) && getHeatPumpStatusPresentation(heatPump).tone === "fault";
+  }
+
   export function renderHeatPumpPanel(title, keys, accent, emphasis = "normal", layoutAction = null) {
     if (!hasEntity(keys.power)) {
       return "";
@@ -732,10 +744,11 @@ import { renderStatCard } from "./stat-card.js";
     const runtime = getHeatPumpRuntimeModel(title, keys, accent);
     const { mode, defrostActive, running, thermalKey } = runtime;
     const schematicModel = runtime.schematic;
+    const alertClass = isHeatPumpAlertActive(title, schematicModel) ? " is-alert" : "";
 
     if (state.hpVisualMode === "schematic") {
       return `
-        <section class="oq-overview-hp oq-overview-hp--${escapeHtml(accent)} oq-overview-hp--${escapeHtml(emphasis)}" data-oq-hp-panel="${escapeHtml(title)}" data-oq-matrix-target="${escapeHtml(title === "HP2" ? "hp2" : "hp1")}">
+        <section class="oq-overview-hp oq-overview-hp--${escapeHtml(accent)} oq-overview-hp--${escapeHtml(emphasis)}${alertClass}" data-oq-hp-panel="${escapeHtml(title)}" data-oq-matrix-target="${escapeHtml(title === "HP2" ? "hp2" : "hp1")}">
           <div class="oq-overview-hp-head">
             <div class="oq-overview-hp-head-title">
               ${renderHeatPumpPanelTitle(title, layoutAction)}
@@ -750,7 +763,7 @@ import { renderStatCard } from "./stat-card.js";
     }
 
     return `
-      <section class="oq-overview-hp oq-overview-hp--${escapeHtml(accent)} oq-overview-hp--${escapeHtml(emphasis)}" data-oq-hp-panel="${escapeHtml(title)}" data-oq-matrix-target="${escapeHtml(title === "HP2" ? "hp2" : "hp1")}">
+      <section class="oq-overview-hp oq-overview-hp--${escapeHtml(accent)} oq-overview-hp--${escapeHtml(emphasis)}${alertClass}" data-oq-hp-panel="${escapeHtml(title)}" data-oq-matrix-target="${escapeHtml(title === "HP2" ? "hp2" : "hp1")}">
         <div class="oq-overview-hp-head">
           <div>
             <h3>${escapeHtml(title)}</h3>
@@ -1291,7 +1304,6 @@ import { renderStatCard } from "./stat-card.js";
           ${renderOverviewSummaryShell(strategyLabel)}
           <div class="oq-overview-main">
             ${renderOverviewNarrativePanel(getOverviewStrategySectionModel())}
-            ${renderOverviewTempsPanel()}
           </div>
           ${heatPumpControls ? `<div class="oq-overview-hp-tools">${heatPumpControls}</div>` : ""}
           <div class="oq-overview-hp-grid oq-overview-hp-grid--${escapeHtml(hpGridLayout)}" data-oq-matrix-target="hardware-section">
@@ -1468,6 +1480,7 @@ import { renderStatCard } from "./stat-card.js";
     const resolvedRuntime = runtime || getHeatPumpRuntimeModel(title, keys, accent);
     const { mode, running } = resolvedRuntime;
     const model = resolvedRuntime.schematic;
+    panel.classList?.toggle("is-alert", isHeatPumpAlertActive(title, model));
     const headTitle = panel.querySelector(".oq-overview-hp-head-title");
     if (headTitle) {
       setInnerHtmlIfChanged(headTitle, renderHeatPumpPanelTitle(title, layoutAction));
@@ -1545,7 +1558,7 @@ import { renderStatCard } from "./stat-card.js";
       updatePipeGroup(board, id.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`), pipe.tone, pipe.d);
     });
     ensureTechTooltipLayering(board);
-    startMotionLoop();
+    syncMotionAnimations(board);
   }
 
   export function patchOverviewDom() {
@@ -1600,7 +1613,7 @@ import { renderStatCard } from "./stat-card.js";
         const controlModeLabel = getEntityStateText("controlModeLabel");
         replaceOuterHtmlIfSignatureChanged(
           statusPanel,
-          getRenderSignature(getOverviewStatusCards(strategyLabel, controlModeLabel)),
+          getRenderSignature(getOverviewStatusModel(strategyLabel, controlModeLabel)),
           () => renderOverviewStatusPanel(strategyLabel, controlModeLabel),
         );
       }

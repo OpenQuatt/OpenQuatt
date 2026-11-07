@@ -12,8 +12,11 @@ Open **Instellingen** in de web-app en kies de groep die bij je vraag past. Voor
 | Sensoren en externe invoer | [Bronnen / integraties](#bronnen-integraties) |
 | Ontluchten, testen, kalibreren of buitenunitinstellingen | [Service](#service) |
 | Updates, backup, opslag of toegang | [Systeem](#systeem) |
+| Terugzien welke instellingen zijn gewijzigd | [Wijzigingen](#wijzigingen) |
 
 Verander één instelling tegelijk en controleer het effect. Bij onverklaarbaar gedrag begin je bij [Problemen oplossen](../problemen-oplossen.md).
+
+Een wijziging wordt direct opgeslagen. Daarna toont een melding de oude en de nieuwe waarde, met de knop **Ongedaan maken** om de vorige waarde terug te zetten. Op een touchscreen verschuift een schuifregelaar alleen als je het bolletje versleept; een tik op de baan tijdens het scrollen verandert niets.
 
 ### Installatie
 
@@ -416,6 +419,12 @@ Ben je het wachtwoord vergeten of werkt de bestaande Home Assistant-koppeling ni
 #### Overig systeembeheer
 
 Zie [Gegevens delen en privacy](privacy.md) voor de keuzes over gegevens delen, [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
+
+### Wijzigingen
+
+Het **Wijzigingslogboek** toont welke instellingen via de web-app zijn aangepast, met tijdstip en de oude en nieuwe waarde. De nieuwste wijziging staat bovenaan. OpenQuatt bewaart de laatste 100 wijzigingen in de flash-partitie `openquatt_data`, zodat ze een herstart of update overleven en vanuit elke browser zichtbaar zijn; oudere wijzigingen vallen automatisch weg. Het tijdstip komt van de klok van de browser waarin je de wijziging maakte. Met **Exporteren (JSON)** download je het logboek als JSON-bestand.
+
+Wijzigingen via Home Assistant, MQTT of de ESPHome-API verschijnen hier niet, en tekstvelden zoals adressen of tokens worden bewust niet gelogd. Lange namen en waarden worden ingekort tot ze in een logregel passen.
 
 ## Verder
 

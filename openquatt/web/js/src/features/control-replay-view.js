@@ -3426,7 +3426,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           <div class="oq-working-head-copy">
             <span class="oq-working-kicker">
               <span class="oq-working-eyebrow">${t("controlReplay.panelEyebrow")}</span>
-              <span class="oq-working-beta">BETA</span>
             </span>
             <h2>${t("controlReplay.panelTitle")}</h2>
             <p>${t("controlReplay.panelCopy")}</p>

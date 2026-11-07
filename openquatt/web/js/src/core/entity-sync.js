@@ -226,6 +226,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     ],
     integrations: ["otEnabled", "cicPollingEnabled", "flowSource", "boilerConnection", "boilerCommandValid", "otbLinkAvailable", "otbConnectionState"],
     system: ["setupComplete", "projectVersionText", "releaseChannelText", "firmwareUpdateChannel", "statusLedsEnabled", "usageTelemetryEnabled", "usageTelemetryChoiceConfigured", "usageTelemetryInstallationId", "performanceTelemetryEnabled"],
+    changes: [],
   };
 
   export const SETTINGS_GROUP_KEY_MAP = {
@@ -335,6 +336,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...SETTINGS_STORAGE_KEYS,
       "debugLevel",
     ],
+    changes: [],
   };
 
   export function getSettingsRefreshKeys() {

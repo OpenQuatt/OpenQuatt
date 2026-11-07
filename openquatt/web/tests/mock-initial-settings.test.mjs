@@ -35,3 +35,29 @@ test("default preview supplies every installation readiness value", async () => 
     Object.assign(state, previous);
   }
 });
+
+async function loadPreviewMock(search) {
+  const window = {
+    crypto: globalThis.crypto,
+    location: { href: `http://localhost/dev.html${search}`, search },
+    addEventListener() {}, dispatchEvent() {}, setInterval() {}, setTimeout() {},
+    localStorage: { getItem() { return null; }, setItem() {} },
+  };
+  const context = { window, document: { querySelector() { return null; }, querySelectorAll() { return []; } }, URL, URLSearchParams, CustomEvent: class {}, console };
+  for (const file of ["mock-scenarios.js", "mock-incident-scenarios.js", "mock-entity-defs.js", "mock-fixtures.js", "mock-device.js"]) {
+    vm.runInNewContext(await readFile(new URL(`../js/${file}`, import.meta.url), "utf8"), context, { filename: file });
+  }
+  return window;
+}
+
+async function readPerformancePromptHandled(window) {
+  const definition = ENTITY_DEFS.performanceTelemetryPromptHandled;
+  const body = new URLSearchParams({ detail: "all", entities: ["performanceTelemetryPromptHandled", definition.domain, definition.name].join("\t") });
+  const response = await window.fetch("/openquatt/entities", { method: "POST", body: body.toString() });
+  return (await response.json()).entities.performanceTelemetryPromptHandled.value;
+}
+
+test("demo does not invite visitors to share performance data unless requested", async () => {
+  assert.equal(await readPerformancePromptHandled(await loadPreviewMock("?view=overview")), true);
+  assert.equal(await readPerformancePromptHandled(await loadPreviewMock("?view=overview&performancePrompt=1")), false);
+});

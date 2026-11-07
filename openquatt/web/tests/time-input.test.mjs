@@ -121,6 +121,8 @@ test("only the completed time is saved on blur; confirmation replaces the draft"
   const input = inputFor();
   const calls = [];
   globalThis.fetch = async (url, options) => {
+    // The change-log entry that follows a successful write is separate traffic.
+    if (/\/auth\/status|\/openquatt\/change-log/.test(url)) return response({});
     calls.push({ url, options });
     return response(options?.method === "POST" ? {} : { state: "09:35:00" });
   };

@@ -2,9 +2,10 @@ import { isTrendHistoryEnabled } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { SETTINGS_GROUPS } from "../core/config.js";
 import { syncEntities } from "../core/entity-sync.js";
+import { undoSettingsChange } from "../core/entity-write-actions.js";
 import { setAppView } from "../core/navigation.js";
 import { render } from "../core/render-scheduler.js";
-import { setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
+import { setFeedbackPosition, setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
 import { state } from "../core/state.js";
 import { setTrendWindowHours } from "../core/trend-window.js";
 import { setEnergyHistoryPeriodToNow, setEnergyHistoryView, shiftEnergyHistoryPeriod } from "../views/energy.js";
@@ -12,6 +13,8 @@ import { refreshTrendHistoryData } from "./storage-history.js";
 import { refreshOduRuntimeFrequencyStatuses } from "./odu-runtime-frequency.js";
 import { refreshOduDefrostStatuses } from "./odu-defrost.js";
 import { refreshOduSettingsStatuses } from "./odu-settings.js";
+import { dismissSettingsFeedback } from "./settings-feedback.js";
+import { CHANGE_LOG_GROUP_ID, exportSettingsChangeLog, refreshSettingsChangeLog } from "./settings-change-log.js";
 
 function openServiceSettings() {
   state.systemModal = "";
@@ -106,8 +109,17 @@ const viewActionHandlers = {
   },
   "select-settings-group": (button) => {
     setSettingsGroup(button.dataset.groupId || SETTINGS_GROUPS[0].id);
+    if (state.settingsGroup === CHANGE_LOG_GROUP_ID) {
+      void refreshSettingsChangeLog();
+    }
     render();
     void syncEntities({ forceFast: true });
+  },
+  "refresh-settings-change-log": () => {
+    void refreshSettingsChangeLog();
+  },
+  "export-settings-change-log": () => {
+    exportSettingsChangeLog();
   },
   "select-settings-source": (button) => {
     const key = String(button.dataset.sourceKey || "").trim().replace(/[^a-z0-9_-]/gi, "");
@@ -148,6 +160,10 @@ const viewActionHandlers = {
   },
   "select-overview-theme": (button) => {
     setOverviewTheme(button.dataset.overviewTheme);
+    render();
+  },
+  "select-feedback-position": (button) => {
+    setFeedbackPosition(button.dataset.feedbackPosition);
     render();
   },
   "select-hp-visual": (button) => {
@@ -217,6 +233,13 @@ const viewActionHandlers = {
   "open-cm100-commissioning-modal": () => openServiceSettings(),
   "open-installation-monitoring": () => openServiceSettings(),
   "open-service-task-modal": (button) => openServiceTask(button),
+  "dismiss-settings-feedback": () => {
+    dismissSettingsFeedback();
+    render();
+  },
+  "undo-settings-change": () => {
+    void undoSettingsChange();
+  },
 };
 
 export function handleViewAction(action, button, event) {

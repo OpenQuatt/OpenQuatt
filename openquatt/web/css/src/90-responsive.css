@@ -225,8 +225,6 @@
     columns: 1;
   }
 
-  .oq-overview-top,
-  .oq-overview-main,
   .oq-overview-trends-grid,
   .oq-overview-hp-grid,
   .oq-overview-hp-stats,
@@ -234,12 +232,34 @@
     grid-template-columns: 1fr;
   }
 
-  .oq-overview-statusgrid {
+  .oq-overview-summary-layout {
     grid-template-columns: 1fr;
   }
 
-  .oq-overview-summary-layout {
-    grid-template-columns: 1fr;
+  .oq-overview-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 20px;
+  }
+
+  .oq-overview-top .oq-stat:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .oq-overview-top .oq-stat:nth-child(even) {
+    padding-right: 0;
+  }
+
+  .oq-overview-top .oq-stat-value {
+    font-size: 1.6rem;
+  }
+
+  .oq-overview-kpis,
+  .oq-overview-statuspanel,
+  .oq-overview-controlpanel-stack,
+  .oq-overview-system,
+  .oq-overview-temps {
+    padding: 18px;
   }
 
   .oq-overview-head {
@@ -268,13 +288,12 @@
     grid-template-columns: 1fr;
   }
 
-  .oq-overview-trends {
-    padding: 16px;
-    border-radius: 20px;
+  .oq-overview-system {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .oq-overview-trendcard {
-    padding: 14px;
+    padding: 18px;
   }
 
   
@@ -414,13 +433,64 @@
   }
 
   #oq-helper-root {
-    width: calc(100vw - 16px);
     margin-top: 12px;
   }
 
-  .oq-helper-card {
+  .oq-helper-app-nav,
+  .oq-settings-group-nav {
+    margin-inline: -16px;
+    padding-inline: 16px;
+  }
+
+  .oq-settings-view {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .oq-settings-view-aside {
+    position: static;
+    gap: 8px;
+    margin-left: 0;
+  }
+
+  .oq-settings-group-nav {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .oq-settings-group-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  @supports (animation-timeline: scroll()) {
+    .oq-settings-group-nav {
+      mask-image: linear-gradient(to right, transparent, #000 var(--oq-scroll-fade-start),
+        #000 calc(100% - var(--oq-scroll-fade-end)), transparent);
+      /* Longhands: a minified shorthand with a timeline is not accepted by every scroll-timeline browser. */
+      animation-name: oq-scroll-edge-fade;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: scroll(self inline);
+    }
+  }
+
+  .oq-settings-group-button {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 36px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .oq-settings-view-note {
+    padding: 0;
+  }
+
+  .oq-settings-section {
     padding: 18px;
-    border-radius: 24px;
   }
 
   esp-app.oq-native-app {
@@ -428,14 +498,18 @@
   }
 }
 
-@media (min-width: 741px) and (max-width: 1200px) {
+@media (min-width: 861px) and (max-width: 1200px) {
   .oq-overview-summary-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .oq-overview-top,
-  .oq-overview-statusgrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .oq-overview-summary-side {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .oq-overview-system {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .oq-overview-controlpanel-state {
@@ -445,8 +519,7 @@
 
 @media (max-width: 640px) {
   #oq-helper-root {
-    width: calc(100vw - 6px);
-    margin: 4px auto 0;
+    margin: 8px auto 0;
   }
 
   .oq-start-editor {
@@ -485,7 +558,6 @@
     grid-area: copy;
   }
 
-  .oq-helper-card,
   .oq-helper-panel {
     padding: 10px;
   }
@@ -494,13 +566,7 @@
     padding: 0;
   }
 
-  .oq-overview-summary-shell {
-    padding: 12px;
-    border-radius: 22px;
-  }
-
   .oq-helper-head {
-    padding-bottom: 8px;
     padding-right: 68px;
   }
 
@@ -578,15 +644,13 @@
   }
 
   .oq-helper-app-nav {
-    gap: 8px;
-    margin-top: 18px;
-    margin-bottom: 14px;
-    padding-bottom: 14px;
+    gap: 22px;
+    margin-top: 14px;
+    margin-bottom: 16px;
   }
 
   .oq-helper-app-tab {
-    min-height: 38px;
-    padding: 0 12px;
+    min-height: 44px;
     font-size: 0.95rem;
   }
 
@@ -649,18 +713,6 @@
     grid-template-columns: 1fr 1fr;
   }
 
-  .oq-helper-card--wide-flush .oq-helper-panel--flush {
-    margin-inline: -8px;
-  }
-
-  .oq-helper-card--wide-flush .oq-overview-hp-grid {
-    margin-inline: -4px;
-  }
-
-  .oq-overview-board {
-    padding: 14px 8px 16px;
-    border-radius: 22px;
-  }
 
   .oq-overview-chip {
     font-size: 0.84rem;
@@ -676,9 +728,18 @@
     text-align: left;
   }
 
-  .oq-overview-top {
-    gap: 10px;
-    margin-top: 14px;
+  .oq-overview-summary-shell,
+  .oq-overview-summary-layout {
+    gap: 12px;
+  }
+
+  .oq-overview-controlpanel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .oq-overview-controlpanel-actions--split {
+    justify-content: space-between;
   }
 
   .oq-overview-hp-tools {
@@ -700,33 +761,20 @@
 
   .oq-overview-main,
   .oq-overview-hp-grid {
-    gap: 6px;
-    margin-top: 10px;
+    gap: 12px;
+    margin-top: 12px;
   }
 
   .oq-overview-trends {
-    margin-top: 10px;
-    padding: 12px;
-  }
-
-  .oq-overview-trends-window {
-    padding: 12px;
-    border-radius: 16px;
-  }
-
-  .oq-overview-trends-windowbar {
-    gap: 6px;
+    margin-top: 16px;
   }
 
   .oq-overview-trends-grid {
-    gap: 10px;
-    margin-top: 10px;
+    gap: 12px;
   }
 
   .oq-overview-trendcard {
-    gap: 10px;
-    padding: 12px;
-    border-radius: 16px;
+    gap: 12px;
   }
 
   .oq-overview-trendcard-copy > p:last-child {
@@ -750,17 +798,12 @@
     font-size: 0.84rem;
   }
 
-  .oq-overview-trend-pill {
-    padding: 6px 8px;
-    border-radius: 10px;
-  }
-
   .oq-overview-trend-pill span {
-    font-size: 0.64rem;
+    font-size: 0.75rem;
   }
 
   .oq-overview-trend-pill strong {
-    font-size: 0.82rem;
+    font-size: 0.85rem;
   }
 
   .oq-overview-hp-head,
@@ -848,7 +891,6 @@
   .oq-overview-trendcard-head {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "kicker"
       "title"
       "description"
       "meta";
