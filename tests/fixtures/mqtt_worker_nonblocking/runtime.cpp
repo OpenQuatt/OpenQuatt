@@ -198,7 +198,8 @@ static std::atomic<unsigned> subscribe_calls{0}, stop_calls{0}, init_calls{0}, d
 static std::atomic<int> stop_failures{0};
 static std::array<FakeClient, 8> clients{};
 static void worker_only() { assert(current_task && "SDK operation executed on the main loop"); }
-esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t*) {
+esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t* config) {
+  assert(config->task.stack_size == EXPECTED_MQTT_TASK_STACK);
   worker_only();
   const unsigned index = init_calls.fetch_add(1);
   assert(index < clients.size());
@@ -261,7 +262,7 @@ class OpenQuattMqttConfig {
   ~OpenQuattMqttConfig() { this->client_worker_task_state_.deallocate(); }
   static constexpr size_t BROKER_MAX_LEN = 128, USERNAME_MAX_LEN = 64, PASSWORD_MAX_LEN = 128;
   static constexpr size_t MQTT_CLIENT_ID_MAX_LEN = 96, NUMERIC_INPUT_COUNT = 1;
-  static constexpr int MQTT_TASK_STACK_SIZE = 12288;
+  // PRODUCTION_MQTT_TASK_STACK
   static constexpr uint32_t MQTT_WORKER_TASK_STACK_SIZE = 24576, MQTT_RECONCILE_RETRY_MS = 5000;
   static constexpr bool MQTT_WORKER_STACK_IN_PSRAM = true;
   static constexpr uint8_t INPUT_MASK_ALL = 0xff, STATEFUL_INPUT_MASK = 0xff;
@@ -495,6 +496,21 @@ static void invalid_region() {
   assert(component.mqtt_client_present_.load() && !component.marked_failed.load());
   assert(subscribe_calls == 0 && stop_calls == 0 && destroy_calls == 0 && init_calls == 0);
 }
+static void cold_start() {
+  OpenQuattMqttConfig component;
+  component.mqtt_client_ = nullptr;
+  component.mqtt_client_present_.store(false);
+  component.callback_client_.store(nullptr);
+  component.mqtt_client_started_ = false;
+  component.client_events_enabled_.store(false);
+  component.connected_.store(false);
+  component.client_reconcile_pending_.store(true);
+  component.loop();
+  until([&] { return init_calls == 1 && !component.client_worker_active_.load(); });
+  assert(component.mqtt_client_present_.load() && component.mqtt_client_started_);
+  assert(component.mqtt_client_ != nullptr && component.mqtt_client_ != &component.initial_client);
+  assert(component.client_events_enabled_.load() && component.callback_client_.load() == component.mqtt_client_);
+}
 static void partial_init() {
   OpenQuattMqttConfig component;
   component.mqtt_client_ = nullptr;
@@ -538,6 +554,8 @@ int main(int argc, char** argv) {
     terminal_cleanup();
   else if (name == "invalid_region")
     invalid_region();
+  else if (name == "cold_start")
+    cold_start();
   else if (name == "partial_init")
     partial_init();
   else
