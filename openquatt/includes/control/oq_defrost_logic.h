@@ -5,12 +5,27 @@
 #include <cstring>
 
 #include "../odu/oq_odu_generation.h"
+#include "../sources/oq_raw_receipt.h"
 
 namespace oq_defrost {
 
 constexpr uint32_t START_TIMEOUT_MS = 210000U;
 constexpr uint32_t FRESH_MS = 30000U;
 enum class Phase : uint8_t { IDLE, WAITING, ACTIVE, RESYNC };
+
+struct DuoStagingObservation {
+  bool valve_active{false};
+  bool active{false};
+};
+
+inline DuoStagingObservation duo_staging_observation(bool online, const oq_sources::RawFloatReceipt& valve_status,
+                                                     const oq_sources::RawFloatReceipt& defrost, uint64_t now) {
+  if (!online) return {};
+  // Either fresh register can detect the start of defrost before the other catches up.
+  const bool valve_active =
+      valve_status.fresh(now, FRESH_MS) && (static_cast<uint16_t>(valve_status.value) & 0x0040U) != 0;
+  return {valve_active, valve_active || (defrost.fresh(now, FRESH_MS) && defrost.value == 1.0f)};
+}
 
 // Observations and transitions run on the ESPHome main loop, never in HTTP callbacks.
 struct Cycle {
