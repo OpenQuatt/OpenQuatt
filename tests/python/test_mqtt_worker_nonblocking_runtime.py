@@ -59,11 +59,11 @@ def runtime_source(source):
     for name, method in zip(METHODS, methods):
         signature = method[:method.index("{")].replace("OpenQuattMqttConfig::", "").strip()
         declarations.append(("static " if name in STATIC_METHODS else "") + signature + ";")
-    stack = re.search(r"#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q\n[^#]+#else\n[^#]+#endif", HEADER.read_text())
-    if stack is None:
-        raise AssertionError("production MQTT task stack selection missing")
+    stack = re.findall(r"static constexpr int MQTT_TASK_STACK_SIZE = \d+;", HEADER.read_text())
+    if len(stack) != 1:
+        raise AssertionError("expected one production MQTT task stack constant")
     return (FIXTURE.read_text()
-            .replace("// PRODUCTION_MQTT_TASK_STACK", stack.group())
+            .replace("// PRODUCTION_MQTT_TASK_STACK", stack[0])
             .replace("// PRODUCTION_DECLARATIONS", "\n".join(declarations))
             .replace("// PRODUCTION_METHODS", "\n\n".join(methods)))
 
@@ -75,27 +75,12 @@ class MqttWorkerNonblockingRuntimeTest(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         cls.binary = Path(cls.directory.name) / "mqtt_worker_nonblocking"
         result = run_process(
-            compiler_command("-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=0", "-DEXPECTED_MQTT_TASK_STACK=12288", "-pthread", "-I", str(ROOT), "-x", "c++", "-", "-o", str(cls.binary)),
+            compiler_command("-DEXPECTED_MQTT_TASK_STACK=6144", "-pthread", "-I", str(ROOT), "-x", "c++", "-", "-o", str(cls.binary)),
             input=runtime_source(CPP.read_text()), text=True, capture_output=True,
             timeout=COMPILE_TIMEOUT_SECONDS,
         )
         if result.returncode:
             raise AssertionError(result.stderr[-10000:])
-
-    def test_q_stack_reaches_sdk_during_start_and_reconfigure(self):
-        binary = Path(self.directory.name) / "mqtt_worker_q"
-        result = run_process(
-            compiler_command("-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=1",
-                             "-DEXPECTED_MQTT_TASK_STACK=6144", "-pthread",
-                             "-I", str(ROOT), "-x", "c++", "-", "-o", str(binary)),
-            input=runtime_source(CPP.read_text()), text=True, capture_output=True,
-            timeout=COMPILE_TIMEOUT_SECONDS,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr[-10000:])
-        for case in ("cold_start", "reconfigure"):
-            result = run_process([str(binary), case], text=True, capture_output=True, timeout=12)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn(f"PASS {case}", result.stdout)
 
     def run_case(self, name, now_ms=None):
         command = [str(self.binary), name]
@@ -105,7 +90,7 @@ class MqttWorkerNonblockingRuntimeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(f"PASS {name}", result.stdout)
 
-    def test_non_q_cold_start_uses_existing_stack(self):
+    def test_new_client_uses_6kib_transport_stack(self):
         self.run_case("cold_start")
 
     def test_loop_returns_while_worker_subscribe_waits(self):
