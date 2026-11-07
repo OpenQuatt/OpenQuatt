@@ -151,9 +151,10 @@ void weather_waits_for_manifest(bool cancel) {
     assert(!https_slot.try_acquire());
   }
   h.device.run_notified_worker();
-  assert(!https_slot.try_acquire());
-  h.device.loop();
+  // Worker cleanup must make admission possible without a main-loop tick.
   assert(https_slot.try_acquire());
+  h.device.loop();
+  assert(!https_slot.try_acquire());  // Consuming READY must not release another owner.
   // Local consent persistence may still run while a manifest owns the slot.
   if (cancel) h.ota_aborted();
   h.enabled.turn_off();
