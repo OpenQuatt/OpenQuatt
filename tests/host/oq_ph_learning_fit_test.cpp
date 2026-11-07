@@ -159,7 +159,9 @@ void test_fail_closed_dataset_gates() {
   make_dataset(records);
   const uint32_t now = records[8].end_epoch_s;
   AdviceFitWorkspace workspace;
-  assert(begin_advice_fit(records, 8, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INSUFFICIENT_DATA);
+  assert(begin_advice_fit(records, 8, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::INSUFFICIENT_DATA);
+  assert(workspace.result.preview.available && !workspace.result.candidate_available && !workspace.result.advice_ready);
   for (auto& record : records) record.mean_outside_c = 5.0f;
   assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::FIT_IN_PROGRESS);
   assert(finish_fit(workspace) == LearningStatus::FIT_FAILED);
@@ -184,7 +186,9 @@ void test_fail_closed_dataset_gates() {
   assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::SEGMENT_INELIGIBLE);
   make_dataset(records);
   records[0].room_trend_k_per_h = 0.201f;
-  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INSUFFICIENT_DATA);
+  assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::INSUFFICIENT_DATA);
+  assert(workspace.result.preview.available && !workspace.result.advice_ready);
   make_dataset(records);
   records[0].effective_outside_profile_centi[0] = 1000;
   assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INVALID_MEASUREMENT);
@@ -226,13 +230,33 @@ void test_narrow_training_range_produces_only_a_provisional_line() {
   assert(workspace.result.train_min_c == 8 && fabsf(workspace.result.train_max_c - 11.6f) < 0.01f);
   assert(memcmp(before, records, sizeof(records)) == 0);
 
-  // Checking-day labels cannot influence the displayed training estimate.
+  assert(workspace.result.preview.available && workspace.result.preview.segments == 21 &&
+         workspace.result.preview.days == 21);
+  assert(workspace.result.preview.min_c == 2 && fabsf(workspace.result.preview.max_c - 11.6f) < 0.01f);
+  const HouseLine before_preview = workspace.result.preview.line;
+  // Checking-day labels influence only the display preview, never the advice training estimate.
   for (uint8_t index = 18; index < 21; ++index) records[index].mean_heat_w += 2000;
   assert(begin_advice_fit(records, 21, records[20].end_epoch_s, {150, 15}, {}, {}, workspace) ==
          LearningStatus::FIT_IN_PROGRESS);
   assert(finish_fit(workspace) == LearningStatus::INSUFFICIENT_SPREAD);
   assert(fabsf(workspace.result.candidate.heat_loss_w_per_k - 200) < 0.01f);
   assert(!workspace.result.advice_ready);
+  assert(workspace.result.preview.available);
+  assert(fabsf(workspace.result.preview.line.heat_loss_w_per_k - before_preview.heat_loss_w_per_k) > 10);
+}
+
+void test_preview_with_six_total_days_keeps_advice_closed() {
+  SegmentRecord records[6];
+  for (uint8_t day = 0; day < 6; ++day) records[day] = fitted_record(day, -5 + 2 * day);
+  AdviceFitWorkspace workspace;
+  assert(begin_advice_fit(records, 6, records[5].end_epoch_s, {150, 15}, {}, {}, workspace) ==
+         LearningStatus::FIT_IN_PROGRESS);
+  assert(workspace.phase == FitPhase::FIT_PREVIEW);
+  assert(advance_advice_fit(workspace) == LearningStatus::INSUFFICIENT_DATA);
+  assert(workspace.result.preview.available && workspace.result.preview.days == 6);
+  assert(!workspace.result.candidate_available && !workspace.result.advice_ready);
+  const auto validation = validate_house_models(workspace.result, ThermalModelState{}, {}, 1000, 1);
+  assert(!validation.batch_advice_ready && !validation.cross_validated_advice_ready && !validation.auto_apply_allowed);
 }
 
 void test_exact_retention_boundary_allows_sparse_season() {
@@ -261,6 +285,7 @@ int main() {
   test_fail_closed_dataset_gates();
   test_temperature_dominance();
   test_narrow_training_range_produces_only_a_provisional_line();
+  test_preview_with_six_total_days_keeps_advice_closed();
   test_exact_retention_boundary_allows_sparse_season();
   static_assert(kMaxRecordsVisitedPerHuberFit == 1536);
   static_assert(kMaxSegmentRecords == 128);

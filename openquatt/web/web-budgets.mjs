@@ -40,7 +40,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Preserve 444 B of raw headroom and the existing relative gzip limits.
     // Provisional curve ranges and firmware fit progress: +1,860 B raw / +550 B gzip
     // versus b18f4d15 on Node 24.14.1, preserving 444 B raw headroom.
-    raw: 1_410_715,
+    // All-days display preview and NL/EN explanation: +1,300 B raw vs664f45c.
+    // Preserve444 B raw headroom; relative gzip limits remain unchanged.
+    raw: 1_412_015,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

@@ -1466,3 +1466,19 @@ test("een stilvallende readback- of statusbody houdt de leerbediening niet geblo
     window.setTimeout = originalTimeout;
   }
 });
+
+test("display preview is optional and cannot replace the independent advice candidate", () => {
+  const preview = {h:190,t0:18,segments:21,days:21,min_c:1.97,max_c:12.34};
+  const raw = statusPayload({records:21,h_batch:213,t0_batch:17.4,batch_preview:preview});
+  const normalized = normalizeHouseLearningStatus(raw);
+  assert.deepEqual(normalized.batchPreview,{h:190,t0:18,count:21,days:21,minC:1.97,maxC:12.34});
+  assert.equal(normalized.hBatch,213); assert.equal(normalized.t0Batch,17.4);
+  assert.equal(normalized.batchAdviceReady,false); assert.equal(normalized.adviceReady,false);
+  assert.equal(normalizeHouseLearningStatus(statusPayload()).batchPreview,undefined);
+  for (const change of [{segments:22},{days:-1},{h:"190"},{h:null},{t0:NaN},{min_c:13},{days:5},{segments:129}]) {
+    assert.equal(normalizeHouseLearningStatus({...raw,batch_preview:{...preview,...change}}).batchPreview,null);
+  }
+  const unavailable = normalizeHouseLearningStatus({...raw,batch_preview:{...preview,h:null,t0:null}});
+  assert.equal(unavailable.batchPreview.h,null);
+  assert.equal(unavailable.hBatch,213);
+});

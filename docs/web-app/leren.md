@@ -34,9 +34,13 @@ blijven beschikbaar. Zie voor de voorwaarden en bronafwijzingen het
 ## Wanneer is er een geleerde woninglijn?
 
 Open **Meetgegevens** voor de grafiek en de voorwaarden voor een woninglijn.
-Een plausibele lijn kan vanaf zes bruikbare leerdagen alvast als **voorlopige
-woninglijn** verschijnen. De groene lijn is dan volledig gestippeld en beperkt
-tot het gemeten temperatuurbereik van die leerdagen. De uitleg vermeldt welke
+Een plausibele lijn kan vanaf zes bruikbare dagmetingen alvast als **voorlopige
+woninglijn** verschijnen. Deze schatting gebruikt alle geschikte dagen, ook de
+nieuwste dagen met bekende meetkwaliteit. Betere meetkwaliteit geeft een dag
+meer gewicht; oudere dagen met onbekende meetkwaliteit tellen minder zwaar mee.
+De groene lijn is volledig gestippeld en loopt over de hele grafiek. Buiten het
+gemeten temperatuurbereik is dit een doortrekking van de schatting. Het gekleurde
+vlak markeert het bereik van de bruikbare meetpunten. De uitleg vermeldt welke
 controles nog ontbreken. Deze schatting stuurt de regeling niet aan.
 
 De balken tonen het aantal dagmetingen en de temperatuurspreiding. De huidige
@@ -47,9 +51,11 @@ temperaturen. De controller kijkt ook naar de verdeling van de temperaturen,
 meetkwaliteit en de uitkomst op de controledagen.
 
 De firmware reserveert de nieuwste drie geschikte dagen met bekende meetkwaliteit
-voor onafhankelijke controle. Ze tellen niet mee bij het berekenen van de lijn
-of de spreiding van de leerdagen. Oudere dagen met onbekende meetkwaliteit mogen
-met een lager gewicht helpen bij het leren.
+voor onafhankelijke controle van het modeladvies. Die aparte adviesberekening
+gebruikt de controledagen niet bij het bepalen van de lijn of de spreiding van
+de leerdagen. De voorlopige schatting en de adviesberekening kunnen daardoor
+verschillende lijnen en temperatuurbereiken hebben. Oudere dagen met onbekende
+meetkwaliteit mogen met een lager gewicht helpen bij het leren.
 Op oudere firmware zonder voortgang van de fit tonen de balken bij onbekende
 meetkwaliteit het aantal en de spreiding van alle opgeslagen dagen.
 Dagen met onbekende meetkwaliteit leveren geen onafhankelijke controle.
@@ -62,8 +68,8 @@ temperatuurmetingen geldig waren, de warmte-onzekerheid en het modelgewicht.
 Een dag met een lager modelgewicht telt minder zwaar mee bij het schatten van de
 lijn. Oude vieruursmetingen blijven herkenbaar in de grafiek en tellen niet mee
 als dagmeting. Na goedkeuring is de groene lijn binnen het gemeten bereik
-doorgetrokken. Alleen bij die goedgekeurde lijn loopt het gestippelde deel ook
-buiten het gemeten temperatuurbereik.
+doorgetrokken en daarbuiten gestippeld. Een voorlopige lijn blijft overal
+gestippeld, ook binnen het gemeten bereik.
 
 ## Details en leerdata
 

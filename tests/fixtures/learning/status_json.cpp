@@ -242,6 +242,7 @@ int main() {
   summary.batch.candidate_available = true;
   summary.batch.train_segments = summary.batch.train_days = 18;
   summary.batch.holdout_segments = summary.batch.holdout_days = 3;
+  summary.batch.preview = {true, {211.25f, 17.125f}, 21, 21, 1.97f, 12.34f};
   summary.batch.train_min_c = 7.55f;
   summary.batch.train_max_c = 12.34f;
   summary.batch.train_p10_c = 8.28f;

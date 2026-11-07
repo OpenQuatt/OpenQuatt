@@ -34,7 +34,7 @@ test("grafiek toont een blauwe configuratielijn zonder meetpunten en markeert ee
   assert.match(markup, /gemeten temperatuurbereik van de leerdagen beschikbaar/);
 });
 
-test("voorlopige lijn blijft gestippeld binnen uitsluitend het firmware-leerbereik", () => {
+test("voorlopige lijn wordt volledig gestippeld doorgetrokken buiten het firmware-leerbereik", () => {
   const data = normalizeHouseLearningExport(payload);
   const learned = { h: 213, t0: 17.4, ready: false,
     fit: { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
@@ -43,8 +43,8 @@ test("voorlopige lijn blijft gestippeld binnen uitsluitend het firmware-leerbere
   const html = renderHouseLearningChart(data, {}, learned);
   const paths = [...html.matchAll(/<path d="([^"]+)" class="oq-house-learning-chart-line oq-house-learning-chart-line--learned-dashed"/g)];
   assert.equal(paths.length, 1);
-  assert.ok(paths[0][1].startsWith(`M ${model.x(7.55).toFixed(1)} `));
-  assert.ok(paths[0][1].includes(`L ${model.x(12.34).toFixed(1)} `));
+  assert.ok(paths[0][1].startsWith(`M ${model.x(model.minX).toFixed(1)} `));
+  assert.ok(paths[0][1].includes(`L ${model.x(model.maxX).toFixed(1)} `));
   assert.doesNotMatch(html, /class="oq-house-learning-chart-line oq-house-learning-chart-line--learned"/);
   assert.doesNotMatch(renderHouseLearningChart(data, {}, { ...learned, fit: null }), /<path[^>]+chart-line--learned/);
 });
@@ -369,4 +369,28 @@ test("grote signed waarden houden de y-as begrensd in aantal rasterlijnen", () =
   assert.ok((model.axisMaxY - model.axisMinY) / model.yStep <= 10);
   assert.ok(model.axisMinY <= -25000);
   assert.ok(Number.isFinite(model.y(-25000)));
+});
+
+test("all-days preview includes the cold checking range without granting advice", () => {
+  const learned = { h: 213, t0: 17.4, ready: false, referenceRoomC: 20, batchStatus: "insufficient_spread",
+    fit: { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
+      p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 },
+    preview: { h: 190, t0: 18, count: 21, days: 21, minC: 1.97, maxC: 12.34 } };
+  const model = getHouseLearningChartModel([], {}, learned);
+  assert.equal(model.h, 190); assert.equal(model.ready, false);
+  const nl = renderHouseLearningChart([], {}, learned);
+  const path = [...nl.matchAll(/<path d="([^"]+)" class="oq-house-learning-chart-line oq-house-learning-chart-line--learned-dashed"/g)];
+  assert.equal(path.length, 1);
+  assert.equal(path[0][1].split(" ")[1], model.x(model.minX).toFixed(1));
+  assert.ok(path[0][1].endsWith(`L ${model.x(model.maxX).toFixed(1)} ${model.y(0).toFixed(1)}`));
+  assert.match(nl, /buiten het gemeten bereik doorgetrokken/);
+  assert.match(nl, /alle 21 bruikbare dagmetingen, gewogen naar meetkwaliteit/);
+  assert.match(nl, /Leren: 18 · Controleren: 3/);
+  assert.match(nl, /3,6 °C/);
+  assert.doesNotMatch(nl, /Geleerde woninglijn beschikbaar/);
+  setLocale("en", {persist:false,applyDocument:false,notify:false});
+  assert.match(renderHouseLearningChart([], {}, learned), /all 21 usable daily measurements, weighted by measurement quality/);
+  const approved = getHouseLearningChartModel([], {}, {...learned, ready:true});
+  assert.equal(approved.h, 213); assert.equal(approved.t0, 17.4);
+  assert.equal(getHouseLearningChartModel([], {}, {...learned, preview:null}).learnedValid, false);
 });

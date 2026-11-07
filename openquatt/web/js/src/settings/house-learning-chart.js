@@ -73,7 +73,8 @@ export function normalizeHouseLearningExport(payload = {}) {
 
 export function getHouseLearningChartModel(records, configured = {}, learned = {}, width = WIDTH) {
   const config = { coldC: finite(configured.coldC), zeroC: finite(configured.zeroC), ratedW: finite(configured.ratedW) };
-  const fit = { h: finite(learned.h), t0: finite(learned.t0), ready: learned.ready === true };
+  const line = learned.ready !== true && learned.preview !== undefined ? learned.preview || {} : learned;
+  const fit = { h: finite(line.h), t0: finite(line.t0), ready: learned.ready === true };
   const configuredValid = config.coldC != null && config.zeroC != null && config.ratedW != null && config.zeroC > config.coldC && config.ratedW > 0;
   const learnedValid = fit.h != null && fit.t0 != null && fit.h > 0;
   const minX = -10;
@@ -142,14 +143,15 @@ export function renderHouseLearningChart(records, configured, learned) {
     ? Math.max(0, model.ratedW * ((model.zeroC - temperature) / (model.zeroC - model.coldC)))
     : 0;
   const learnedPower = (temperature) => Math.max(0, model.h * (model.t0 - temperature));
-  const rangeMin = !model.ready ? finite(learned?.fit?.minC) : measuredMin;
-  const rangeMax = !model.ready ? finite(learned?.fit?.maxC) : measuredMax;
+  const previewRange = learned?.preview !== undefined ? learned.preview : learned?.fit;
+  const rangeMin = !model.ready ? finite(previewRange?.minC) : measuredMin;
+  const rangeMax = !model.ready ? finite(previewRange?.maxC) : measuredMax;
   const learnedStart = rangeMin == null ? model.minX : clamp(rangeMin, model.minX, model.maxX);
   const learnedEnd = rangeMax == null ? model.maxX : clamp(rangeMax, model.minX, model.maxX);
   const measuredStart = measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
   const measuredEnd = measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
   const learnedRanges = !model.ready
-    ? rangeMin != null && rangeMax != null && learnedEnd > learnedStart ? [[learnedStart, learnedEnd, true]] : []
+    ? rangeMin != null && rangeMax != null && rangeMax > rangeMin ? [[model.minX, model.maxX, true]] : []
     : fitRecords.length && learnedEnd > learnedStart
     ? [[model.minX, learnedStart, true], [learnedStart, learnedEnd, false], [learnedEnd, model.maxX, true]]
     : [[model.minX, model.maxX, true]];

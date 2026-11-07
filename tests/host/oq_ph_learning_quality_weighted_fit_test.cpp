@@ -59,6 +59,27 @@ void less_influence_from_uncertain_biased_day() {
   assert(detail::record_base_weight(b, 2) < detail::record_base_weight(a, 2));
 }
 
+void all_days_preview_uses_quality_and_never_changes_advice_fit() {
+  SegmentRecord good[9], uncertain[9];
+  for (uint8_t day = 0; day < 9; ++day) good[day] = day_record(day);
+  // Bias a reserved checking day, within the Huber threshold.
+  good[8].mean_heat_w += 150;
+  memcpy(uncertain, good, sizeof(good));
+  uncertain[8].daily_quality.heat_uncertainty_mean_w = 100;
+  AdviceFitWorkspace a, b;
+  assert(begin_advice_fit(good, 9, good[8].end_epoch_s, {150, 15}, {}, {}, a) == LearningStatus::FIT_IN_PROGRESS);
+  assert(begin_advice_fit(uncertain, 9, uncertain[8].end_epoch_s, {150, 15}, {}, {}, b) ==
+         LearningStatus::FIT_IN_PROGRESS);
+  finish(a);
+  finish(b);
+  assert(a.result.preview.available && b.result.preview.available);
+  assert(a.result.candidate.heat_loss_w_per_k == b.result.candidate.heat_loss_w_per_k);
+  assert(a.result.candidate.zero_power_temp_c == b.result.candidate.zero_power_temp_c);
+  const double expected = record_house_line_power_w({200, 16}, good[8]);
+  assert(fabs(record_house_line_power_w(b.result.preview.line, good[8]) - expected) <
+         fabs(record_house_line_power_w(a.result.preview.line, good[8]) - expected));
+}
+
 void apparent_improvement_can_fail_robust_holdout() {
   SegmentRecord records[9];
   for (uint8_t day = 0; day < 9; ++day) {
@@ -219,6 +240,7 @@ void exact_five_percent_and_fifty_watt_bound_is_inclusive() {
 int main() {
   exact_five_percent_and_fifty_watt_bound_is_inclusive();
   less_influence_from_uncertain_biased_day();
+  all_days_preview_uses_quality_and_never_changes_advice_fit();
   apparent_improvement_can_fail_robust_holdout();
   real_robust_gain_passes_with_known_metadata();
   legacy_is_train_only_and_never_crosses_holdout_boundary();

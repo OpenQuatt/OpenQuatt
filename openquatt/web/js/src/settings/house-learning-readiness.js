@@ -68,7 +68,11 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
       distributionReady: !["insufficient_spread", "day_dominance"].includes(learned.batchStatus),
     };
   }
-  const available = Number.isFinite(learned.h) && learned.h > 0 && Number.isFinite(learned.t0);
+  const line = learned.ready !== true && learned.preview !== undefined ? learned.preview || {} : learned;
+  const available = Number.isFinite(line.h) && line.h > 0 && Number.isFinite(line.t0);
+  const previewCopy = learned.preview && available && !learned.ready
+    ? t("houseLearning.readiness.previewAllDays", { count: number(learned.preview.count) })
+    : t("houseLearning.readiness.provisionalCopy");
   const reasonKey = Object.hasOwn(BATCH_REASON_KEYS, learned.batchStatus) ? BATCH_REASON_KEYS[learned.batchStatus] : null;
   let copy;
   if (reasonKey) copy = t(reasonKey);
@@ -80,7 +84,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
   else if (learned.batchStatus === "insufficient_data") copy = t("houseLearning.readiness.controllerNeedsDays");
   else if (learned.batchStatus === "insufficient_spread" || learned.batchStatus === "day_dominance") copy = t("houseLearning.readiness.controllerNeedsSpread");
   else copy = t("houseLearning.readiness.furtherChecks");
-  if (available && !learned.ready) copy = t("houseLearning.readiness.provisionalCopy") + " " + copy;
+  if (available && !learned.ready) copy = previewCopy + " " + copy;
   const title = t(available ? learned.ready ? "houseLearning.readiness.readyTitle" : "houseLearning.readiness.provisionalTitle" : "houseLearning.readiness.waitingTitle");
   const metric = (label, value, required, complete, state, note, fraction) => `<div class="oq-house-learning-readiness-metric${complete ? " is-complete" : ""}">
     <dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)} <span>${escapeHtml(required)}</span></dd>
@@ -100,7 +104,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
     const observedSpread = observedDays.length > 1 ? spread : null;
     const requiredDays = TRAIN_DAYS + CHECK_DAYS;
     const serverCopy = reasonKey ? t(reasonKey) : available
-      ? t(learned.ready ? "houseLearning.readiness.readyCopy" : "houseLearning.readiness.provisionalCopy") : "";
+      ? learned.ready ? t("houseLearning.readiness.readyCopy") : previewCopy : "";
     return `<section class="oq-house-learning-readiness" aria-label="${escapeHtml(t("houseLearning.readiness.label"))}">
       <div class="oq-house-learning-readiness-head"><h5>${escapeHtml(title)}</h5></div>
       ${serverCopy ? `<p>${escapeHtml(serverCopy)}</p>` : ""}

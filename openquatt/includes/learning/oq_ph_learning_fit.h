@@ -12,7 +12,7 @@ namespace oq_power_house::learning {
 
 constexpr size_t kMaxRecordsVisitedPerHuberFit = 2U * static_cast<size_t>(kMaxHuberPasses) * kMaxSegmentRecords;
 constexpr size_t kMaxPreparationSortComparisons = kMaxSegmentRecords * (kMaxSegmentRecords - 1U) / 2U;
-constexpr size_t kMaxAdviceFitSteps = kMaxCalendarDays + 2U;
+constexpr size_t kMaxAdviceFitSteps = kMaxCalendarDays + 3U;
 
 struct FitConfig {
   uint8_t huber_passes = kMaxHuberPasses;
@@ -35,6 +35,16 @@ struct FitConfig {
   float max_lodo_zero_power_range_k = 2.0f;
 };
 
+// Display-only fit over all usable days. Never an independently checked model.
+struct PreviewLine {
+  bool available = false;
+  HouseLine line;
+  uint8_t segments = 0;
+  uint8_t days = 0;
+  float min_c = NAN;
+  float max_c = NAN;
+};
+
 struct AdviceResult {
   LearningStatus status = LearningStatus::INSUFFICIENT_DATA;
   bool candidate_available = false;
@@ -43,6 +53,7 @@ struct AdviceResult {
   uint16_t quality_policy_version = kDailyQualityPolicyVersion;
   uint32_t context_revision = 0;
   HouseLine candidate;
+  PreviewLine preview;
   uint8_t train_segments = 0;
   uint8_t holdout_segments = 0;
   uint8_t train_days = 0;
@@ -78,13 +89,14 @@ struct AdviceResult {
   float max_abs_room_trend_per_heat_k_per_h_w = NAN;
 };
 
-enum class FitPhase : uint8_t { IDLE = 0, FIT_BASE, FIT_LODO, FINALIZE, DONE };
+enum class FitPhase : uint8_t { IDLE = 0, FIT_PREVIEW, FIT_BASE, FIT_LODO, FINALIZE, DONE };
 
 // Caller-owned workspace. Keep it alive, together with the immutable record array,
 // until advance_advice_fit() returns a status other than FIT_IN_PROGRESS.
 struct AdviceFitWorkspace {
   const SegmentRecord* records = nullptr;
   size_t record_count = 0;
+  size_t input_record_count = 0;
   size_t train_count = 0;
   uint32_t now_epoch_s = 0;
   HouseLine active_line;
@@ -92,6 +104,7 @@ struct AdviceFitWorkspace {
   FitConfig config;
   FitPhase phase = FitPhase::IDLE;
   LearningStatus advice_blocker = LearningStatus::OK;
+  LearningStatus preparation_status = LearningStatus::OK;
   uint8_t day_count = 0;
   uint8_t train_day_count = 0;
   uint8_t next_lodo_day = 0;
@@ -100,6 +113,8 @@ struct AdviceFitWorkspace {
   uint8_t selected_record_indices[kMaxSegmentRecords]{};
   uint8_t record_day_index[kMaxSegmentRecords]{};
   float sorted_train_temperatures[kMaxSegmentRecords]{};
+  // Zero excludes a raw row; otherwise normalize its weight within its day.
+  uint8_t preview_day_record_counts[kMaxSegmentRecords]{};
   AdviceResult result;
 };
 
@@ -153,13 +168,17 @@ inline double record_base_weight(const AdviceFitWorkspace& workspace, size_t ind
 // The day prediction averages max(0, H * (T0 - effective temperature)).
 // For a fixed set of temperatures below T0 this is linear in H*T0 and H.
 // Re-evaluate that set on each of the existing bounded Huber passes.
-inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_index, HouseLine& output) {
+inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_index, HouseLine& output,
+                           bool preview = false) {
   HouseLine current;
   for (uint8_t pass = 0; pass < workspace.config.huber_passes; ++pass) {
     double aa = 0.0, ab = 0.0, bb = 0.0, ay = 0.0, by = 0.0;
-    for (size_t index = 0; index < workspace.train_count; ++index) {
-      if (workspace.record_day_index[index] == omitted_day_index) continue;
-      const SegmentRecord& record = fit_record(workspace, index);
+    const size_t count = preview ? workspace.input_record_count : workspace.train_count;
+    for (size_t index = 0; index < count; ++index) {
+      if (preview ? workspace.preview_day_record_counts[index] == 0
+                  : workspace.record_day_index[index] == omitted_day_index)
+        continue;
+      const SegmentRecord& record = preview ? workspace.records[index] : fit_record(workspace, index);
       const float correction = effective_outside_c(record) - profile_mean_c(record);
       double a = 0.0, b = 0.0;
       for (size_t point = 0; point < kDailyTemperatureProfileSize; ++point) {
@@ -169,7 +188,9 @@ inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_
           b += temperature / kDailyTemperatureProfileSize;
         }
       }
-      double weight = record_base_weight(workspace, index);
+      double weight = preview ? daily_record_quality_weight(record, workspace.quality_config) /
+                                    workspace.preview_day_record_counts[index]
+                              : record_base_weight(workspace, index);
       if (pass > 0) {
         const double residual = fabs(record_house_line_power_w(current, record) - record.mean_heat_w);
         if (residual > workspace.config.huber_delta_w) weight *= workspace.config.huber_delta_w / residual;
@@ -219,6 +240,26 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     workspace.selected_record_indices[selected_count++] = static_cast<uint8_t>(index);
   }
   if (selected_count == 0) return LearningStatus::INSUFFICIENT_DATA;
+
+  // Preserve an all-days view before the independent split compacts its indices.
+  // Counts live in the caller-owned PSRAM workspace; the source array is immutable.
+  auto& preview = workspace.result.preview;
+  preview.segments = static_cast<uint8_t>(selected_count);
+  preview.min_c = INFINITY;
+  preview.max_c = -INFINITY;
+  for (size_t start = 0; start < selected_count;) {
+    size_t end = start + 1;
+    const auto day = record_day(workspace.records[workspace.selected_record_indices[start]]);
+    while (end < selected_count && record_day(workspace.records[workspace.selected_record_indices[end]]) == day) ++end;
+    ++preview.days;
+    for (size_t index = start; index < end; ++index) {
+      const auto original = workspace.selected_record_indices[index];
+      workspace.preview_day_record_counts[original] = static_cast<uint8_t>(end - start);
+      preview.min_c = fminf(preview.min_c, effective_outside_c(workspace.records[original]));
+      preview.max_c = fmaxf(preview.max_c, effective_outside_c(workspace.records[original]));
+    }
+    start = end;
+  }
 
   // The latest eligible known days define one chronological boundary. Legacy
   // assumptions can train only before it, never validate or leak from the future.
@@ -458,17 +499,21 @@ inline LearningStatus begin_advice_fit(const SegmentRecord* records, size_t reco
   new (&workspace) AdviceFitWorkspace();
   workspace.records = records;
   workspace.record_count = record_count;
+  workspace.input_record_count = record_count;
   workspace.now_epoch_s = now_epoch_s;
   workspace.active_line = active_line;
   workspace.quality_config = quality_config;
   workspace.config = config;
   const LearningStatus status = detail::prepare_workspace(workspace);
-  if (status != LearningStatus::OK) {
+  workspace.preparation_status = status;
+  const bool preview_ready = workspace.result.preview.segments >= config.min_train_segments &&
+                             workspace.result.preview.days >= config.min_train_days;
+  if (status != LearningStatus::OK && !(status == LearningStatus::INSUFFICIENT_DATA && preview_ready)) {
     workspace.result.status = status;
     workspace.phase = FitPhase::DONE;
     return status;
   }
-  workspace.phase = FitPhase::FIT_BASE;
+  workspace.phase = FitPhase::FIT_PREVIEW;
   workspace.result.status = LearningStatus::FIT_IN_PROGRESS;
   return LearningStatus::FIT_IN_PROGRESS;
 }
@@ -479,6 +524,20 @@ inline LearningStatus begin_advice_fit(const SegmentRecord* records, size_t reco
 inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
   if (workspace.phase == FitPhase::DONE) return workspace.result.status;
   if (workspace.phase == FitPhase::IDLE) return LearningStatus::INVALID_CONFIGURATION;
+  if (workspace.phase == FitPhase::FIT_PREVIEW) {
+    auto& preview = workspace.result.preview;
+    preview.available = preview.segments >= workspace.config.min_train_segments &&
+                        preview.days >= workspace.config.min_train_days &&
+                        detail::fit_huber_line(workspace, -1, preview.line, true) &&
+                        detail::plausible_line(preview.line, workspace.config);
+    if (workspace.preparation_status != LearningStatus::OK) {
+      workspace.result.status = workspace.preparation_status;
+      workspace.phase = FitPhase::DONE;
+      return workspace.result.status;
+    }
+    workspace.phase = FitPhase::FIT_BASE;
+    return LearningStatus::FIT_IN_PROGRESS;
+  }
   if (workspace.phase == FitPhase::FIT_BASE) {
     if (!detail::fit_huber_line(workspace, -1, workspace.result.candidate)) {
       workspace.result.status = LearningStatus::FIT_FAILED;
@@ -492,7 +551,8 @@ inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
     }
     workspace.result.candidate_available = true;
     // A diagnostic line can exist before the evidence qualifies for advice.
-    // Its training set remains strictly earlier than the reserved checking days.
+    // The advice candidate remains strictly earlier than the reserved checking days.
+    // Only the separate display preview uses those checking days too.
     if (workspace.advice_blocker != LearningStatus::OK) {
       workspace.result.status = workspace.advice_blocker;
       workspace.phase = FitPhase::DONE;
