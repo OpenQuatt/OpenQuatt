@@ -168,9 +168,11 @@ Deze groep speelt vooral mee als je twee warmtepompen gebruikt of onrustig compr
 Belangrijke instellingen:
 
 - `Minimum runtime`
-- `Dual HP Enable Level`
 - `Dual HP Enable Hold`
 - `Dual HP Disable Hold`
+
+In Home Assistant zijn de entiteiten voor de twee Duo-wachttijden standaard uitgeschakeld.
+De vraagdrempels liggen vast in de stooklijnregeling. Zie [Duo bij Water Temperature Control](water-temperature-control.md#duo).
 
 Raak deze groep pas aan nadat de strategie zelf logisch voelt.
 

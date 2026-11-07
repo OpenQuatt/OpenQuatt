@@ -251,6 +251,18 @@ void OpenQuattServiceStatus::write_status(httpd_req_t* req) const {
 }
 
 bool OpenQuattServiceStatus::serialize_snapshot_(SnapshotBufferWriter& writer) const {
+  const char* duo_start_guard = "Vrijgegeven";
+  switch (this->duo_defrost_start_block_mask_) {
+    case 1:
+      duo_start_guard = "HP1 wacht op het ontdooien van HP2";
+      break;
+    case 2:
+      duo_start_guard = "HP2 wacht op het ontdooien van HP1";
+      break;
+    case 3:
+      duo_start_guard = "HP1 en HP2 wachten op ontdooien";
+      break;
+  }
   const uint32_t warmup_progress = this->warmup_progress_.read();
   const bool commissioning_active = bool_value(this->commissioning_active_);
   const int commissioning_task_code = int_value(this->commissioning_task_code_);
@@ -283,6 +295,7 @@ bool OpenQuattServiceStatus::serialize_snapshot_(SnapshotBufferWriter& writer) c
       !write_text_entity(writer, &first, "manualHpStatus", text_value(this->manual_hp_status_)) ||
       !write_text_entity(writer, &first, "manualHpGuardStatus",
                          text_value(this->manual_hp_guard_status_, "Vrijgegeven")) ||
+      !write_text_entity(writer, &first, "duoStartGuardStatus", duo_start_guard) ||
       !write_binary_entity(writer, &first, "hpWaterCalibrationActive",
                            bool_value(this->hp_water_calibration_active_)) ||
       !write_text_entity(writer, &first, "hpWaterCalibrationStatus", text_value(this->hp_water_calibration_status_)) ||
