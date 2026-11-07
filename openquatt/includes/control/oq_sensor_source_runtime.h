@@ -23,6 +23,79 @@ class Runtime {
   oq_sources::ResolvedLearningSource resolved_outside_temperature() const { return this->resolved_outside_; }
   oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
 
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+  // Use the selected source and its calibration with the producer's own
+  // timestamp. The producer and the display sensor publish independently.
+  // Neither an outdoor-unit fallback nor a held value measures after the boiler.
+  oq_sources::RawFloatReceipt system_supply_receipt() const {
+    if (!id(oq_water_supply_temp_current_source_ready) || id(oq_water_supply_temp_selected_hold_active) ||
+        id(oq_water_supply_temp_fallback_runtime_active) || !id(water_supply_temp_selected).has_state())
+      return {};
+    const auto source = current_calibration_source();
+    oq_sources::RawFloatReceipt receipt;
+    switch (source.code) {
+      case oq_supply_calibration::SOURCE_LOCAL_PT1000:
+        receipt = oq_sources::local_supply_pt1000;
+        break;
+      case oq_supply_calibration::SOURCE_LOCAL_DS18B20:
+        receipt = oq_sources::local_supply_ds18b20;
+        break;
+      case oq_supply_calibration::SOURCE_CIC:
+        if (cic_feed_valid()) receipt = id(cic_component).water_supply_temperature_receipt();
+        break;
+      case oq_supply_calibration::SOURCE_HA_INPUT:
+        if (ha_valid(id(water_supply_temp_valid_ha), id(water_supply_temp_ha))) receipt = oq_sources::ha_water_supply;
+        break;
+      default:
+        break;
+    }
+    if (!receipt.valid) return {};
+    const auto record = calibration_record(source.code);
+    if (oq_supply_calibration::record_matches(record, source)) receipt.value += record.offset_c;
+    return receipt;
+  }
+
+  oq_sources::RawFloatReceipt system_flow_receipt(uint64_t now_ms, uint32_t max_age_ms) const {
+    if (!resolved_flow_.valid ||
+        !oq_sources::same_configuration(resolved_flow_.configuration, flow_configuration_key()) ||
+        flow_route(flow_selection().route) != resolved_flow_.route)
+      return {};
+    // Choose the normal flow route, but read the value and time together
+    // from the producer instead of re-timestamping the selected display cache.
+    oq_sources::RawFloatReceipt receipt;
+    using Route = oq_sources::LearningSourceRoute;
+    switch (resolved_flow_.route) {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+      case Route::CONTROLLER_FLOW:
+        receipt = oq_sources::current_controller_filtered_flow();
+        break;
+      case Route::SYNTHESIZED_ZERO_FLOW:
+        // With idle ODU pumps, only fresh pulses prove boiler circulation.
+        // A quiet or unconnected input cannot certify zero circuit flow.
+        if (oq_sources::controller_flow.value > 0.0f) receipt = oq_sources::current_controller_filtered_flow();
+        break;
+#endif
+      case Route::CIC_FLOW:
+        if (cic_feed_valid()) receipt = id(cic_component).flow_rate_receipt();
+        break;
+      case Route::HP1_FLOW:
+        receipt = oq_sources::hp1.flow;
+        break;
+#if OQ_TOPOLOGY_DUO
+      case Route::HP2_FLOW:
+        receipt = oq_sources::hp2.flow;
+        break;
+#endif
+      case Route::FLOW_AGGREGATE:
+        receipt = oq_sources::local_flow;
+        break;
+      default:
+        break;
+    }
+    return receipt.fresh(now_ms, max_age_ms) ? receipt : oq_sources::RawFloatReceipt{};
+  }
+#endif
+
   // One coherent selected snapshot, with live producer currentness. Transport
   // details stay here; consumers must not inspect receipts or entity caches.
   oq_sources::RoomControlSnapshot room_control_snapshot(bool ot_room_fresh, bool ot_setpoint_fresh,
@@ -40,6 +113,9 @@ class Runtime {
     this->room_generation_.observe(room_configuration_key(false));
     this->setpoint_generation_.observe(room_configuration_key(true));
     this->resolved_flow_ = {};
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+    oq_sources::local_flow = {};
+#endif
     this->resolved_outside_ = {};
     this->resolved_room_ = {};
     this->resolved_setpoint_ = {};

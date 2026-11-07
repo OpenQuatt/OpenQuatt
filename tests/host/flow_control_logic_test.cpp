@@ -146,6 +146,21 @@ void test_local_flow_selection() {
   assert(isnan(select_local_flow(true, NAN, NAN, 150.0f)));
 }
 
+void test_local_flow_receipt_tracks_the_selected_contributors() {
+  oq_sources::RawFloatReceipt primary, secondary;
+  primary.observe(0.0f, 1000, true);
+  secondary.observe(120.0f, 2000, true);
+  const auto average = local_flow_selection(true, 0.0f, 120.0f, 150.0f);
+  const auto sample = local_flow_receipt(average, primary, 0.0f, secondary, 120.0f);
+  assert(sample.valid && sample.value == 60.0f && sample.received_ms == 1000U);
+  assert(!local_flow_receipt(average, {}, 0.0f, secondary, 120.0f).valid);
+  secondary.observe(600.0f, 3000, true);
+  assert(!local_flow_receipt(average, primary, 0.0f, secondary, 120.0f).valid);
+  const auto maximum = local_flow_selection(true, 0.0f, 600.0f, 150.0f);
+  const auto recovered = local_flow_receipt(maximum, {}, 0.0f, secondary, 600.0f);
+  assert(recovered.valid && recovered.value == 600.0f && recovered.received_ms == 3000U);
+}
+
 void test_normal_cooling_and_manual_flow_setpoint_selection() {
   assert(!uses_cooling_setpoint(2, false, 0, 0));
   assert(uses_cooling_setpoint(5, false, 0, 0));
@@ -209,6 +224,7 @@ int main() {
   test_nan_flow_failsafe();
   test_compute_start_pwm();
   test_local_flow_selection();
+  test_local_flow_receipt_tracks_the_selected_contributors();
   test_normal_cooling_and_manual_flow_setpoint_selection();
   test_flow_mismatch_hold_hysteresis_and_pump_gate();
   test_flow_mismatch_hold_is_rollover_safe();

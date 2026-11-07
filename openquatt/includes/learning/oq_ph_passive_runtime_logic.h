@@ -355,7 +355,8 @@ inline void request_passive_fit(PassiveRuntimeStorage& state, const PassiveTickI
   passive_runtime_detail::start_fit(state, input);
 }
 
-inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, const PassiveTickInput& input) {
+inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, const PassiveTickInput& input,
+                                                 const QualityConfig* daily_quality_override = nullptr) {
   using namespace passive_runtime_detail;
   if (!state.initialized || !valid_runtime_config(state.config)) {
     state.status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
@@ -456,9 +457,10 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
 
   bool appended_record = false;
+  const auto& daily_quality = daily_quality_override != nullptr ? *daily_quality_override : state.config.quality;
   const bool batch_current_valid = input.batch_snapshot_available &&
                                    snapshot_matches_tick(input.batch_snapshot, input) &&
-                                   validate_snapshot(input.batch_snapshot, state.config.quality) == LearningStatus::OK;
+                                   validate_snapshot(input.batch_snapshot, daily_quality) == LearningStatus::OK;
   if (!input.batch_snapshot_available || !snapshot_matches_tick(input.batch_snapshot, input)) {
     if (state.batch_accumulator.active) {
       state.diagnostics.last_batch_rejection = LearningStatus::INVALID_MEASUREMENT;
@@ -473,7 +475,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     const bool batch_was_active = state.batch_accumulator.active;
     const ObserveResult observed =
         observe_daily_with_diagnostics(state.daily_diagnostics, state.batch_accumulator, input.batch_snapshot,
-                                       state.config.quality, input.may_bridge_daily_gap, input.batch_source_status);
+                                       daily_quality, input.may_bridge_daily_gap, input.batch_source_status);
     if (batch_was_active && observed.status != LearningStatus::COLLECTING && !observed.has_record) {
       state.diagnostics.last_batch_rejection = observed.status;
       state.diagnostics.last_batch_source_status =

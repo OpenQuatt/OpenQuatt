@@ -165,7 +165,8 @@ inline bool boot_operating_receipts_invalid(const LearningSourceInput& input) {
           input.boiler_heat.value == BoilerHeatState::UNKNOWN);
 }
 
-inline bool boot_scalar_receipts_invalid(const LearningSourceInput& input, const QualityConfig& quality) {
+inline bool boot_scalar_receipts_invalid(const LearningSourceInput& input, const QualityConfig& quality,
+                                         bool system_measurement = false) {
   const auto invalid = [&](const PhysicalMeasurement<float>& value, float low, float high, PhysicalUnit unit,
                            bool require_unit) {
     return (!value.valid && value.received_monotonic_ms != 0U &&
@@ -177,8 +178,12 @@ inline bool boot_scalar_receipts_invalid(const LearningSourceInput& input, const
       invalid(input.room_c, quality.room_min_c, quality.room_max_c, PhysicalUnit::SYSTEM, false) ||
       invalid(input.setpoint_c, quality.setpoint_min_c, quality.setpoint_max_c, PhysicalUnit::SYSTEM, false) ||
       invalid(input.outside_c, quality.outside_min_c, quality.outside_max_c, PhysicalUnit::SYSTEM, false) ||
-      invalid(input.flow_lph, 0.0f, kPassiveMaximumFlowLph, PhysicalUnit::SYSTEM, false))
+      invalid(system_measurement ? input.circuit_flow_lph : input.flow_lph, 0.0f, kPassiveMaximumFlowLph,
+              PhysicalUnit::SYSTEM, false))
     return true;
+  if (system_measurement)
+    return invalid(input.hp1.water_in_c, quality.water_min_c, quality.water_max_c, PhysicalUnit::HP1, true) ||
+           invalid(input.system_supply_c, quality.water_min_c, quality.water_max_c, PhysicalUnit::SYSTEM, true);
   const HeatPumpRawMeasurements* pumps[]{&input.hp1, &input.hp2};
   const PhysicalUnit units[]{PhysicalUnit::HP1, PhysicalUnit::HP2};
   for (size_t index = 0; index < 2; ++index) {
@@ -203,6 +208,20 @@ inline bool boot_scalar_receipts_invalid(const LearningSourceInput& input, const
 // Missing boot receipts alone are not evidence of an unsafe operating phase.
 inline const char* daily_restart_interruption_reason(const LearningSourceInput& input, bool boiler_heat_observed,
                                                      const QualityConfig& quality = QualityConfig{}) {
+  if (input.system_heat_enabled) {
+    const auto system = evaluate_system_calorimetry(input, quality);
+    if (input.operation.control_mode_valid && input.operation.control_mode != LearningControlMode::HEATING &&
+        input.operation.control_mode != LearningControlMode::HEATING_WITH_BOILER)
+      return "control_mode";
+    if (input.operation.service_or_ota_valid && input.operation.service_or_ota) return "service_or_ota";
+    if (source_detail::reports_actual_cooling(input.hp1, PhysicalUnit::HP1, input.monotonic_ms) ||
+        source_detail::reports_actual_cooling(input.hp2, PhysicalUnit::HP2, input.monotonic_ms))
+      return "hp_mode";
+    if (boot_scalar_receipts_invalid(input, quality, true) ||
+        (!system.valid && !source_detail::daily_measurement_gap_status(system.status)))
+      return "invalid_measurement";
+    return nullptr;
+  }
   if (boiler_heat_observed) return "boiler_heat";
   if (boot_operating_receipts_invalid(input)) return "invalid_operating_receipt";
   if (boot_scalar_receipts_invalid(input, quality)) return "invalid_measurement";
@@ -253,9 +272,14 @@ inline bool daily_boot_sources_pending(const LearningSourceInput& input, const S
   };
   if (!scalar(input.room_c, quality.room_min_c, quality.room_max_c, PhysicalUnit::SYSTEM, false) ||
       !scalar(input.setpoint_c, quality.setpoint_min_c, quality.setpoint_max_c, PhysicalUnit::SYSTEM, false) ||
-      !scalar(input.outside_c, quality.outside_min_c, quality.outside_max_c, PhysicalUnit::SYSTEM, false) ||
-      !scalar(input.flow_lph, 0.0f, kPassiveMaximumFlowLph, PhysicalUnit::SYSTEM, false))
+      !scalar(input.outside_c, quality.outside_min_c, quality.outside_max_c, PhysicalUnit::SYSTEM, false))
     return false;
+  if (input.system_heat_enabled) {
+    return scalar(input.circuit_flow_lph, 0.0f, kPassiveMaximumFlowLph, PhysicalUnit::SYSTEM, false) &&
+           scalar(input.hp1.water_in_c, quality.water_min_c, quality.water_max_c, PhysicalUnit::HP1, true) &&
+           scalar(input.system_supply_c, quality.water_min_c, quality.water_max_c, PhysicalUnit::SYSTEM, true);
+  }
+  if (!scalar(input.flow_lph, 0.0f, kPassiveMaximumFlowLph, PhysicalUnit::SYSTEM, false)) return false;
   const PhysicalMeasurement<float>* water[]{&input.hp1.water_in_c, &input.hp1.water_out_c, &input.hp2.water_in_c,
                                             &input.hp2.water_out_c};
   const size_t water_count = input.topology == HydronicTopology::DUO_SERIES ? 4 : 2;
@@ -418,6 +442,13 @@ inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources
 // phases. The mode alone does not prove that the boiler is off.
 inline bool learning_control_mode_allows_measurement(int control_mode) {
   return control_mode == 0 || control_mode == 1 || control_mode == 2 || control_mode == 98;
+}
+
+inline LearningControlMode learning_control_mode(int heat_mode, int control_mode) {
+  if (heat_mode != 0) return LearningControlMode::OTHER;
+  if (learning_control_mode_allows_measurement(control_mode)) return LearningControlMode::HEATING;
+  if (control_mode == 3 || control_mode == 4) return LearningControlMode::HEATING_WITH_BOILER;
+  return LearningControlMode::OTHER;
 }
 
 // CM0/CM1 pauses, CM2 heating and CM98 frost circulation exclude boiler demand. Require the current NONE

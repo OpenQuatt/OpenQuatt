@@ -35,6 +35,11 @@ sensor:
     id: water_supply_temp_ha
     name: "HA - Water Supply Temperature"
     entity_id: ${ha_water_supply_temp_entity_id}
+    on_value:
+      - lambda: |-
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          oq_sources::ha_water_supply.observe(x, oq_sources::monotonic_ms(), isfinite(x));
+          #endif
     internal: false
     icon: mdi:water-thermometer
     unit_of_measurement: "°C"

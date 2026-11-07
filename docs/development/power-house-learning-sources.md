@@ -32,19 +32,43 @@ watertemperatuursensoren via het servicemenu kan de meetnauwkeurigheid verbetere
 
 ## Wanneer een record ontstaat
 
-Voor een volledig temperatuurframe zijn geldige geselecteerde waarden voor kamer,
-setpoint, buiten en flow nodig, met bruikbare water- en HP-statusmetingen voor de
-calorimetrie. Bij een kort ontbrekend temperatuurveld blijft onafhankelijk geldige
-warmte meetellen via een eigen cursor, inclusief nul en negatieve warmte. Daarvoor
-blijven bekende geschikte bedrijfsvoering en geldige calorimetrie vereist.
-De regeling moet in verwarmingsmodus staan, zonder service, OTA of actuele
-ketelwarmte. Een geldige bron is dus niet hetzelfde als een volledig learning-record:
-de vermogensmeting en bedrijfstoestand moeten ook bruikbaar zijn.
+Een volledig temperatuurframe gebruikt de geselecteerde waarden voor kamer,
+setpoint en buiten. De regeling moet in verwarmingsmodus staan, buiten service
+en OTA. Een kort ontbrekend temperatuurveld kan onafhankelijk gemeten warmte
+laten meetellen via de eigen warmtecursor, inclusief nul en negatieve warmte.
+
+Bij een aangesloten cv-ketel in serie gebruikt de dagmeting het totale vermogen
+naar het water. Dat volgt uit het gemeten debiet en het temperatuurverschil
+tussen de retour bij HP1 en de systeemaanvoer na de ketel. CM3 en CM4 tellen mee
+zolang deze meting geldig is, onafhankelijk van de OpenTherm-status. Een
+vastgehouden aanvoerwaarde of een fallback naar de warmtepompuitgang levert geen
+systeemmeting op. Valt de systeemmeting weg, dan blijft de warmte voor dat
+interval onbekend en gelden de meetgatregels. Er is geen terugval op
+warmtepompwarmte op basis van de OpenTherm-status. Dat geldt ook bij R1.
+Bij stilstaande ODU-pompen kan verse pulsflow van de Q-controller circulatie
+aantonen als de bronselectie anders een synthetische nul oplevert. Een stille
+pulsingang levert in die situatie geen meting. Zonder actuele
+systeemmeting kan langdurige stilstand de dagmeting
+onderbreken. Bij HA-aanvoer telt de laatste temperatuurontvangst hoogstens
+30 seconden mee. De HA-heartbeat houdt de verbinding actueel. Voor de dagmeting
+moet de aanvoerbron zelf minstens elke 30 seconden een meetwaarde doorgeven.
+Een gewijzigde aanvoerkalibratie bij het terugzetten van een backup begint een
+nieuwe dagmeting. Afgeronde dagen blijven bewaard.
+Met ingeschakelde keteloptie accepteert de dagmeting gemeten systeemwarmte tot en
+met ±50 kW. Waarden daarbuiten worden afgekeurd, niet afgeknipt. Deze harde
+bronfout breekt een lopende dagmeting af. Voor ontbrekende warmte gebruikt de
+onzekerheidsberekening 50 kW als ondergrens voor de
+vermogensgrens. Een open meetgat bewaart de hoogste toegepaste grens, ook als de
+keteloptie tussentijds wordt uitgeschakeld. Zo verlaagt een instellingwijziging
+eerder ontstane onzekerheid niet. Zonder keteloptie blijft voor het accepteren
+van warmtepompwarmte de lagere generatie- en topologiegrens gelden.
+Het ingestelde ketelvermogen is een regelwaarde en bewijst geen maximum voor
+ongemeten ketelwarmte.
 
 CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
-meetellen. CM98 alleen is geen service- of ketelwarmtesignaal. Het actuele
-ketelcontract, service-/OTA-pauzes en alle bron- en vermogenscontroles blijven
-gelden; werkelijk gemeten warmte tijdens pompbedrijf wordt niet naar nul gezet.
+meetellen. Voor pompbedrijf gelden de reguliere broncontroles en pauzes tijdens
+service of OTA. Werkelijk gemeten warmte tijdens pompbedrijf wordt met teken
+meegenomen.
 
 De woninglijn verzamelt volledige perioden van 24 uur. Normale CM0/CM1-pauzes,
 setpointwijzigingen en normale ontdooicycli tellen mee. Geldig nuldebiet levert nul
@@ -57,8 +81,8 @@ kamertrend of hoge onzekerheid. Zulke dagen krijgen geen modeladviesgewicht.
 Bestaande vieruursrecords behouden hun oorspronkelijke kwaliteitscontrole.
 
 De dynamische 1R1C-route verwerkt kortere perioden van opwarmen en afkoelen. Deze
-route sluit actieve begrenzing en beschermingsfasen uit; dat onderbreekt niet
-vanzelf de dagmeting voor de woninglijn. Beide routes blijven passief.
+route gebruikt warmtepompwarmte en sluit ketelbedrijf, actieve begrenzing en
+beschermingsfasen uit. Beide routes blijven passief.
 Ontbrekende metingen worden nooit vervangen door nul. De voorwaarden voor korte
 meetonderbrekingen en hervatten na een herstart staan hieronder.
 
@@ -218,7 +242,7 @@ Status en export benoemen de vroegere 2400 Wh-grens met
 het bewaren van de dag. Voor exact 100 W is geen empirische woningonderbouwing;
 deze eerste adviespolicy blijft bewust apart van de feitelijke metingen.
 
-De conditionele ontbrekende-warmtegrens komt uit het volledige performancedomein:
+Voor warmtepompwarmte komt de conditionele ontbrekende-warmtegrens uit het volledige performancedomein:
 V1/V1.5 Single 6115,28 W / Duo 12230,56 W; V2 Single 9172,15 W / Duo 18344,30 W.
 De effectieve grens is het maximum van tabelbasis, geldige absolute eindvermogens
 en waargenomen piekvloer. Voor een gat is U begrensd met `B × duur + integraal(abs(Q))`;
@@ -229,13 +253,14 @@ Alleen oude schema7-checkpoints zonder opgeslagen piekvloer behouden voor de
 eerste overbrugging de conservatieve 50 kW-terugval; reeds opgeslagen U wordt
 nooit achteraf verlaagd.
 
-Het plausibiliteitsfilter voor nieuwe, getekende warmtemetingen gebruikt
+Het plausibiliteitsfilter voor warmtepompwarmte gebruikt
 `tabelmaximum × 1,20`: V1/V1.5 Single 7338,34 W / Duo 14676,67 W en V2 Single
 11006,58 W / Duo 22013,16 W. Exact de grens is toegestaan; positief en negatief
 worden symmetrisch behandeld. Dit is een engineeringmarge, geen gemeten bewijs
 dat iedere werkelijke waterzijdige piek binnen 20% blijft. Onbekende generatie
 gebruikt ook hier de hoogste ondersteunde generatie voor de ingestelde topologie.
-De status publiceert de actieve grens als `collection.batch_heat_measurement_limit_w`.
+Deze grens geldt zonder keteloptie en voor de dynamische 1R1C-meting. De status publiceert de grens van de
+dagmeting als `collection.batch_heat_measurement_limit_w`.
 
 Een eindige uitschieter boven deze grens wordt pas na bron-/unit-/tijdcontroles
 `heat_out_of_range`. Hij telt niet als warmte of RLS-meting en wordt niet naar
@@ -247,10 +272,12 @@ Bij geverifieerd bootherstel kan zo'n uitschieter wachten binnen de bestaande
 Een uitschieter vóór geldige UTC/journalherstel blijft een hard bootveto: er is
 dan nog geen herstelaccumulator waarin zijn piekevidence behouden kan worden.
 
-De oude structurele 50 kW-grens blijft uitsluitend voor compatibiliteit met
-eerder opgeslagen records, checkpoints, piekvloeren en U. Daardoor wist een
-lagere nieuwe meetgrens geen echte historie of RLS. Waarden buiten dat oude
-domein blijven hard ongeldig; ze leveren geen bruikbare piekevidence.
+Voor uitsluitend warmtepompwarmte blijft de oude structurele 50 kW-grens voor
+compatibiliteit met eerder opgeslagen records, checkpoints, piekvloeren en U.
+Daardoor wist een lagere nieuwe meetgrens geen echte historie of RLS. Waarden
+buiten dat oude domein blijven hard ongeldig; ze leveren geen bruikbare
+piekevidence. De systeemmeting met ingeschakelde keteloptie gebruikt daarnaast
+nog steeds de actieve ±50 kW-meetgrens en de onzekerheidsgrens hierboven.
 
 De webgrafiek bewaart alle punten en toont de kwaliteit in de tooltip. Alleen
 servergeschikte punten beïnvloeden de adviesvoortgang; historische kwaliteit blijft
