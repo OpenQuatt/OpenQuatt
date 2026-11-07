@@ -413,6 +413,7 @@ class OpenQuattMqttConfig : public Component {
 
   static constexpr uint32_t SENSOR_PUBLISH_INTERVAL_MS = 10000;
   static constexpr uint32_t NON_RETAINED_STATEFUL_STALE_MS = 30UL * 60UL * 1000UL;
+  // ESP-MQTT transport keeps an internal stack, separate from our PSRAM-backed lifecycle worker.
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
   static constexpr int MQTT_TASK_STACK_SIZE = 6144;
 #else
