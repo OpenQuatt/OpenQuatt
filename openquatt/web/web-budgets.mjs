@@ -34,7 +34,15 @@ export const WEB_BUNDLE_BUDGETS = [
     // Retained daily quality, server weights and truthful restart help (Node24.14.1):
     // +4,705 B raw / +1,365 B gzip versus dev2575a93d.
     // Preserve444 B raw headroom; all relative gzip limits remain unchanged.
-    raw: 1_401_380,
+    // Learning page, two measurement bars and retained-day progress in both locales:
+    // +6,919 B raw / +1,750 B gzip versus dev 6dd491f5 (Node 24.14.1).
+    // Bounded readback, export and focus handling add 556 B raw / 134 B gzip.
+    // Preserve 444 B of raw headroom and the existing relative gzip limits.
+    // Provisional curve ranges and firmware fit progress: +1,860 B raw / +550 B gzip
+    // versus b18f4d15 on Node 24.14.1, preserving 444 B raw headroom.
+    // All-days display preview and NL/EN explanation: +1,300 B raw vs664f45c.
+    // Preserve444 B raw headroom; relative gzip limits remain unchanged.
+    raw: 1_412_015,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

@@ -4,7 +4,7 @@ import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEA
 import { armRestartRefresh, awaitRestartEvidence, beginDeviceReconnect, clearRestartRefresh } from "./device-reconnect.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
-import { ENTITY_REQUEST_TIMEOUT_MS, getSettingsRefreshKeys, isLikelyDeviceConnectionError, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
+import { buildBulkEntityChunks, ENTITY_REQUEST_TIMEOUT_MS, fetchBulkEntityChunk, getSettingsRefreshKeys, isLikelyDeviceConnectionError, mergeEntityPayload, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
 import {
   createIncidentActionRequestId,
   postIncidentActionRequest,
@@ -14,6 +14,7 @@ import { updateCurvePointDraft } from "./simple-curve.js";
 import { render } from "./render-scheduler.js";
 import { t } from "../i18n/index.js";
 import { clearQuickStartSetupInstall, state } from "./state.js";
+import { refreshHouseLearningStatus } from "../features/house-learning.js";
 import { pollFirmwareUpdateState, primeFirmwareUpdateState } from "../features/firmware-update.js";
 import { updateFirmwareState } from "./feature-state.js";
 import { stopLoginAuthStatusPolling } from "../features/security-actions.js";
@@ -271,6 +272,24 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
   return "";
 }
 
+async function confirmSwitchReadback(key, enabled) {
+  const [chunk] = buildBulkEntityChunks([key], "all");
+  const deadline = performance.now() + 2000;
+  for (const delay of [0, 100, 250, 500]) {
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) return false;
+    const payload = await fetchBulkEntityChunk(chunk, remaining).catch(() => null);
+    const readback = payload?.entities?.[key];
+    if (Array.isArray(payload?.missing) && !payload.missing.includes(key)
+      && readback?.value === enabled && readback.state === (enabled ? "ON" : "OFF")) {
+      state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function commitSwitch(key, enabled) {
   const entity = ENTITY_DEFS[key];
   if (!entity) {
@@ -285,6 +304,13 @@ export async function commitSwitch(key, enabled) {
     return;
   }
 
+  const isLearningSwitch = key === "houseLearningEnabled";
+  if (isLearningSwitch && (state.busyAction || state.houseLearningReset === "pending")) return;
+  if (isLearningSwitch) {
+    state.houseLearningRequestId += 1;
+    state.houseLearningEndpointChecking = false;
+  }
+
   state.busyAction = `switch-${key}`;
   state.controlNotice = "";
   state.controlError = "";
@@ -292,9 +318,26 @@ export async function commitSwitch(key, enabled) {
 
   try {
     const action = enabled ? "turn_on" : "turn_off";
-    const response = await fetch(buildEntityPath(entity.domain, entity.name, action), { method: "POST" });
+    const path = buildEntityPath(entity.domain, entity.name, action);
+    const response = isLearningSwitch
+      ? await fetchWithTimeout(path, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS)
+      : await fetch(path, { method: "POST" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
+    }
+    if (isLearningSwitch) {
+      const staleStatus = state.houseLearningFetchPromise;
+      // Fence status and switch reads issued before the controller acknowledged the write.
+      state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
+      state.houseLearningEndpointChecking = false;
+      state.houseLearningStatus = null;
+      render();
+      const confirmed = await confirmSwitchReadback(key, enabled);
+      if (staleStatus) await staleStatus;
+      await refreshHouseLearningStatus({ force: true });
+      if (!confirmed) throw new Error(t("learning.switchUnconfirmed"));
+      state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
+      return;
     }
     state.entities[key] = {
       ...(state.entities[key] || {}),

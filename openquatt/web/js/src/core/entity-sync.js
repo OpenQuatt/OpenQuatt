@@ -20,7 +20,7 @@ import { getHeaderRenderSignature, patchHeaderDom } from "./header-render-contro
 import { patchSettingsDom } from "./settings-render-controls.js";
 import { ENERGY_HISTORY_VIEW_KEYS, getSettingsStorageRefreshKeys, SETTINGS_STORAGE_KEYS, TREND_HISTORY_VIEW_KEYS } from "./storage-history-keys.js";
 import { refreshEnergyHistoryData, refreshSettingsStorageState, refreshTrendHistoryData, refreshTrendHistoryMetadata, shouldRefreshSettingsStorageForCurrentSurface } from "./storage-history-controls.js";
-import { patchControlReplayDom, patchDiagnosisDom, patchEnergyDom, patchOverviewDom, patchResultsDom } from "./view-patch-controls.js";
+import { patchControlReplayDom, patchDiagnosisDom, patchEnergyDom, patchLearningDom, patchOverviewDom, patchResultsDom } from "./view-patch-controls.js";
 import { clearWebServerLogOutput, closeWebServerLogStream, resetWebServerLogRecoveryState } from "./webserver-log-controls.js";
 import { getMqttSensorsModalRenderSignature, refreshMqttStatus, shouldRefreshMqttStatusForCurrentSurface } from "../features/mqtt-actions.js";
 import { refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
@@ -798,8 +798,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     return chunks;
   }
 
-  export async function fetchBulkEntityChunk(chunk) {
-    const timeoutMs = getEntityRequestTimeoutMs();
+  export async function fetchBulkEntityChunk(chunk, timeoutMs = getEntityRequestTimeoutMs()) {
     const fetchOptions = {
       method: "POST",
       cache: "no-store",
@@ -807,16 +806,16 @@ import { fetchWithTimeout } from "./browser-utils.js";
       body: chunk.body,
     };
 
-    const response = await fetchWithTimeout(
+    return fetchWithTimeout(
       BULK_ENTITY_ENDPOINT,
       fetchOptions,
       timeoutMs,
       `bulk entities request timed out after ${timeoutMs}ms`,
+      (response) => {
+        if (!response.ok) throw new Error(`bulk entities HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) {
-      throw new Error(`bulk entities HTTP ${response.status}`);
-    }
-    return response.json();
   }
 
   export async function fetchServiceStatusPayload() {
@@ -1021,7 +1020,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
+    const previousControlError = state.controlError;
     const timeWriteRevision = state.timeWriteRevision;
+    const learningRequestId = state.houseLearningRequestId;
+    const learningSwitchBusy = state.busyAction === "switch-houseLearningEnabled";
+    const canUpdateControlError = () => !learningSwitchBusy && learningRequestId === state.houseLearningRequestId
+      && state.controlError === previousControlError;
     const performancePromptWriteRevision = state.performanceTelemetryPromptWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
@@ -1041,7 +1045,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
       if (!state.busyAction) {
         noteEntityRefreshSuccess();
-        state.controlError = "";
+        if (canUpdateControlError()) state.controlError = "";
       }
       return;
     }
@@ -1083,6 +1087,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
         // A poll started before/during a prompt write must not restore unhandled consent.
         if (["performanceTelemetryEnabled", "performanceTelemetryChoiceConfigured", "performanceTelemetryPromptHandled"].includes(key)
             && (state.performanceTelemetryPromptBusy || state.performanceTelemetryPromptWriteRevision !== performancePromptWriteRevision)) return;
+        if (key === "houseLearningEnabled"
+            && (learningSwitchBusy || state.busyAction === "switch-houseLearningEnabled"
+              || learningRequestId !== state.houseLearningRequestId)) return;
         // A poll started before/during a time write must not restore the old time.
         if (ENTITY_DEFS[key]?.domain === "time"
             && (state.savingTimeFields.has(key) || state.timeWriteRevision !== timeWriteRevision)) return;
@@ -1109,14 +1116,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
     syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
     if (firstError) {
       noteEntityRefreshFailure(firstError);
-      if (state.deviceReconnectMode) {
-        state.controlError = "";
-      } else {
-        state.controlError = t("entitySync.refreshIncomplete", { error: firstError });
+      if (!state.busyAction && canUpdateControlError()) {
+        state.controlError = state.deviceReconnectMode ? "" : t("entitySync.refreshIncomplete", { error: firstError });
       }
     } else if (!state.busyAction) {
       noteEntityRefreshSuccess();
-      state.controlError = "";
+      if (canUpdateControlError()) state.controlError = "";
     }
   }
 
@@ -1161,8 +1166,14 @@ import { fetchWithTimeout } from "./browser-utils.js";
     }
   }
 
+  const LEARNING_VIEW_KEYS = [
+    "houseLearningEnabled", "houseLearningReset", "houseColdTemp", "houseOutdoorMax", "housePower",
+    "hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut",
+  ];
+
   export function getInitialPrimeKeys() {
     const base = getPrimeBaseKeys();
+    if (state.appView === "learning") return [...new Set([...base, ...LEARNING_VIEW_KEYS])];
     if (state.appView === "settings") {
       return [...new Set([...base, ...getSettingsGroupHydrationKeys()])];
     }
@@ -1269,6 +1280,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
           ...getOverviewLikeHydrationKeys(syncView, { forceFast, includeBulk: isBulkDue }),
           ...staticKeys,
         ]
+      : appView === "learning"
+        ? ["setupComplete", ...HEADER_ENTITY_KEYS, ...LEARNING_VIEW_KEYS, ...staticKeys]
       : appView === "settings"
         ? [...new Set([
             ...getSettingsGroupHydrationKeys(),
@@ -1494,6 +1507,10 @@ import { fetchWithTimeout } from "./browser-utils.js";
         if (state.focusedField && !state.warmupSettingsRenderPending) {
           state.settingsRenderSignature = nextSettingsSignature;
         }
+        return;
+      }
+      if (state.appView === "learning") {
+        if (!patchLearningDom()) render();
         return;
       }
       if (state.appView === "diagnosis") {

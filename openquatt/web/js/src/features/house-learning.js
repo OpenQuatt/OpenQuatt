@@ -1,6 +1,5 @@
 import { hasEntity } from "../core/app-shared.js";
 import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
-import { isCurveMode } from "../core/domain-helpers.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
@@ -66,6 +65,24 @@ export function normalizeHouseLearningStatus(payload = {}) {
       ? { route: String(item.route || "unknown"), valid: item.valid === true }
       : { route: "unknown", valid: false };
   };
+  const fit = payload.batch_fit;
+  const counts = fit && ["train_segments", "holdout_segments", "train_days", "holdout_days"].map(key => fit[key]);
+  const validCounts = counts?.every(value => Number.isInteger(value) && value >= 0 && value <= 128)
+    && fit.train_days <= fit.train_segments && fit.holdout_days <= fit.holdout_segments
+    && fit.train_segments + fit.holdout_segments <= payload.records;
+  const ranges = fit && ["train_p10_c", "train_p90_c", "train_min_c", "train_max_c"].map(key => fit[key]);
+  const validRanges = ranges?.every(value => value === null || Number.isFinite(value))
+    && (ranges.every(value => value === null)
+      || ranges.every(Number.isFinite) && fit.train_min_c <= fit.train_p10_c
+        && fit.train_p10_c <= fit.train_p90_c && fit.train_p90_c <= fit.train_max_c);
+  const preview = payload.batch_preview;
+  const validPreview = preview && [preview.segments, preview.days].every(value => Number.isInteger(value) && value >= 0 && value <= 128)
+    && preview.days <= preview.segments && preview.segments <= payload.records
+    && [preview.h, preview.t0, preview.min_c, preview.max_c].every(value => value === null || Number.isFinite(value))
+    && ((preview.h === null && preview.t0 === null)
+      || preview.h > 0 && preview.t0 !== null && preview.days >= 6 && preview.segments >= 6)
+    && ((preview.min_c === null && preview.max_c === null && preview.segments === 0)
+      || preview.min_c !== null && preview.max_c !== null && preview.min_c <= preview.max_c);
   return {
     enabled: payload.enabled === true,
     controlMode: numberOrNull(payload.control_mode),
@@ -81,6 +98,16 @@ export function normalizeHouseLearningStatus(payload = {}) {
     legacyRecordCount: countOrNull(payload.legacy_record_count),
     referenceRoomC: typeof payload.reference_room_c === "number" ? numberOrNull(payload.reference_room_c) : null,
     batchAdviceReady: payload.batch_advice_ready === true,
+    batchFit: validCounts && validRanges ? {
+      trainCount: fit.train_segments, checkCount: fit.holdout_segments,
+      trainDays: fit.train_days, checkDays: fit.holdout_days,
+      p10: fit.train_p10_c, p90: fit.train_p90_c, minC: fit.train_min_c, maxC: fit.train_max_c,
+    } : null,
+    // Undefined means older firmware. Null means a present but unusable preview.
+    batchPreview: Object.hasOwn(payload, "batch_preview") ? validPreview ? {
+      h: preview.h, t0: preview.t0, count: preview.segments, days: preview.days,
+      minC: preview.min_c, maxC: preview.max_c,
+    } : null : undefined,
     adviceReady: payload.advice_ready === true,
     hBatch: numberOrNull(payload.h_batch),
     t0Batch: numberOrNull(payload.t0_batch),
@@ -109,8 +136,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
 }
 
 export function shouldRefreshHouseLearningStatusSurface() {
-  return !document.hidden && state.appView === "settings" && state.settingsGroup === "heating"
-    && !isCurveMode() && hasEntity("houseLearningEnabled");
+  return !document.hidden && !state.nativeOpen && state.appView === "learning" && hasEntity("houseLearningEnabled");
 }
 
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
@@ -124,14 +150,17 @@ export async function loadHouseLearningChart() {
   state.houseLearningChartError = "";
   render();
   try {
-    const response = await fetchWithTimeout(
+    const payload = await fetchWithTimeout(
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
       "house-learning-chart-timeout",
+      (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const records = normalizeHouseLearningExport(await response.json());
+    const records = normalizeHouseLearningExport(payload);
     if (requestId !== state.houseLearningChartRequestId) return false;
     state.houseLearningChart = records;
     state.houseLearningChartFetchedAt = Date.now();
@@ -158,14 +187,17 @@ export async function downloadHouseLearningExport() {
   state.houseLearningStatusError = "";
   render();
   try {
-    const response = await fetchWithTimeout(
+    const payload = await fetchWithTimeout(
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
       "house-learning-export-timeout",
+      (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    downloadJsonFile("openquatt-house-learning.json", await response.json());
+    downloadJsonFile("openquatt-house-learning.json", payload);
   } catch (error) {
     state.houseLearningStatusError = localizedMessage("houseLearning.errors.exportFailed", {
       error: errorDetail(error, "house-learning-export-timeout", "houseLearning.errors.exportTimeout"),
@@ -214,11 +246,12 @@ export async function refreshHouseLearningStatus(options = {}) {
   state.houseLearningFetchPromise = (async () => {
     let probeCompleted = false;
     try {
-      const response = await fetchWithTimeout(
+      const { response, payload } = await fetchWithTimeout(
         getHouseLearningStatusEndpoint(),
         { cache: "no-store", headers: { "Cache-Control": "no-store" } },
         8000,
         "house-learning-status-timeout",
+        async (response) => ({ response, payload: response.ok ? await response.json() : null }),
       );
       if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
       if (response.status === 404) {
@@ -226,10 +259,13 @@ export async function refreshHouseLearningStatus(options = {}) {
         state.houseLearningStatus = null;
         state.houseLearningStatusError = "";
       } else {
-        state.houseLearningEndpointAvailable = true;
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const status = normalizeHouseLearningStatus(await response.json());
+        if (!response.ok) {
+          state.houseLearningEndpointAvailable = true;
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const status = normalizeHouseLearningStatus(payload);
         if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
+        state.houseLearningEndpointAvailable = true;
         state.houseLearningStatus = status;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
@@ -250,14 +286,16 @@ export async function refreshHouseLearningStatus(options = {}) {
       probeCompleted = true;
     } finally {
       if (requestGeneration === state.houseLearningRequestId) {
-        if (probeCompleted) state.houseLearningEndpointChecked = true;
+        if (probeCompleted) {
+          state.houseLearningEndpointChecked = true;
+          state.houseLearningLastFetchAt = Date.now();
+        }
         state.houseLearningEndpointChecking = false;
-        state.houseLearningLastFetchAt = Date.now();
       }
     }
     const changed = before !== JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
     // The initial probe must replace its loading panel immediately. Later status
-    // polls retain the settings partial-patch path while the panel is present.
+    // polls retain the partial-patch path while the panel is present.
     if (changed && !state.focusedField && (initialCapabilityCheck || !state.root?.querySelector("[data-oq-house-learning]"))) render();
     return changed;
   })();
