@@ -1,6 +1,6 @@
 import { escapeHtml } from "../core/html.js";
 import { formatDateTime, formatNumber, t } from "../i18n/index.js";
-import { renderHouseLearningReadiness } from "./house-learning-readiness.js";
+import { renderHouseLearningReadiness, selectDisplayedHouseLine } from "./house-learning-readiness.js";
 import { renderSettingsInfoToggle } from "./controls.js";
 
 const REQUIRED_COLUMNS = ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"];
@@ -73,7 +73,7 @@ export function normalizeHouseLearningExport(payload = {}) {
 
 export function getHouseLearningChartModel(records, configured = {}, learned = {}, width = WIDTH) {
   const config = { coldC: finite(configured.coldC), zeroC: finite(configured.zeroC), ratedW: finite(configured.ratedW) };
-  const line = learned.ready !== true && learned.preview !== undefined ? learned.preview || {} : learned;
+  const line = selectDisplayedHouseLine(learned);
   const fit = { h: finite(line.h), t0: finite(line.t0), ready: learned.ready === true };
   const configuredValid = config.coldC != null && config.zeroC != null && config.ratedW != null && config.zeroC > config.coldC && config.ratedW > 0;
   const learnedValid = fit.h != null && fit.t0 != null && fit.h > 0;

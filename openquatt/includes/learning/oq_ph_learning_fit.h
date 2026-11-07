@@ -49,6 +49,8 @@ struct AdviceResult {
   LearningStatus status = LearningStatus::INSUFFICIENT_DATA;
   bool candidate_available = false;
   bool advice_ready = false;
+  // Counts and training percentiles belong to a fully checked record view.
+  bool metadata_prepared = false;
   uint16_t algorithm_version = kLearningAlgorithmVersion;
   uint16_t quality_policy_version = kDailyQualityPolicyVersion;
   uint32_t context_revision = 0;
@@ -321,12 +323,13 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
   workspace.result.holdout_segments = static_cast<uint8_t>(workspace.record_count - workspace.train_count);
   workspace.result.train_days = workspace.train_day_count;
   workspace.result.holdout_days = workspace.day_count - workspace.train_day_count;
-  if (workspace.train_count < workspace.config.min_train_segments ||
-      workspace.train_day_count < workspace.config.min_train_days)
-    return LearningStatus::INSUFFICIENT_DATA;
-  if (workspace.day_count < workspace.config.min_train_days + workspace.config.min_holdout_days ||
+  const bool insufficient_training = workspace.train_count < workspace.config.min_train_segments ||
+                                     workspace.train_day_count < workspace.config.min_train_days;
+  if (insufficient_training ||
+      workspace.day_count < workspace.config.min_train_days + workspace.config.min_holdout_days ||
       workspace.record_count - workspace.train_count < workspace.config.min_holdout_segments)
     workspace.advice_blocker = LearningStatus::INSUFFICIENT_DATA;
+  if (workspace.train_count == 0) return LearningStatus::INSUFFICIENT_DATA;
 
   uint8_t max_day_records = 0;
   for (uint8_t day = 0; day < workspace.train_day_count; ++day)
@@ -375,6 +378,8 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
   workspace.result.train_p90_c = workspace.sorted_train_temperatures[p90_index];
   workspace.result.train_min_c = workspace.sorted_train_temperatures[0];
   workspace.result.train_max_c = workspace.sorted_train_temperatures[workspace.train_count - 1U];
+  workspace.result.metadata_prepared = true;
+  if (insufficient_training) return LearningStatus::INSUFFICIENT_DATA;
   const float spread = workspace.result.train_p90_c - workspace.result.train_p10_c;
   if (spread < workspace.config.min_outside_p90_p10_k) {
     if (workspace.advice_blocker == LearningStatus::OK) workspace.advice_blocker = LearningStatus::INSUFFICIENT_SPREAD;
@@ -539,22 +544,21 @@ inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
     return LearningStatus::FIT_IN_PROGRESS;
   }
   if (workspace.phase == FitPhase::FIT_BASE) {
+    // Preparation gates precede numerical fitting. Only the separate preview
+    // may expose a line when the training evidence is insufficient.
+    if (workspace.advice_blocker != LearningStatus::OK) {
+      workspace.result.status = workspace.advice_blocker;
+      workspace.phase = FitPhase::DONE;
+      return workspace.result.status;
+    }
     if (!detail::fit_huber_line(workspace, -1, workspace.result.candidate)) {
       workspace.result.status = LearningStatus::FIT_FAILED;
       workspace.phase = FitPhase::DONE;
       return workspace.result.status;
     }
+    workspace.result.candidate_available = true;
     if (!detail::plausible_line(workspace.result.candidate, workspace.config)) {
       workspace.result.status = LearningStatus::CANDIDATE_IMPLAUSIBLE;
-      workspace.phase = FitPhase::DONE;
-      return workspace.result.status;
-    }
-    workspace.result.candidate_available = true;
-    // A diagnostic line can exist before the evidence qualifies for advice.
-    // The advice candidate remains strictly earlier than the reserved checking days.
-    // Only the separate display preview uses those checking days too.
-    if (workspace.advice_blocker != LearningStatus::OK) {
-      workspace.result.status = workspace.advice_blocker;
       workspace.phase = FitPhase::DONE;
       return workspace.result.status;
     }

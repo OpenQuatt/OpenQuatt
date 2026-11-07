@@ -29,6 +29,7 @@ int oq_control_mode_code = INT32_MIN;
 int esp_reset_reason() { return INT32_MIN; }
 struct Endpoint {
   std::string largest;
+  std::string latest;
   unsigned publications = 0;
   std::string exported;
   bool publish_export_json(const char* text, size_t length) {
@@ -39,6 +40,7 @@ struct Endpoint {
   bool publish_status_json(const char* text, size_t length) {
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
     if (length > largest.size()) largest.assign(text, length);
+    latest.assign(text, length);
     ++publications;
     return true;
   }
@@ -240,6 +242,7 @@ int main() {
   learner.diagnostics.accepted_thermal_intervals = UINT32_MAX;
   summary.batch_advice_ready = summary.thermal_model_ready = true;
   summary.batch.candidate_available = true;
+  summary.batch.metadata_prepared = true;
   summary.batch.train_segments = summary.batch.train_days = 18;
   summary.batch.holdout_segments = summary.batch.holdout_days = 3;
   summary.batch.preview = {true, {211.25f, 17.125f}, 21, 21, 1.97f, 12.34f};
@@ -256,6 +259,20 @@ int main() {
   state.input.context_revision = UINT32_MAX;
   state.source_diagnostics.invalid_reasons = UINT32_MAX;
   state.journal.status = "persistence_unavailable";
+  // A retained result cannot publish prepared metadata while paused. Rejected
+  // or initial fits also carry the explicit false flag instead of default counts.
+  summary.batch.metadata_prepared = false;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  summary.batch.metadata_prepared = true;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":true") != std::string::npos);
+  Production::publish_status_(state, false, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  learner.status = PassiveRuntimeStatus::PAUSED;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  learner.status = PassiveRuntimeStatus::BLOCKED;
   // Enumerate names so later enum additions cannot silently defeat the budget.
   for (unsigned status = 0; status <= static_cast<unsigned>(LearningStatus::UNSTABLE_FIT); ++status) {
     summary.batch.status = learner.diagnostics.last_batch_rejection = static_cast<LearningStatus>(status);

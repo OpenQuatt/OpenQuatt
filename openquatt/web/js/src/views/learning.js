@@ -6,6 +6,22 @@ import { state } from "../core/state.js";
 import { t } from "../i18n/index.js";
 import { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } from "../settings/house-learning.js";
 
+function renderControlMessages() {
+  return `${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+    ${state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}`;
+}
+
+export function patchLearningView() {
+  const messages = state.root?.querySelector("[data-oq-learning-messages]");
+  if (!messages) return false;
+  const markup = renderControlMessages();
+  if (messages.innerHTML !== markup) messages.innerHTML = markup;
+  const tabs = state.root?.querySelector("[data-oq-learning-panels]");
+  const weather = hasWeatherSettings();
+  if (Boolean(tabs) !== weather) return false;
+  return weather && state.learningForecastOpen ? patchWeatherSettings() : patchHouseLearningSettingsStatus();
+}
+
 export function renderLearningView() {
   const weather = hasWeatherSettings();
   const forecast = weather && state.learningForecastOpen;
@@ -15,8 +31,7 @@ export function renderLearningView() {
   return `<section class="oq-helper-panel">
     <h2 class="oq-helper-section-title">${escapeHtml(t("navigation.learning"))}</h2>
     <p class="oq-helper-section-copy">${escapeHtml(t("learning.copy"))}</p>
-    ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
-    ${state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
+    <div data-oq-learning-messages>${renderControlMessages()}</div>
     ${weather ? `<div class="oq-learning-panels" data-oq-learning-panels>
       <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-learning-panel" data-learning-panel="measurements" aria-pressed="${!forecast}">${escapeHtml(t("navigation.learning"))}</button>
       <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-learning-panel" data-learning-panel="forecast" aria-pressed="${forecast}">${escapeHtml(t("learningWorkspace.forecastTab"))}</button>
@@ -25,9 +40,4 @@ export function renderLearningView() {
   </section>`;
 }
 
-setViewPatchControls({ patchLearningDom: () => {
-  const tabs = state.root?.querySelector("[data-oq-learning-panels]");
-  const weather = hasWeatherSettings();
-  if (Boolean(tabs) !== weather) return false;
-  return weather && state.learningForecastOpen ? patchWeatherSettings() : patchHouseLearningSettingsStatus();
-} });
+setViewPatchControls({ patchLearningDom: patchLearningView });

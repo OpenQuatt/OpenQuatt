@@ -16,6 +16,7 @@ from tests.support.process import run_process
 
 ROOT = Path(__file__).resolve().parents[2]
 CPP = ROOT / "components/openquatt_mqtt_config/OpenQuattMqttConfig.cpp"
+HEADER = CPP.with_suffix(".h")
 FIXTURE = ROOT / "tests/fixtures/mqtt_worker_nonblocking/runtime.cpp"
 METHODS = (
     "loop", "apply_storage_", "get_desired_client_config_",
@@ -58,7 +59,11 @@ def runtime_source(source):
     for name, method in zip(METHODS, methods):
         signature = method[:method.index("{")].replace("OpenQuattMqttConfig::", "").strip()
         declarations.append(("static " if name in STATIC_METHODS else "") + signature + ";")
+    stack = re.findall(r"static constexpr int MQTT_TASK_STACK_SIZE = \d+;", HEADER.read_text())
+    if len(stack) != 1:
+        raise AssertionError("expected one production MQTT task stack constant")
     return (FIXTURE.read_text()
+            .replace("// PRODUCTION_MQTT_TASK_STACK", stack[0])
             .replace("// PRODUCTION_DECLARATIONS", "\n".join(declarations))
             .replace("// PRODUCTION_METHODS", "\n\n".join(methods)))
 
@@ -70,7 +75,7 @@ class MqttWorkerNonblockingRuntimeTest(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         cls.binary = Path(cls.directory.name) / "mqtt_worker_nonblocking"
         result = run_process(
-            compiler_command("-pthread", "-I", str(ROOT), "-x", "c++", "-", "-o", str(cls.binary)),
+            compiler_command("-DEXPECTED_MQTT_TASK_STACK=6144", "-pthread", "-I", str(ROOT), "-x", "c++", "-", "-o", str(cls.binary)),
             input=runtime_source(CPP.read_text()), text=True, capture_output=True,
             timeout=COMPILE_TIMEOUT_SECONDS,
         )
@@ -84,6 +89,9 @@ class MqttWorkerNonblockingRuntimeTest(unittest.TestCase):
         result = run_process(command, text=True, capture_output=True, timeout=12)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(f"PASS {name}", result.stdout)
+
+    def test_new_client_uses_6kib_transport_stack(self):
+        self.run_case("cold_start")
 
     def test_loop_returns_while_worker_subscribe_waits(self):
         self.run_case("blocked_subscribe")
