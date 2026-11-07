@@ -1,4 +1,4 @@
-"""Build-local ownership fix for runtime manifest URLs in ESPHome 2026.10.0."""
+"""Build-local manifest URL ownership and HTTPS scheduling for ESPHome 2026.10.0."""
 
 from __future__ import annotations
 
@@ -16,22 +16,110 @@ _PATCHES = {
     "http_request_update.h": (
         ("#pragma once\n", "#pragma once\n\n#include <string>\n", 1),
         (
+            "  void update() override;\n",
+            "  void update() override;\n"
+            "  uint32_t manifest_check_timeout_ms() const;\n"
+            "  const std::string &get_source_url() const { return this->source_url_; }\n"
+            "  bool manifest_result_matches(const std::string &source) const {\n"
+            "#ifdef USE_ESP32\n"
+            "    if (this->update_task_handle_ != nullptr) return false;\n"
+            "#endif\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "    if (this->manifest_waiting_for_weather_) return false;\n"
+            "#endif\n"
+            "    return !this->status_has_error() && this->source_url_ == source && this->task_source_url_ == source;\n"
+            "  }\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "  void set_manifest_check_paused(bool (*paused)()) { this->manifest_check_paused_ = paused; }\n"
+            "#endif\n",
+            1,
+        ),
+        (
             "  const char *source_url_{nullptr};  // literal from codegen",
             "  // Setters run on the main loop; the worker only reads its frozen snapshot.\n"
             "  std::string source_url_;\n"
-            "  std::string task_source_url_;",
+            "  std::string task_source_url_;\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "  static constexpr uint32_t WEATHER_CHECK_RETRY_ID = 1;\n"
+            "  static constexpr uint32_t WEATHER_CHECK_RETRY_MS = 250;\n"
+            "  bool manifest_waiting_for_weather_{false};\n"
+            "  bool (*manifest_check_paused_)(){nullptr};\n"
+            "#endif",
             1,
         ),
     ),
     "http_request_update.cpp": (
         (
+            '#include "http_request_update.h"\n',
+            '#include "http_request_update.h"\n'
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            '#include "esphome/components/openquatt_weather/OpenQuattWeatherPolicy.h"\n'
+            '#include "esphome/components/openquatt_weather/WeatherHttpsSlot.h"\n'
+            "#endif\n",
+            1,
+        ),
+        (
+            "void HttpRequestUpdate::update() {\n",
+            "void HttpRequestUpdate::update() {\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "  if (this->manifest_waiting_for_weather_) {\n"
+            "    this->cancel_timeout(WEATHER_CHECK_RETRY_ID);\n"
+            "    this->manifest_waiting_for_weather_ = false;\n"
+            "    openquatt_weather::https_slot.set_manifest_waiting(false);\n"
+            "  }\n"
+            "#endif\n",
+            1,
+        ),
+        (
             '  xTaskCreate(HttpRequestUpdate::update_task, "update_task", 8192, (void *) this, 1, &this->update_task_handle_);',
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "  if (!openquatt_weather::https_slot.try_acquire()) {\n"
+            "    this->manifest_waiting_for_weather_ = true;\n"
+            "    openquatt_weather::https_slot.set_manifest_waiting(true);\n"
+            "    this->set_timeout(WEATHER_CHECK_RETRY_ID, WEATHER_CHECK_RETRY_MS, [this]() {\n"
+            "      this->manifest_waiting_for_weather_ = false;\n"
+            "      openquatt_weather::https_slot.set_manifest_waiting(false);\n"
+            "      if (this->state_ != update::UPDATE_STATE_INSTALLING &&\n"
+            "          !(this->manifest_check_paused_ && this->manifest_check_paused_()))\n"
+            "        this->update();\n"
+            "    });\n"
+            "    return;\n"
+            "  }\n"
+            "  constexpr uint32_t stack_size = 6144;\n"
+            "#else\n"
+            "  constexpr uint32_t stack_size = 8192;\n"
+            "#endif\n"
             "  this->task_source_url_ = this->source_url_;\n"
-            '  if (xTaskCreate(HttpRequestUpdate::update_task, "update_task", 8192, (void *) this, 1,\n'
+            '  if (xTaskCreate(HttpRequestUpdate::update_task, "update_task", stack_size, (void *) this, 1,\n'
             "                  &this->update_task_handle_) != pdPASS) {\n"
             "    this->update_task_handle_ = nullptr;\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "    openquatt_weather::https_slot.release();\n"
+            "#endif\n"
             '    this->status_set_error(LOG_STR("Failed to start manifest check"));\n'
             "  }",
+            1,
+        ),
+        (
+            "void HttpRequestUpdate::update_task(void *params) {\n",
+            "uint32_t HttpRequestUpdate::manifest_check_timeout_ms() const {\n"
+            "  constexpr uint32_t result_timeout_ms = 20000;\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "  if (this->manifest_waiting_for_weather_)\n"
+            "    return result_timeout_ms + oq_weather::kRequestDeadlineMs + 2 * WEATHER_CHECK_RETRY_MS;\n"
+            "#endif\n"
+            "  return result_timeout_ms;\n"
+            "}\n\n"
+            "void HttpRequestUpdate::update_task(void *params) {\n",
+            1,
+        ),
+        (
+            "    this_update->update_task_handle_ = nullptr;\n",
+            "    this_update->update_task_handle_ = nullptr;\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "    // The worker has closed and released the HTTP container on every path.\n"
+            "    openquatt_weather::https_slot.release();\n"
+            "#endif\n",
             1,
         ),
         (

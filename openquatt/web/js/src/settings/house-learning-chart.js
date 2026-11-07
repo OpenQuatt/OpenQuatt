@@ -73,7 +73,8 @@ export function normalizeHouseLearningExport(payload = {}) {
 
 export function getHouseLearningChartModel(records, configured = {}, learned = {}, width = WIDTH) {
   const config = { coldC: finite(configured.coldC), zeroC: finite(configured.zeroC), ratedW: finite(configured.ratedW) };
-  const fit = { h: finite(learned.h), t0: finite(learned.t0), ready: learned.ready === true };
+  const line = learned.ready !== true && learned.preview !== undefined ? learned.preview || {} : learned;
+  const fit = { h: finite(line.h), t0: finite(line.t0), ready: learned.ready === true };
   const configuredValid = config.coldC != null && config.zeroC != null && config.ratedW != null && config.zeroC > config.coldC && config.ratedW > 0;
   const learnedValid = fit.h != null && fit.t0 != null && fit.h > 0;
   const minX = -10;
@@ -142,9 +143,16 @@ export function renderHouseLearningChart(records, configured, learned) {
     ? Math.max(0, model.ratedW * ((model.zeroC - temperature) / (model.zeroC - model.coldC)))
     : 0;
   const learnedPower = (temperature) => Math.max(0, model.h * (model.t0 - temperature));
-  const learnedStart = measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
-  const learnedEnd = measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
-  const learnedRanges = fitRecords.length && learnedEnd > learnedStart
+  const previewRange = learned?.preview !== undefined ? learned.preview : learned?.fit;
+  const rangeMin = !model.ready ? finite(previewRange?.minC) : measuredMin;
+  const rangeMax = !model.ready ? finite(previewRange?.maxC) : measuredMax;
+  const learnedStart = rangeMin == null ? model.minX : clamp(rangeMin, model.minX, model.maxX);
+  const learnedEnd = rangeMax == null ? model.maxX : clamp(rangeMax, model.minX, model.maxX);
+  const measuredStart = measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
+  const measuredEnd = measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
+  const learnedRanges = !model.ready
+    ? rangeMin != null && rangeMax != null && rangeMax > rangeMin ? [[model.minX, model.maxX, true]] : []
+    : fitRecords.length && learnedEnd > learnedStart
     ? [[model.minX, learnedStart, true], [learnedStart, learnedEnd, false], [learnedEnd, model.maxX, true]]
     : [[model.minX, model.maxX, true]];
   const learnedLine = model.learnedValid ? learnedRanges.filter(([from, to]) => to > from).map(([from, to, dashed]) =>
@@ -159,22 +167,23 @@ export function renderHouseLearningChart(records, configured, learned) {
     model.configuredValid ? t("houseLearning.chart.configuredLineNote") : "",
     hasQuality && records.length && !fitRecords.length
       ? t("houseLearning.chart.qualityNoEligible") : !fitRecords.length
-      ? t(model.learnedValid ? "houseLearning.chart.noPeriodsWithExtrapolation" : "houseLearning.chart.noPeriods")
+      ? t(model.learnedValid && model.ready ? "houseLearning.chart.noPeriodsWithExtrapolation" : "houseLearning.chart.noPeriods")
       : t(dailyFit
         ? fitRecords.length === 1 ? "houseLearning.chart.dailyPeriodCountOne" : "houseLearning.chart.dailyPeriodCountMany"
         : fitRecords.length === 1 ? "houseLearning.chart.periodCountOne" : "houseLearning.chart.periodCountMany", { count: formatNumber(fitRecords.length) }),
     visibleRecords.length < records.length ? t("houseLearning.chart.outsideAxis", { count: formatNumber(records.length - visibleRecords.length) }) : "",
     !model.configuredValid ? t("houseLearning.chart.configuredLineIncomplete") : "",
-    !model.learnedValid ? dailyFit ? "" : t("houseLearning.chart.noBatchEstimate") : !model.ready ? t("houseLearning.chart.provisionalLine") : "",
+    !model.learnedValid ? dailyFit ? "" : t("houseLearning.chart.noBatchEstimate")
+      : !model.ready ? t(learnedLine ? "houseLearning.chart.provisionalLine" : "houseLearning.chart.provisionalRangeMissing") : "",
   ].filter(Boolean);
   const summary = hasQuality
     ? t("houseLearning.chart.qualitySummary", { retained: formatNumber(records.length), eligible: formatNumber(fitRecords.length) })
     : t(dailyFit ? "houseLearning.chart.compactDailySummary" : "houseLearning.chart.compactSummary", { count: formatNumber(fitRecords.length), temperature: format(finite(learned?.referenceRoomC) ?? 20) });
   return `${readiness}
-    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${model.learnedValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}</div>
+    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${learnedLine ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}</div>
     <div class="oq-house-learning-chart-wrap">
       <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="${escapeHtml(t("houseLearning.chart.ariaLabel"))}">
-        ${fitRecords.length && learnedEnd > learnedStart ? `<rect x="${model.x(learnedStart)}" y="${PADDING.top}" width="${model.x(learnedEnd) - model.x(learnedStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}
+        ${fitRecords.length && measuredEnd > measuredStart ? `<rect x="${model.x(measuredStart)}" y="${PADDING.top}" width="${model.x(measuredEnd) - model.x(measuredStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}
         ${xGrid.map((value) => `<line x1="${model.x(value)}" x2="${model.x(value)}" y1="${PADDING.top}" y2="${HEIGHT - PADDING.bottom}" class="oq-house-learning-chart-grid"/>`).join("")}
         ${yGrid.map((value) => `<line x1="${PADDING.left}" y1="${model.y(value).toFixed(1)}" x2="${model.width - PADDING.right}" y2="${model.y(value).toFixed(1)}" class="oq-house-learning-chart-grid"/><text x="${PADDING.left - 9}" y="${(model.y(value) + 4).toFixed(1)}" text-anchor="end" class="oq-house-learning-chart-axis">${escapeHtml(format(value / 1000))}</text>`).join("")}
         ${xGrid.map((value) => `<text x="${model.x(value).toFixed(1)}" y="${HEIGHT - 16}" text-anchor="middle" class="oq-house-learning-chart-axis">${escapeHtml(format(value))}°</text>`).join("")}

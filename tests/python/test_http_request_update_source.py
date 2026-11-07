@@ -77,17 +77,21 @@ class HttpRequestUpdateSourceTest(unittest.TestCase):
         relative_url = cpp.split("    // Merge source_url_ and firmware_url\n", 1)[1].split(
             "\n#ifdef ESPHOME_PROJECT_VERSION", 1
         )[0]
+        completion = cpp.split("this_update->defer([this_update, result]() {\n", 1)[1].split(
+            "    if (result->error_str != nullptr)", 1
+        )[0]
         fixture = (ROOT / "tests/fixtures/http_request_update_source.cpp").read_text()
         source = fixture.replace("// GENERATED_HEADER", header).replace("// GENERATED_UPDATE", update).replace(
             "// GENERATED_RELATIVE_URL", relative_url
-        )
+        ).replace("// GENERATED_COMPLETION", completion)
         with tempfile.TemporaryDirectory(prefix="openquatt-update-source-") as temporary:
             path = Path(temporary) / "test.cpp"
             executable = Path(temporary) / "test"
             path.write_text(source)
-            for target_flags in (("-DUSE_ESP32",), ()):
+            for target_flags in (("-DUSE_ESP32",), (), ("-DUSE_ESP32", "-DUSE_OPENQUATT_WEATHER")):
                 run_process(
-                    [*compiler_command(*target_flags), str(path), "-o", str(executable)],
+                    [*compiler_command(*target_flags), "-I", str(ROOT / "components/openquatt_weather"),
+                     str(path), "-o", str(executable)],
                     check=True, timeout=COMPILE_TIMEOUT_SECONDS,
                 )
                 run_process([str(executable)], check=True, timeout=RUN_TIMEOUT_SECONDS)

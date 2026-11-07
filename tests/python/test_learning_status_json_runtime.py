@@ -136,6 +136,13 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             self.assertEqual(payload["shadow"]["delta_w"], -350)
             self.assertFalse(payload["auto_apply_allowed"])
             self.assertEqual(payload["collection"]["batch_missing_energy_budget_wh"], 2400)
+            self.assertEqual(payload["batch_preview"], {
+                "h": 211.25, "t0": 17.125, "segments": 21, "days": 21, "min_c": 1.97, "max_c": 12.34,
+            })
+            self.assertEqual(payload["batch_fit"], {
+                "train_segments": 18, "holdout_segments": 3, "train_days": 18, "holdout_days": 3,
+                "train_p10_c": 8.28, "train_p90_c": 11.88, "train_min_c": 7.55, "train_max_c": 12.34,
+            })
             self.assertEqual(payload["collection"]["batch_budget_scope"], "model_advice_only")
             self.assertAlmostEqual(payload["collection"]["batch_missing_heat_bound_w"], 18344.3, places=1)
             self.assertEqual(payload["collection"]["batch_resume_reason"], "checkpoint_context_unavailable")

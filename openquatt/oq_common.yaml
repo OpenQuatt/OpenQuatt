@@ -82,6 +82,11 @@ esphome:
           id(oq_connection_text).publish_state("${oq_connection}");
           #endif
           id(oq_fw_select_callbacks_runtime_ready) = true;
+          #ifdef USE_OPENQUATT_WEATHER
+          id(oq_firmware_update).set_manifest_check_paused([]() {
+            return id(oq_runtime_polling_paused).state;
+          });
+          #endif
           id(oq_firmware_update).add_on_state_callback([]() {
             // A successful manifest fetch publishes even when the version is unchanged.
             // OTA progress and terminal errors publish too; successful manifests clear the error first.
@@ -515,6 +520,8 @@ script:
 
   - id: oq_install_firmware_update_target_deferred
     mode: single
+    parameters:
+      expected_manifest: string
     then:
       - lambda: |-
           // Clear terminal state before starting a new install attempt.
@@ -541,7 +548,7 @@ script:
           condition:
             lambda: |-
               return id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation);
-          timeout: 20s
+          timeout: !lambda return id(oq_firmware_update).manifest_check_timeout_ms();
       - if:
           condition:
             lambda: |-
@@ -562,12 +569,13 @@ script:
                 condition:
                   lambda: |-
                     return id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation);
-                timeout: 20s
+                timeout: !lambda return id(oq_firmware_update).manifest_check_timeout_ms();
       - if:
           condition:
             lambda: |-
               return id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation)
                   && id(oq_fw_check_target_ready)
+                  && id(oq_firmware_update).manifest_result_matches(expected_manifest)
                   && !id(oq_runtime_polling_paused).state
                   && !id(oq_firmware_target_install_active);
           then:
@@ -678,7 +686,7 @@ script:
             lambda: |-
               return id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation)
                   || id(oq_ota_phase_code) == 5;
-          timeout: 20s
+          timeout: !lambda return id(oq_firmware_update).manifest_check_timeout_ms();
       - lambda: |-
           // PR-specifieke exact-URL-validatie: een reeds lopende normale
           // manifestcheck kan een stale resultaat publiceren. De generieke
@@ -754,7 +762,7 @@ script:
                 condition:
                   lambda: |-
                     return id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation);
-                timeout: 20s
+                timeout: !lambda return id(oq_firmware_update).manifest_check_timeout_ms();
             - lambda: |-
                 // Controleer opnieuw dat de bevestigde manifest-URL nog steeds
                 // de exact geaccepteerde PR-release en targetnaam gebruikt.
@@ -1336,7 +1344,11 @@ button:
               return !id(oq_runtime_polling_paused).state
                   && !id(oq_firmware_target_install_active);
           then:
-            - script.execute: oq_install_firmware_update_target_deferred
+            - script.execute: oq_apply_firmware_update_source
+            - script.wait: oq_apply_firmware_update_source
+            - script.execute:
+                id: oq_install_firmware_update_target_deferred
+                expected_manifest: !lambda return id(oq_firmware_update).get_source_url();
           else:
             - lambda: |-
                 ESP_LOGW("oq_fw", "Firmware install request ignored because an OTA operation is already active.");

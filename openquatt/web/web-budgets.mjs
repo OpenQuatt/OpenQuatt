@@ -38,12 +38,18 @@ export const WEB_BUNDLE_BUDGETS = [
     // +6,919 B raw / +1,750 B gzip versus dev 6dd491f5 (Node 24.14.1).
     // Bounded readback, export and focus handling add 556 B raw / 134 B gzip.
     // Preserve 444 B of raw headroom and the existing relative gzip limits.
+    // Provisional curve ranges and firmware fit progress: +1,860 B raw / +550 B gzip
+    // versus b18f4d15 on Node 24.14.1, preserving 444 B raw headroom.
+    // All-days display preview and NL/EN explanation: +1,300 B raw vs664f45c.
+    // Preserve444 B raw headroom; relative gzip limits remain unchanged.
     // Outlook, localized settings, atomic scenario and the interactive weather charts.
-    // Against PR #924 on Node 24.14.1: +30,740 B raw and +9,865 B gzip.
-    // The migration includes verified consent and keeps 61 B of gzip headroom.
-    // Demand comparison: +5,762 B raw and +1,654 B gzip versus Vooruitblik.
-    raw: 1_445_357,
-    gzipBaselineCeiling: 403_878,
+    // On current PR1: +30,871 B raw / +9,824 B gzip (Node24.14.1).
+    // Keep the existing 9,922 B migration allowance and 444 B raw headroom.
+    // PR1 gzip base grew 393,956 -> 394,914 B; move the absolute ceiling by the same958 B.
+    raw: 1_448_649,
+    gzipBaselineCeiling: 404_836,
+    // Demand comparison: +5,763 B raw / +2,128 B gzip vs PR2 (Node24.14.1).
+    // Preserve 444 B raw headroom and unchanged relative gzip limits.
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
