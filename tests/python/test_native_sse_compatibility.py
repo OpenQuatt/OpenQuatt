@@ -37,6 +37,9 @@ class NativeSseCompatibilityTest(unittest.TestCase):
             ("esphome", "components", "http_request", "update", name): Path(str(installed.joinpath(name)))
             for name in ["http_request_update.cpp", "http_request_update.h"]
         })
+        ota_parts = ("esphome", "components", "http_request", "ota", "ota_http_request.cpp")
+        sdk_paths[ota_parts] = Path(str(
+            resources.files("esphome.components.http_request.ota").joinpath("ota_http_request.cpp")))
         originals = {parts: path.read_bytes() for parts, path in sdk_paths.items()}
         cpp_parts = ("esphome", "components", "web_server_idf", "web_server_idf.cpp")
         header_parts = ("esphome", "components", "web_server_idf", "web_server_idf.h")
@@ -88,6 +91,9 @@ class NativeSseCompatibilityTest(unittest.TestCase):
                     parts = ("esphome", "components", "http_request", "update", name)
                     expected_source = modules["http_request_update_source"]._transform(name, originals[parts].decode())[0]
                     self.assertEqual(core.relative_src_path(*parts).read_text(), expected_source)
+                expected_ota = modules["http_request_update_source"]._transform(
+                    "ota_http_request.cpp", originals[ota_parts].decode())[0]
+                self.assertEqual(core.relative_src_path(*ota_parts).read_text(), expected_ota)
 
             core.data = {}
             writer.copy_src_tree()
@@ -99,6 +105,7 @@ class NativeSseCompatibilityTest(unittest.TestCase):
             self.assertIs(writer.copy_src_tree, hook)
             writer.copy_src_tree()
             self.assertEqual(core.relative_src_path(*cpp_parts).read_text(), expected_cpp)
+            self.assertEqual(core.relative_src_path(*ota_parts).read_text(), expected_ota)
             self.assertEqual({parts: path.read_bytes() for parts, path in sdk_copies.items()}, originals)
             self.assertEqual({parts: path.read_bytes() for parts, path in sdk_paths.items()}, originals)
 
