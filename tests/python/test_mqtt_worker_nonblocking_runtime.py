@@ -59,7 +59,7 @@ def runtime_source(source):
     for name, method in zip(METHODS, methods):
         signature = method[:method.index("{")].replace("OpenQuattMqttConfig::", "").strip()
         declarations.append(("static " if name in STATIC_METHODS else "") + signature + ";")
-    stack = re.search(r"#ifdef OQ_HARDWARE_HEATPUMP_CONTROLLER_Q\n[^#]+#else\n[^#]+#endif", HEADER.read_text())
+    stack = re.search(r"#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q\n[^#]+#else\n[^#]+#endif", HEADER.read_text())
     if stack is None:
         raise AssertionError("production MQTT task stack selection missing")
     return (FIXTURE.read_text()
@@ -75,7 +75,7 @@ class MqttWorkerNonblockingRuntimeTest(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         cls.binary = Path(cls.directory.name) / "mqtt_worker_nonblocking"
         result = run_process(
-            compiler_command("-DEXPECTED_MQTT_TASK_STACK=12288", "-pthread", "-I", str(ROOT), "-x", "c++", "-", "-o", str(cls.binary)),
+            compiler_command("-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=0", "-DEXPECTED_MQTT_TASK_STACK=12288", "-pthread", "-I", str(ROOT), "-x", "c++", "-", "-o", str(cls.binary)),
             input=runtime_source(CPP.read_text()), text=True, capture_output=True,
             timeout=COMPILE_TIMEOUT_SECONDS,
         )
@@ -85,7 +85,7 @@ class MqttWorkerNonblockingRuntimeTest(unittest.TestCase):
     def test_q_stack_reaches_sdk_during_start_and_reconfigure(self):
         binary = Path(self.directory.name) / "mqtt_worker_q"
         result = run_process(
-            compiler_command("-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q",
+            compiler_command("-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=1",
                              "-DEXPECTED_MQTT_TASK_STACK=6144", "-pthread",
                              "-I", str(ROOT), "-x", "c++", "-", "-o", str(binary)),
             input=runtime_source(CPP.read_text()), text=True, capture_output=True,
