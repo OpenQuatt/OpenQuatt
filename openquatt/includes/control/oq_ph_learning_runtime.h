@@ -669,7 +669,6 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
 #endif
     in.boiler_heat = learning_boiler_heat(opentherm_selected, boiler_contract, boiler_telemetry);
-    in.boiler_no_heat_observed = learning_boiler_no_heat_observed(boiler_telemetry, now_ms);
     if (boiler_contract.valid && !in.boiler_heat.valid)
       state.boiler_source_status = SnapshotSourceStatus::BOILER_ACTIVE;
     auto& op = in.operation;

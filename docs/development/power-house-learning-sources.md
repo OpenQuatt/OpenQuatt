@@ -42,14 +42,13 @@ naar het water. Dat volgt uit het gemeten debiet en het temperatuurverschil
 tussen de retour bij HP1 en de systeemaanvoer na de ketel. CM3 en CM4 tellen mee
 zolang deze meting geldig is, onafhankelijk van de OpenTherm-status. Een
 vastgehouden aanvoerwaarde of een fallback naar de warmtepompuitgang levert geen
-systeemmeting op. Valt de systeemmeting weg, dan mag de warmte van de warmtepomp
-meetellen als de regeling geen ketelwarmte vraagt en een verse OpenTherm-status
-bevestigt dat de ketel geen cv-warmte levert. Zonder die bevestiging blijft de
-warmte voor dat interval onbekend en gelden de meetgatregels. Dat geldt ook bij R1.
+systeemmeting op. Valt de systeemmeting weg, dan blijft de warmte voor dat
+interval onbekend en gelden de meetgatregels. Er is geen terugval op
+warmtepompwarmte op basis van de OpenTherm-status. Dat geldt ook bij R1.
 Bij stilstaande ODU-pompen kan verse pulsflow van de Q-controller circulatie
 aantonen als de bronselectie anders een synthetische nul oplevert. Een stille
 pulsingang levert in die situatie geen meting. Zonder actuele
-systeemmeting of OpenTherm-bevestiging kan langdurige stilstand de dagmeting
+systeemmeting kan langdurige stilstand de dagmeting
 onderbreken. Bij HA-aanvoer telt de laatste temperatuurontvangst hoogstens
 30 seconden mee. De HA-heartbeat houdt de verbinding actueel. Voor de dagmeting
 moet de aanvoerbron zelf minstens elke 30 seconden een meetwaarde doorgeven.
@@ -61,8 +60,8 @@ bronfout breekt een lopende dagmeting af. Voor ontbrekende warmte gebruikt de
 onzekerheidsberekening 50 kW als ondergrens voor de
 vermogensgrens. Een open meetgat bewaart de hoogste toegepaste grens, ook als de
 keteloptie tussentijds wordt uitgeschakeld. Zo verlaagt een instellingwijziging
-eerder ontstane onzekerheid niet. Bij terugval op warmtepompwarmte blijft voor
-het accepteren van meetwaarden de lagere generatie- en topologiegrens gelden.
+eerder ontstane onzekerheid niet. Zonder keteloptie blijft voor het accepteren
+van warmtepompwarmte de lagere generatie- en topologiegrens gelden.
 Het ingestelde ketelvermogen is een regelwaarde en bewijst geen maximum voor
 ongemeten ketelwarmte.
 
@@ -260,8 +259,7 @@ Het plausibiliteitsfilter voor warmtepompwarmte gebruikt
 worden symmetrisch behandeld. Dit is een engineeringmarge, geen gemeten bewijs
 dat iedere werkelijke waterzijdige piek binnen 20% blijft. Onbekende generatie
 gebruikt ook hier de hoogste ondersteunde generatie voor de ingestelde topologie.
-Deze grens geldt ook voor de terugval op warmtepompwarmte bij een aangesloten
-ketel en voor de dynamische 1R1C-meting. De status publiceert de grens van de
+Deze grens geldt zonder keteloptie en voor de dynamische 1R1C-meting. De status publiceert de grens van de
 dagmeting als `collection.batch_heat_measurement_limit_w`.
 
 Een eindige uitschieter boven deze grens wordt pas na bron-/unit-/tijdcontroles

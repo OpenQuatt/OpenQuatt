@@ -208,8 +208,8 @@ inline bool boot_scalar_receipts_invalid(const LearningSourceInput& input, const
 // Missing boot receipts alone are not evidence of an unsafe operating phase.
 inline const char* daily_restart_interruption_reason(const LearningSourceInput& input, bool boiler_heat_observed,
                                                      const QualityConfig& quality = QualityConfig{}) {
-  const auto system = input.system_heat_enabled ? evaluate_system_calorimetry(input, quality) : CalorimetryResult{};
-  if (use_system_calorimetry(input, system)) {
+  if (input.system_heat_enabled) {
+    const auto system = evaluate_system_calorimetry(input, quality);
     if (input.operation.control_mode_valid && input.operation.control_mode != LearningControlMode::HEATING &&
         input.operation.control_mode != LearningControlMode::HEATING_WITH_BOILER)
       return "control_mode";
@@ -274,8 +274,7 @@ inline bool daily_boot_sources_pending(const LearningSourceInput& input, const S
       !scalar(input.setpoint_c, quality.setpoint_min_c, quality.setpoint_max_c, PhysicalUnit::SYSTEM, false) ||
       !scalar(input.outside_c, quality.outside_min_c, quality.outside_max_c, PhysicalUnit::SYSTEM, false))
     return false;
-  const auto system = input.system_heat_enabled ? evaluate_system_calorimetry(input, quality) : CalorimetryResult{};
-  if (use_system_calorimetry(input, system)) {
+  if (input.system_heat_enabled) {
     return scalar(input.circuit_flow_lph, 0.0f, kPassiveMaximumFlowLph, PhysicalUnit::SYSTEM, false) &&
            scalar(input.hp1.water_in_c, quality.water_min_c, quality.water_max_c, PhysicalUnit::HP1, true) &&
            scalar(input.system_supply_c, quality.water_min_c, quality.water_max_c, PhysicalUnit::SYSTEM, true);
@@ -496,10 +495,6 @@ inline PhysicalMeasurement<BoilerHeatState> learning_boiler_status(float payload
   const bool heating = ch_active || ((status & 0x0008U) != 0U && !dhw_only);
   return receipt_measurement(receipt, heating ? BoilerHeatState::HEAT_ACTIVE : BoilerHeatState::NO_HEAT,
                              {PhysicalSourceKind::OPENTHERM_FRAME, 0x10000U, PhysicalUnit::SYSTEM}, 1, {10000, 30000});
-}
-
-inline bool learning_boiler_no_heat_observed(const PhysicalMeasurement<BoilerHeatState>& telemetry, uint64_t now_ms) {
-  return live_measurement_fresh(telemetry, now_ms) && telemetry.value == BoilerHeatState::NO_HEAT;
 }
 
 // Heating and its idle/pump phases have no boiler demand. OpenTherm is an optional

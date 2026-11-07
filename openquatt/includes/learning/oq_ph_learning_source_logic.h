@@ -144,7 +144,6 @@ struct LearningSourceInput {
   PhysicalMeasurement<float> circuit_flow_lph;
   PhysicalMeasurement<float> system_supply_c;
   bool system_heat_enabled = false;
-  bool boiler_no_heat_observed = false;
   HeatPumpRawMeasurements hp1;
   HeatPumpRawMeasurements hp2;
   PhysicalMeasurement<BoilerHeatState> boiler_heat;
@@ -547,20 +546,6 @@ inline CalorimetryResult evaluate_system_calorimetry(const LearningSourceInput& 
   return result;
 }
 
-inline bool use_system_calorimetry(const LearningSourceInput& input, const CalorimetryResult& system) {
-  if (!input.system_heat_enabled) return false;
-  if (system.valid || !source_detail::scalar_gap_status(system.status) ||
-      input.operation.control_mode == LearningControlMode::HEATING_WITH_BOILER)
-    return true;
-  // A local off command cannot exclude independently triggered boiler heat.
-  if (!input.boiler_no_heat_observed) return true;
-  source_detail::MeasurementMeta metadata[1];
-  size_t count = 0;
-  return input.boiler_heat.value != BoilerHeatState::NO_HEAT ||
-         source_detail::append_measurement(input.boiler_heat, input.monotonic_ms, metadata, count, true) !=
-             SnapshotSourceStatus::OK;
-}
-
 inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& input, const QualityConfig& quality,
                                                    SnapshotPurpose purpose = SnapshotPurpose::STRUCTURAL_BATCH,
                                                    const CalorimetryResult* prepared_calorimetry = nullptr) {
@@ -578,10 +563,8 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   if (input.topology == HydronicTopology::SINGLE && input.hp2.present)
     return failure(input, SnapshotSourceStatus::UNEXPECTED_UNIT, INVALID_SOURCE_UNCERTAIN);
 
-  const auto system = purpose == SnapshotPurpose::STRUCTURAL_BATCH && input.system_heat_enabled
-                          ? evaluate_system_calorimetry(input, quality)
-                          : CalorimetryResult{};
-  const bool use_system = purpose == SnapshotPurpose::STRUCTURAL_BATCH && use_system_calorimetry(input, system);
+  const bool use_system = purpose == SnapshotPurpose::STRUCTURAL_BATCH && input.system_heat_enabled;
+  const auto system = use_system ? evaluate_system_calorimetry(input, quality) : CalorimetryResult{};
   uint32_t unknown_operation_reasons = INVALID_NONE;
   if (!input.operation.control_mode_valid) unknown_operation_reasons |= INVALID_CONTROL_MODE;
   if (purpose == SnapshotPurpose::THERMAL_DYNAMIC && !input.operation.active_limit_valid)

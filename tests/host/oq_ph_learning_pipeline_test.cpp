@@ -248,7 +248,6 @@ void daily_dhw_only_preserves_collection_and_restart_eligibility() {
 LearningSourceInput system_observation(uint32_t second, int cm) {
   auto raw = observation(1000ULL + second * 1000ULL, 20000U * 86400U + second, 5.0f);
   raw.system_heat_enabled = true;
-  raw.boiler_no_heat_observed = true;
   raw.operation.control_mode = learning_control_mode(0, cm);
   raw.circuit_flow_lph = raw.flow_lph;
   raw.system_supply_c = measured(44.0f, 4, PhysicalUnit::SYSTEM, raw.monotonic_ms);
@@ -289,44 +288,32 @@ void daily_system_heat_survives_boiler_modes_and_ot_changes() {
 
 void daily_system_heat_only_bridges_missing_measurements() {
   const QualityConfig quality;
-  SegmentAccumulator day;
-  auto raw = system_observation(0, 3);
-  raw.boiler_heat = {};
-  assert(observe_source_input(day, raw, quality).source.measurement_valid);
-
-  raw = system_observation(10, 3);
-  raw.system_supply_c = {};
-  const auto gap = observe_source_input(day, raw, quality);
-  assert(day.active && day.source_gap_pending && day.heat_gap_pending);
-  assert(gap.source.may_bridge_daily_gap && isnan(gap.source.snapshot.partial_heat_to_water_w));
-  assert(daily_boot_sources_pending(raw, gap.source, quality));
-
-  raw = system_observation(20, 4);
-  const auto recovery = observe_source_input(day, raw, quality);
-  assert(recovery.source.measurement_valid && !day.source_gap_pending && day.missing_energy_uncertainty_ws > 0.0);
-  assert(day.start_epoch_s == 20000U * 86400U);
-
-  raw = system_observation(30, 2);
-  raw.system_supply_c = {};
-  const oq_boiler::BoilerCommand off{
-      true, false, false, NAN, NAN, oq_boiler::COMMAND_SOURCE_NONE, static_cast<uint32_t>(raw.monotonic_ms)};
-  raw.boiler_heat = learning_no_boiler_heat_contract(true, 2, off, false, false, raw.monotonic_ms, false);
-  const auto fallback = build_learning_snapshot(raw, quality);
-  assert(fallback.measurement_valid && fabsf(fallback.snapshot.heat_to_water_w - 2200.0f) < 0.01f);
-  // A current local NONE contract cannot by itself exclude physical heat.
-  for (const auto& telemetry :
-       {PhysicalMeasurement<BoilerHeatState>{}, learning_boiler_status(0x0000, raw.monotonic_ms - 10001U, true, true),
-        learning_boiler_status(0x0002, raw.monotonic_ms, true, true)}) {
-    raw.boiler_no_heat_observed = learning_boiler_no_heat_observed(telemetry, raw.monotonic_ms);
-    assert(!raw.boiler_no_heat_observed && build_learning_snapshot(raw, quality).may_bridge_daily_gap);
+  for (const int cm : {2, 3, 4}) {
+    SegmentAccumulator day;
+    assert(observe_source_input(day, system_observation(0, cm), quality).source.measurement_valid);
+    auto raw = system_observation(10, cm);
+    raw.system_supply_c = {};
+    // Even fresh OpenTherm NO_HEAT and valid HP calorimetry cannot replace the system measurement.
+    assert(evaluate_calorimetry(raw, quality).valid);
+    for (const auto& telemetry :
+         {PhysicalMeasurement<BoilerHeatState>{}, learning_boiler_status(0x0000, raw.monotonic_ms, true, true),
+          learning_boiler_status(0x0002, raw.monotonic_ms, true, true)}) {
+      raw.boiler_heat = telemetry;
+      const auto gap = build_learning_snapshot(raw, quality);
+      assert(!gap.measurement_valid && gap.may_bridge_daily_gap);
+      assert(isnan(gap.snapshot.heat_to_water_w) && isnan(gap.snapshot.partial_heat_to_water_w));
+      assert(!known_daily_restart_interruption(raw, telemetry.value == BoilerHeatState::HEAT_ACTIVE, quality));
+      assert(daily_boot_sources_pending(raw, gap, quality));
+    }
+    const auto gap = observe_source_input(day, raw, quality);
+    assert(!gap.source.measurement_valid && day.active && day.source_gap_pending && day.heat_gap_pending);
+    raw = system_observation(20, cm);
+    const auto recovery = observe_source_input(day, raw, quality);
+    assert(recovery.source.measurement_valid && !day.source_gap_pending && day.missing_energy_uncertainty_ws > 0.0);
+    assert(day.start_epoch_s == 20000U * 86400U);
   }
-  const auto no_heat = learning_boiler_status(0x0000, raw.monotonic_ms, true, true);
-  raw.boiler_no_heat_observed = learning_boiler_no_heat_observed(no_heat, raw.monotonic_ms);
-  assert(raw.boiler_no_heat_observed && build_learning_snapshot(raw, quality).measurement_valid);
-  raw.boiler_heat = {};
-  assert(build_learning_snapshot(raw, quality).may_bridge_daily_gap);
 
-  raw = system_observation(40, 3);
+  auto raw = system_observation(40, 3);
   raw.circuit_flow_lph = {};
   assert(build_learning_snapshot(raw, quality).may_bridge_daily_gap);
   raw = system_observation(50, 3);
@@ -357,7 +344,6 @@ void daily_idle_without_physical_flow_waits_only_for_the_allowed_gap() {
   assert(observe_source_input(day, system_observation(0, 2), quality).source.measurement_valid);
   for (uint32_t seconds = 10; seconds <= 130; seconds += 10) {
     auto raw = system_observation(seconds, 0);
-    raw.boiler_no_heat_observed = false;
     raw.flow_lph.value = 0.0f;  // PUMPS_STOPPED, without physical flow evidence.
     raw.circuit_flow_lph = {};
     const auto observation = observe_source_input(day, raw, quality);
@@ -366,7 +352,7 @@ void daily_idle_without_physical_flow_waits_only_for_the_allowed_gap() {
   }
 }
 
-void daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_fallback() {
+void daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_measurement() {
   QualityConfig quality;
   quality.max_daily_missing_heat_w = 12230.56f;
   quality.max_observed_heat_w = 1.20f * quality.max_daily_missing_heat_w;
@@ -395,15 +381,15 @@ void daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_fallback()
     assert(outside.aggregate.status == LearningStatus::INVALID_MEASUREMENT && !outside.aggregate.has_record);
     assert(!day.active && day.heat_integral == 0.0);
 
-    auto fallback = source(20, delta_c);
-    fallback.operation.control_mode = learning_control_mode(0, 2);
-    fallback.system_supply_c = {};
-    fallback.flow_lph.value = 900.0f;
-    fallback.hp1.water_out_c.value = fallback.hp1.water_in_c.value;
-    fallback.hp2.water_in_c.value = fallback.hp1.water_in_c.value;
-    fallback.hp2.water_out_c.value = sign > 0.0f ? delta_c : 0.0f;
-    const auto hp = build_learning_snapshot(fallback, quality);
-    assert(fallback.system_heat_enabled && fallback.boiler_no_heat_observed);
+    auto hp_only = source(20, delta_c);
+    hp_only.system_heat_enabled = false;
+    hp_only.operation.control_mode = learning_control_mode(0, 2);
+    hp_only.system_supply_c = {};
+    hp_only.flow_lph.value = 900.0f;
+    hp_only.hp1.water_out_c.value = hp_only.hp1.water_in_c.value;
+    hp_only.hp2.water_in_c.value = hp_only.hp1.water_in_c.value;
+    hp_only.hp2.water_out_c.value = sign > 0.0f ? delta_c : 0.0f;
+    const auto hp = build_learning_snapshot(hp_only, quality);
     assert(hp.status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE && !hp.measurement_valid && hp.may_bridge_daily_gap);
     assert(isnan(hp.snapshot.heat_to_water_w) && isnan(hp.snapshot.partial_heat_to_water_w));
     assert(hp.snapshot.gap_heat_observed_abs_w == 50000.0f);
@@ -450,8 +436,9 @@ void daily_boiler_limits_stay_separate_and_preserve_an_open_gap() {
   raw = system_observation(10, 2);
   raw.hp2.water_out_c.value = 40.0f;
   raw.system_supply_c = {};
-  const auto fallback = advance(raw);
-  assert(fallback.status == SnapshotSourceStatus::HEAT_OUT_OF_RANGE && !fallback.measurement_valid);
+  const auto gap = advance(raw);
+  assert(gap.status == SnapshotSourceStatus::MISSING_MEASUREMENT && !gap.measurement_valid);
+  assert(gap.may_bridge_daily_gap && isnan(gap.snapshot.partial_heat_to_water_w));
   assert(state.batch_accumulator.heat_gap_pending && state.batch_accumulator.gap_heat_bound_floor_w == 50000.0f);
 
   raw = system_observation(20, 2);
@@ -482,7 +469,7 @@ int main() {
   daily_system_heat_survives_boiler_modes_and_ot_changes();
   daily_system_heat_only_bridges_missing_measurements();
   daily_idle_without_physical_flow_waits_only_for_the_allowed_gap();
-  daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_fallback();
+  daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_measurement();
   daily_boiler_limits_stay_separate_and_preserve_an_open_gap();
   raw_series_observations_to_advice();
   raw_daily_profiles_cross_zero_power_temperature();
