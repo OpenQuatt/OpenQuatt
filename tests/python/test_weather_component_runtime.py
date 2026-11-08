@@ -138,6 +138,9 @@ class WeatherComponentRuntimeTest(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 self.scenario(scenario)
 
+    def test_outside_control_requires_fresh_consent_clock_and_location(self):
+        self.scenario("outside_control")
+
     def test_restored_switch_keeps_weather_invalid_until_fresh_fetch_and_valid_clock(self):
         for state in ("on", "off", "on_ota"):
             with self.subTest(state=state):

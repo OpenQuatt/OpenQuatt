@@ -1,0 +1,43 @@
+# Q-edition opt-in package for using the current Open-Meteo model temperature
+# as a control input. Includes the passive weather and scenario package.
+packages:
+  oq_weather_passive: !include weather_passive.yaml
+
+select:
+  - id: !extend outside_temp_source
+    # Extend at the end so existing saved selector indices keep their meaning.
+    options: [Open-Meteo]
+
+sensor:
+  - platform: template
+    id: oq_open_meteo_outside_temperature
+    name: "Outside Temperature (Open-Meteo)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    id: oq_outside_effective_source_code
+    name: "Outside Temperature Source Code (Effective)"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: never
+
+  - id: !extend outside_temp_selected
+    lambda: |-
+      const float weather_c = id(oq_weather_experiment).current_outside_temperature();
+      auto& sources = oq_sensor_source::runtime();
+      const float selected = sources.outside(
+          (uint32_t) millis(), (uint32_t) (${oq_selected_input_stale_hold_s}UL * 1000UL),
+          (uint32_t) ${ha_outside_temperature_stale_s}UL, weather_c);
+      auto* model_sensor = id(oq_open_meteo_outside_temperature);
+      if (!model_sensor->has_state() ||
+          (model_sensor->state != weather_c && !(std::isnan(model_sensor->state) && std::isnan(weather_c))))
+        model_sensor->publish_state(weather_c);
+      const auto route = sources.outside_effective_source_code();
+      if (!id(oq_outside_effective_source_code).has_state() || id(oq_outside_effective_source_code).state != route)
+        id(oq_outside_effective_source_code).publish_state(route);
+      return selected;

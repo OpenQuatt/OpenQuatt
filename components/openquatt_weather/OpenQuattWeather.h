@@ -82,6 +82,8 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   void on_shutdown() override;
   void on_ota_global_state(ota::OTAState state, float, uint8_t, ota::OTAComponent*) override;
   void observe(const oq_power_house::forecast::Observation& observation);
+  // Same main-loop owner as the selected outside-temperature sensor.
+  float current_outside_temperature() const;
   void set_consent(bool enabled);
   void set_location_query(const std::string& query, const std::string& request = {});
   bool worker_busy() const { return phase_.load(std::memory_order_acquire) != oq_weather::MailboxPhase::IDLE; }

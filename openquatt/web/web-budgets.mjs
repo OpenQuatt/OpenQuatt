@@ -54,8 +54,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // Preserve the inherited 100 B migration margin and the regular relative limits.
     // Bounded expiry refresh and write invalidation: +1,501 B raw / +469 B gzip
     // versus 63002f64 on Node24.14.1; keep the existing raw/gzip headroom.
-    raw: 1_450_738,
-    gzipBaselineCeiling: 407_735,
+    // Optional outside source: +1,243 B raw / +350 B gzip versus PR2 (Node24.14.1).
+    // Add that measured delta on top of dev's ceilings; relative limits stay unchanged.
+    raw: 1_451_981,
+    gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.

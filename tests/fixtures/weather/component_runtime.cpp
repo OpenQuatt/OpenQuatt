@@ -641,6 +641,44 @@ void consent_latest_off_wins(bool first_transaction_started) {
   assert(env.committed_consent == 0 && env.fetch_calls == 0);
 }
 
+void current_outside_control_requires_fresh_consent_and_location() {
+  reset_environment("52.09000, 6.15556");
+  weather_fixture::successful_weather_fetch = true;
+  env.network_connected = true;
+  env.epoch = 1700000100;
+  Harness h(true);
+  const auto outside = [&]() { return h.device.current_outside_temperature(); };
+  assert(std::isnan(outside()));
+  h.device.update();
+  h.finish_job();
+  assert(outside() == 10.5f);
+  const auto fetched_ms = env.now_ms;
+  const auto fetched_epoch = env.epoch;
+
+  env.now_ms = fetched_ms + 1800000;
+  env.epoch = fetched_epoch + 1790;
+  assert(outside() == 10.5f);
+  ++env.now_ms;
+  assert(std::isnan(outside()));  // A small wall-clock correction cannot extend validity.
+  env.now_ms = fetched_ms;
+  env.epoch = fetched_epoch;
+  env.clock_valid = false;
+  assert(std::isnan(outside()));
+  env.clock_valid = true;
+
+  h.enabled.turn_off();
+  assert(h.enabled.state && std::isnan(outside()));  // OFF takes effect before the flash receipt.
+  h.finish_job();
+  h.enabled.turn_on();
+  h.finish_job();
+  assert(std::isnan(outside()));  // Consent is not a fresh weather receipt.
+  h.device.update();
+  h.finish_job();
+  assert(outside() == 10.5f);
+  h.device.set_location_query("52.0, 5.0");
+  assert(std::isnan(outside()));
+}
+
 void consent_ota_defers_queued_write() {
   using openquatt_weather::ConsentState;
   reset_environment();
@@ -710,6 +748,8 @@ int main(int argc, char** argv) {
     consent_latest_off_wins(false);
   else if (scenario == "consent_latest_started")
     consent_latest_off_wins(true);
+  else if (scenario == "outside_control")
+    current_outside_control_requires_fresh_consent_and_location();
   else if (scenario == "consent_ota")
     consent_ota_defers_queued_write();
   else if (scenario == "restore_on")
