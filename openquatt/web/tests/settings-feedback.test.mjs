@@ -175,6 +175,30 @@ test("Leren shows the same toasts, and its change-log link stays because the log
   reset();
 });
 
+test("an undo on Leren turns its toast into the outcome, which then leaves on its own", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    reset();
+    state.appView = "learning";
+    state.controlNotice = NOTICE;
+    const undo = undoFor("houseLearningEnabled");
+    state.settingsUndo = undo;
+    const [toast] = toastsIn(renderAndSync());
+    assert.equal(takeFeedbackUndo(toast.id), undo);
+    // The commit path sets its own notice and renders while the undo runs.
+    state.controlNotice = "Passief leren teruggezet naar Uit.";
+    state.settingsUndo = null;
+    renderAndSync();
+    finishFeedbackUndo();
+    assert.deepEqual(toastsIn(renderSettingsFeedback()).map((entry) => entry.text), ["Passief leren teruggezet naar Uit."]);
+    mock.timers.tick(4000);
+    assert.deepEqual(toastsIn(renderSettingsFeedback()), [], "the outcome gets a timer of its own on Leren too");
+  } finally {
+    mock.timers.reset();
+    reset();
+  }
+});
+
 test("the change-log link in a toast on Leren opens Settings at the log", async () => {
   const { handleViewAction } = await import("../js/src/features/view-actions.js");
   const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");

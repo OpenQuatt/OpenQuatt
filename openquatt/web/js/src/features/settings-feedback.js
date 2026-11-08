@@ -281,7 +281,7 @@ export function finishFeedbackUndo() {
   }
   window.clearTimeout(entry.timer);
   entry.timer = 0;
-  if (state.appView !== "settings") return;
+  if (!FEEDBACK_VIEWS.has(state.appView)) return;
   reconcileStack();
   scheduleToast(entry);
 }
