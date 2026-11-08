@@ -196,6 +196,29 @@ export default {
     }
   },
   houseLearning: {
+    shadow: {
+      title: "Warmtevraag vergelijken",
+      copy: "Basiswarmtevraag vóór starten, stoppen en verdelen. De vergelijking beïnvloedt de regeling niet.",
+      help: "De ingestelde en geleerde woninglijn rekenen één stap vanuit dezelfde waargenomen toestand. Het verschil is de geleerde min de ingestelde warmtevraag.",
+      manual: "Ingestelde woninglijn", candidate: "Geleerde woninglijn", delta: "Verschil",
+      reasons: {
+        unavailable: "Geen actuele vergelijking beschikbaar.",
+        batchNotReady: "De vergelijking verschijnt zodra de geleerde woninglijn is goedgekeurd.",
+        contextMismatch: "De geleerde woninglijn past niet bij de huidige instellingen.",
+        outsideRange: "De buitentemperatuur valt buiten het geleerde bereik.",
+        invalidCandidate: "De geleerde warmtevraag is niet geldig.",
+        inactive: "De vergelijking verschijnt wanneer Power House de warmtevraag berekent.",
+        startup: "Vergelijking wacht tot de regelaar is gestart.",
+        warmupActive: "Vergelijking wacht tot het opwarmen is afgerond.",
+        externalOverride: "De vergelijking wacht tot de externe warmtevraag is afgelopen.",
+        staleFrame: "Wacht op een actuele vergelijking van de regelaar.",
+        sourceChanged: "De databron is gewijzigd. Wacht op een nieuwe vergelijking.",
+        settingsChanged: "De instellingen zijn gewijzigd. Wacht op een nieuwe vergelijking.",
+        serviceOrOta: "Vergelijking gepauzeerd tijdens service of OTA.",
+        resetPending: "Vergelijking wacht op bevestiging van het wissen.",
+        invalidInputs: "Vergelijking wacht op geldige meetwaarden.",
+      },
+    },
     panel: {
       details: "Leerstatus en meetgegevens",
       eyebrow: "Passief leren",

@@ -48,8 +48,14 @@ export const WEB_BUNDLE_BUDGETS = [
     // Inherit only PR1's 588 B raw budget increase; merge guards leave 122 B raw headroom.
     // Merged raw/gzip: 1,443,352 / 405,092 B; PR1 gzip base: 395,270 B (Node24.14.1).
     // Move the absolute ceiling with that base, preserving the feature allowance.
-    raw: 1_443_474,
-    gzipBaselineCeiling: 405_192,
+    // Demand comparison retains its existing 5,763 B raw allowance over PR2.
+    // Measured delta over PR2: 5,762 B raw / 2,074 B gzip (Node24.14.1).
+    // Until the parent PR merges, the dev-targeted stack includes that exact gzip delta.
+    // Preserve the inherited 100 B migration margin and the regular relative limits.
+    // Bounded expiry refresh and write invalidation: +1,501 B raw / +469 B gzip
+    // versus 63002f64 on Node24.14.1; keep the existing raw/gzip headroom.
+    raw: 1_450_738,
+    gzipBaselineCeiling: 407_735,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.

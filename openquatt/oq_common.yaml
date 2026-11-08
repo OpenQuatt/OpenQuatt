@@ -1418,6 +1418,10 @@ binary_sensor:
     on_state:
       then:
         - lambda: |-
+            #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+            if (x) oq_power_house_runtime::runtime().invalidate_demand_evaluation(
+                oq_power_house::ShadowDemandReason::SERVICE_OR_OTA);
+            #endif
             // This lifecycle edge owns actuator withdrawal; waiting for a
             // periodic controller pass would leave an active boiler requested.
             if (!oq_boiler_runtime::runtime().runtime_pause_changed(x)) return;

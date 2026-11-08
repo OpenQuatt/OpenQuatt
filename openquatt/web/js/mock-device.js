@@ -5919,6 +5919,12 @@
     const ready = invalidReasons.length === 0 && dailyCount >= 24;
     return {
       schema: 1, mode: "passive", enabled, storage_ready: true,
+      shadow_ttl_ms: enabled && ready ? 10000 : 0,
+      shadow: { schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+        source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+        available: enabled && ready, reason: enabled && ready ? "ready" : enabled ? "batch_not_ready" : "inactive",
+        manual_w: enabled && ready ? 3100 : null, candidate_w: enabled && ready ? 2750 : null,
+        delta_w: enabled && ready ? -350 : null, auto_apply_allowed: false },
       status: enabled ? "collecting" : "paused",
       source_status: invalidReasons.length ? "blocked" : "ready",
       invalid_reasons: invalidReasons, records: state.houseLearning.records,

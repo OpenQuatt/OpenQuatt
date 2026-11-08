@@ -6,6 +6,7 @@
 
 #include "../../../openquatt/includes/control/oq_ph_daily_collection_state_json.h"
 #include "../../../openquatt/includes/control/oq_ph_daily_record_quality_json.h"
+#include "../../../openquatt/includes/control/oq_ph_shadow_demand_types.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_persistence_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
@@ -37,7 +38,11 @@ struct Endpoint {
     exported.assign(text, length);
     return true;
   }
-  bool publish_status_json(const char* text, size_t length) {
+  bool publish_status_json(const char* text, size_t length, size_t shadow_offset, uint64_t shadow_expiry,
+                           uint32_t shadow_generation, uint32_t context_revision) {
+    assert(shadow_offset > 0U && shadow_offset < length && text[shadow_offset] == ',');
+    assert(shadow_expiry == 15000U && shadow_generation == 1U);
+    assert(context_revision == UINT32_MAX);
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
     if (length > largest.size()) largest.assign(text, length);
     latest.assign(text, length);
@@ -88,6 +93,10 @@ struct Production {
   static const char* route_name_(int) { return "selected_outside_temperature"; }
   static void publish_export_error_() { assert(false && "production export exceeded its fixed cache"); }
   static void publish_status_error_() { assert(false && "production status exceeded its fixed cache"); }
+  void invalidate_shadow_(oq_power_house::ShadowDemandReason) {}
+  static oq_power_house::ShadowDemandResult shadow_demand_(const RuntimeStorage&) {
+    return {UINT64_MAX, 15000, UINT32_MAX, 1, 3100, 2750, -350, oq_power_house::ShadowDemandReason::READY};
+  }
   static void publish_paused_status_(RuntimeStorage& state) {
     paused_status = state.daily_resume_status;
     paused_reason = state.daily_resume_reason;
