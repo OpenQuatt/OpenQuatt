@@ -6,6 +6,7 @@
 
 #include "../../../openquatt/includes/control/oq_ph_daily_collection_state_json.h"
 #include "../../../openquatt/includes/control/oq_ph_daily_record_quality_json.h"
+#include "../../../openquatt/includes/control/oq_ph_shadow_demand_types.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_persistence_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
@@ -40,10 +41,15 @@ struct Endpoint {
     exported.assign(text, length);
     return true;
   }
-  bool publish_status_json(const char* text, size_t length) {
+  bool publish_status_json(const char* text, size_t length, size_t shadow_offset, uint64_t shadow_expiry,
+                           uint32_t shadow_generation, uint32_t context_revision) {
+    assert(shadow_offset > 0U && shadow_offset < length && text[shadow_offset] == ',');
+    assert(shadow_expiry == 15000U && shadow_generation == 1U);
+    assert(context_revision == UINT32_MAX);
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
     latest.assign(text, length);
     if (length > largest.size()) largest.assign(text, length);
+    latest.assign(text, length);
     ++publications;
     return true;
   }
@@ -92,6 +98,10 @@ struct Production {
   static const char* route_name_(int) { return "selected_outside_temperature"; }
   static void publish_export_error_() { assert(false && "production export exceeded its fixed cache"); }
   static void publish_status_error_() { assert(false && "production status exceeded its fixed cache"); }
+  void invalidate_shadow_(oq_power_house::ShadowDemandReason) {}
+  static oq_power_house::ShadowDemandResult shadow_demand_(const RuntimeStorage&) {
+    return {UINT64_MAX, 15000, UINT32_MAX, 1, 3100, 2750, -350, oq_power_house::ShadowDemandReason::READY};
+  }
   static void publish_paused_status_(RuntimeStorage& state) {
     paused_status = state.daily_resume_status;
     paused_reason = state.daily_resume_reason;
@@ -295,6 +305,14 @@ int main() {
   learner.diagnostics.accepted_thermal_intervals = UINT32_MAX;
   summary.batch_advice_ready = summary.thermal_model_ready = true;
   summary.batch.candidate_available = true;
+  summary.batch.metadata_prepared = true;
+  summary.batch.train_segments = summary.batch.train_days = 18;
+  summary.batch.holdout_segments = summary.batch.holdout_days = 3;
+  summary.batch.preview = {true, {211.25f, 17.125f}, 21, 21, 1.97f, 12.34f};
+  summary.batch.train_min_c = 7.55f;
+  summary.batch.train_max_c = 12.34f;
+  summary.batch.train_p10_c = 8.28f;
+  summary.batch.train_p90_c = 11.88f;
   summary.batch.candidate.heat_loss_w_per_k = summary.batch.candidate.zero_power_temp_c =
       -std::numeric_limits<float>::max();
   summary.thermal.heat_loss_w_per_k = summary.thermal.thermal_capacity_wh_per_k = -std::numeric_limits<float>::max();
@@ -304,6 +322,20 @@ int main() {
   state.input.context_revision = UINT32_MAX;
   state.source_diagnostics.invalid_reasons = UINT32_MAX;
   state.journal.status = "persistence_unavailable";
+  // A retained result cannot publish prepared metadata while paused. Rejected
+  // or initial fits also carry the explicit false flag instead of default counts.
+  summary.batch.metadata_prepared = false;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  summary.batch.metadata_prepared = true;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":true") != std::string::npos);
+  Production::publish_status_(state, false, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  learner.status = PassiveRuntimeStatus::PAUSED;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  learner.status = PassiveRuntimeStatus::BLOCKED;
   // Enumerate names so later enum additions cannot silently defeat the budget.
   for (unsigned status = 0; status <= static_cast<unsigned>(LearningStatus::UNSTABLE_FIT); ++status) {
     summary.batch.status = learner.diagnostics.last_batch_rejection = static_cast<LearningStatus>(status);

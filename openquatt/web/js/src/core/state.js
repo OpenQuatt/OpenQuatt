@@ -100,6 +100,13 @@ export const state = {
   quickStartModalMode: "wizard",
   settingsGroup: getStoredSettingsGroup(),
   appView: "",
+  learningForecastOpen: false,
+  weatherConfigRevision: 0,
+  weatherOptOutUnconfirmed: false,
+  weatherForecast: null,
+  weatherForecastError: "",
+  weatherForecastIndex: null,
+  weatherForecastHourlyOpen: false,
   overviewThemePreference: initialOverviewThemePreference,
   overviewTheme: resolveOverviewTheme(initialOverviewThemePreference),
   overviewThemeMedia: null,
@@ -135,6 +142,14 @@ export const state = {
   ...createFirmwareState(),
   ...createMotionState(getPrefersReducedMotion()),
 };
+
+export function invalidateHouseLearningShadow() {
+  state.houseLearningShadowEpoch += 1;
+  if (state.houseLearningShadowTimer != null) globalThis.window?.clearTimeout?.(state.houseLearningShadowTimer);
+  state.houseLearningShadowTimer = null;
+  if (state.houseLearningStatus?.shadow) state.houseLearningStatus.shadow = null;
+  state.houseLearningLastFetchAt = 0;
+}
 
 export function restoreStoredQuickStartSetupInstall() {
   const record = getStoredQuickStartSetupInstall();

@@ -360,9 +360,17 @@ class Runtime {
     return oq_input_source::flow_route_name(flow_selection().route);
   }
 
-  float outside(uint32_t now_ms, uint32_t hold_ms, uint32_t ha_stale_s) {
+  float outside_safety_temperature() const {
+    if (this->outside_safety_uses_baseline_) return this->outside_safety_temperature_;
+    return id(outside_temp_selected).has_state() ? id(outside_temp_selected).state : NAN;
+  }
+  uint8_t outside_effective_source_code() const { return static_cast<uint8_t>(this->outside_effective_source_); }
+
+  float outside(uint32_t now_ms, uint32_t hold_ms, uint32_t ha_stale_s, float open_meteo = NAN) {
     if (!id(outside_temp_source).has_state()) {
       this->resolved_outside_ = {};
+      this->outside_safety_uses_baseline_ = false;
+      this->outside_effective_source_ = oq_input_source::Source::NONE;
       return NAN;
     }
     oq_input_source::NumericSources sources;
@@ -380,7 +388,13 @@ class Runtime {
     sources.mqtt = sample(mqtt_valid(id(mqtt_outside_temperature_valid), id(mqtt_outside_temperature)),
                           id(mqtt_outside_temperature));
     const auto configured = parse_source(id(outside_temp_source).current_option());
+    sources.open_meteo = {open_meteo, std::isfinite(open_meteo)};
     const auto selected = oq_input_source::select_outside(configured, sources, now_ms, hold_ms, outside_hold_);
+    // Keep the existing protective reference when a model supplies control.
+    this->outside_safety_uses_baseline_ = selected.route == oq_input_source::Source::OPEN_METEO;
+    if (this->outside_safety_uses_baseline_)
+      this->outside_safety_temperature_ = oq_input_source::select_lowest_outside(sources, false).value;
+    this->outside_effective_source_ = selected.valid ? selected.route : oq_input_source::Source::NONE;
     id(oq_outside_temp_selected_hold_active) = selected.held;
     const oq_sources::SourceConfigurationKey configuration{static_cast<uint8_t>(configured), 0U, 0U, 0U};
     const uint32_t generation = this->outside_generation_.observe(configuration);
@@ -560,6 +574,9 @@ class Runtime {
   oq_sources::SourceConfigurationGeneration setpoint_generation_;
   mutable oq_sources::ResolvedLearningSource resolved_flow_;
   oq_sources::ResolvedLearningSource resolved_outside_;
+  float outside_safety_temperature_ = NAN;
+  bool outside_safety_uses_baseline_ = false;
+  oq_input_source::Source outside_effective_source_ = oq_input_source::Source::NONE;
   oq_sources::ResolvedLearningSource resolved_room_;
   oq_sources::ResolvedLearningSource resolved_setpoint_;
   oq_input_source::HoldState supply_target_hold_;
@@ -580,6 +597,7 @@ class Runtime {
     if (option == "CIC or HA input") return oq_input_source::Source::CIC_OR_HA;
     if (option == "Heating curve") return oq_input_source::Source::HEATING_CURVE;
     if (option == "Schedule") return oq_input_source::Source::SCHEDULE;
+    if (option == "Open-Meteo") return oq_input_source::Source::OPEN_METEO;
     return oq_input_source::Source::NONE;
   }
 
@@ -658,6 +676,8 @@ class Runtime {
         return LearningSourceRoute::API_OUTSIDE;
       case oq_input_source::Source::MQTT:
         return LearningSourceRoute::MQTT_OUTSIDE;
+      case oq_input_source::Source::OPEN_METEO:
+        return LearningSourceRoute::OPEN_METEO_OUTSIDE;
       default:
         return LearningSourceRoute::NONE;
     }

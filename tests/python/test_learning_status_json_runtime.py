@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import re
 import tempfile
+from textwrap import dedent
 import unittest
 
 from tests.support.cpp import compiler_command, COMPILE_TIMEOUT_SECONDS, RUN_TIMEOUT_SECONDS
@@ -109,6 +110,41 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             self.assertEqual(payload["collection_state"]["batch_budget_scope"], "model_advice_only")
             self.assertFalse(payload["auto_apply_allowed"])
 
+    def test_cached_shadow_is_revoked_at_read_without_changing_learning_status(self):
+        source = (ROOT / "components/openquatt_house_learning_status/OpenQuattHouseLearningStatus.cpp").read_text()
+        learning = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
+        power_house = (ROOT / "openquatt/includes/control/oq_power_house_runtime.h").read_text()
+        common = (ROOT / "openquatt/oq_common.yaml").read_text()
+        with tempfile.TemporaryDirectory(prefix="oq-learning-shadow-cache-") as directory:
+            temporary = Path(directory)
+            functions = "\n".join(production_function(source, signature) for signature in (
+                "void OpenQuattHouseLearningStatus::invalidate_shadow(",
+                "bool OpenQuattHouseLearningStatus::publish_status_json(",
+                "bool OpenQuattHouseLearningStatus::publish_shadow_json(",
+                "bool OpenQuattHouseLearningStatus::snapshot_status(",
+            ))
+            (temporary / "production_shadow_status.inc").write_text(functions)
+            (temporary / "production_shadow_refresh.inc").write_text(
+                production_function(learning, "void refresh_shadow("))
+            (temporary / "production_shadow_invalidation.inc").write_text(
+                production_function(power_house, "void invalidate_demand_evaluation("))
+            (temporary / "production_external_override.inc").write_text(
+                production_function(learning, "id(external_heat_demand_selected).add_on_state_callback(") + ");")
+            pause_action = common.split("id: oq_runtime_polling_paused\n", 1)[1].split("- lambda: |-\n", 1)[1]
+            (temporary / "production_shadow_pause.inc").write_text(
+                dedent(pause_action.split("            // This lifecycle edge", 1)[0]))
+            binary = temporary / "shadow-cache"
+            built = run_process(
+                compiler_command("-DOQ_POWER_HOUSE_LEARNING_TARGET=1", "-fsanitize=undefined",
+                                 "-fno-sanitize-recover=all",
+                                 "-I", str(temporary), str(ROOT / "tests/fixtures/learning/shadow_cache.cpp"),
+                                 "-o", str(binary)),
+                timeout=COMPILE_TIMEOUT_SECONDS, capture_output=True, text=True,
+            )
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            run = run_process([str(binary)], timeout=RUN_TIMEOUT_SECONDS, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
     def test_full_production_status_and_all_enum_names_fit_existing_cache(self):
         with tempfile.TemporaryDirectory(prefix="oq-learning-status-json-") as directory:
             temporary = Path(directory)
@@ -137,8 +173,21 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             payload = json.loads(run.stdout)
             self.assertLess(len(run.stdout.encode()), 4096)
+            self.assertEqual(payload["shadow"]["tick_ms"], 2**64 - 1)
+            self.assertEqual(payload["shadow"]["context_revision"], 2**32 - 1)
+            self.assertTrue(payload["shadow"]["available"])
+            self.assertFalse(payload["shadow"]["auto_apply_allowed"])
+            self.assertEqual(payload["shadow"]["delta_w"], -350)
             self.assertFalse(payload["auto_apply_allowed"])
             self.assertEqual(payload["collection"]["batch_missing_energy_budget_wh"], 2400)
+            self.assertEqual(payload["batch_preview"], {
+                "h": 211.25, "t0": 17.125, "segments": 21, "days": 21, "min_c": 1.97, "max_c": 12.34,
+            })
+            self.assertEqual(payload["batch_fit"], {
+                "metadata_prepared": True,
+                "train_segments": 18, "holdout_segments": 3, "train_days": 18, "holdout_days": 3,
+                "train_p10_c": 8.28, "train_p90_c": 11.88, "train_min_c": 7.55, "train_max_c": 12.34,
+            })
             self.assertEqual(payload["collection"]["batch_budget_scope"], "model_advice_only")
             self.assertAlmostEqual(payload["collection"]["batch_missing_heat_bound_w"], 18344.3, places=1)
             self.assertEqual(payload["collection"]["batch_resume_reason"], "checkpoint_context_unavailable")

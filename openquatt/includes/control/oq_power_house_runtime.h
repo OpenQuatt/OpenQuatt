@@ -14,6 +14,11 @@
 #include "oq_boot_resume_runtime.h"
 #include "esphome/components/openquatt_incident_manager/OpenQuattRestartHandoff.h"
 #include "oq_power_house_demand_logic.h"
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+#include <atomic>
+#include "oq_ph_shadow_demand_types.h"
+#include "oq_sensor_source_runtime.h"
+#endif
 #include "oq_power_house_dispatch_logic.h"
 #include "oq_thermal_request_logic.h"
 #include "oq_power_house_run_extension_logic.h"
@@ -42,6 +47,29 @@ struct TickConfig {
 
 class Runtime {
  public:
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+  oq_power_house::DemandEvaluationFrame demand_evaluation_frame() const {
+    if (this->frame_owner_.load(std::memory_order_acquire) != xTaskGetCurrentTaskHandle()) return {};
+    auto frame = this->demand_frame_;
+    if (frame.monotonic_ms == 0) return frame;
+    const auto generation = id(oq_ph_learning_status_endpoint).shadow_generation();
+    if (generation == UINT32_MAX || generation != frame.generation)
+      frame.reason = this->frame_invalid_reason_.load(std::memory_order_acquire);
+    return frame;
+  }
+
+  // State callbacks can originate outside the control owner. Invalidation is
+  // atomic only; publication and frame access remain on the main-loop owner.
+  void invalidate_demand_evaluation(oq_power_house::ShadowDemandReason reason) {
+    this->frame_invalid_reason_.store(reason == oq_power_house::ShadowDemandReason::READY
+                                          ? oq_power_house::ShadowDemandReason::INVALID_INPUTS
+                                          : reason,
+                                      std::memory_order_release);
+    id(oq_ph_learning_status_endpoint).invalidate_shadow();
+  }
+
+#endif
+
   std::string response_profile() const {
     const float rise = id(ph_demand_rise_time_min).state;
     const float fall = id(ph_demand_fall_time_min).state;
@@ -97,6 +125,13 @@ class Runtime {
     const auto cadence = oq_power_house::decide_cadence(now_ms, id(oq_ph_request_last_loop_ms), config.loop_ms);
     if (config.loop_ms == 0 || (!cadence.due && this->startup_phase_ == oq_power_house::StartupPhase::READY)) return;
 
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+    if (this->frame_owner_.load(std::memory_order_relaxed) == nullptr)
+      this->frame_owner_.store(xTaskGetCurrentTaskHandle(), std::memory_order_release);
+    const uint64_t now_monotonic_ms = oq_sources::monotonic_ms();
+    const auto frame_generation = id(oq_ph_learning_status_endpoint).shadow_generation();
+#endif
+
     const oq_power_house::DemandInput demand_input{
         now_ms,
         id(outside_temp_selected).state,
@@ -133,9 +168,34 @@ class Runtime {
                static_cast<unsigned>(now_ms / 1000U));
     }
     if (this->startup_phase_ != oq_power_house::StartupPhase::READY) {
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+      this->demand_frame_ = {};
+      this->demand_frame_.reason = oq_power_house::ShadowDemandReason::STARTUP;
+#endif
       this->publish_startup_wait_(now_ms, demand.requested_w);
       return;
     }
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+    this->demand_frame_ = {};
+    this->demand_frame_.monotonic_ms = now_monotonic_ms;
+    this->demand_frame_.cadence_ms = config.loop_ms;
+    this->demand_frame_.generation = frame_generation;
+    this->demand_frame_.input = demand_input;
+    this->demand_frame_.tuning = demand_tuning;
+    this->demand_frame_.previous = previous_demand_state;
+    this->demand_frame_.manual_w = demand.requested_w;
+    this->demand_frame_.reason =
+        !demand.valid || !oq_heat_intent_runtime::room_temperature_fresh(config.ot_room_temperature_fresh) ||
+                !oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh)
+            ? oq_power_house::ShadowDemandReason::INVALID_INPUTS
+        : warming         ? oq_power_house::ShadowDemandReason::WARMUP_ACTIVE
+        : demand.external ? oq_power_house::ShadowDemandReason::EXTERNAL_OVERRIDE
+                          : oq_power_house::ShadowDemandReason::READY;
+    const auto& sources = oq_sensor_source::runtime();
+    this->demand_frame_.source_generation[0] = sources.resolved_room_temperature().configuration_generation;
+    this->demand_frame_.source_generation[1] = sources.resolved_room_setpoint().configuration_generation;
+    this->demand_frame_.source_generation[2] = sources.resolved_outside_temperature().configuration_generation;
+#endif
     id(oq_ph_request_last_loop_ms) = now_ms == 0 ? UINT32_MAX : now_ms;
     float requested_w = demand.requested_w;
     float next_last_w = demand.next.last_w;
@@ -553,6 +613,11 @@ class Runtime {
   }
 
   void reset() {
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+    if (this->demand_frame_.monotonic_ms != 0U)
+      this->invalidate_demand_evaluation(oq_power_house::ShadowDemandReason::INACTIVE);
+    this->demand_frame_ = {};
+#endif
     id(oq_debug_recorder).set_warmup_power(0, {});
     this->stop_snapshot_ = {};
     this->dispatch_state_ = {};
@@ -685,6 +750,12 @@ class Runtime {
   bool was_warming_ = false;
   oq_heat_intent::State intent_state_;
   oq_power_house::DemandState demand_state_;
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+  oq_power_house::DemandEvaluationFrame demand_frame_;
+  std::atomic<TaskHandle_t> frame_owner_{nullptr};
+  std::atomic<oq_power_house::ShadowDemandReason> frame_invalid_reason_{
+      oq_power_house::ShadowDemandReason::SETTINGS_CHANGED};
+#endif
   float fast_floor_w_{0.0f};
   float warmup_request_w_ = NAN;  // HP slew only; never house history or restart state.
   std::string last_optimizer_reason_;

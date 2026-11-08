@@ -1,10 +1,12 @@
+import { commitWeatherLocation } from "../features/weather.js";
+import { invalidateWeatherForecast, refreshWeatherForecast } from "../features/weather-forecast.js";
 import { hasEntity } from "./app-shared.js";
 import { fetchWithTimeout } from "./browser-utils.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEADER_ENTITY_KEYS, LIMIT_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
 import { armRestartRefresh, awaitRestartEvidence, beginDeviceReconnect, clearRestartRefresh } from "./device-reconnect.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
-import { ENTITY_REQUEST_TIMEOUT_MS, getSettingsRefreshKeys, isLikelyDeviceConnectionError, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
+import { beginEntityWriteAction, buildBulkEntityChunks, ENTITY_REQUEST_TIMEOUT_MS, fetchBulkEntityChunk, getSettingsRefreshKeys, isEntityWriteActionCurrent, isLikelyDeviceConnectionError, mergeEntityPayload, ownsBusyAction, refreshEntities, refreshIncidentMonitoringData, startEntityWriteAction, syncEntities } from "./entity-sync.js";
 import {
   createIncidentActionRequestId,
   postIncidentActionRequest,
@@ -14,6 +16,7 @@ import { updateCurvePointDraft } from "./simple-curve.js";
 import { render } from "./render-scheduler.js";
 import { t } from "../i18n/index.js";
 import { clearQuickStartSetupInstall, state } from "./state.js";
+import { refreshHouseLearningStatus } from "../features/house-learning.js";
 import { pollFirmwareUpdateState, primeFirmwareUpdateState } from "../features/firmware-update.js";
 import { updateFirmwareState } from "./feature-state.js";
 import { stopLoginAuthStatusPolling } from "../features/security-actions.js";
@@ -31,7 +34,7 @@ async function commitTelemetrySwitch({ key, choiceKey, extraRefreshKeys = [], wa
     expectedEnabled,
   });
   const previousEntity = state.entities[key] ? { ...state.entities[key] } : null;
-  state.busyAction = `switch-${key}`;
+  startEntityWriteAction(`switch-${key}`);
   state.controlNotice = "";
   state.controlError = "";
   render();
@@ -45,7 +48,6 @@ async function commitTelemetrySwitch({ key, choiceKey, extraRefreshKeys = [], wa
     if (!await confirmChoice(enabled)) {
       throw new Error(t("actions.savedChoiceNotConfirmed"));
     }
-    state.controlError = "";
     state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
   } catch (error) {
     let disabledConfirmed = false;
@@ -59,7 +61,6 @@ async function commitTelemetrySwitch({ key, choiceKey, extraRefreshKeys = [], wa
       // Report an unknown state instead of presenting an unverified privacy choice.
     }
     if (disabledConfirmed) {
-      state.controlError = "";
       state.controlNotice = enabled
         ? t("actions.sharingEnableUnconfirmed")
         : t("actions.sharingDisabled");
@@ -98,34 +99,54 @@ async function commitPerformanceTelemetrySwitch(entity, enabled) {
   });
 }
 
-async function confirmSupplySourceSelection(key, option) {
-  const entity = ENTITY_DEFS[key];
-  const deadline = Date.now() + 2000;
+// One write, bounded read-only confirmation. Each read keeps the normal entity timeout.
+async function pollEntityConfirmation(read, accept, isCurrent = () => true, {
+  timeoutMs = 20000, delays = [0, 250, 500, 1000],
+} = {}) {
+  const deadline = performance.now() + timeoutMs;
   let error = new Error(t("common.unknown"));
-  for (let attempt = 0; attempt < 8 && Date.now() < deadline; attempt += 1) {
+  for (const delay of delays) {
+    const beforeDelay = deadline - performance.now();
+    if (!isCurrent() || beforeDelay <= 0) break;
+    if (delay) await new Promise(resolve => setTimeout(resolve, Math.min(delay, beforeDelay)));
+    const remaining = deadline - performance.now();
+    if (!isCurrent() || remaining <= 0) break;
+    let payload;
     try {
-      const payload = await fetchWithTimeout(buildEntityPath(entity.domain, entity.name), {
-        cache: "no-store",
-        headers: { "Cache-Control": "no-store" },
-      }, Math.max(1, deadline - Date.now()), "", async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-      });
-      const actual = String(payload?.value ?? payload?.state ?? "");
-      if (actual) {
-        state.entities[key] = { ...(state.entities[key] || {}), ...payload, state: actual, value: actual };
-        if (actual === option) return;
-      }
-      error = new Error(t("actions.controllerMismatch", { value: actual || t("common.unknown") }));
+      payload = await read(Math.min(ENTITY_REQUEST_TIMEOUT_MS, remaining));
     } catch (readError) {
       error = readError;
+      continue;
     }
-    const remaining = deadline - Date.now();
-    if (attempt < 7 && remaining > 0) {
-      await new Promise((resolve) => setTimeout(resolve, Math.min(250, remaining)));
-    }
+    if (!isCurrent() || performance.now() >= deadline) break;
+    if (accept(payload)) return { confirmed: true };
   }
-  throw new Error(t("actions.controllerStatusUnconfirmed", { error: error.message }));
+  return { confirmed: false, error };
+}
+
+async function confirmSupplySourceSelection(key, option, isCurrent) {
+  const entity = ENTITY_DEFS[key];
+  let actual = "";
+  const { confirmed, error } = await pollEntityConfirmation(
+    timeoutMs => fetchWithTimeout(buildEntityPath(entity.domain, entity.name), {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-store" },
+    }, timeoutMs, "", async (response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }),
+    payload => {
+      actual = String(payload?.value ?? payload?.state ?? "");
+      if (actual) {
+        state.entities[key] = { ...(state.entities[key] || {}), ...payload, state: actual, value: actual };
+      }
+      return actual === option;
+    },
+    isCurrent,
+  );
+  if (!confirmed) throw new Error(t("actions.controllerStatusUnconfirmed", {
+    error: actual ? t("actions.controllerMismatch", { value: actual }) : error.message,
+  }));
 }
 
 export async function commitSelect(key, option) {
@@ -134,7 +155,9 @@ export async function commitSelect(key, option) {
   const verifyControlModeOverride = key === "controlModeOverride";
   const verifySupplySource = key === "waterSupplySource" || key === "localWaterSupplyTempSource";
   if (verifySupplySource && state.busyAction) return false;
-  state.busyAction = `save-${key}`;
+  const busyAction = `save-${key}`;
+  const actionRevision = startEntityWriteAction(busyAction);
+  const isCurrent = () => isEntityWriteActionCurrent(actionRevision);
   state.controlNotice = "";
   state.controlError = "";
   if (!verifyControlModeOverride && !verifySupplySource) {
@@ -151,11 +174,13 @@ export async function commitSelect(key, option) {
     const response = verifySupplySource
       ? await fetchWithTimeout(url, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS)
       : await fetch(url, { method: "POST" });
+    if (verifySupplySource && !isCurrent()) return false;
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     if (verifySupplySource) {
-      await confirmSupplySourceSelection(key, option);
+      await confirmSupplySourceSelection(key, option, isCurrent);
+      if (!isCurrent()) return false;
     }
     if (verifyControlModeOverride) {
       let confirmationPayload = null;
@@ -226,13 +251,14 @@ export async function commitSelect(key, option) {
     }
     return true;
   } catch (error) {
+    if (verifySupplySource && !isCurrent()) return false;
     if (!verifyControlModeOverride && !verifySupplySource && previousEntity) {
       state.entities[key] = previousEntity;
     }
     state.controlError = t("actions.entityUpdateFailed", { name: entity.name, error: error.message });
     return false;
   } finally {
-    state.busyAction = "";
+    if (!verifySupplySource || ownsBusyAction(actionRevision, busyAction)) state.busyAction = "";
     render();
   }
 }
@@ -271,6 +297,34 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
   return "";
 }
 
+async function confirmSwitchReadback(key, enabled, isCurrent) {
+  const weather = key === "weatherEnabled";
+  const [chunk] = buildBulkEntityChunks(weather ? [key, "weatherStatus"] : [key], "all");
+  const requestId = state.houseLearningRequestId;
+  const weatherRevision = state.weatherConfigRevision;
+  const { confirmed } = await pollEntityConfirmation(
+    timeoutMs => fetchBulkEntityChunk(chunk, timeoutMs),
+    payload => {
+      if (!Array.isArray(payload?.missing) || payload.missing.includes(key)) return false;
+      const readback = payload.entities?.[key];
+      if (weather) {
+        const status = payload.entities?.weatherStatus;
+        if (payload.missing.includes("weatherStatus") || typeof status?.value !== "string") return false;
+        state.entities.weatherStatus = mergeEntityPayload("weatherStatus", state.entities.weatherStatus, status);
+        if (status.consent_state === "failed") throw new Error(t("weather.status.consentFailed"));
+        if (status.consent_state !== (enabled ? "on" : "off")) return false;
+      }
+      if (readback?.value !== enabled || readback.state !== (enabled ? "ON" : "OFF")) return false;
+      state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+      if (weather) state.weatherOptOutUnconfirmed = false;
+      return true;
+    },
+    () => isCurrent() && (weather ? weatherRevision === state.weatherConfigRevision : requestId === state.houseLearningRequestId),
+    weather ? { timeoutMs: 5000, delays: [0, 100, 250, 500, 1000, 1500] } : undefined,
+  );
+  return confirmed;
+}
+
 export async function commitSwitch(key, enabled) {
   const entity = ENTITY_DEFS[key];
   if (!entity) {
@@ -285,23 +339,64 @@ export async function commitSwitch(key, enabled) {
     return;
   }
 
-  state.busyAction = `switch-${key}`;
+  const isLearningSwitch = key === "houseLearningEnabled";
+  const isWeatherSwitch = key === "weatherEnabled";
+  const name = isWeatherSwitch ? t("weather.enableLabel") : entity.name;
+  if (((isLearningSwitch || isWeatherSwitch) && state.busyAction) || (isLearningSwitch && state.houseLearningReset === "pending")) return;
+  if (isLearningSwitch) {
+    state.houseLearningRequestId += 1;
+    state.houseLearningEndpointChecking = false;
+  }
+  if (isWeatherSwitch) {
+    state.weatherConfigRevision += 1;
+    if (!enabled) state.weatherOptOutUnconfirmed = true;
+  }
+  if (isLearningSwitch || isWeatherSwitch) invalidateWeatherForecast();
+
+  const busyAction = `switch-${key}`;
+  const actionRevision = startEntityWriteAction(busyAction);
+  const weatherRevision = state.weatherConfigRevision;
+  const isCurrent = () => isEntityWriteActionCurrent(actionRevision)
+    && (!isWeatherSwitch || weatherRevision === state.weatherConfigRevision);
   state.controlNotice = "";
   state.controlError = "";
   render();
 
   try {
     const action = enabled ? "turn_on" : "turn_off";
-    const response = await fetch(buildEntityPath(entity.domain, entity.name, action), { method: "POST" });
+    const path = buildEntityPath(entity.domain, entity.name, action);
+    const response = isLearningSwitch || isWeatherSwitch
+      ? await fetchWithTimeout(path, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS)
+      : await fetch(path, { method: "POST" });
+    if ((isLearningSwitch || isWeatherSwitch) && !isCurrent()) return;
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
+    }
+    if (isLearningSwitch || isWeatherSwitch) {
+      const staleStatus = isLearningSwitch ? state.houseLearningFetchPromise : null;
+      if (isLearningSwitch) {
+        // Fence status and switch reads issued before the controller acknowledged the write.
+        state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
+        state.houseLearningEndpointChecking = false;
+        state.houseLearningStatus = null;
+        render();
+      }
+      const confirmed = await confirmSwitchReadback(key, enabled, isCurrent);
+      if (!isCurrent()) return;
+      if (staleStatus) await staleStatus;
+      if (!isCurrent()) return;
+      if (isLearningSwitch) await refreshHouseLearningStatus({ force: true });
+      if (!isCurrent()) return;
+      if (!confirmed) throw new Error(t(isLearningSwitch ? "learning.switchUnconfirmed" : "weather.switchUnconfirmed"));
+      state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name });
+      return;
     }
     state.entities[key] = {
       ...(state.entities[key] || {}),
       value: enabled,
       state: enabled,
     };
-    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
+    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name });
     state.busyAction = "";
     if (state.appView === "overview") {
       await refreshEntities([...OVERVIEW_KEYS, ...HEADER_ENTITY_KEYS, "setupComplete", ...FIRMWARE_ENTITY_KEYS], "state");
@@ -315,11 +410,13 @@ export async function commitSwitch(key, enabled) {
     }
     render();
   } catch (error) {
-    state.controlError = t("actions.entityAdjustFailed", { name: entity.name, error: error.message });
+    if ((isLearningSwitch || isWeatherSwitch) && !isCurrent()) return;
+    state.controlError = t("actions.entityAdjustFailed", { name, error: error.message });
     render();
   } finally {
-    state.busyAction = "";
+    if ((!isLearningSwitch && !isWeatherSwitch) || ownsBusyAction(actionRevision, busyAction)) state.busyAction = "";
     render();
+    if (isWeatherSwitch && isCurrent()) void refreshWeatherForecast({ force: true });
   }
 }
 
@@ -328,6 +425,7 @@ export async function commitNumber(key, value, successNotice = "") {
   const normalized = normalizeNumber(key, value);
   const validationError = getNumberSettingValidationError(key, normalized);
   if (validationError) {
+    beginEntityWriteAction();
     state.controlNotice = "";
     state.controlError = validationError;
     state.inputDrafts[key] = String(value ?? "");
@@ -335,7 +433,7 @@ export async function commitNumber(key, value, successNotice = "") {
     render();
     return false;
   }
-  state.busyAction = `save-${key}`;
+  startEntityWriteAction(`save-${key}`);
   state.controlNotice = "";
   state.controlError = "";
   state.inputDrafts[key] = String(value ?? "");
@@ -413,7 +511,7 @@ export async function commitTime(key, value) {
   state.savingTimeFields.add(key);
   state.timeWriteRevision += 1;
   state.inputDrafts[key] = String(value);
-  state.busyAction = `save-${key}`;
+  startEntityWriteAction(`save-${key}`);
   state.controlNotice = "";
   state.controlError = "";
   render();
@@ -453,9 +551,10 @@ export async function commitTime(key, value) {
 }
 
 export async function commitText(key, value) {
+  if (key === "weatherLocation") return commitWeatherLocation(value);
   const entity = ENTITY_DEFS[key];
   const normalized = String(value || "").trim();
-  state.busyAction = `save-${key}`;
+  startEntityWriteAction(`save-${key}`);
   state.controlNotice = "";
   state.controlError = "";
   state.inputDrafts[key] = String(value ?? "");
@@ -536,7 +635,7 @@ export async function refreshOpenQuattControlState() {
 export async function commitDateTime(key, value) {
   const entity = ENTITY_DEFS[key];
   const normalized = normalizeDateTimeValue(value);
-  state.busyAction = `save-${key}`;
+  startEntityWriteAction(`save-${key}`);
   state.controlNotice = "";
   state.controlError = "";
   render();
@@ -561,17 +660,19 @@ export async function commitDateTime(key, value) {
 export async function commitOpenQuattRegulationPause(rawResumeValue) {
   const scheduledValue = normalizeDateTimeValue(rawResumeValue);
   if (rawResumeValue && !scheduledValue) {
+    beginEntityWriteAction();
     state.controlError = t("actions.pauseInvalidMoment");
     render();
     return;
   }
   if (scheduledValue && !hasEntity("openquattResumeAt")) {
+    beginEntityWriteAction();
     state.controlError = t("actions.pauseUnavailableFw");
     render();
     return;
   }
 
-  state.busyAction = "openquatt-regulation";
+  startEntityWriteAction("openquatt-regulation");
   state.controlNotice = "";
   state.controlError = "";
   render();
@@ -605,7 +706,7 @@ export async function commitOpenQuattRegulationPause(rawResumeValue) {
 }
 
 export async function commitOpenQuattRegulationResumeNow() {
-  state.busyAction = "openquatt-regulation";
+  startEntityWriteAction("openquatt-regulation");
   state.controlNotice = "";
   state.controlError = "";
   render();
@@ -626,7 +727,7 @@ export async function commitOpenQuattRegulationResumeNow() {
 
 export async function triggerButton(action) {
   const entity = ENTITY_DEFS[action];
-  state.busyAction = action;
+  startEntityWriteAction(action);
   state.controlError = "";
   state.controlNotice = "";
   render();
@@ -698,7 +799,7 @@ export async function triggerIncidentAction(hpIndex, kind) {
   const requestId = matchingPendingAction
     ? state.incidentAction.requestId
     : createIncidentActionRequestId();
-  state.busyAction = `incident-${kind}-hp${hpIndex}`;
+  startEntityWriteAction(`incident-${kind}-hp${hpIndex}`);
   state.controlError = "";
   state.controlNotice = "";
   state.incidentAction = {
@@ -783,7 +884,7 @@ export async function triggerNamedButton(key, options = {}) {
   if (refreshAfterRestart) {
     armRestartRefresh();
   }
-  state.busyAction = key;
+  startEntityWriteAction(key);
   state.controlError = "";
   state.controlNotice = "";
   render();
@@ -895,7 +996,7 @@ export async function triggerNamedButtonGroup(keys, options = {}) {
   if (entities.length === 0) return;
 
   const busyAction = String(options.busyAction || "named-button-group");
-  state.busyAction = busyAction;
+  startEntityWriteAction(busyAction);
   state.controlError = "";
   state.controlNotice = "";
   render();

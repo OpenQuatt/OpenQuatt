@@ -34,12 +34,35 @@ export const WEB_BUNDLE_BUDGETS = [
     // Retained daily quality, server weights and truthful restart help (Node24.14.1):
     // +4,705 B raw / +1,365 B gzip versus dev2575a93d.
     // Preserve444 B raw headroom; all relative gzip limits remain unchanged.
-    raw: 1_401_380,
-    gzipBaselineCeiling: 362_000,
+    // Learning page, two measurement bars and retained-day progress in both locales:
+    // +6,919 B raw / +1,750 B gzip versus dev 6dd491f5 (Node 24.14.1).
+    // Bounded readback, export and focus handling add 556 B raw / 134 B gzip.
+    // Preserve 444 B of raw headroom and the existing relative gzip limits.
+    // Provisional curve ranges and firmware fit progress: +1,860 B raw / +550 B gzip
+    // versus b18f4d15 on Node 24.14.1, preserving 444 B raw headroom.
+    // All-days display preview and NL/EN explanation: +1,300 B raw vs664f45c.
+    // Preserve444 B raw headroom; relative gzip limits remain unchanged.
+    // Outlook, localized settings, atomic scenario and the interactive weather charts.
+    // On current PR1: +30,871 B raw / +9,824 B gzip (Node24.14.1).
+    // Keep the existing 9,922 B migration allowance.
+    // Inherit only PR1's 588 B raw budget increase; merge guards leave 122 B raw headroom.
+    // Merged raw/gzip: 1,443,352 / 405,092 B; PR1 gzip base: 395,270 B (Node24.14.1).
+    // Move the absolute ceiling with that base, preserving the feature allowance.
+    // Demand comparison retains its existing 5,763 B raw allowance over PR2.
+    // Measured delta over PR2: 5,762 B raw / 2,074 B gzip (Node24.14.1).
+    // Until the parent PR merges, the dev-targeted stack includes that exact gzip delta.
+    // Preserve the inherited 100 B migration margin and the regular relative limits.
+    // Bounded expiry refresh and write invalidation: +1,501 B raw / +469 B gzip
+    // versus 63002f64 on Node24.14.1; keep the existing raw/gzip headroom.
+    // Optional outside source: +1,243 B raw / +350 B gzip versus PR2 (Node24.14.1).
+    // Add that measured delta on top of dev's ceilings; relative limits stay unchanged.
+    raw: 1_451_981,
+    gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
   // Passive-learning layout: +2,969 B raw / +493 B gzip versus dev 388f6f9d
   // on Node 24.14.1; preserves the existing 1,581 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 216_484 },
+  // Outlook and weather graphs add 4,367 B raw and 823 B gzip.
+  { file: "css/openquatt-app.css", raw: 220_851 },
 ];

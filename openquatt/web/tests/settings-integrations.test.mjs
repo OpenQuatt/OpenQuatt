@@ -409,6 +409,28 @@ test("bronnavigatiefocus wordt over een poll-render hersteld zonder invoervelden
   }
 });
 
+test("buitenbron toont Open-Meteo en de effectieve route uit de firmware", () => {
+  setSourceSelectionState(true);
+  Object.assign(state.entities, {
+    outsideTempSource: { value: "Auto", option: ["Auto", "Outdoor unit", "HA input", "API input", "MQTT", "Open-Meteo"] },
+    outsideTempSelected: valueEntity(-1.2, "°C"),
+    outsideTempOpenMeteo: valueEntity(-1.2, "°C"),
+    outsideTempEffectiveSourceCode: valueEntity(13),
+  });
+  let inspector = getInspectorMarkup(renderFocusedSource("outside-temperature"));
+  assert.match(getSelectMarkup(inspector, "outsideTempSource"), /value="Open-Meteo"/);
+  assert.match(inspector, /data-source-kind="open-meteo"\s+data-source-state="valid"\s+data-source-effective="true"/);
+  assert.match(inspector, /-1\.2 °C/);
+  state.entities.outsideTempEffectiveSourceCode = valueEntity(3);
+  state.entities.outsideTempOpenMeteo = { value: null, state: "nan", uom: "°C" };
+  inspector = getInspectorMarkup(renderFocusedSource("outside-temperature"));
+  assert.match(inspector, /data-source-kind="outdoor"\s+data-source-state="available"\s+data-source-effective="true"/);
+  assert.match(inspector, /data-source-kind="open-meteo"\s+data-source-state="invalid"\s*>/);
+  state.entities.outsideTempSource.option.pop();
+  inspector = getInspectorMarkup(renderFocusedSource("outside-temperature"));
+  assert.doesNotMatch(inspector, /Open-Meteo|data-source-kind="open-meteo"/);
+});
+
 test("Auto zonder geldige kandidaat toont een bronprobleem", () => {
   setSourceSelectionState(true);
   const missing = { value: Number.NaN, state: "nan", uom: "°C" };
