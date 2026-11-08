@@ -13,6 +13,8 @@ const LEAVE_MS = 200;
 const HOLD_RETRY_MS = 1000;
 const MAX_TOASTS = 3;
 const STACK_GAP_PX = 8;
+// Pages that render the stack; Leren shares it with Settings.
+const FEEDBACK_VIEWS = new Set(["settings", "learning"]);
 
 // Toasts, newest first. A full render rebuilds the page HTML, so the stack element itself is kept and put back after
 // every render: the toasts keep their place and their transitions instead of being drawn again from scratch.
@@ -74,8 +76,8 @@ function renderToastContent(entry) {
   const undo = canUndo(entry)
     ? `<button class="oq-settings-feedback-undo" type="button" data-oq-action="undo-settings-change" data-toast-id="${entry.id}"${state.busyAction || undoToast ? " disabled" : ""}>${escapeHtml(t("actions.undo"))}</button>`
     : "";
-  const log = entry.undoKey && state.settingsGroup !== CHANGE_LOG_GROUP_ID
-    ? `<button class="oq-settings-feedback-log" type="button" data-oq-action="select-settings-group" data-group-id="${CHANGE_LOG_GROUP_ID}">${escapeHtml(t("actions.viewChangeLog"))}</button>`
+  const log = entry.undoKey && !(state.appView === "settings" && state.settingsGroup === CHANGE_LOG_GROUP_ID)
+    ?`<button class="oq-settings-feedback-log" type="button" data-oq-action="select-settings-group" data-group-id="${CHANGE_LOG_GROUP_ID}">${escapeHtml(t("actions.viewChangeLog"))}</button>`
     : "";
   return `<div class="oq-settings-feedback-inner">${renderOqIcon(entry.error ? "alert-circle" : "check", "oq-settings-feedback-icon")}<p>${escapeHtml(entry.text)}${entry.detail ? `<span class="oq-settings-feedback-detail">${escapeHtml(entry.detail)}</span>` : ""}</p><button class="oq-settings-feedback-close" type="button" data-oq-action="dismiss-settings-feedback" data-toast-id="${entry.id}" aria-label="${escapeHtml(t("common.close"))}">×</button>${log || undo ? `<div class="oq-settings-feedback-footer">${log}${undo}</div>` : ""}</div>`;
 }
@@ -183,7 +185,8 @@ function bindStack(stack) {
 
 function mountStack(root) {
   const placeholder = root?.querySelector?.("[data-oq-feedback-stack]");
-  if (!placeholder) return;
+  // A patch between renders (Leren) finds the stack that is already mounted and bound.
+  if (!placeholder || placeholder === liveStack) return;
   if (liveStack && placeholder !== liveStack) {
     liveStack.className = placeholder.className;
     placeholder.replaceWith(liveStack);
@@ -236,10 +239,10 @@ function dismissToast(entry) {
   updateExpanded();
 }
 
-// Leaving the settings page finishes every toast; a message still in state does not come back on return.
+// Leaving the pages with toasts finishes every toast; a message still in state does not come back on return.
 export function syncSettingsFeedback(root) {
   lastRoot = root;
-  if (state.appView !== "settings") {
+  if (!FEEDBACK_VIEWS.has(state.appView)) {
     toasts.forEach((entry) => window.clearTimeout(entry.timer));
     toasts = [];
     undoToast = null;
@@ -278,7 +281,7 @@ export function finishFeedbackUndo() {
   }
   window.clearTimeout(entry.timer);
   entry.timer = 0;
-  if (state.appView !== "settings") return;
+  if (!FEEDBACK_VIEWS.has(state.appView)) return;
   reconcileStack();
   scheduleToast(entry);
 }
