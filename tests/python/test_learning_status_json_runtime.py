@@ -30,6 +30,47 @@ def production_function(source, signature):
 
 
 class LearningStatusJsonRuntimeTest(unittest.TestCase):
+    def test_daily_system_activity_matches_collector_in_status_and_export(self):
+        source = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
+        with tempfile.TemporaryDirectory(prefix="oq-learning-system-activity-") as directory:
+            temporary = Path(directory)
+            body = "\n".join(production_function(source, signature) for signature in (
+                "static void clear_daily_resume_status_(", "static void cancel_daily_resume_status_(",
+                "static void update_daily_resume_status_(", "void pause(LearningStatus",
+                "static void publish_status_(", "static void publish_export_(",
+            ))
+            for name, flag, signature in (
+                ("context_change", "context_changed", "if (context_changed) {"),
+                ("reset", "reset_processed", "if (reset_processed) {\n      state.daily_restore_pending"),
+            ):
+                branch = production_function(source, signature)
+                body += f"\nstatic void {name}(RuntimeStorage& state) {{ const bool {flag} = true; {branch} }}"
+            (temporary / "production_learning_status.inc").write_text(body)
+            (temporary / "production_diagnostic_row.inc").write_text(
+                production_function(source, "struct DiagnosticRow {") + ";\n")
+            binary = temporary / "system-activity"
+            built = run_process(compiler_command(
+                "-DOQ_TEST_EXPORT_JSON=1", "-DOQ_TEST_DAILY_ACTIVITY_JSON=1",
+                "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I", str(temporary),
+                str(ROOT / "tests/fixtures/learning/status_json.cpp"), "-o", str(binary)),
+                timeout=COMPILE_TIMEOUT_SECONDS, capture_output=True, text=True)
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            run = run_process([str(binary)], timeout=RUN_TIMEOUT_SECONDS, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            cases = json.loads(run.stdout)
+            self.assertEqual(len(cases), 4)
+            for case in cases:
+                with self.subTest(system_heat=case["system_heat"], heat_w=case["heat_w"]):
+                    for endpoint, collection in (("status", case["status"]["collection"]),
+                                                 ("export", case["export"]["collection_state"])):
+                        with self.subTest(endpoint=endpoint):
+                            self.assertEqual(collection["batch_active"], case["system_heat"])
+                    self.assertEqual(case["status"]["collection"]["batch_elapsed_s"],
+                                     10 if case["system_heat"] else 0)
+                    self.assertFalse(case["status"]["collection"]["thermal_active"])
+                    self.assertFalse(case["status"]["auto_apply_allowed"])
+                    self.assertFalse(case["export"]["auto_apply_allowed"])
+
     def test_actual_export_aligns_all_quality_rows_and_preserves_unknowns(self):
         source = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
         with tempfile.TemporaryDirectory(prefix="oq-learning-quality-export-") as directory:

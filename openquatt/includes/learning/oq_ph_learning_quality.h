@@ -69,6 +69,16 @@ inline float configured_daily_missing_heat_bound_w(const QualityConfig& config) 
   return config.max_daily_missing_heat_w > 0.0f ? config.max_daily_missing_heat_w : config.max_abs_heat_w;
 }
 
+inline QualityConfig daily_heat_quality(const QualityConfig& hp_quality, bool system_heat_enabled) {
+  auto quality = hp_quality;
+  if (system_heat_enabled) {
+    // Independently triggered boiler heat can exceed the dispatch target.
+    quality.max_daily_missing_heat_w = quality.max_abs_heat_w;
+    quality.max_observed_heat_w = quality.max_abs_heat_w;
+  }
+  return quality;
+}
+
 // Real endpoint evidence can exceed the reference envelope, e.g. during signed
 // defrost or a thermal transition. Enlarge the conditional bound; never hide the
 // observation or reduce already accrued debt. Unobserved heat remains an assumption.

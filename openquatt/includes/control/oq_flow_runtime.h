@@ -20,17 +20,34 @@ class Runtime {
  public:
   float local_flow(float mismatch_threshold_lph) const {
     float hp1_flow_lph = id(hp1_flow).state;
+#if OQ_TOPOLOGY_DUO
+    const float hp2_flow_lph = id(hp2_flow).state;
+#else
+    const float hp2_flow_lph = NAN;
+#endif
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+    auto primary = oq_sources::hp1.flow;
+#endif
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V1") {
       hp1_flow_lph = id(flow_rate_controller).state;
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+      primary = oq_sources::current_controller_filtered_flow();
+#endif
     }
 #endif
+    const auto selected =
+        oq_flow_control::local_flow_selection(OQ_TOPOLOGY_DUO, hp1_flow_lph, hp2_flow_lph, mismatch_threshold_lph);
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
 #if OQ_TOPOLOGY_DUO
-    const float hp2_flow_lph = id(hp2_flow).state;
-    return oq_flow_control::select_local_flow(true, hp1_flow_lph, hp2_flow_lph, mismatch_threshold_lph);
+    const auto& secondary = oq_sources::hp2.flow;
 #else
-    return oq_flow_control::select_local_flow(false, hp1_flow_lph, NAN, mismatch_threshold_lph);
+    const oq_sources::RawFloatReceipt secondary;
 #endif
+    oq_sources::local_flow =
+        oq_flow_control::local_flow_receipt(selected, primary, hp1_flow_lph, secondary, hp2_flow_lph);
+#endif
+    return selected.value;
   }
 
   bool flow_mismatch(float threshold_lph, float hysteresis_lph) {

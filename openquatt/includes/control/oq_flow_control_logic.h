@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "oq_flow_pump_logic.h"
+#include "../sources/oq_raw_receipt.h"
 
 namespace oq_flow_control {
 
@@ -29,20 +30,46 @@ inline int compute_start_pwm(bool commissioning_start, int commissioning_start_p
   return clamp_ipwm(kAutoStartFallbackIpwm);
 }
 
-inline float select_local_flow(bool secondary_enabled, float hp1_flow_lph, float hp2_flow_lph,
-                               float mismatch_threshold_lph) {
+struct LocalFlowSelection {
+  float value = NAN;
+  bool primary = false;
+  bool secondary = false;
+};
+
+inline LocalFlowSelection local_flow_selection(bool secondary_enabled, float hp1_flow_lph, float hp2_flow_lph,
+                                               float mismatch_threshold_lph) {
   const bool hp1_valid = !isnan(hp1_flow_lph);
-  const bool hp2_valid = !isnan(hp2_flow_lph);
-  if (!secondary_enabled) return hp1_valid ? hp1_flow_lph : NAN;
+  const bool hp2_valid = secondary_enabled && !isnan(hp2_flow_lph);
   if (hp1_valid && hp2_valid) {
     if (fabsf(hp1_flow_lph - hp2_flow_lph) > mismatch_threshold_lph) {
-      return fmaxf(hp1_flow_lph, hp2_flow_lph);
+      return {fmaxf(hp1_flow_lph, hp2_flow_lph), hp1_flow_lph > hp2_flow_lph, hp2_flow_lph > hp1_flow_lph};
     }
-    return (hp1_flow_lph + hp2_flow_lph) / 2.0f;
+    return {(hp1_flow_lph + hp2_flow_lph) / 2.0f, true, true};
   }
-  if (hp1_valid) return hp1_flow_lph;
-  if (hp2_valid) return hp2_flow_lph;
-  return NAN;
+  if (hp1_valid) return {hp1_flow_lph, true, false};
+  if (hp2_valid) return {hp2_flow_lph, false, true};
+  return {};
+}
+
+inline float select_local_flow(bool secondary_enabled, float hp1_flow_lph, float hp2_flow_lph,
+                               float mismatch_threshold_lph) {
+  return local_flow_selection(secondary_enabled, hp1_flow_lph, hp2_flow_lph, mismatch_threshold_lph).value;
+}
+
+inline oq_sources::RawFloatReceipt local_flow_receipt(const LocalFlowSelection& selection,
+                                                      const oq_sources::RawFloatReceipt& primary, float primary_lph,
+                                                      const oq_sources::RawFloatReceipt& secondary,
+                                                      float secondary_lph) {
+  if ((!selection.primary && !selection.secondary) ||
+      (selection.primary && (!primary.valid || primary.value != primary_lph)) ||
+      (selection.secondary && (!secondary.valid || secondary.value != secondary_lph)))
+    return {};
+  const uint64_t oldest_ms = selection.primary && (!selection.secondary || primary.received_ms < secondary.received_ms)
+                                 ? primary.received_ms
+                                 : secondary.received_ms;
+  oq_sources::RawFloatReceipt receipt;
+  receipt.observe(selection.value, oldest_ms, oldest_ms != 0U);
+  return receipt;
 }
 
 inline bool uses_cooling_setpoint(int control_mode, bool manual_hp_owner, int manual_hp1_mode, int manual_hp2_mode) {

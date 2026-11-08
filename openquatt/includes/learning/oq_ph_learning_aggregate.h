@@ -291,12 +291,19 @@ inline DailyHeatInterval daily_heat_interval(const SegmentAccumulator& state, co
   return out;
 }
 
+inline void mark_daily_heat_gap(SegmentAccumulator& state, const QualityConfig& config) {
+  // Retain the highest applicable bound until the gap closes, even if the
+  // configured heat sources change before the next usable sample.
+  state.gap_heat_bound_floor_w = fmaxf(state.gap_heat_bound_floor_w, configured_daily_missing_heat_bound_w(config));
+  state.heat_gap_pending = true;
+}
+
 inline bool observe_daily_heat(SegmentAccumulator& state, const LearningSnapshot& snapshot, const QualityConfig& config,
                                uint64_t elapsed_ms, bool force_gap = false) {
   const auto interval = daily_heat_interval(state, snapshot, config, elapsed_ms, force_gap);
   if (!interval.valid) return false;
   if (!interval.measured_endpoint) {
-    state.heat_gap_pending = true;
+    mark_daily_heat_gap(state, config);
     return true;
   }
   state.heat_integral += interval.energy_ws;
@@ -328,7 +335,7 @@ inline bool observe_restart_heat_only(SegmentAccumulator& state, const LearningS
     // Repeated UTC must not hide a missing/rejected heat receipt. Keep the
     // cursor and measured energy unchanged, but bound the next interval.
     if (isnan(snapshot.partial_heat_to_water_w) && validate_snapshot(snapshot, config) != LearningStatus::OK)
-      state.heat_gap_pending = true;
+      mark_daily_heat_gap(state, config);
     return true;
   }
   return observe_daily_heat(state, snapshot, config, elapsed_ms);
