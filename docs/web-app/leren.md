@@ -39,7 +39,8 @@ blijven beschikbaar. Zie voor de voorwaarden en bronafwijzingen het
 
 ## Wanneer is er een geleerde woninglijn?
 
-Open **Meetgegevens** voor de grafiek en de voorwaarden voor een woninglijn.
+De kaart **Meetgegevens** onder het leerpaneel toont de grafiek en de voorwaarden
+voor een woninglijn. De kaart laadt de gegevens vanzelf.
 Een plausibele lijn kan vanaf zes bruikbare dagmetingen alvast als **voorlopige
 woninglijn** verschijnen. Deze schatting gebruikt alle geschikte dagen, ook de
 nieuwste dagen met bekende meetkwaliteit. Betere meetkwaliteit geeft een dag
@@ -65,7 +66,7 @@ meetkwaliteit mogen met een lager gewicht helpen bij het leren.
 Op oudere firmware zonder voortgang van de fit tonen de balken bij onbekende
 meetkwaliteit het aantal en de spreiding van alle opgeslagen dagen.
 Dagen met onbekende meetkwaliteit leveren geen onafhankelijke controle.
-Open **Meetgegevens** opnieuw om nieuw opgeslagen punten op te halen.
+Klik in **Meetgegevens** op **Vernieuwen** om nieuw opgeslagen punten op te halen.
 
 De blauwe lijn is de ingestelde woninglijn. De punten zijn metingen. Bij een
 meetpunt zie je onder meer de meetduur, gemiddelde buitentemperatuur en het
