@@ -2684,27 +2684,24 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     };
   }
 
-  function renderControlWorkingTabs() {
+  // Same side navigation as Settings: the three views sit left of the panel.
+  function renderControlWorkingNav() {
     const selectedTab = getControlWorkingSelectedTab();
     return `
-      <div class="oq-working-control-group">
-        <span class="oq-working-control-label">${t("controlReplay.chromeView")}</span>
-        <div class="oq-working-tabs" role="tablist" aria-label="${t("controlReplay.chromeDecisionsView")}">
-          ${getControlWorkingTabs().map((tab) => `
-            <button
-              class="oq-working-tab${selectedTab === tab.id ? " is-active" : ""}"
-              type="button"
-              role="tab"
-              aria-selected="${selectedTab === tab.id ? "true" : "false"}"
-              data-oq-action="select-control-replay-tab"
-              data-replay-tab="${escapeHtml(tab.id)}"
-            >
-              ${renderOqIcon(tab.icon, "oq-working-tab-icon")}
-              <span>${escapeHtml(tab.label)}</span>
-            </button>
-          `).join("")}
-        </div>
-      </div>
+      <nav class="oq-settings-group-nav" aria-label="${escapeHtml(t("controlReplay.chromeDecisionsView"))}">
+        ${getControlWorkingTabs().map((tab) => `
+          <button
+            class="oq-settings-group-button${selectedTab === tab.id ? " is-active" : ""}"
+            type="button"
+            data-oq-action="select-control-replay-tab"
+            data-replay-tab="${escapeHtml(tab.id)}"
+            aria-pressed="${selectedTab === tab.id ? "true" : "false"}"
+          >
+            ${renderOqIcon(tab.icon, "oq-settings-group-button-icon")}
+            <span class="oq-settings-group-button-label">${escapeHtml(tab.label)}</span>
+          </button>
+        `).join("")}
+      </nav>
     `;
   }
 
@@ -3424,16 +3421,10 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       <section class="oq-working" data-render-signature="${escapeHtml(signature)}">
         <header class="oq-working-head">
           <div class="oq-working-head-copy">
-            <span class="oq-working-kicker">
-              <span class="oq-working-eyebrow">${t("controlReplay.panelEyebrow")}</span>
-            </span>
             <h2>${t("controlReplay.panelTitle")}</h2>
             <p>${t("controlReplay.panelCopy")}</p>
           </div>
-          <div class="oq-working-head-actions">
-            ${renderControlWorkingTabs()}
-            ${periodChoices}
-          </div>
+          ${periodChoices ? `<div class="oq-working-head-actions">${periodChoices}</div>` : ""}
         </header>
         ${body}
       </section>
@@ -3443,9 +3434,16 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   export function renderControlReplayView() {
     const current = getControlWorkingCurrent(getHeatPumpPanels());
     return `
-      <section class="oq-helper-panel oq-helper-panel--flush">
-        <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
-          ${renderControlWorkingPanel(current)}
+      <section class="oq-settings-view">
+        <aside class="oq-settings-view-aside">
+          ${renderControlWorkingNav()}
+        </aside>
+        <div class="oq-settings-view-main">
+          <section class="oq-helper-panel oq-helper-panel--flush">
+            <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
+              ${renderControlWorkingPanel(current)}
+            </div>
+          </section>
         </div>
       </section>
     `;

@@ -5,23 +5,34 @@
   color: var(--oq-overview-title);
 }
 
+/* The panel sits next to the side navigation, so the head follows the panel width, not the screen. */
+.oq-working {
+  container-type: inline-size;
+}
+
 .oq-working-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.64fr);
+  grid-template-columns: minmax(0, 1fr) minmax(480px, 0.64fr);
   gap: 24px;
   align-items: start;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--oq-overview-row-border);
 }
 
-.oq-working-head-copy {
-  min-width: 0;
+/* Below this width the period choices move under the title instead of squeezing their labels. */
+@container (max-width: 900px) {
+  .oq-working-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .oq-working-head-actions {
+    max-width: 560px;
+  }
 }
 
-.oq-working-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.oq-working-head-copy {
+  min-width: 0;
 }
 
 .oq-working-eyebrow {
@@ -44,10 +55,12 @@
   letter-spacing: 0;
 }
 
+/* Same size and spacing as the page titles under Charts. */
 .oq-working-head h2 {
-  margin-top: 6px;
-  font-size: clamp(1.55rem, 2vw, 2.05rem);
+  margin-bottom: 12px;
+  font-size: 1.5rem;
   line-height: 1.08;
+  letter-spacing: -0.03em;
 }
 
 .oq-working-head p {
@@ -63,17 +76,6 @@
   margin: 0;
   color: var(--oq-overview-muted);
   line-height: 1.55;
-}
-
-.oq-working-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  width: 100%;
-  padding: 4px;
-  border: 1px solid var(--oq-overview-row-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--oq-overview-surface) 82%, transparent);
 }
 
 .oq-working-head-actions {
@@ -319,39 +321,6 @@
   font-weight: 700;
 }
 
-.oq-working-tab {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 40px;
-  min-width: 0;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--oq-overview-muted);
-  font: inherit;
-  font-weight: 850;
-  cursor: pointer;
-  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
-}
-
-.oq-working-tab span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.oq-working-tab:hover,
-.oq-working-tab.is-active {
-  background: #ffffff;
-  color: #102044;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
-}
-
-.oq-working-tab:focus-visible,
 .oq-working-window-choice:focus-visible,
 .oq-working-entry:focus-visible,
 .oq-working-support summary:focus-visible {
@@ -359,11 +328,6 @@
   outline-offset: 2px;
 }
 
-.oq-working-tab:active {
-  transform: translateY(1px);
-}
-
-.oq-working-tab-icon,
 .oq-working-pill-icon {
   width: 18px;
   height: 18px;
@@ -1336,13 +1300,6 @@
 
 .oq-overview-board:not(.oq-overview-board--light) .oq-working-period-error {
   color: #fca5a5;
-}
-
-.oq-overview-board:not(.oq-overview-board--light) .oq-working-tab:hover,
-.oq-overview-board:not(.oq-overview-board--light) .oq-working-tab.is-active {
-  background: rgba(148, 163, 184, 0.16);
-  color: #f8fafc;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
 }
 
 .oq-overview-board:not(.oq-overview-board--light) .oq-working-now {

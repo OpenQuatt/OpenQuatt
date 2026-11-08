@@ -923,17 +923,9 @@
     gap: 14px;
   }
 
-  .oq-working-tabs {
-    width: 100%;
-  }
-
   .oq-working-head-actions {
     width: 100%;
     justify-items: stretch;
-  }
-
-  .oq-working-tab {
-    justify-content: center;
   }
 
   .oq-working-source-grid {
@@ -954,17 +946,8 @@
     padding-bottom: 14px;
   }
 
-  .oq-working-head h2 {
-    font-size: 1.45rem;
-  }
-
   .oq-working-now h2 {
     font-size: 1.55rem;
-  }
-
-  .oq-working-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .oq-working-window-choices {
@@ -1004,16 +987,6 @@
 
   .oq-working-period-apply {
     width: 100%;
-  }
-
-  .oq-working-tab {
-    min-height: 38px;
-    padding: 0 8px;
-    font-size: 0.9rem;
-  }
-
-  .oq-working-tab-icon {
-    display: none;
   }
 
   .oq-working-now,
