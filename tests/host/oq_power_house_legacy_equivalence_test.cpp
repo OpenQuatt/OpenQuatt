@@ -149,7 +149,8 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
                                                       tuning.comfort_above_c,
                                                       tuning.rise_time_min,
                                                       tuning.fall_time_min,
-                                                      10, tuning.memory_max_c};
+                                                      10,
+                                                      tuning.memory_max_c};
   const baseline_0282c2e9::DemandState frozen_state{state.last_w, state.last_ms, state.comfort_memory_c};
   const auto expected = baseline_0282c2e9::decide_demand(frozen_input, frozen_tuning, frozen_state);
   assert(actual.valid == expected.valid);
