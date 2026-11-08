@@ -1,4 +1,4 @@
-import { getEntityStateText, isEntityActive } from "../core/app-shared.js";
+import { getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
@@ -9,15 +9,15 @@ import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, ge
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getEspTemperatureLabel } from "../features/header-status.js";
 import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/security-access.js";
+import { CHANGE_LOG_GROUP_ID, renderSettingsChangeLogSection } from "../features/settings-change-log.js";
 import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSelectControl } from "./controls.js";
 import { t } from "../i18n/index.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { patchControlledWarmupField, patchRunExtensionThresholds, renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
-import { patchHouseLearningSettingsStatus, renderHouseLearningSettings } from "./house-learning.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
-import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
+import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
-import { renderSettingsPrivacySection } from "./privacy.js";
+import { renderSettingsPrivacySection, renderSettingsPrivacyUnavailable } from "./privacy.js";
 import { getApiSecurityStatusDetail, getApiSecurityStatusLabel, renderSettingsAccessSecuritySection } from "./security.js";
 import { renderSettingsCounterServiceSection, renderSettingsServiceSection } from "./service.js";
 import { renderSettingsSilentSection } from "./silent.js";
@@ -25,6 +25,14 @@ import { renderSettingsBackupSection, renderSettingsTrendSection } from "./stora
 import { renderSettingsWaterSection } from "./water.js";
 import { escapeHtml } from "../core/html.js";
 import { getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
+
+function renderLearningSettingsLink() {
+  if (!hasEntity("houseLearningEnabled")) return "";
+  return `<div class="oq-settings-callout">
+    <p>${escapeHtml(t("learning.openCopy"))}</p>
+    <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-view" data-view-id="learning">${escapeHtml(t("learning.open"))}</button>
+  </div>`;
+}
 
 function syncFrequencyRangeControl(control) {
   const minInput = control?.querySelector('[data-oq-range-role="min"]');
@@ -97,9 +105,15 @@ function syncFrequencyRangeControl(control) {
             renderSettingsCounterServiceSection(),
           ]
       : activeGroup === "heating"
-        ? [renderSettingsHeatingSection(), isCurveMode() ? "" : renderHouseLearningSettings()]
+        ? [renderSettingsHeatingSection(), renderLearningSettingsLink()]
       : activeGroup === "cooling"
         ? [renderSettingsCoolingSection()]
+      : activeGroup === CHANGE_LOG_GROUP_ID
+        ? [renderSettingsChangeLogSection()]
+      : activeGroup === "sharing"
+        ? [renderSettingsPrivacySection() || renderSettingsPrivacyUnavailable()]
+      : activeGroup === "backup"
+        ? [renderSettingsBackupSection()]
         : activeGroup === "integrations"
             ? [
                 renderSettingsOpenThermCicSection(),
@@ -107,11 +121,8 @@ function syncFrequencyRangeControl(control) {
                 renderSettingsSensorSelectionSection(),
               ]
             : [
-                renderSettingsQuickStartSection(),
                 renderSettingsTrendSection(),
                 renderSettingsAccessSecuritySection(),
-                renderSettingsPrivacySection(),
-                renderSettingsBackupSection(),
                 renderSettingsDiagnosticsSection(),
               ];
 
@@ -273,7 +284,6 @@ function syncFrequencyRangeControl(control) {
       }
     });
 
-    patchHouseLearningSettingsStatus();
     state.warmupSettingsRenderPending = !patchControlledWarmupField(stack);
     patchRunExtensionThresholds();
 

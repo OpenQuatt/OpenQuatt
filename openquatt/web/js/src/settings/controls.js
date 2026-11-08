@@ -53,7 +53,8 @@ export function renderSettingsSystemRow({
   if (!action && !note) {
     return `<div class="${classes}"${attribute}><span class="oq-settings-system-row-label">${escapeHtml(label)}</span><strong class="oq-settings-system-row-value">${escapeHtml(value)}</strong></div>`;
   }
-  return `<div class="${classes}"${attribute}><div class="oq-settings-system-row-copy"><p class="oq-settings-system-row-label">${escapeHtml(label)}</p><strong class="oq-settings-system-row-value">${escapeHtml(value)}</strong>${note ? `<p class="oq-settings-system-row-note">${escapeHtml(note)}</p>` : ""}</div>${action}</div>`;
+  // Action rows may leave out the small label when their title already names the action.
+  return `<div class="${classes}"${attribute}><div class="oq-settings-system-row-copy">${label ? `<p class="oq-settings-system-row-label">${escapeHtml(label)}</p>` : ""}<strong class="oq-settings-system-row-value">${escapeHtml(value)}</strong>${note ? `<p class="oq-settings-system-row-note">${escapeHtml(note)}</p>` : ""}</div>${action}</div>`;
 }
 
 export function getSettingsStatValue(key, options = {}) {

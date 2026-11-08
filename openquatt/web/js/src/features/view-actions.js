@@ -1,17 +1,21 @@
+import { refreshWeatherForecast, suspendWeatherForecast } from "./weather-forecast.js";
 import { isTrendHistoryEnabled } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { SETTINGS_GROUPS } from "../core/config.js";
 import { syncEntities } from "../core/entity-sync.js";
+import { undoSettingsChange } from "../core/entity-write-actions.js";
 import { setAppView } from "../core/navigation.js";
 import { render } from "../core/render-scheduler.js";
-import { setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
-import { state } from "../core/state.js";
+import { setFeedbackPosition, setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
+import { invalidateHouseLearningShadow, state } from "../core/state.js";
 import { setTrendWindowHours } from "../core/trend-window.js";
 import { setEnergyHistoryPeriodToNow, setEnergyHistoryView, shiftEnergyHistoryPeriod } from "../views/energy.js";
 import { refreshTrendHistoryData } from "./storage-history.js";
 import { refreshOduRuntimeFrequencyStatuses } from "./odu-runtime-frequency.js";
 import { refreshOduDefrostStatuses } from "./odu-defrost.js";
 import { refreshOduSettingsStatuses } from "./odu-settings.js";
+import { dismissSettingsFeedback, finishFeedbackUndo, takeFeedbackUndo } from "./settings-feedback.js";
+import { CHANGE_LOG_GROUP_ID, exportSettingsChangeLog, refreshSettingsChangeLog } from "./settings-change-log.js";
 
 function openServiceSettings() {
   state.systemModal = "";
@@ -52,11 +56,29 @@ function toggleSettingsAdvanced(event, button) {
 }
 
 const viewActionHandlers = {
+  "select-learning-panel": (button) => {
+    const open = button.dataset.learningPanel === "forecast";
+    if (open === state.learningForecastOpen) return;
+    if (open) invalidateHouseLearningShadow();
+    else suspendWeatherForecast();
+    state.learningForecastOpen = open;
+    render();
+    if (open) void refreshWeatherForecast();
+    else void syncEntities({ forceFast: true });
+  },
+  "toggle-weather-hourly": (button, event) => {
+    const details = button.closest("details");
+    if (!details) return;
+    event.preventDefault();
+    details.open = !details.open;
+    state.weatherForecastHourlyOpen = details.open;
+  },
   "select-view": (button) => {
     if ((button.dataset.viewId || "") === "diagnosis" && !isTrendHistoryEnabled()) {
       return;
     }
     const nextView = button.dataset.viewId || "overview";
+    if (state.appView === "learning" && nextView !== "learning") suspendWeatherForecast();
     setAppView(nextView, { syncMode: "push" });
     render();
     void syncEntities({ forceFast: true });
@@ -106,8 +128,22 @@ const viewActionHandlers = {
   },
   "select-settings-group": (button) => {
     setSettingsGroup(button.dataset.groupId || SETTINGS_GROUPS[0].id);
+    // The change-log link in a toast on Leren also opens Settings.
+    if (state.appView !== "settings") {
+      if (state.appView === "learning") suspendWeatherForecast();
+      setAppView("settings", { syncMode: "push" });
+    }
+    if (state.settingsGroup === CHANGE_LOG_GROUP_ID) {
+      void refreshSettingsChangeLog();
+    }
     render();
     void syncEntities({ forceFast: true });
+  },
+  "refresh-settings-change-log": () => {
+    void refreshSettingsChangeLog();
+  },
+  "export-settings-change-log": () => {
+    exportSettingsChangeLog();
   },
   "select-settings-source": (button) => {
     const key = String(button.dataset.sourceKey || "").trim().replace(/[^a-z0-9_-]/gi, "");
@@ -148,6 +184,10 @@ const viewActionHandlers = {
   },
   "select-overview-theme": (button) => {
     setOverviewTheme(button.dataset.overviewTheme);
+    render();
+  },
+  "select-feedback-position": (button) => {
+    setFeedbackPosition(button.dataset.feedbackPosition);
     render();
   },
   "select-hp-visual": (button) => {
@@ -217,6 +257,13 @@ const viewActionHandlers = {
   "open-cm100-commissioning-modal": () => openServiceSettings(),
   "open-installation-monitoring": () => openServiceSettings(),
   "open-service-task-modal": (button) => openServiceTask(button),
+  "dismiss-settings-feedback": (button) => {
+    if (dismissSettingsFeedback(button?.dataset.toastId)) render();
+  },
+  "undo-settings-change": (button) => {
+    const undo = takeFeedbackUndo(button?.dataset.toastId);
+    if (undo) void undoSettingsChange(undo).finally(finishFeedbackUndo);
+  },
 };
 
 export function handleViewAction(action, button, event) {

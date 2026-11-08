@@ -19,6 +19,7 @@ enum class Source : uint8_t {
   CIC_OR_HA,
   HEATING_CURVE,
   SCHEDULE,
+  OPEN_METEO,
 };
 
 struct NumericSample {
@@ -122,6 +123,7 @@ struct NumericSources {
   NumericSample api;
   NumericSample mqtt;
   NumericSample opentherm;
+  NumericSample open_meteo;
 };
 
 inline NumericSample sample_for(Source source, const NumericSources& sources) {
@@ -140,6 +142,8 @@ inline NumericSample sample_for(Source source, const NumericSources& sources) {
       return sources.mqtt;
     case Source::OPENTHERM:
       return sources.opentherm;
+    case Source::OPEN_METEO:
+      return sources.open_meteo;
     default:
       return {};
   }
@@ -199,7 +203,7 @@ inline NumericSelection select_direct(Source selected, const NumericSources& sou
   return {NAN, selected, false, false, sample.invalid_received};
 }
 
-inline NumericSelection select_lowest_outside(const NumericSources& sources) {
+inline NumericSelection select_lowest_outside(const NumericSources& sources, bool include_open_meteo = true) {
   NumericSelection selected;
   const auto take = [&](Source route, const NumericSample& sample) {
     if (sample.valid && (!selected.valid || sample.value < selected.value)) {
@@ -210,9 +214,12 @@ inline NumericSelection select_lowest_outside(const NumericSources& sources) {
   take(Source::OUTDOOR, sources.outdoor);
   take(Source::API, sources.api);
   take(Source::MQTT, sources.mqtt);
+  // Keep the established route on equal values.
+  if (include_open_meteo) take(Source::OPEN_METEO, sources.open_meteo);
   if (!selected.valid)
     selected.invalid_received = sources.ha.invalid_received || sources.outdoor.invalid_received ||
-                                sources.api.invalid_received || sources.mqtt.invalid_received;
+                                sources.api.invalid_received || sources.mqtt.invalid_received ||
+                                (include_open_meteo && sources.open_meteo.invalid_received);
   return selected;
 }
 

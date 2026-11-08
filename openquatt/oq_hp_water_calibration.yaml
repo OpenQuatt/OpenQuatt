@@ -198,8 +198,12 @@ number:
               oq_supply_calibration::fingerprint(
                   oq_supply_calibration::SOURCE_LOCAL_PT1000, "local:pt1000"),
               true};
-          if (!oq_supply_calibration::store_record(
-                  id(oq_water_supply_temp_calibration_pt1000_record), source, x)) return;
+          bool offset_changed = false;
+          if (!oq_supply_calibration::restore_record(
+                  id(oq_water_supply_temp_calibration_pt1000_record), source, x, offset_changed)) return;
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          if (offset_changed) oq_ph_learning::runtime().supply_calibration_changed();
+          #endif
           oq_water_supply_temp_calibration_pt1000_record->update();
           id(oq_water_supply_temp_calibration_pt1000_backup).publish_state(x);
           id(water_supply_temp_selected).update();
@@ -230,8 +234,12 @@ number:
               oq_supply_calibration::fingerprint(
                   oq_supply_calibration::SOURCE_LOCAL_DS18B20, "local:ds18b20"),
               true};
-          if (!oq_supply_calibration::store_record(
-                  id(oq_water_supply_temp_calibration_ds18b20_record), source, x)) return;
+          bool offset_changed = false;
+          if (!oq_supply_calibration::restore_record(
+                  id(oq_water_supply_temp_calibration_ds18b20_record), source, x, offset_changed)) return;
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          if (offset_changed) oq_ph_learning::runtime().supply_calibration_changed();
+          #endif
           oq_water_supply_temp_calibration_ds18b20_record->update();
           id(oq_water_supply_temp_calibration_ds18b20_backup).publish_state(x);
           id(water_supply_temp_selected).update();
@@ -259,8 +267,12 @@ number:
               oq_supply_calibration::fingerprint(
                   oq_supply_calibration::SOURCE_CIC, "cic:type"),
               true};
-          if (!oq_supply_calibration::store_record(
-                  id(oq_water_supply_temp_calibration_cic_record), source, x)) return;
+          bool offset_changed = false;
+          if (!oq_supply_calibration::restore_record(
+                  id(oq_water_supply_temp_calibration_cic_record), source, x, offset_changed)) return;
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          if (offset_changed) oq_ph_learning::runtime().supply_calibration_changed();
+          #endif
           oq_water_supply_temp_calibration_cic_record->update();
           id(oq_water_supply_temp_calibration_cic_backup).publish_state(x);
           id(water_supply_temp_selected).update();
@@ -312,8 +324,12 @@ number:
             }
             return;
           }
-          if (!oq_supply_calibration::store_record(
-                  id(oq_water_supply_temp_calibration_ha_input_record), source, x)) return;
+          bool offset_changed = false;
+          if (!oq_supply_calibration::restore_record(
+                  id(oq_water_supply_temp_calibration_ha_input_record), source, x, offset_changed)) return;
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          if (offset_changed) oq_ph_learning::runtime().supply_calibration_changed();
+          #endif
           oq_water_supply_temp_calibration_ha_input_record->update();
           id(oq_water_supply_temp_calibration_ha_input_identity_backup)
               ->publish_state(expected_fingerprint);

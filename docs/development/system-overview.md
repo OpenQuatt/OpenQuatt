@@ -189,17 +189,16 @@ after the applicable timeout the signal returns to the existing `NaN` fail-safe 
 
 ### 4.3 Demand layer
 
-Strategy packages compute:
-
-- `oq_demand_raw` (`0..20`) for the selected heating strategy
-- `oq_cooling_demand_raw` (`0..10`, further limited by `Cooling Demand Max`) for cooling
-- explicit `oq_strategy_*` status for downstream diagnostics and supervisory logic
+- Heating Curve publishes `oq_demand_raw` and `oq_heating_demand_filtered` on the `0..20` demand scale.
+- Cooling publishes `oq_cooling_demand_raw` on the `0..10` scale, subject to `Cooling Demand Max`.
+- Heating Curve and Cooling each publish their step demand in `oq_demand_filtered`.
+- Power House publishes its effective thermal request in watts as `oq_strategy_requested_power_w`.
+- Downstream diagnostics and supervisory logic use the `oq_strategy_*` status.
 
 ### 4.4 Thermal request layer
 
 `oq_thermal_request_control` computes:
 
-- `oq_demand_filtered`
 - finalized HP level requests and actuator inputs (applied-state bookkeeping belongs to the actuator)
 - shared `oq_P_hp_cap_w` and `oq_P_deficit_w` diagnostics for strategy paths that use them
 
@@ -256,9 +255,11 @@ Computes requested power from:
 - room error below the effective cold comfort edge and warm-side pullback above `setpoint + comfort above`, with stateful comfort memory
 - response profile plus rise/fall times scaled to rated house power (`Pr`)
 
-Then publishes normalized demand `0..20` and uses requested watts for candidate
-selection. The normalized scale is not a physical ODU level or frequency. See
-[the full Power House and heating-curve path](verwarmingsregeling.md).
+The electrical feedback limiter provides a ceiling on the thermal request through `request_limit_w`.
+Power House applies that ceiling before selecting compressor candidates. It publishes the effective
+request as `oq_strategy_requested_power_w` and clears `oq_demand_raw`,
+`oq_demand_filtered` and `oq_heating_demand_filtered` to zero. The `Demand raw` and `Demand filtered`
+sensors report `NaN` in Power House mode. See [the full Power House and heating-curve path](verwarmingsregeling.md).
 
 Power House stability guards in supervisory:
 
@@ -474,14 +475,24 @@ Persistent histories use separate, sector-aligned regions inside `openquatt_data
 | Energy day totals | 1024 KiB | Long-term daily records |
 | Energy hour detail | 368 KiB | Up to 365 retained day records |
 | Decision log | 128 KiB | Up to 5120 exact events, limited to 7 days |
+| Crash telemetry | 8 KiB | Two alternating crash records |
+| Passive house-learning journal | 16 KiB | Two 8 KiB A/B journal slots |
+| Settings change log | 12 KiB | Three-sector ring of 80-byte records; at least the newest 100 changes |
 
 The decision log keeps exact events in PSRAM and normally writes new records to flash in hourly batches.
 Safety-relevant incident, HP-availability, mode and fallback transitions request an earlier coalesced flash write.
 Each compact flash
 record is 24 bytes and retains its timestamp, type, source, reason, mode, transition values and duration. The smallest
-`openquatt_data` partition is 1920 KiB; all maximum archive regions together use 1880 KiB and therefore leave 40 KiB
-unassigned. The 16 MB table leaves 4136 KiB unassigned. The decision-log region is checked at compile time against the
+`openquatt_data` partition is 1920 KiB; all maximum archive regions together use 1916 KiB and therefore leave 4 KiB
+unassigned. The 16 MB table leaves 4100 KiB unassigned. Each region is checked at compile time against the
 smallest partition and at runtime against the partition actually present.
+
+The settings change log is fed by the web UI: after a setting is written, the browser posts the label and the old and
+new display value to `/openquatt/change-log` (authenticated, same-origin and CSRF-checked). The HTTP task validates
+the UTF-8 text (label, from and to share 65 bytes), keeps the entry in a strict-PSRAM ring and queues it; only the main
+loop writes flash, one record per loop iteration. A sector is erased only when it becomes the new head, and any
+failed or unverified write disables persistence until reboot while the RAM copy keeps working. A rate limit of 20
+entries plus one every 30 seconds bounds flash wear from a misbehaving client.
 
 
 ## 10. UI and Observability Organization

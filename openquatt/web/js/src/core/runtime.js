@@ -1,15 +1,16 @@
 import { FAST_POLL_INTERVAL_MS, HIDDEN_POLL_INTERVAL_MS, OFFICIAL_ESPHOME_UI_URL, POLL_JITTER_MAX_MS, POLL_JITTER_MIN_MS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "./config.js";
 import { setEntityPollingControls } from "./entity-polling-controls.js";
 import { syncDocumentTheme } from "./app-shared.js";
-import { getColorSchemeDarkMedia, getReducedMotionMedia, resolveOverviewTheme, state } from "./state.js";
+import { getColorSchemeDarkMedia, getReducedMotionMedia, invalidateHouseLearningShadow, resolveOverviewTheme, state } from "./state.js";
 export { DEFAULT_TREND_WINDOW_HOURS, TREND_WINDOW_HOURS_OPTIONS, state } from "./state.js";
 import { handleChange, handleClick, handleFocusChange, handleInput, handleKeyDown, handlePointerDown, handlePointerMove, handlePointerUp, handleSettingsInteractionEnd, handleSettingsInteractionStart, handleWheel } from "./event-handlers.js";
 import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUrlControlReplayTab, getUrlControlReplayWindow, getUrlSettingsGroup, getUrlSystemModal, SYSTEM_RECORDER_MODAL_ID, setAppView, syncUrlAppView } from "./navigation.js";
 import { primeEntities, syncEntities } from "./entity-sync.js";
 import { clearPreparedDebugRecordingCopy, refreshDebugRecordingDeviceStatus } from "../features/debug-recording.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
-import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "./motion.js";
+import { clearLegacyMotionVariables, syncMotionAnimations } from "./motion.js";
 import { render } from "./render-scheduler.js";
+import { patchLearningDom } from "./view-patch-controls.js";
 import { t } from "../i18n/index.js";
 
   export function setOverviewTheme(preference) {
@@ -36,7 +37,7 @@ import { t } from "../i18n/index.js";
 
   export function setSettingsGroup(groupId, options = {}) {
     state.settingsGroup = SETTINGS_GROUP_IDS.has(groupId) ? groupId : SETTINGS_GROUPS[0].id;
-    if (state.settingsGroup !== "system" && state.usageTelemetryPreviewSurface === "settings-system") {
+    if (state.settingsGroup !== "sharing" && state.usageTelemetryPreviewSurface === "settings-sharing") {
       state.usageTelemetryPreviewSurface = "";
     }
     try {
@@ -70,6 +71,15 @@ import { t } from "../i18n/index.js";
     }
   }
 
+  export function setFeedbackPosition(position) {
+    state.feedbackPosition = position === "bottom" ? "bottom" : "top";
+    try {
+      window.localStorage.setItem("oq-feedback-position", state.feedbackPosition);
+    } catch (_error) {
+      // Ignore storage failures in embedded browsers.
+    }
+  }
+
   export function setHpLayoutMode(mode) {
     state.hpLayoutMode = mode === "focus-hp1" || mode === "focus-hp2" ? mode : "equal";
     try {
@@ -79,13 +89,10 @@ import { t } from "../i18n/index.js";
     }
   }
 
+  // The CSS media query stops the motion itself; re-anchor animations that restart when motion returns.
   export function handleReducedMotionPreferenceChange(event) {
     state.reducedMotion = Boolean(event?.matches);
-    if (state.reducedMotion) {
-      stopMotionLoop();
-      return;
-    }
-    startMotionLoop();
+    syncMotionAnimations();
   }
 
   export function bindReducedMotionPreference() {
@@ -175,6 +182,10 @@ import { t } from "../i18n/index.js";
   setEntityPollingControls({ start: startEntityPolling, stop: stopEntityPolling });
 
   export function handleVisibilityChange() {
+    if (document.hidden && state.appView === "learning" && !state.nativeOpen && !state.learningForecastOpen) {
+      invalidateHouseLearningShadow();
+      if (!patchLearningDom()) render();
+    }
     if (state.nativeOpen) {
       return;
     }
@@ -189,14 +200,12 @@ import { t } from "../i18n/index.js";
     syncNativeVisibility();
     if (state.nativeOpen) {
       stopEntityPolling();
-      stopMotionLoop();
       if (!state.nativeFrontendLoaded) {
         void ensureNativeFrontendLoaded();
       }
       return;
     }
 
-    startMotionLoop();
     startEntityPolling();
 
     if (options.refresh === false) {
@@ -235,6 +244,7 @@ import { t } from "../i18n/index.js";
       return;
     }
 
+    if (state.appView === "learning" && nextView !== "learning") invalidateHouseLearningShadow();
     state.appView = nextView;
     if (nextView === "control") {
       state.controlReplayTab = nextControlReplayTab;

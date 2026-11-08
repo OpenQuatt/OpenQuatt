@@ -2,7 +2,7 @@ export function captureSettingsFocusContinuity(root, appView, documentRef = docu
   const active = documentRef.activeElement;
   const field = active?.dataset?.oqField || "";
   const focusKey = active?.dataset?.oqFocusKey || "";
-  if (appView !== "settings" || !root?.contains(active) || (!field && !focusKey)) {
+  if (!["settings", "learning"].includes(appView) || !root?.contains(active) || (!field && !focusKey)) {
     return null;
   }
   return {

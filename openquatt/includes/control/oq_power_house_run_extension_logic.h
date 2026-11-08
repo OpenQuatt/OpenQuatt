@@ -90,8 +90,9 @@ inline float compute_house_deficit_w(float base_capped_w, float capacity_w, bool
   return fallback_deficit_w;
 }
 
-inline bool compute_house_saturated(int base_capped_demand, float house_deficit_w) {
-  return base_capped_demand > 0 && std::isfinite(house_deficit_w) && house_deficit_w > 0.0f;
+inline bool compute_house_saturated(float base_capped_w, float house_deficit_w) {
+  return std::isfinite(base_capped_w) && base_capped_w > 0.0f && std::isfinite(house_deficit_w) &&
+         house_deficit_w > 0.0f;
 }
 
 inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {

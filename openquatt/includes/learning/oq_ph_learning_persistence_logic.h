@@ -173,6 +173,10 @@ struct LearningJournalStore {
 // A one-use software-restart grant, separate from fallible flash invalidation.
 // Keep this POD uninitialized in RTC memory; a boot consumes it before collecting.
 struct DailyRestartTicket {
+  // Mode-tagged grants cannot resume an older, ambiguous checkpoint on the
+  // wrong heat path. Legacy grants discard only the unfinished day.
+  static constexpr uint32_t kHeatPumpMagic = 0x4F514454U;
+  static constexpr uint32_t kSystemMagic = 0x4F514453U;
   uint32_t magic;
   uint32_t sequence;
   uint32_t checkpoint_epoch;
@@ -180,8 +184,20 @@ struct DailyRestartTicket {
 
   void clear() volatile { magic = 0; }
 
+  void remember_system_supply(bool observed) volatile {
+    clear();
+    sequence = checkpoint_epoch = journal_crc = 0;
+    if (observed) magic = kSystemMagic;
+  }
+
+  void revoke_checkpoint() volatile { remember_system_supply(magic == kSystemMagic); }
+
+  bool system_supply_observed() const { return magic == kSystemMagic; }
+
+  bool valid_magic() const { return magic == kHeatPumpMagic || system_supply_observed(); }
+
   bool matches(uint32_t saved_sequence, const LearningJournalRecords& records) const {
-    if (magic != 0x4F514452U || sequence != saved_sequence || !records.has_daily_checkpoint() ||
+    if (!valid_magic() || sequence != saved_sequence || !records.has_daily_checkpoint() ||
         checkpoint_epoch != records.daily_checkpoint_epoch() || records.slot.size < kLearningJournalCrcBytes)
       return false;
     learning_journal_detail::Reader reader{records.slot.bytes, records.slot.size};
@@ -196,15 +212,17 @@ struct DailyRestartTicket {
   }
 
   DailyRestartTicket consume(bool software_restart) volatile {
-    const DailyRestartTicket result = software_restart && magic == 0x4F514452U
+    const DailyRestartTicket result = software_restart && (magic == kHeatPumpMagic || magic == kSystemMagic)
                                           ? DailyRestartTicket{magic, sequence, checkpoint_epoch, journal_crc}
                                           : DailyRestartTicket{};
     clear();
     return result;
   }
 
-  void arm(const LearningJournalStore& store, bool verified_write) volatile {
-    clear();
+  void arm(const LearningJournalStore& store, bool verified_write, bool supply_observed = false) volatile {
+    // Presence is fail-closed state, not permission to recover a checkpoint.
+    // Preserve it even when no day is active or flash verification failed.
+    remember_system_supply(supply_observed);
     if (!verified_write || !store.available || store.active_slot < 0 || store.active_slot > 1 ||
         store.persisted_daily_checkpoint_epoch == 0)
       return;
@@ -216,7 +234,7 @@ struct DailyRestartTicket {
     journal_crc = learning_journal_detail::read_u32(reader);
     sequence = store.sequence;
     checkpoint_epoch = store.persisted_daily_checkpoint_epoch;
-    if (reader.ok) magic = 0x4F514452U;
+    if (reader.ok) magic = supply_observed ? kSystemMagic : kHeatPumpMagic;
   }
 };
 static_assert(sizeof(DailyRestartTicket) == 16U, "Daily restart grant must stay small");

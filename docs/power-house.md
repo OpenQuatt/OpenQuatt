@@ -34,6 +34,10 @@ Werk je liever direct met een stooklijn en aanvoertemperatuur, dan past [Water T
 
 `Power House` berekent de warmtevraag uit de woningbehoefte en een kamercorrectie. De gewenste kamertemperatuur is geen automatische uitknop. In **Power House — comfort** staan daarom **Op temperatuur houden** en **Langer doorverwarmen** apart herkenbaar bij elkaar.
 
+De vraag blijft in watt behouden tot de keuze van de compressorfrequenties. De elektrische begrenzing kan de vraag verlagen; de performancetabel bepaalt welke toegestane frequentie of Duo-combinatie past.
+
+Volg de effectieve regelvraag via `Strategy requested power` in W. De stapdiagnostiek `Demand raw` en `Demand filtered` is tijdens Power House niet beschikbaar.
+
 ### Te koud
 
 Onder de normale koude grens vraagt OpenQuatt extra warmte boven op de normale huisvraag. Die grens is het setpoint min `Power House comfort below setpoint`, in de web-app **Afkoeling onder gewenste temperatuur**.
@@ -282,6 +286,8 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 ### Vermogensvoorspelling bij de levelkeuze
 
 Bij beschikbare inlaattemperatuur en flow berekent OpenQuatt het vermogen voor ieder kandidaatpaar met de waterketen HP1 → HP2: de voorspelde uitlaat van HP1 wordt de inlaat van HP2. Dit geldt ook voor Water Temperature Control. Bij ontbrekende watermetingen gebruikt de regeling de eigen verse uitlaattemperatuur van een draaiende ODU, met de bestaande temperatuurreferentie als terugval. Stilstaande ODU's en defrost behouden die bestaande referentie. Alle frequentiegrenzen, stroomlimieten en wachttijden blijven actief; 90 Hz inclusief blijft toegestaan.
+
+De V1/V1.5-kaart van Quatt begint bij 35 °C water. Bij lagere watertemperaturen, zoals bij vloerverwarming, schatte de kaart het stroomverbruik daardoor 10-30 % te hoog. De kaart heeft daarom twee extra punten bij 25 en 30 °C, bepaald op meetdata van 54 V1/V1.5-installaties. Alleen de COP verandert; het thermisch vermogen en alles vanaf 35 °C blijven de waarden van Quatt. De meetdata loopt tot ongeveer 2 °C buiten; bij vorst zijn de nieuwe punten een schatting. Een lagere watertemperatuur geeft nooit een lagere COP dan het punt erboven.
 
 ## Langer doorverwarmen
 

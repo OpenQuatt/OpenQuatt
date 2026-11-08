@@ -59,6 +59,7 @@ class Runtime {
     CoolingWindow cooling;
     bool cooling_stop_planned{false};
     bool cooling_stop_armed{false};
+    uint8_t duo_defrost_start_block_mask{0};
     std::string service_guards[2]{"Vrijgegeven", "Vrijgegeven"};
   };
 
@@ -132,6 +133,7 @@ class Runtime {
       hp2_applied = this->apply_level_(false, id(oq_actuator_hp2_req), hp2_was_cooling, cycle);
     }
     this->publish_topology_change_(hp1_applied, hp2_applied, config.now_ms);
+    id(oq_service_status_endpoint).set_duo_defrost_start_block(cycle.duo_defrost_start_block_mask);
 #else
     hp1_applied = this->apply_level_(true, id(oq_actuator_hp1_req), hp1_was_cooling, cycle);
 #endif
@@ -622,6 +624,23 @@ class Runtime {
       this->log_block_change(is_hp1, block_reason);
     }
 
+#if OQ_TOPOLOGY_DUO
+    // Check the cached strategy request too: slew and minimum runtime can retain a peer during a Single handoff.
+    if (applied > 0 && previous == 0 && cycle.request_mode_code == 2 && !cycle.manual_service_active &&
+        id(oq_request_strategy_code) == oq_request::STRATEGY_CURVE && id(oq_request_hp1_level) > 0 &&
+        id(oq_request_hp2_level) > 0 && (is_hp1 ? id(oq_actuator_hp2_req) : id(oq_actuator_hp1_req)) > 0) {
+      const auto& peer = is_hp1 ? oq_sources::hp2 : oq_sources::hp1;
+      const bool peer_online = is_hp1 ? id(hp2_is_online) : id(hp1_is_online);
+      if (oq_defrost::duo_staging_observation(peer_online, peer.status_2108, peer.defrost, oq_sources::monotonic_ms())
+              .active) {
+        applied = level = 0;
+        block_reason = "Duo start blocked while the other heat pump is defrosting";
+        candidate_reason = openquatt_decision_log::REASON_CANDIDATE_IN_DEFROST;
+        cycle.duo_defrost_start_block_mask |= is_hp1 ? 1U : 2U;
+        this->log_block_change(is_hp1, block_reason);
+      }
+    }
+#endif
     int cap_hz = -1;
     const bool use_frequency_policy = !cycle.manual_service_active;
     if (applied > 0 && use_frequency_policy) {
@@ -1052,7 +1071,10 @@ class Runtime {
         central_reason = openquatt_decision_log::REASON_HEATING_CENTRAL_PAUSE;
       reason = stop::reason_for_stop(
           {source_unavailable, id(oq_lowflow_fault_active), water_limit, disabled, id(oq_strategy_heat_request_active),
-           curve, !curve && !id(oq_lowload_heat_latch), id(oq_power_cap_f) <= 0 && id(oq_demand_raw) > 0,
+           curve, !curve && !id(oq_lowload_heat_latch),
+           curve ? id(oq_power_cap_f) <= 0 && id(oq_demand_raw) > 0
+                 : id(oq_phouse_req_w) > 0.0f &&
+                       oq_supervisory_power_runtime::runtime().request_limit_w(id(house_rated_power_w).state) <= 0.0f,
            curve && (is_hp1 ? id(oq_curve_dispatch_hp2_level) : id(oq_curve_dispatch_hp1_level)) > 0, snapshot.reason,
            curve ? oq_heating_curve_runtime::runtime().dispatch_stop_reason()
                  : static_cast<uint8_t>(id(oq_ph_request_reason_code)),

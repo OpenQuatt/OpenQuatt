@@ -1,5 +1,5 @@
 .oq-settings-section {
-  padding: 22px;
+  padding: 24px;
   border-radius: var(--oq-helper-radius-lg);
   border: 1px solid var(--oq-helper-line);
   background: var(--oq-settings-section-background);
@@ -36,9 +36,10 @@
 
 .oq-settings-section-head-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   min-width: 0;
 }
 
@@ -56,6 +57,8 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-left: auto;
 }
 
@@ -94,47 +97,73 @@
   box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.05);
 }
 
+.oq-settings-view {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+/* The negative inset lines the group icons up with the page edge. */
+.oq-settings-view-aside {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 16px;
+  margin-left: -12px;
+}
+
+.oq-settings-view-note {
+  margin: 0;
+  padding: 0 12px;
+  color: var(--oq-helper-faint);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+/* minmax(0, 1fr) lets wide content such as charts shrink with the column instead of overflowing it. */
+.oq-settings-view-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
 .oq-settings-group-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--oq-helper-line);
+  display: grid;
+  gap: 2px;
 }
 
 .oq-settings-group-button {
   appearance: none;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 9px;
-  min-width: min(100%, 156px);
-  min-height: 52px;
-  padding: 12px 16px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-settings-group-border);
-  background: var(--oq-settings-group-background);
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--oq-helper-radius-sm);
+  background: transparent;
   color: var(--oq-settings-group-ink);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  transition: background 160ms ease, color 160ms ease;
 }
 
-.oq-settings-group-button:hover,
+.oq-settings-group-button:hover {
+  background: var(--oq-settings-group-hover-background);
+}
+
 .oq-settings-group-button:focus-visible {
-  border-color: rgba(234, 88, 12, 0.18);
+  outline: 2px solid var(--oq-helper-accent);
+  outline-offset: -2px;
 }
 
 .oq-settings-group-button.is-active {
-  border-color: var(--oq-settings-group-active-border);
   background: var(--oq-settings-group-active-background);
   color: var(--oq-settings-group-active-ink);
-  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.06);
-}
-
-.oq-settings-group-button[data-group-id="integrations"] {
-  min-width: min(100%, 236px);
 }
 
 .oq-settings-group-button-icon {
@@ -149,16 +178,15 @@
 }
 
 .oq-settings-group-button-label {
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 600;
   line-height: 1.2;
-  letter-spacing: -0.01em;
 }
 
 .oq-settings-group-stack {
   display: grid;
-  gap: 18px;
-  margin-top: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
 }
 
 .oq-settings-callout {
@@ -320,4 +348,229 @@
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.4;
+}
+
+/* Settings feedback floats over the page as a stack of up to three toasts, top by default. The newest sits in
+   front and older ones peek out behind it; they fan out while the stack is expanded (mouse, keyboard focus or a tap). */
+.oq-settings-feedback-stack {
+  --oq-stack-dir: 1;
+  position: fixed;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 1100;
+  width: min(400px, calc(100vw - 32px));
+  height: var(--oq-front-height, 0px);
+  transform: translateX(-50%);
+}
+
+/* Expanded, the stack covers the gaps between toasts, so moving from one to the next keeps it open. */
+.oq-settings-feedback-stack.is-open {
+  height: var(--oq-stack-height, 0px);
+}
+
+.oq-settings-feedback-stack--bottom {
+  --oq-stack-dir: -1;
+  top: auto;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.oq-settings-feedback {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: calc(10 - var(--oq-toast-index, 0));
+  box-sizing: border-box;
+  height: var(--oq-toast-height, auto);
+  overflow: hidden;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-md);
+  background: var(--oq-theme-surface-1e8i, #ffffff);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  color: var(--oq-helper-ink);
+  transform-origin: center bottom;
+  transform: translateY(calc(var(--oq-stack-dir) * var(--oq-toast-index, 0) * 10px)) scale(calc(1 - var(--oq-toast-index, 0) * 0.05));
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), height 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease;
+}
+
+.oq-settings-feedback-stack--bottom .oq-settings-feedback {
+  top: auto;
+  bottom: 0;
+  transform-origin: center top;
+}
+
+.oq-settings-feedback.is-behind {
+  height: var(--oq-front-height, auto);
+}
+
+.oq-settings-feedback-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 12px 16px;
+  transition: opacity 200ms ease;
+}
+
+.oq-settings-feedback.is-behind .oq-settings-feedback-inner {
+  opacity: 0;
+}
+
+.oq-settings-feedback-stack.is-open .oq-settings-feedback {
+  height: var(--oq-toast-height, auto);
+  transform: translateY(calc(var(--oq-stack-dir) * var(--oq-toast-offset, 0px)));
+}
+
+.oq-settings-feedback-stack.is-open .oq-settings-feedback-inner {
+  opacity: 1;
+}
+
+.oq-settings-feedback.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.oq-settings-feedback-inner p {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.oq-settings-feedback-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: #16a34a;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.oq-settings-feedback--error {
+  border-color: rgba(234, 88, 12, 0.35);
+}
+
+.oq-settings-feedback--error .oq-settings-feedback-icon {
+  stroke: var(--oq-helper-accent-deep);
+}
+
+/* Errors always show their close button; confirmations show it on the expanded stack, on keyboard focus and on touch screens. */
+.oq-settings-feedback-close {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin: -2px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--oq-helper-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.oq-settings-feedback--error .oq-settings-feedback-close,
+.oq-settings-feedback-stack.is-open .oq-settings-feedback-close {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .oq-settings-feedback-close {
+    opacity: 1;
+  }
+}
+
+.oq-settings-feedback-close:focus-visible {
+  opacity: 1;
+}
+
+.oq-settings-feedback-close:hover,
+.oq-settings-feedback-close:focus-visible {
+  background: var(--oq-helper-card-muted);
+  color: var(--oq-helper-ink);
+}
+
+.oq-settings-feedback-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--oq-helper-soft);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Actions sit in a footer bar across the full toast width. */
+.oq-settings-feedback-footer {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px -10px -12px -16px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--oq-helper-line);
+  background: var(--oq-helper-card-muted);
+}
+
+.oq-settings-feedback-log,
+.oq-settings-feedback-undo {
+  appearance: none;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--oq-helper-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.oq-settings-feedback-undo {
+  margin-left: auto;
+  color: var(--oq-helper-accent-deep);
+}
+
+.oq-settings-feedback-log:hover,
+.oq-settings-feedback-log:focus-visible,
+.oq-settings-feedback-undo:hover,
+.oq-settings-feedback-undo:focus-visible {
+  background: color-mix(in srgb, var(--oq-helper-ink) 7%, transparent);
+}
+
+.oq-settings-feedback-undo:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.oq-helper-shell--dark .oq-settings-feedback {
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.45);
+}
+
+.oq-helper-shell--dark .oq-settings-feedback-icon {
+  stroke: #4ade80;
+}
+
+.oq-helper-shell--dark .oq-settings-feedback--error .oq-settings-feedback-icon,
+.oq-helper-shell--dark .oq-settings-feedback-undo {
+  stroke: #fb923c;
+  color: #fb923c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oq-settings-feedback,
+  .oq-settings-feedback-inner,
+  .oq-settings-feedback-close {
+    transition: none;
+  }
 }

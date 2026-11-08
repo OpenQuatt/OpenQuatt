@@ -40,7 +40,7 @@ export function renderUsageTelemetryConsent({ enabled, busy, settings = false, d
 }
 
 export function renderUsageTelemetryDisclosure({ collapsible = false, idPrefix = "oq-usage", open = false } = {}) {
-  const previewSurface = collapsible ? "settings-system" : "quickstart";
+  const previewSurface = collapsible ? "settings-sharing" : "quickstart";
   const preview = state.usageTelemetryPreviewSurface === previewSurface
     ? state.usageTelemetryPreviewPayload
     : null;

@@ -89,7 +89,7 @@ struct Simulation {
     if (target.limited) demand_state.comfort_memory_c = 0;
     const oq_power_house::DemandInput demand_input{now, 19.62f,       -10,  18, 10000, room, target.effective_c,
                                                    NAN, water_factor, false};
-    const oq_power_house::DemandTuning tuning{0, 2000, input.comfort_below_c, 0.3f, 5, 2, 20, NAN};
+    const oq_power_house::DemandTuning tuning{0, 2000, input.comfort_below_c, 0.3f, 5, 2, NAN};
     const auto demand = oq_power_house::decide_demand(demand_input, tuning, demand_state);
     assert(demand.valid && demand.contributions.modelled_base_w == 0);
     demand_state = demand.next;

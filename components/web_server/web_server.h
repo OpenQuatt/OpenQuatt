@@ -426,6 +426,9 @@ class WebServer final : public Component, public AsyncWebHandler {
   void on_text_update(text::Text* obj);
   /// Handle a text input request under '/text/<id>'.
   void handle_text_request(AsyncWebServerRequest* request, const UrlMatch& match);
+#ifdef USE_OPENQUATT_WEATHER
+  void handle_weather_location_set_(AsyncWebServerRequest* request, text::Text* obj);
+#endif
 
   static void text_state_json_generator(WebServer* web_server, void* source, json::JsonBuilder& builder);
   static void text_all_json_generator(WebServer* web_server, void* source, json::JsonBuilder& builder);

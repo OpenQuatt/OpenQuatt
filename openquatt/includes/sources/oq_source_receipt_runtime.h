@@ -54,8 +54,24 @@ struct LocalOutsideSelection {
 
 inline LocalOutsideSelection local_outside_selection{};
 
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+inline RawFloatReceipt local_supply_ds18b20{};
+inline RawFloatReceipt local_supply_pt1000{};
+inline RawFloatReceipt ha_water_supply{};
+inline RawFloatReceipt local_flow{};
+#endif
+
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
 inline RawFloatReceipt controller_flow{};
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+inline RawFloatReceipt controller_filtered_flow{};
+
+inline RawFloatReceipt current_controller_filtered_flow() {
+  return controller_flow.valid && (controller_flow.value == 0.0f) == (controller_filtered_flow.value == 0.0f)
+             ? controller_filtered_flow
+             : RawFloatReceipt{};
+}
+#endif
 #endif
 
 }  // namespace oq_sources

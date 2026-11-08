@@ -175,9 +175,8 @@ Als je deze strategie afstelt, begin dan bijna altijd hier:
 Bij `Duo` daarna eventueel:
 
 6. `Minimum runtime`
-7. `Dual HP Enable Level`
-8. `Dual HP Enable Hold`
-9. `Dual HP Disable Hold`
+7. `Dual HP Enable Hold` (standaard 3 min)
+8. `Dual HP Disable Hold` (standaard 5 min)
 
 ## Wat merk je bij Single en Duo?
 
@@ -195,12 +194,14 @@ Bij `Duo` werkt deze strategie eenvoudiger dan bij `Power House`.
 
 Praktisch:
 
-- OpenQuatt begint normaal met één warmtepomp;
-- de tweede unit komt pas bij als de vraag hoog genoeg en lang genoeg aanwezig blijft;
-- loopt de draaiende warmtepomp nog op, dan komt de tweede unit pas bij zodra die warmtepomp volgens het prestatiemodel minstens zoveel levert als de kleinste Duo-combinatie; zo springt de tweede unit niet bij om kort daarna weer te stoppen. Kan de draaiende warmtepomp niet verder oplopen, bijvoorbeeld door `Silent max frequency`, een actieve storing of ontdooien, dan geldt deze wachttijd niet;
-- er zit dus bewust wachttijd en hysterese in.
+- Bij een start vanuit stilstand krijgt de beschikbare warmtepomp met de minste draaiuren voorrang.
+- In `RECOVERY` kan de tweede pomp bijspringen als de eerste haar toegestane maximum bereikt, de begrensde PID-vraag minstens 95% van de maximale vraag bedraagt, het aanvoertekort aanhoudt en Duo volgens het prestatiemodel extra warmte kan leveren. Hoe groot en hoe lang het tekort moet zijn, hangt af van het stooklijnprofiel. Zodra beide pompen draaien, kan de PID hun volledige beschikbare vermogen vragen. Ontdooien zet de wachttijd voor het bijschakelen van een stilstaande pomp terug op nul.
+- In `MAINTAIN` kan de PID-vraag beide pompen rond het aanvoerdoel laten draaien. Daalt de vraag voldoende en volstaat één pomp, dan moduleert Duo eerst terug. Daarna volgt de ingestelde wachttijd en blijft de beschikbare pomp met de minste draaiuren draaien.
 
-Dat voorkomt onrustig schakelen tussen één en twee warmtepompen.
+De gewone opschakelroute vraagt minstens 80% van de maximale vraag in
+`MAINTAIN`. In `RECOVERY` geldt die route vanaf 90% als de eerste pomp na
+een herstart van de controller tijdelijk op een vaste stand wordt gehouden.
+Voor deze route geldt `Dual HP Enable Hold`.
 
 ## Wat hoef je meestal niet meteen aan te raken?
 

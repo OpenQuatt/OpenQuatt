@@ -14,6 +14,13 @@ class LearningRestartRuntimeTest(unittest.TestCase):
     def test_actual_owner_waits_restores_or_discards_without_touching_retained_learning(self):
         source = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
         branch = production_function(source, "if (state.daily_restore_pending) {")
+        prepare = production_function(source, "void prepare_restart() {")
+        save = " ".join(production_function(source, "bool save_checkpoint_(").split())
+        self.assertIn("passive_runtime_dataset(state.learner), checkpoint_quality,", save)
+        self.assertIn("daily_heat_quality(state.config.quality, true)", save)
+        self.assertIn("daily_checkpoint_heat_quality(state.config.quality, uncertain_quality, state.input,", save)
+        self.assertLess(prepare.index("if (state.reset_requested) tick();"),
+                        prepare.index("daily_restart_ticket.arm(state.journal, false, state.system_supply_observed);"))
         with tempfile.TemporaryDirectory(prefix="oq-learning-restart-owner-") as directory:
             temporary = Path(directory)
             (temporary / "production_daily_restart.inc").write_text(branch)
@@ -23,6 +30,14 @@ class LearningRestartRuntimeTest(unittest.TestCase):
                 source, "if (state.restart_prepared) {\n      if (!coherent_daily_restart_tick"))
             (temporary / "production_retry_prepare.inc").write_text(production_function(
                 source, "if (state.restart_prepared) {\n      // OTA retry"))
+            (temporary / "production_pre_storage_restart.inc").write_text(production_function(
+                production_function(source, "void prepare_restart() {"), "if (!storage_) {"))
+            (temporary / "production_supply_calibration_change.inc").write_text("\n".join(
+                production_function(source, signature) for signature in (
+                    "static void clear_daily_resume_status_(",
+                    "static void cancel_daily_resume_status_(",
+                    "void supply_calibration_changed()",
+                )))
             binary = temporary / "restart-owner"
             built = run_process(compiler_command(
                 "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I", str(temporary),

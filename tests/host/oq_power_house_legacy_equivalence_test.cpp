@@ -143,9 +143,13 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
   const baseline_0282c2e9::DemandInput frozen_input{
       input.now_ms, input.outside_c,  input.cold_c,     input.zero_power_c,       input.rated_w,
       input.room_c, input.setpoint_c, input.external_w, input.water_limit_factor, input.external_valid};
-  const baseline_0282c2e9::DemandTuning frozen_tuning{
-      tuning.temperature_guard_c, tuning.reaction_w_per_k, tuning.comfort_below_c, tuning.comfort_above_c,
-      tuning.rise_time_min,       tuning.fall_time_min,    tuning.demand_max, tuning.memory_max_c};
+  const baseline_0282c2e9::DemandTuning frozen_tuning{tuning.temperature_guard_c,
+                                                      tuning.reaction_w_per_k,
+                                                      tuning.comfort_below_c,
+                                                      tuning.comfort_above_c,
+                                                      tuning.rise_time_min,
+                                                      tuning.fall_time_min,
+                                                      10, tuning.memory_max_c};
   const baseline_0282c2e9::DemandState frozen_state{state.last_w, state.last_ms, state.comfort_memory_c};
   const auto expected = baseline_0282c2e9::decide_demand(frozen_input, frozen_tuning, frozen_state);
   assert(actual.valid == expected.valid);
@@ -157,18 +161,14 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
   // Numeric warm-edge and recovery-boundary cases live in the demand core test.
   if (actual.valid && input.room_c > input.setpoint_c) {
     assert(actual.requested_w >= expected.requested_w - 0.001f);
-    assert(actual.raw_demand >= expected.raw_demand);
     assert(actual.requested_w >= 0.0f && actual.requested_w <= input.rated_w);
     return;
   }
-  assert(actual.raw_demand == expected.raw_demand);
   assert_close(actual.requested_w, expected.requested_w, "requested_w");
   assert_close(actual.next.last_w, expected.next.last_w, "next.last_w");
 }
 
-// Match the frozen oracle's derived ceiling (above 0.55 -> clamped 0.20) so
-// this test still pins equivalence for everything except the removed coupling.
-ActualTuning tuning() { return {0.15f, 1800.0f, 0.35f, 0.55f, 0.20f, 8.0f, 5.0f, 10}; }
+ActualTuning tuning() { return {0.15f, 1800.0f, 0.35f, 0.55f, 8.0f, 5.0f, 0.2f}; }
 
 ActualInput input() { return {123456u, 2.0f, -10.0f, 16.0f, 7000.0f, 19.5f, 20.0f, NAN, 1.0f, false}; }
 
@@ -213,18 +213,15 @@ void invalid_inputs_and_rollover() {
   compare_case(in, tuning(), state);
 }
 
-void normalisation_half_boundaries_and_slew() {
+void water_boundaries_and_slew() {
   auto in = input();
   auto state = ActualState{0.0f, 0u, 0.0f};
-  const int demand_max_values[] = {1, 2, 3, 10, 17};
   const float water_values[] = {0.4999f, 0.5f, 0.5001f};
-  for (int demand_max : demand_max_values)
-    for (float water : water_values) {
-      auto t = tuning();
-      t.demand_max = demand_max;
-      in.water_limit_factor = water;
-      compare_case(in, t, state);
-    }
+  for (float water : water_values) {
+    auto t = tuning();
+    in.water_limit_factor = water;
+    compare_case(in, t, state);
+  }
   const float previous_values[] = {0.0f, 3500.0f, 7000.0f, NAN};
   const uint32_t elapsed_values[] = {1u, 119999u, 120000u, 3600000u};
   for (float previous : previous_values)
@@ -241,6 +238,6 @@ void normalisation_half_boundaries_and_slew() {
 int main() {
   deterministic_parameter_and_state_sweep();
   invalid_inputs_and_rollover();
-  normalisation_half_boundaries_and_slew();
+  water_boundaries_and_slew();
   return 0;
 }

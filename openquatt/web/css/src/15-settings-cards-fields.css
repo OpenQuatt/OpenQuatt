@@ -330,18 +330,23 @@
   line-height: 1.55;
 }
 
+/* Subpanels divide a section with a rule; only advice keeps its own box. */
 .oq-settings-subpanel {
-  margin-top: 18px;
-  padding: 18px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-helper-card-muted);
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--oq-helper-line);
 }
 
 .oq-settings-subpanel--nested {
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--oq-settings-subpanel-background);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.oq-settings-subpanel--advice {
+  padding: 18px;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-lg);
+  background: var(--oq-helper-card-muted);
 }
 
 .oq-ph-comfort .oq-settings-info-popover {
@@ -449,16 +454,6 @@
   .oq-run-extension-thresholds.oq-warmup-readings {
     grid-template-columns: 1fr;
   }
-
-  .oq-ph-comfort {
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-
-  .oq-ph-comfort > .oq-settings-subpanel {
-    padding: 12px;
-  }
 }
 
 .oq-settings-cooling-schedule {
@@ -519,41 +514,14 @@
 .oq-house-learning-chart-panel {
   display: grid;
   gap: 14px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--oq-helper-line);
 }
-
-.oq-house-learning-chart-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.oq-house-learning-disclosure-copy { display: grid; gap: 4px; }
-.oq-house-learning-disclosure-copy strong { color: var(--oq-helper-ink); font-size: 0.9rem; }
-.oq-house-learning-disclosure-copy > span { color: var(--oq-helper-faint); font-size: 0.78rem; line-height: 1.4; }
-.oq-house-learning-disclosure-action { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; color: var(--oq-helper-soft); font-size: 0.8rem; font-weight: 600; }
-.oq-house-learning-disclosure-action svg { fill: none; stroke: currentColor; stroke-width: 1.7; transition: transform 150ms ease; }
-.oq-house-learning-chart-head[aria-expanded="true"] .oq-house-learning-disclosure-action svg { transform: rotate(180deg); }
-.oq-house-learning-chart-head:hover .oq-house-learning-disclosure-action { color: var(--oq-helper-accent); }
-.oq-house-learning-chart-head:focus-visible { outline: 2px solid var(--oq-helper-accent); outline-offset: 6px; border-radius: 4px; }
-.oq-house-learning-chart-head:disabled { cursor: wait; opacity: 0.65; }
 
 .oq-house-learning-readiness { padding: 16px 18px; border: 1px solid var(--oq-helper-line); border-radius: 12px; background: color-mix(in srgb, var(--oq-helper-card) 80%, var(--oq-helper-line)); color: var(--oq-helper-soft); font-size: 0.84rem; line-height: 1.45; }
 .oq-house-learning-readiness-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .oq-house-learning-readiness h5 { margin: 0; color: var(--oq-helper-ink); font-size: 0.94rem; }
 .oq-house-learning-readiness p { margin: 4px 0 0; max-width: 760px; }
-.oq-house-learning-readiness-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px 32px; max-width: 720px; margin: 16px 0 0; }
-.oq-house-learning-readiness-metric { display: grid; gap: 4px; }
+.oq-house-learning-readiness-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px 32px; margin: 16px 0 0; }
+.oq-house-learning-readiness-metric { display: grid; align-content: start; gap: 4px; }
 .oq-house-learning-readiness-metrics dt { font-size: 0.78rem; font-weight: 600; }
 .oq-house-learning-readiness-metrics dd { margin: 0; color: var(--oq-helper-ink); font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .oq-house-learning-readiness-metrics dd span { color: var(--oq-helper-faint); font-size: 0.8rem; font-weight: 400; }
@@ -563,6 +531,9 @@
 .oq-house-learning-readiness-track { height: 4px; overflow: hidden; margin: 3px 0; border-radius: 4px; background: var(--oq-helper-line); }
 .oq-house-learning-readiness-track span { display: block; height: 100%; border-radius: inherit; background: var(--oq-helper-accent); }
 .oq-house-learning-readiness-metric.is-complete .oq-house-learning-readiness-track span { background: var(--oq-helper-modal-success-ink); }
+@media (max-width: 680px) {
+  .oq-house-learning-readiness-metrics { grid-template-columns: 1fr; gap: 16px; }
+}
 .oq-house-learning-chart-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--oq-helper-faint); font-size: 0.78rem; }
 
 .oq-house-learning-chart-wrap { position: relative; }
@@ -712,6 +683,53 @@
 .oq-settings-field--compact {
   gap: 12px;
   padding: 14px;
+}
+
+/* Inside a settings section a field is a label and a control, not another card. */
+.oq-settings-view .oq-settings-field.oq-helper-surface {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+/* Field help unfolds under the label at a readable width instead of floating over the controls. */
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head > .oq-settings-info {
+  display: contents;
+}
+
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head .oq-settings-info-popover {
+  position: static;
+  flex: 0 0 100%;
+  width: auto;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-head .oq-settings-info-popover p {
+  width: fit-content;
+  max-width: 560px;
+  padding: 10px 12px;
+  border-radius: var(--oq-helper-radius-md);
+  background: var(--oq-helper-card-muted);
+}
+
+/* Short values do not need the full column; long text such as URLs keeps its width. */
+.oq-settings-view .oq-settings-field.oq-helper-surface > .oq-settings-field-control > :is(.oq-helper-control, .oq-settings-control--select, .oq-settings-control--time) {
+  max-width: 360px;
+}
+
+.oq-settings-view :is(.oq-settings-grid, .oq-settings-hp-group-grid) {
+  gap: 22px 28px;
+  margin-top: 20px;
 }
 
 .oq-settings-field--compact .oq-settings-field-head h3 {

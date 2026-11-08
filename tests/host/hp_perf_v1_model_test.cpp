@@ -15,6 +15,10 @@ struct FakeGenerationSelect {
 
 namespace {
 
+// Index of Quatt's lowest specified supply node; the rows below it are the fleet-fitted low-supply rows.
+constexpr int kSupply35 = 2;
+static_assert(oq_perf_v1::T_sup_bp[kSupply35] == 35.0f);
+
 void assert_value(float actual, float expected) {
   if (std::isnan(expected)) {
     assert(std::isnan(actual));
@@ -51,11 +55,15 @@ void assert_missing_corner_dependencies() {
   };
   // Plane 100 + 200*x + 100*y in the first temperature cell. The masks
   // independently specify which corner measurements each point requires.
+  const float low = oq_perf_v1::T_sup_bp[0];
+  const float high = oq_perf_v1::T_sup_bp[1];
+  const float mid = (low + high) / 2.0f;
+  const float below = low - 15.0f;
   const Sample samples[] = {
-      {-15.0f, 35.0f, 100.0f, 0x1}, {-7.0f, 35.0f, 300.0f, 0x2},  {-15.0f, 45.0f, 200.0f, 0x4},
-      {-7.0f, 45.0f, 400.0f, 0x8},  {-11.0f, 35.0f, 200.0f, 0x3}, {-11.0f, 45.0f, 300.0f, 0xc},
-      {-15.0f, 40.0f, 150.0f, 0x5}, {-7.0f, 40.0f, 350.0f, 0xa},  {-11.0f, 40.0f, 250.0f, 0xf},
-      {-30.0f, 10.0f, 100.0f, 0x1}, {-30.0f, 40.0f, 150.0f, 0x5}, {-11.0f, 10.0f, 200.0f, 0x3},
+      {-15.0f, low, 100.0f, 0x1},   {-7.0f, low, 300.0f, 0x2},  {-15.0f, high, 200.0f, 0x4},
+      {-7.0f, high, 400.0f, 0x8},   {-11.0f, low, 200.0f, 0x3}, {-11.0f, high, 300.0f, 0xc},
+      {-15.0f, mid, 150.0f, 0x5},   {-7.0f, mid, 350.0f, 0xa},  {-11.0f, mid, 250.0f, 0xf},
+      {-30.0f, below, 100.0f, 0x1}, {-30.0f, mid, 150.0f, 0x5}, {-11.0f, below, 200.0f, 0x3},
   };
   float data[oq_perf_v1::N_AMB][oq_perf_v1::N_SUP][oq_perf_v1::N_LVL]{};
   for (unsigned missing = 0; missing < 16; ++missing) {
@@ -77,12 +85,41 @@ void assert_clamped_boundaries() {
     for (const float outside : {-30.0f, -15.0f, 12.0f, 30.0f}) {
       for (const float supply : {10.0f, 35.0f, 55.0f, 70.0f}) {
         const int ambient_index = outside <= -15.0f ? 0 : oq_perf_v1::N_AMB - 1;
-        const int supply_index = supply <= 35.0f ? 0 : oq_perf_v1::N_SUP - 1;
+        const int supply_index = supply < 35.0f ? 0 : supply == 35.0f ? kSupply35 : oq_perf_v1::N_SUP - 1;
         assert_value(oq_perf_v1::interp_power_th_w(level, outside, supply),
                      oq_perf_v1::P_th_W[ambient_index][supply_index][level - 1]);
         assert_value(oq_perf_v1::interp_cop(level, outside, supply),
                      oq_perf_v1::COP[ambient_index][supply_index][level - 1]);
       }
+    }
+  }
+}
+
+void assert_low_supply_rows() {
+  // Quatt's specified rows keep their published values.
+  assert_value(oq_perf_v1::COP[0][kSupply35][0], 1.78f);
+  assert_value(oq_perf_v1::COP[3][kSupply35][0], 4.71f);
+  assert_value(oq_perf_v1::COP[4][oq_perf_v1::N_SUP - 1][7], 3.07f);
+  assert_value(oq_perf_v1::P_th_W[3][kSupply35][0], 2071.03f);
+  for (int ambient = 0; ambient < oq_perf_v1::N_AMB; ++ambient) {
+    for (int index = 0; index < oq_perf_v1::N_LVL; ++index) {
+      const float cop35 = oq_perf_v1::COP[ambient][kSupply35][index];
+      for (int supply = 0; supply < kSupply35; ++supply) {
+        // Below 35 C only the COP changes: heat repeats the 35 C row, and a
+        // cell exists exactly where Quatt's 35 C cell exists.
+        assert_value(oq_perf_v1::P_th_W[ambient][supply][index], oq_perf_v1::P_th_W[ambient][kSupply35][index]);
+        assert(std::isnan(cop35) == std::isnan(oq_perf_v1::COP[ambient][supply][index]));
+      }
+      if (std::isnan(cop35)) continue;
+      // Less lift never costs efficiency: the COP does not drop towards lower supply.
+      for (int supply = 0; supply < kSupply35; ++supply)
+        assert(oq_perf_v1::COP[ambient][supply][index] >= oq_perf_v1::COP[ambient][supply + 1][index]);
+      // Between the low-supply nodes the COP is interpolated linearly, like the rest of the table.
+      const float outside_c = oq_perf_v1::T_amb_bp[ambient];
+      assert_value(oq_perf_v1::interp_cop(index + 1, outside_c, 32.5f),
+                   (oq_perf_v1::COP[ambient][1][index] + cop35) / 2.0f);
+      assert_value(oq_perf_v1::interp_power_th_w(index + 1, outside_c, 27.5f),
+                   oq_perf_v1::P_th_W[ambient][kSupply35][index]);
     }
   }
 }
@@ -117,6 +154,7 @@ int main() {
   assert_raw_nodes();
   assert_missing_corner_dependencies();
   assert_clamped_boundaries();
+  assert_low_supply_rows();
   assert_frequency_dispatch();
   return 0;
 }
