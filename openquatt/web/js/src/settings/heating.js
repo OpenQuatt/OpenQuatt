@@ -394,7 +394,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   export function renderPowerHouseAdvancedField() {
     const fields = [
       renderSettingsNumberField("phKp", t("settingsHeating.phKpTitle"), t("settingsHeating.phKpCopy"), "", { unitOverride: "W/K" }),
-    renderSettingsNumberField("phMemoryMaxC", t("settingsHeating.phMemoryMaxTitle"), t("settingsHeating.phMemoryMaxCopy"), "", { decimals: 1 }),
+      renderSettingsNumberField("phMemoryMaxC", t("settingsHeating.phMemoryMaxTitle"), t("settingsHeating.phMemoryMaxCopy"), "", { decimals: 1 }),
       renderPowerHouseResponseProfilesField(),
     ].filter(Boolean);
 
