@@ -421,7 +421,7 @@ export default {
       title: "Model diagnostics",
       copy: "Heating and cooling: the 1R1C model with 30-minute periods. Heat demand curve: daily measurements converted to 20 °C indoors. Separate quality checks; control remains unchanged.",
     },
-    layout: { technical: "Sources and technical details", moreModelData: "More measurement variation is needed for validation.", open: "View", close: "Close" },
+    layout: { technical: "Sources and technical details", moreModelData: "More measurement variation is needed for validation." },
     readiness: {
       qualitySplit: "Daily measurements with known quality: {count}. The controller selects training and independent checking days; historical quality remains unknown.",
       label: "Learned heat demand curve progress",
@@ -477,8 +477,7 @@ export default {
       panelTitle: "Measurements",
       panelCopy: "Chart, progress and home model",
       loading: "Loading measurement data…",
-      show: "Show measurement data",
-      hide: "Hide measurement data",
+      refresh: "Refresh",
       loadedAt: "Loaded {date}",
       durationHoursMinutes: "{hours} hr {minutes} min",
       durationMinutes: "{minutes} min",

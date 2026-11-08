@@ -73,6 +73,10 @@ test.beforeEach(t => {
   state.houseLearningEndpointChecking = false;
   state.houseLearningFetchPromise = null;
   state.houseLearningLastFetchAt = 0;
+  // These tests count status polls; an already loaded chart keeps the measurement auto-load out of them.
+  state.houseLearningChart = [];
+  state.houseLearningChartLoading = false;
+  state.houseLearningChartError = "";
   state.houseLearningRequestId += 1;
   state.houseLearningShadowEpoch += 1;
   state.root = { querySelector: selector => selector === "[data-oq-house-learning]" ? {} : null };

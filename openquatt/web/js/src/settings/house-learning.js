@@ -401,6 +401,7 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
     state.houseLearningChartLoading, state.houseLearningChartError,
+    state.houseLearningStatus?.records === 0 && state.houseLearningStatus.journalStatus === "cleared",
     houseLearningLine(),
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
@@ -413,21 +414,25 @@ function renderHouseLearningDataActions(busy) {
   return `<div class="oq-helper-actions oq-house-learning-actions"><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${escapeHtml(t(state.busyAction === "houseLearningExport" ? "houseLearning.export.downloading" : "houseLearning.export.button"))}</button>${reset}</div>`;
 }
 
+// The measurement card is always open: the chart loads by itself, the button reloads it.
 function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
-  const open = state.houseLearningChart !== null || Boolean(state.houseLearningChartError);
-  const chart = state.houseLearningChart !== null ? renderHouseLearningChart(
-    state.houseLearningChart,
+  const status = state.houseLearningStatus;
+  const records = state.houseLearningChart ?? (status?.records === 0 && status.journalStatus === "cleared" ? [] : null);
+  const chart = records !== null ? renderHouseLearningChart(
+    records,
     { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
     houseLearningLine(),
   ) : "";
-  const actionLabel = t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : open ? "houseLearning.chart.hide" : "houseLearning.chart.show");
-  return `<button class="oq-house-learning-chart-head" type="button" data-oq-action="load-house-learning-chart" aria-label="${escapeHtml(actionLabel)}" aria-expanded="${open}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>
-    <span class="oq-house-learning-disclosure-copy"><strong>${escapeHtml(t("houseLearning.chart.panelTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.panelCopy"))}</span></span>
-    <span class="oq-house-learning-disclosure-action">${escapeHtml(t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : open ? "houseLearning.layout.close" : "houseLearning.layout.open"))}<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span>
-  </button>
+  return `<div class="oq-settings-section-head">
+    <div class="oq-house-learning-heading"><h3>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h3><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t("houseLearning.chart.refresh"))}</button></div>
+    <p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p>
+  </div>
+  <div class="oq-house-learning-chart-panel">
   ${state.houseLearningChartError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningChartError))}</p>` : ""}
-  ${chart}${open && state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">${escapeHtml(t("houseLearning.chart.loadedAt", { date: formatDateTime(state.houseLearningChartFetchedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }))}</p>` : ""}
-  ${open ? `<div data-oq-house-learning-secondary>${renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary")}</div>${renderHouseLearningDataActions(busy)}` : ""}`;
+  ${records === null && !state.houseLearningChartError ? `<p class="oq-settings-action-note" role="status">${escapeHtml(t("houseLearning.chart.loading"))}</p>` : ""}
+  ${chart}${state.houseLearningChart !== null && state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">${escapeHtml(t("houseLearning.chart.loadedAt", { date: formatDateTime(state.houseLearningChartFetchedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }))}</p>` : ""}
+  <div data-oq-house-learning-secondary>${renderHouseLearningStatusMarkup(status, "secondary")}</div>${renderHouseLearningDataActions(busy)}
+  </div>`;
 }
 
 export function renderHouseLearningSettings() {
@@ -448,9 +453,9 @@ export function renderHouseLearningSettings() {
       <div class="oq-settings-section-body">
         <div data-oq-house-learning-status>${renderCurrentLearningStatus()}</div>
         <div data-oq-house-learning-shadow>${renderHouseLearningShadow()}</div>
-        <div class="oq-house-learning-chart-panel" data-oq-house-learning-chart-panel data-oq-chart-signature="${escapeHtml(houseLearningChartSignature(busy))}">${renderHouseLearningChartPanel(busy)}</div>
       </div>
-    </section>`;
+    </section>
+    <section class="oq-settings-section" data-oq-house-learning-chart-panel data-oq-chart-signature="${escapeHtml(houseLearningChartSignature(busy))}">${renderHouseLearningChartPanel(busy)}</section>`;
 }
 
 const learningMarkup = new WeakMap();
@@ -491,7 +496,7 @@ export function patchHouseLearningSettingsStatus() {
     patchLearningMarkup(toggle, renderSettingsCompactSwitchControl("houseLearningEnabled", t("houseLearning.switch.label"),
       model.enabled, Boolean(state.busyAction) || state.houseLearningReset === "pending" || model.busy, t("common.on"), t("common.off")));
   }
-  const chartNode = panel.querySelector("[data-oq-house-learning-chart-panel]");
+  const chartNode = state.root.querySelector("[data-oq-house-learning-chart-panel]");
   if (chartNode) {
     const signature = houseLearningChartSignature();
     if (chartNode.getAttribute("data-oq-chart-signature") !== signature) {
@@ -503,7 +508,7 @@ export function patchHouseLearningSettingsStatus() {
   if (shadowNode) patchLearningMarkup(shadowNode, renderHouseLearningShadow());
   const markup = renderCurrentLearningStatus();
   patchLearningMarkup(node, markup);
-  const secondary = panel?.querySelector("[data-oq-house-learning-secondary]");
+  const secondary = chartNode?.querySelector("[data-oq-house-learning-secondary]");
   if (secondary) {
     const secondaryMarkup = renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary");
     patchLearningMarkup(secondary, secondaryMarkup);

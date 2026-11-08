@@ -422,7 +422,7 @@ export default {
       title: "Modeldiagnostiek",
       copy: "Opwarmen en afkoelen: het 1R1C-model met perioden van 30 minuten. Woninglijn: dagmetingen omgerekend naar 20 °C in huis. Eigen kwaliteitscontroles; de regeling verandert niet.",
     },
-    layout: { technical: "Bronnen en technische details", moreModelData: "Meer meetvariatie nodig voor validatie.", open: "Bekijken", close: "Sluiten" },
+    layout: { technical: "Bronnen en technische details", moreModelData: "Meer meetvariatie nodig voor validatie." },
     readiness: {
       qualitySplit: "Dagmetingen met bekende meetkwaliteit: {count}. De controller beoordeelt welke dagen leren en welke onafhankelijk controleren; historische kwaliteit blijft onbekend.",
       label: "Voortgang geleerde woninglijn",
@@ -478,8 +478,7 @@ export default {
       panelTitle: "Meetgegevens",
       panelCopy: "Grafiek, voortgang en huismodel",
       loading: "Meetgegevens laden…",
-      show: "Meetgegevens tonen",
-      hide: "Meetgegevens verbergen",
+      refresh: "Vernieuwen",
       loadedAt: "Geladen {date}",
       durationHoursMinutes: "{hours} u {minutes} min",
       durationMinutes: "{minutes} min",
