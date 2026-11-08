@@ -365,10 +365,10 @@
   gap: 16px;
 }
 
+/* Below the page title in size, so the panel keeps one clear top heading. */
 .oq-working-now h2 {
-  margin-top: 8px;
-  font-size: clamp(1.45rem, 2vw, 2rem);
-  line-height: 1.08;
+  font-size: 1.25rem;
+  line-height: 1.2;
 }
 
 .oq-working-now-main,
@@ -485,7 +485,7 @@
 
 .oq-working-now h2 .oq-working-mode-badge {
   margin-left: 10px;
-  transform: translateY(-4px);
+  transform: translateY(-1px);
 }
 
 .oq-working-split,

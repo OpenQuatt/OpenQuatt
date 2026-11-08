@@ -3328,7 +3328,6 @@ export default {
     kindAggregate: "Samenvatting",
     kindRecord: "Record",
     modeBadgeCm98: "Technische mode CM98",
-    nowTitle: "Actuele situatie",
     nowNext: "Wat doet het systeem daarna?",
     entryDuration: "Duur: {value}",
     detailSelected: "Geselecteerd",

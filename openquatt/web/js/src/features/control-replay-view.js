@@ -2824,7 +2824,6 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     return `
       <section class="oq-working-now oq-working-now--${escapeHtml(status.tone)}">
         <div class="oq-working-now-main">
-          <span class="oq-working-eyebrow">${t("controlReplay.nowTitle")}</span>
           <h2>${escapeHtml(current.title)}${renderControlWorkingModeBadge(current)}</h2>
           <p>${escapeHtml(current.copy)}</p>
           <div class="oq-working-pill-row">

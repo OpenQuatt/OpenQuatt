@@ -3328,7 +3328,6 @@ export default {
     kindAggregate: "Summary",
     kindRecord: "Record",
     modeBadgeCm98: "Technical mode CM98",
-    nowTitle: "Current situation",
     nowNext: "What does the system do next?",
     entryDuration: "Duration: {value}",
     detailSelected: "Selected",

@@ -946,10 +946,6 @@
     padding-bottom: 14px;
   }
 
-  .oq-working-now h2 {
-    font-size: 1.55rem;
-  }
-
   .oq-working-window-choices {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
