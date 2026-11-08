@@ -177,3 +177,75 @@ test("legacykwaliteit behoudt de concrete afwijzing van de controller", () => {
     assert.doesNotMatch(html,/is-complete|✓|Leren: 6|Checking: 3/);
   }
 });
+
+test("firmwaresplit toont de spreiding van leerdagen ondanks drie koude controledagen", () => {
+  const data = records([...Array.from({ length: 18 }, (_, i) => 8 + (i % 7) * 0.6), 5.2, 3.15, 1.97])
+    .map((record, index) => ({ ...record, quality: {
+      valid: true, heatCoverageBp: index < 18 ? null : 10000,
+      temperatureCoverageBp: index < 18 ? null : 10000, heatUncertaintyMeanW: index < 18 ? null : 0,
+      fitEligible: true, fitWeightBp: index < 18 ? 5000 : 10000,
+    } }));
+  const learned = { h: 213, t0: 17.4, ready: false, batchStatus: "insufficient_spread",
+    fit: { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
+      p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 } };
+  const nl = renderHouseLearningChart(data, {}, learned);
+  assert.match(nl, /Geleerde woninglijn is nog voorlopig/);
+  assert.match(nl, /21 <span>\/ 9 nodig/);
+  assert.match(nl, /Leren: 18 · Controleren: 3/);
+  assert.match(nl, /3,6 °C <span>\/ 6 °C nodig/);
+  assert.match(nl, /Nog 2,4 °C spreiding nodig/);
+  assert.match(nl, /De lijn stuurt de regeling niet aan/);
+  assert.doesNotMatch(nl, /Geleerde woninglijn beschikbaar/);
+  assert.equal((nl.match(/is-complete/g) || []).length, 1);
+  setLocale("en", config);
+  const en = renderHouseLearningChart(data, {}, learned);
+  assert.match(en, /Training: 18 · Checking: 3/);
+  assert.match(en, /3\.6 °C <span>\/ 6 °C needed/);
+  assert.match(en, /2\.4 °C more spread needed/);
+  assert.doesNotMatch(en, /undefined|NaN/);
+});
+
+test("voorlopige legacyfit benoemt ontbrekende onafhankelijke controledagen", () => {
+  const data = records([4, 4, 7, 7, 10, 10]);
+  const html = renderHouseLearningReadiness(data, { h: 200, t0: 16, ready: false,
+    batchStatus: "insufficient_data", fit: {
+      trainCount: 6, checkCount: 0, trainDays: 6, checkDays: 0, p10: 4, p90: 10, minC: 4, maxC: 10,
+    } });
+  assert.match(html, /Leren: 6 · Controleren: 0/);
+  assert.match(html, /Nog 3 bruikbare controledagen met vastgelegde meetkwaliteit nodig/);
+  assert.doesNotMatch(html, /Geleerde woninglijn beschikbaar/);
+});
+
+test("onvoldoende trainingsdagen gaan vóór een tekort aan controledagen", () => {
+  const html = renderHouseLearningReadiness(records([4, 10]), { batchStatus: "insufficient_data", fit: {
+    trainCount: 0, checkCount: 2, trainDays: 0, checkDays: 2,
+    p10: null, p90: null, minC: null, maxC: null,
+  } });
+  assert.match(html, /Nog 7 volledige dagmetingen nodig/);
+  assert.doesNotMatch(html, /Nog 1 bruikbare controledag/);
+});
+
+test("vijf voorbereide leerdagen tonen hun echte temperatuurspreiding", () => {
+  const html = renderHouseLearningReadiness(records([4, 5, 7, 9, 10, 4, 7, 10]), {
+    batchStatus: "insufficient_data", fit: {
+      trainCount: 5, checkCount: 3, trainDays: 5, checkDays: 3,
+      p10: 4, p90: 10, minC: 4, maxC: 10,
+    },
+  });
+  assert.match(html, /Leren: 5 · Controleren: 3/);
+  assert.match(html, /6 °C <span>\/ 6 °C nodig/);
+  assert.doesNotMatch(html, /Nog geen trainingsdagen/);
+  assert.match(html, /Nog 1 volledige dagmeting nodig/);
+  assert.doesNotMatch(html, /Nog 1 (?:volledige )?dagmetingen/);
+});
+
+test("bewaarde dagen met onbekende kwaliteit tonen indicatieve balken zonder goedkeuring", () => {
+  setLocale("nl", config);
+  const data = records([4, 6, 8, 10]).map(record => ({ ...record, quality: { valid: true,
+    heatCoverageBp: null, temperatureCoverageBp: null, heatUncertaintyMeanW: null, fitEligible: true, fitWeightBp: 5000 } }));
+  const html = renderHouseLearningReadiness([], {}, data);
+  assert.match(html, /Opgeslagen dagmetingen[\s\S]*4 <span>\/ 9 als minimum/);
+  assert.match(html, /Spreiding van alle opgeslagen dagen[\s\S]*6 °C <span>\/ 6 °C richtwaarde/);
+  assert.doesNotMatch(html, /is-complete|✓/);
+  assert.match(renderHouseLearningReadiness([], {}, data.slice(0, 1)), /— <span>\/ 6 °C richtwaarde/);
+});

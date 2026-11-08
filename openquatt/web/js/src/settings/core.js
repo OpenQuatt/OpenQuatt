@@ -1,4 +1,4 @@
-import { getEntityStateText, isEntityActive } from "../core/app-shared.js";
+import { getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
@@ -14,7 +14,6 @@ import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSe
 import { t } from "../i18n/index.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { patchControlledWarmupField, patchRunExtensionThresholds, renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
-import { patchHouseLearningSettingsStatus, renderHouseLearningSettings } from "./house-learning.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
@@ -26,6 +25,14 @@ import { renderSettingsBackupSection, renderSettingsTrendSection } from "./stora
 import { renderSettingsWaterSection } from "./water.js";
 import { escapeHtml } from "../core/html.js";
 import { getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
+
+function renderLearningSettingsLink() {
+  if (!hasEntity("houseLearningEnabled")) return "";
+  return `<div class="oq-settings-callout">
+    <p>${escapeHtml(t("learning.openCopy"))}</p>
+    <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-view" data-view-id="learning">${escapeHtml(t("learning.open"))}</button>
+  </div>`;
+}
 
 function syncFrequencyRangeControl(control) {
   const minInput = control?.querySelector('[data-oq-range-role="min"]');
@@ -98,7 +105,7 @@ function syncFrequencyRangeControl(control) {
             renderSettingsCounterServiceSection(),
           ]
       : activeGroup === "heating"
-        ? [renderSettingsHeatingSection(), isCurveMode() ? "" : renderHouseLearningSettings()]
+        ? [renderSettingsHeatingSection(), renderLearningSettingsLink()]
       : activeGroup === "cooling"
         ? [renderSettingsCoolingSection()]
       : activeGroup === CHANGE_LOG_GROUP_ID
@@ -276,7 +283,6 @@ function syncFrequencyRangeControl(control) {
       }
     });
 
-    patchHouseLearningSettingsStatus();
     state.warmupSettingsRenderPending = !patchControlledWarmupField(stack);
     patchRunExtensionThresholds();
 

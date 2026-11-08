@@ -242,6 +242,9 @@ interval:
           if (changed) {
             // Never pair a new step/status with Watts from the old PH tick.
             id(oq_debug_recorder).invalidate_warmup_power();
+            #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+            id(oq_ph_learning_status_endpoint).invalidate_shadow();
+            #endif
             const auto &warmup = oq_warmup_runtime::runtime();
             id(oq_warmup_active).publish_state(warmup.active());
             id(oq_warmup_intermediate_target).publish_state(warmup.intermediate_target());

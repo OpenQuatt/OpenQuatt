@@ -9,7 +9,6 @@ namespace ph = oq_power_house_dispatch;
 ph::DispatchInput fixture(int current, int nearby, int distant) {
   ph::DispatchInput in;
   in.duo = true;
-  in.demand_level = 10;
   in.requested_w = 6000;
   in.performance_valid = true;
   in.hp1.candidate = {current, true, false, false};

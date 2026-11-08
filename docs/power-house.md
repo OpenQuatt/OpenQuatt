@@ -34,6 +34,10 @@ Werk je liever direct met een stooklijn en aanvoertemperatuur, dan past [Water T
 
 `Power House` berekent de warmtevraag uit de woningbehoefte en een kamercorrectie. De gewenste kamertemperatuur is geen automatische uitknop. In **Power House — comfort** staan daarom **Op temperatuur houden** en het optionele **Langer doorverwarmen** apart herkenbaar bij elkaar.
 
+De vraag blijft in watt behouden tot de keuze van de compressorfrequenties. De elektrische begrenzing kan de vraag verlagen; de performancetabel bepaalt welke toegestane frequentie of Duo-combinatie past.
+
+Volg de effectieve regelvraag via `Strategy requested power` in W. De stapdiagnostiek `Demand raw` en `Demand filtered` is tijdens Power House niet beschikbaar.
+
 ### Te koud
 
 Onder de normale koude grens vraagt OpenQuatt extra warmte boven op de normale huisvraag. Die grens is het setpoint min `Power House comfort below setpoint`, in de web-app **Afkoeling onder gewenste temperatuur**.

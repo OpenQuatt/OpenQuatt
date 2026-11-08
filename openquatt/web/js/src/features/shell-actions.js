@@ -1,6 +1,7 @@
+import { suspendWeatherForecast } from "./weather-forecast.js";
 import { render } from "../core/render-scheduler.js";
 import { ensureNativeFrontendLoaded, setDevPanelOpen, setInterfacePanelOpen, setStoredSurface, syncSurfaceRuntime } from "../core/runtime.js";
-import { state } from "../core/state.js";
+import { invalidateHouseLearningShadow, state } from "../core/state.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { registerMatrixVersionTap } from "./matrix-easter-egg.js";
 import { resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "./firmware-update.js";
@@ -13,6 +14,10 @@ function selectSurface(button) {
     return state.nativeOpen ? ensureNativeFrontendLoaded() : undefined;
   }
 
+  if (nextNativeOpen) {
+    suspendWeatherForecast();
+    invalidateHouseLearningShadow();
+  }
   state.nativeOpen = nextNativeOpen;
   setStoredSurface(state.nativeOpen ? "native" : "app");
   state.controlError = "";

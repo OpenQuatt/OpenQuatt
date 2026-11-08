@@ -302,6 +302,7 @@ class OpenQuattMqttConfig : public Component {
   void start_permanent_failure_cleanup_();
   bool process_permanent_failure_cleanup_();
   bool request_client_reconcile_();
+  bool notify_client_worker_();
   enum class ClientReconcileResult : uint8_t {
     APPLIED = 0U,
     WAIT_FOR_NETWORK = 1U,
@@ -412,7 +413,8 @@ class OpenQuattMqttConfig : public Component {
 
   static constexpr uint32_t SENSOR_PUBLISH_INTERVAL_MS = 10000;
   static constexpr uint32_t NON_RETAINED_STATEFUL_STALE_MS = 30UL * 60UL * 1000UL;
-  static constexpr int MQTT_TASK_STACK_SIZE = 12288;
+  // ESP-MQTT transport keeps an internal stack, separate from our PSRAM-backed lifecycle worker.
+  static constexpr int MQTT_TASK_STACK_SIZE = 6144;
   static constexpr bool MQTT_WORKER_STACK_IN_PSRAM = true;
   static constexpr uint32_t MQTT_WORKER_TASK_STACK_SIZE = 24576;
   static constexpr uint32_t MQTT_RECONCILE_RETRY_MS = 5000;

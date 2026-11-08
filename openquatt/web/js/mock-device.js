@@ -7,6 +7,7 @@
   const DEBUG_RECORDING_SAMPLE_HEADER_BYTES = 8;
   const DEBUG_RECORDING_CSRF_TOKEN = "mock-debug-recording-csrf-token";
   const MOCK_STABLE_VERSION = "v0.0.0-demo";
+
   const MOCK_DEV_VERSION = "v0.0.1-demo";
   const MOCK_TEST_VERSION = "v0.0.0-demo-pr.test";
   const ODU_RUNTIME_FREQUENCY_TABLE_V1 = Object.freeze({
@@ -228,7 +229,7 @@
       2: { loaded: false, armed: false, busy: false, status: "Ready: load the current compressor frequency table from the ODU", extendedLayout: false },
     },
     houseLearning: {
-      journalStatus: "ready",
+      journalStatus: "saved_verified",
       preview: learningPreview,
       records: 32,
       rlsSamples: 174,
@@ -359,6 +360,9 @@
     const definitions = [
       ["switch", "Power House Passive Learning"],
       ["button", "Power House Learning Reset"],
+      ["text", "Weather Location"],
+      ["switch", "Weather Passive Experiment"],
+      ["text_sensor", "Weather Experiment Status"],
     ];
     if (!hasHouseLearningCapability()) {
       definitions.forEach(([domain, name]) => entities.delete(entityKey(domain, name)));
@@ -367,6 +371,9 @@
     const learningEnabled = getEntity("switch", "Power House Passive Learning");
     setEntity("switch", "Power House Passive Learning", learningEnabled || { state: false, value: false });
     setEntity("button", "Power House Learning Reset", {});
+    if (hasHouseLearningCapability() && getEntity("text", "Weather Location")?.value === "") {
+      setEntity("text", "Weather Location", { value: "Brummen", state: "Brummen" });
+    }
   }
 
   function seedEntityDefinitions() {
@@ -4255,8 +4262,9 @@
     notifyMockUpdated();
   }
 
-  function handleTextSet(name, value) {
+  function handleTextSet(name, value, saveRequest = "") {
     setText("text", name, String(value || "").trim());
+    if (name === "Weather Location") Object.assign(getEntity("text", name), { save_request: saveRequest, save_status: "stored" });
     updateSummary();
     notifyMockUpdated();
   }
@@ -4276,7 +4284,13 @@
       notifyMockUpdated();
       return;
     }
+    if (name === "Weather Passive Experiment") {
+      entity.state = enabled ? "ON" : "OFF";
+      const status = getEntity("text_sensor", "Weather Experiment Status");
+      if (status) status.consent_state = enabled ? "on" : "off";
+    }
     if (name === "Power House Passive Learning") {
+      entity.state = enabled ? "ON" : "OFF";
       notifyMockUpdated();
       return;
     }
@@ -5918,6 +5932,30 @@
     return mockResponse(405, { ok: false, error: "method_not_allowed" });
   }
 
+  function getWeatherForecastPayload() {
+    const enabled = isSwitchEnabled("Weather Passive Experiment");
+    const location = String(getEntity("text", "Weather Location")?.value || "");
+    const valid = enabled && Boolean(location);
+    const now = Math.floor(Date.now() / 1000);
+    const ready = valid && getHouseLearningStatusPayload().rls_ready;
+    const room = Number(getEntity("sensor", "Room Temperature (Selected)")?.value || 20);
+    setText("text_sensor", "Weather Experiment Status", !enabled ? "disabled" : ready ? "observing" : "waiting_for_model");
+    return { schema: 1, model: "knmi_harmonie_arome_netherlands", configured_location: location,
+      location, enabled, valid, configuration: 1, generation: 1, now_epoch: now,
+      fetched_epoch: valid ? now : 0, start_epoch: now - now % 3600, step_s: 3600,
+      temperature_c: valid ? Array.from({ length: 36 }, (_, i) => Math.round((9 + 4 * Math.sin(i / 4)) * 10) / 10) : [],
+      wind_mps: valid ? Array.from({ length: 36 }, (_, i) => Math.round((2.5 + Math.sin(i / 3)) * 10) / 10) : [],
+      scenario: { schema: 1, valid: ready, reason: ready ? "ready" : "model_unavailable",
+        restored_model: false, issued_epoch: ready ? now : 0, configuration: 1,
+        weather_generation: ready ? 1 : 0, weather_fetched_epoch: ready ? now : 0, weather_start_epoch: ready ? now - now % 3600 : 0,
+        model_context: ready ? 8 : 0, model_samples: ready ? 174 : 0, room_start_c: ready ? room : null,
+        held_heat_w: ready ? 1900 : null, h_w_per_k: ready ? 179.2 : null, c_wh_per_k: ready ? 7420 : null,
+        horizon_valid: [ready, ready, ready], temperature_c: ready ? [room + 0.1, room + 0.2, room + 0.4] : [null, null, null] },
+      current: { source: "model", valid, time_epoch: valid ? now - now % 900 : 0,
+        temperature_c: valid ? 12 : null, relative_humidity_pct: valid ? 70 : null, dew_point_c: valid ? 6.7 : null } };
+  }
+
+
   function getHouseLearningStatusPayload() {
     const enabled = isSwitchEnabled("Power House Passive Learning");
     const controlMode = String(getEntity("text_sensor", "Control Mode (Label)")?.value || "");
@@ -5929,6 +5967,12 @@
     const ready = invalidReasons.length === 0 && dailyCount >= 24;
     return {
       schema: 1, mode: "passive", enabled, storage_ready: true,
+      shadow_ttl_ms: enabled && ready ? 10000 : 0,
+      shadow: { schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+        source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+        available: enabled && ready, reason: enabled && ready ? "ready" : enabled ? "batch_not_ready" : "inactive",
+        manual_w: enabled && ready ? 3100 : null, candidate_w: enabled && ready ? 2750 : null,
+        delta_w: enabled && ready ? -350 : null, auto_apply_allowed: false },
       status: enabled ? "collecting" : "paused",
       source_status: invalidReasons.length ? "blocked" : "ready",
       invalid_reasons: invalidReasons, records: state.houseLearning.records,
@@ -6081,6 +6125,9 @@
       if (url.pathname.endsWith("/openquatt/debug-recording/download") && method === "GET") {
         return handleDebugRecordingDownload(url);
       }
+      if (url.pathname.endsWith("/openquatt/weather/forecast") && method === "GET") {
+        return hasHouseLearningCapability() ? mockResponse(200, getWeatherForecastPayload()) : mockResponse(404, { ok: false });
+      }
       if (url.pathname.endsWith("/openquatt/learning/status") && method === "GET") {
         return hasHouseLearningCapability()
           ? mockResponse(200, getHouseLearningStatusPayload())
@@ -6156,7 +6203,7 @@
         } else if (request.domain === "datetime") {
           handleDateTimeSet(request.name, rawValue || "");
         } else if (request.domain === "text") {
-          handleTextSet(request.name, rawValue || "");
+          handleTextSet(request.name, rawValue || "", url.searchParams.get("save_request") || "");
         }
         return mockResponse(200, entity);
       }

@@ -49,14 +49,19 @@ class MqttIngressLifecycleContractTest(unittest.TestCase):
             CPP.index("bool OpenQuattMqttConfig::process_permanent_failure_cleanup_()") :
             CPP.index("bool OpenQuattMqttConfig::request_client_reconcile_()")
         ]
-        self.assertIn("this->stop_client_()", failure_cleanup)
+        self.assertNotIn("this->stop_client_()", failure_cleanup)
+        self.assertNotIn("this->ensure_client_worker_()", failure_cleanup)
+        self.assertIn("this->notify_client_worker_()", failure_cleanup)
         self.assertLess(
-            failure_cleanup.index("this->stop_client_()"),
+            failure_cleanup.index("this->notify_client_worker_()"),
             failure_cleanup.index("this->mark_failed();"),
         )
         self.assertLess(
             failure_cleanup.index("this->client_worker_active_.load()"),
-            failure_cleanup.index("this->stop_client_()"),
+            failure_cleanup.index("this->notify_client_worker_()"),
+        )
+        self.assertNotIn(
+            "this->permanent_failure_cleanup_pending_.store(false)", failure_cleanup
         )
         self.assertIn("this->permanent_failure_cleanup_pending_.load()", CPP)
 

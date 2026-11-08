@@ -55,6 +55,24 @@ struct Thresholds {
   float recover_w;
 };
 
+// Compatibility boundary for the shared electrical feedback limiter. Power
+// House receives a watt ceiling independently of its continuous heat request.
+inline float request_limit_w(float reference_w, int cap_f, int maximum_f) {
+  if (!std::isfinite(reference_w) || reference_w <= 0.0f || maximum_f <= 0) return NAN;
+  if (cap_f <= 0) return 0.0f;
+  if (cap_f >= maximum_f) return INFINITY;
+  return reference_w * (static_cast<float>(cap_f) / maximum_f);
+}
+
+inline float limit_request_w(float requested_w, float ceiling_w) {
+  if (!std::isfinite(requested_w) || requested_w < 0.0f || std::isnan(ceiling_w) || ceiling_w < 0.0f) return NAN;
+  return std::min(requested_w, ceiling_w);
+}
+
+inline bool request_limit_active(float requested_w, float ceiling_w) {
+  return std::isfinite(requested_w) && requested_w > 0.0f && (std::isnan(ceiling_w) || ceiling_w < requested_w);
+}
+
 inline float standard_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
   return duo && generation_v2 ? v2_a : v1_a;
 }

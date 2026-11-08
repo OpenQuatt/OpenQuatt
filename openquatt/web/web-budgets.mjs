@@ -34,19 +34,43 @@ export const WEB_BUNDLE_BUDGETS = [
     // Retained daily quality, server weights and truthful restart help (Node24.14.1):
     // +4,705 B raw / +1,365 B gzip versus dev2575a93d.
     // Preserve444 B raw headroom; all relative gzip limits remain unchanged.
+    // Learning page, two measurement bars and retained-day progress in both locales:
+    // +6,919 B raw / +1,750 B gzip versus dev 6dd491f5 (Node 24.14.1).
+    // Bounded readback, export and focus handling add 556 B raw / 134 B gzip.
+    // Preserve 444 B of raw headroom and the existing relative gzip limits.
+    // Provisional curve ranges and firmware fit progress: +1,860 B raw / +550 B gzip
+    // versus b18f4d15 on Node 24.14.1, preserving 444 B raw headroom.
+    // All-days display preview and NL/EN explanation: +1,300 B raw vs664f45c.
+    // Preserve444 B raw headroom; relative gzip limits remain unchanged.
+    // Outlook, localized settings, atomic scenario and the interactive weather charts.
+    // On current PR1: +30,871 B raw / +9,824 B gzip (Node24.14.1).
+    // Keep the existing 9,922 B migration allowance.
+    // Inherit only PR1's 588 B raw budget increase; merge guards leave 122 B raw headroom.
+    // Merged raw/gzip: 1,443,352 / 405,092 B; PR1 gzip base: 395,270 B (Node24.14.1).
+    // Move the absolute ceiling with that base, preserving the feature allowance.
+    // Demand comparison retains its existing 5,763 B raw allowance over PR2.
+    // Measured delta over PR2: 5,762 B raw / 2,074 B gzip (Node24.14.1).
+    // Until the parent PR merges, the dev-targeted stack includes that exact gzip delta.
+    // Preserve the inherited 100 B migration margin and the regular relative limits.
+    // Bounded expiry refresh and write invalidation: +1,501 B raw / +469 B gzip
+    // versus 63002f64 on Node24.14.1; keep the existing raw/gzip headroom.
+    // Optional outside source: +1,243 B raw / +350 B gzip versus PR2 (Node24.14.1).
+    // Add that measured delta on top of dev's ceilings; relative limits stay unchanged.
     // Settings change log (settings group, table, posting entries and copy in both locales):
     // measured raw 1,400,322 B, +4,053 B versus the feedback-position commit (Node 24.4.1); 80 B raw headroom.
     // Undo for plain settings writes in the feedback toast (#783): +1,286 B raw; 80 B raw headroom.
     // Change-log JSON export, fault outline on heat-pump panels and a fault pill next to the logo:
     // +1,832 B raw; 80 B raw headroom.
-    // Combined with dev 6dd491f5: measured raw 1,408,146 B (Node 24.4.1); 80 B raw headroom.
-    raw: 1_408_226,
-    gzipBaselineCeiling: 362_000,
+    // Combined with dev eef39329+: measured raw 1,459,066 B / gzip 410,912 B (Node 24.4.1),
+    // +2,642 B gzip versus dev (within the relative limit); 80 B raw headroom.
+    raw: 1_459_146,
+    gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
   // Passive-learning layout: +2,969 B raw / +493 B gzip versus dev 388f6f9d
   // on Node 24.14.1; preserves the existing 1,581 B raw headroom.
+  // Outlook and weather graphs add 4,367 B raw and 823 B gzip.
   // Heat-pump schematic motion moves from a per-frame JS loop to CSS animations:
   // +408 B CSS raw while the JS bundle shrinks by 1,392 B raw (Node 24.4.1);
   // preserves the existing 80 B raw headroom.
@@ -62,5 +86,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // The calmer UI restyles every view at once: +1,607 B gzip versus dev 6dd491f5 (+3.8%), above the 3%
   // relative limit. This ceiling admits that once with ~180 B gzip headroom; after the merge the base
   // reaches the ceiling, so later changes fall back to the regular relative limit.
-  { file: "css/openquatt-app.css", raw: 220_845, gzipBaselineCeiling: 44_000 },
+  // Re-measured after merging dev with the weather graphs: raw 225,789 B, gzip 44,805 B versus
+  // dev 43,167 B (+1,638 B, +3.8%; Node 24.4.1); ~180 B gzip and 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 225_869, gzipBaselineCeiling: 44_985 },
 ];

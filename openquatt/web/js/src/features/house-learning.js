@@ -1,8 +1,9 @@
+import { invalidateWeatherForecast } from "./weather-forecast.js";
 import { hasEntity } from "../core/app-shared.js";
 import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
-import { isCurveMode } from "../core/domain-helpers.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
+import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
 import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
 import { t } from "../i18n/index.js";
@@ -58,7 +59,34 @@ const collectionPhase = (collection, prefix) => {
   };
 };
 
-export function normalizeHouseLearningStatus(payload = {}) {
+const SHADOW_REASONS = new Set([
+  "ready", "inactive", "startup", "warmup_active", "external_override", "stale_frame", "source_changed",
+  "settings_changed", "service_or_ota", "reset_pending", "invalid_inputs", "batch_not_ready", "context_mismatch",
+  "outside_range", "invalid_candidate",
+]);
+
+function normalizeHouseLearningShadow(payload, requestStartedAt) {
+  if (payload.shadow_expired === true) return { available: false, reason: "stale_frame" };
+  if (!Object.hasOwn(payload, "shadow")) return null;
+  const value = payload.shadow;
+  const invalid = { available: false, reason: "invalid_inputs" };
+  if (!value || value.schema !== 1 || value.semantics !== "one_step_from_observed_state"
+      || value.scope !== "base_before_start_stop_dispatch" || value.source !== "actual" || value.state_origin !== "live_pre_tick"
+      || value.run_id !== null || value.auto_apply_allowed !== false || payload.auto_apply_allowed !== false
+      || typeof value.available !== "boolean" || !SHADOW_REASONS.has(value.reason)
+      || value.available !== (value.reason === "ready") || !Number.isSafeInteger(value.tick_ms) || value.tick_ms < 0
+      || !Number.isInteger(value.context_revision) || value.context_revision < 0) return invalid;
+  const { manual_w: manualW, candidate_w: candidateW, delta_w: deltaW } = value;
+  if (!value.available) return [manualW, candidateW, deltaW].every(item => item === null)
+    ? { available: false, reason: value.reason } : invalid;
+  const ttl = payload.shadow_ttl_ms;
+  if (!Number.isInteger(ttl) || ttl <= 0 || ttl > 30000 || value.tick_ms === 0 || value.context_revision === 0 || value.context_revision !== payload.context_revision
+      || ![manualW, candidateW, deltaW].every(Number.isFinite) || manualW < 0 || candidateW < 0
+      || Math.abs(candidateW - manualW - deltaW) > Math.max(0.01, Math.abs(manualW) * 0.00001, Math.abs(candidateW) * 0.00001)) return invalid;
+  return { available: true, reason: "ready", manualW, candidateW, deltaW, expiresAt: requestStartedAt + ttl };
+}
+
+export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = performance.now()) {
   if (Number(payload.schema) !== 1 || payload.mode !== "passive") throw translatedError("houseLearning.errors.unknownStatusFormat");
   const source = (key) => {
     const item = payload.sources?.[key];
@@ -66,8 +94,28 @@ export function normalizeHouseLearningStatus(payload = {}) {
       ? { route: String(item.route || "unknown"), valid: item.valid === true }
       : { route: "unknown", valid: false };
   };
+  const fit = payload.batch_fit;
+  const counts = fit && ["train_segments", "holdout_segments", "train_days", "holdout_days"].map(key => fit[key]);
+  const validCounts = fit?.metadata_prepared === true
+    && counts?.every(value => Number.isInteger(value) && value >= 0 && value <= 128)
+    && fit.train_days <= fit.train_segments && fit.holdout_days <= fit.holdout_segments
+    && fit.train_segments + fit.holdout_segments <= payload.records;
+  const ranges = fit && ["train_p10_c", "train_p90_c", "train_min_c", "train_max_c"].map(key => fit[key]);
+  const validRanges = ranges?.every(value => value === null || Number.isFinite(value))
+    && (ranges.every(value => value === null)
+      || ranges.every(Number.isFinite) && fit.train_min_c <= fit.train_p10_c
+        && fit.train_p10_c <= fit.train_p90_c && fit.train_p90_c <= fit.train_max_c);
+  const preview = payload.batch_preview;
+  const validPreview = preview && [preview.segments, preview.days].every(value => Number.isInteger(value) && value >= 0 && value <= 128)
+    && preview.days <= preview.segments && preview.segments <= payload.records
+    && [preview.h, preview.t0, preview.min_c, preview.max_c].every(value => value === null || Number.isFinite(value))
+    && ((preview.h === null && preview.t0 === null)
+      || preview.h > 0 && preview.t0 !== null && preview.days >= 6 && preview.segments >= 6)
+    && ((preview.min_c === null && preview.max_c === null && preview.segments === 0)
+      || preview.min_c !== null && preview.max_c !== null && preview.min_c <= preview.max_c);
   return {
     enabled: payload.enabled === true,
+    shadow: normalizeHouseLearningShadow(payload, requestStartedAt),
     controlMode: numberOrNull(payload.control_mode),
     storageReady: payload.storage_ready === true,
     status: String(payload.status || "unknown"),
@@ -81,6 +129,16 @@ export function normalizeHouseLearningStatus(payload = {}) {
     legacyRecordCount: countOrNull(payload.legacy_record_count),
     referenceRoomC: typeof payload.reference_room_c === "number" ? numberOrNull(payload.reference_room_c) : null,
     batchAdviceReady: payload.batch_advice_ready === true,
+    batchFit: validCounts && validRanges ? {
+      trainCount: fit.train_segments, checkCount: fit.holdout_segments,
+      trainDays: fit.train_days, checkDays: fit.holdout_days,
+      p10: fit.train_p10_c, p90: fit.train_p90_c, minC: fit.train_min_c, maxC: fit.train_max_c,
+    } : null,
+    // Undefined means older firmware. Null means a present but unusable preview.
+    batchPreview: Object.hasOwn(payload, "batch_preview") ? validPreview ? {
+      h: preview.h, t0: preview.t0, count: preview.segments, days: preview.days,
+      minC: preview.min_c, maxC: preview.max_c,
+    } : null : undefined,
     adviceReady: payload.advice_ready === true,
     hBatch: numberOrNull(payload.h_batch),
     t0Batch: numberOrNull(payload.t0_batch),
@@ -109,8 +167,52 @@ export function normalizeHouseLearningStatus(payload = {}) {
 }
 
 export function shouldRefreshHouseLearningStatusSurface() {
-  return !document.hidden && state.appView === "settings" && state.settingsGroup === "heating"
-    && !isCurveMode() && hasEntity("houseLearningEnabled");
+  return !document.hidden && !state.nativeOpen && state.appView === "learning" && !state.learningForecastOpen && hasEntity("houseLearningEnabled");
+}
+
+// One expiry follow-up and at most two short retries per normal status poll.
+// Keep the normal 10-second fallback cadence even when a follow-up finishes later.
+let shadowRefresh = null;
+const SHADOW_REFRESH_DELAY_MS = 200;
+const SHADOW_REFRESH_LIMIT = 3;
+
+function clearShadowRefresh() {
+  if (state.houseLearningShadowTimer != null) window.clearTimeout(state.houseLearningShadowTimer);
+  state.houseLearningShadowTimer = null;
+  shadowRefresh = null;
+}
+
+function shadowRefreshCurrent(plan) {
+  return plan && plan === shadowRefresh && plan.epoch === state.houseLearningShadowEpoch
+    && plan.requestId === state.houseLearningRequestId && plan.status === state.houseLearningStatus
+    && shouldRefreshHouseLearningStatusSurface()
+    && !state.busyAction && !["pending", "uncertain"].includes(state.houseLearningReset);
+}
+
+function scheduleShadowRefresh(previous) {
+  const status = state.houseLearningStatus;
+  const plan = previous || {
+    epoch: state.houseLearningShadowEpoch, requestId: state.houseLearningRequestId,
+    pollAt: state.houseLearningLastFetchAt, attempts: 0,
+  };
+  shadowRefresh = plan;
+  plan.lastFetchAt = state.houseLearningLastFetchAt;
+  plan.status = status;
+  if (!shadowRefreshCurrent(plan)) { clearShadowRefresh(); return; }
+  const shadow = status?.shadow;
+  if (!status?.enabled || !status.batchAdviceReady || !shadow
+    || (!shadow.available && shadow.reason !== "stale_frame") || plan.attempts >= SHADOW_REFRESH_LIMIT) return;
+  const delay = shadow.available ? Math.max(SHADOW_REFRESH_DELAY_MS, shadow.expiresAt - performance.now() + SHADOW_REFRESH_DELAY_MS)
+    : SHADOW_REFRESH_DELAY_MS;
+  state.houseLearningShadowTimer = window.setTimeout(() => {
+    if (plan !== shadowRefresh) return;
+    state.houseLearningShadowTimer = null;
+    if (!shadowRefreshCurrent(plan)) { clearShadowRefresh(); return; }
+    plan.attempts += 1;
+    void refreshHouseLearningStatus({ force: true, shadowFollowup: plan }).then(changed => {
+      if (changed && shadowRefreshCurrent(plan) && !patchLearningDom()) render();
+    });
+  }, Math.ceil(delay));
 }
 
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
@@ -124,14 +226,17 @@ export async function loadHouseLearningChart() {
   state.houseLearningChartError = "";
   render();
   try {
-    const response = await fetchWithTimeout(
+    const payload = await fetchWithTimeout(
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
       "house-learning-chart-timeout",
+      (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const records = normalizeHouseLearningExport(await response.json());
+    const records = normalizeHouseLearningExport(payload);
     if (requestId !== state.houseLearningChartRequestId) return false;
     state.houseLearningChart = records;
     state.houseLearningChartFetchedAt = Date.now();
@@ -158,14 +263,17 @@ export async function downloadHouseLearningExport() {
   state.houseLearningStatusError = "";
   render();
   try {
-    const response = await fetchWithTimeout(
+    const payload = await fetchWithTimeout(
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
       "house-learning-export-timeout",
+      (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    downloadJsonFile("openquatt-house-learning.json", await response.json());
+    downloadJsonFile("openquatt-house-learning.json", payload);
   } catch (error) {
     state.houseLearningStatusError = localizedMessage("houseLearning.errors.exportFailed", {
       error: errorDetail(error, "house-learning-export-timeout", "houseLearning.errors.exportTimeout"),
@@ -201,24 +309,32 @@ export function handleHouseLearningAction(action, button, pressNamedButton) {
 
 export async function refreshHouseLearningStatus(options = {}) {
   const resetReconcile = options.resetReconcile === true;
-  if (!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) return false;
+  const shadowFollowup = options.shadowFollowup;
+  if (shadowFollowup && !shadowRefreshCurrent(shadowFollowup)) return false;
+  if (!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) { clearShadowRefresh(); return false; }
   if (state.houseLearningReset === "pending" && !resetReconcile) return false;
   if (state.houseLearningFetchPromise) return state.houseLearningFetchPromise;
-  if (!options.force && Date.now() - Number(state.houseLearningLastFetchAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
+  const intervalAt = shadowRefreshCurrent(shadowRefresh) && shadowRefresh.lastFetchAt === state.houseLearningLastFetchAt
+    ? shadowRefresh.pollAt : state.houseLearningLastFetchAt;
+  if (!options.force && Date.now() - Number(intervalAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
     return false;
   }
+  if (!shadowFollowup) clearShadowRefresh();
   const initialCapabilityCheck = !state.houseLearningEndpointAvailable && !state.houseLearningEndpointChecked;
   const requestGeneration = Number(state.houseLearningRequestId || 0);
   const before = JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
+  const requestStartedAt = performance.now();
+  const shadowEpoch = state.houseLearningShadowEpoch;
   state.houseLearningEndpointChecking = true;
   state.houseLearningFetchPromise = (async () => {
     let probeCompleted = false;
     try {
-      const response = await fetchWithTimeout(
+      const { response, payload } = await fetchWithTimeout(
         getHouseLearningStatusEndpoint(),
         { cache: "no-store", headers: { "Cache-Control": "no-store" } },
         8000,
         "house-learning-status-timeout",
+        async (response) => ({ response, payload: response.ok ? await response.json() : null }),
       );
       if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
       if (response.status === 404) {
@@ -226,10 +342,17 @@ export async function refreshHouseLearningStatus(options = {}) {
         state.houseLearningStatus = null;
         state.houseLearningStatusError = "";
       } else {
-        state.houseLearningEndpointAvailable = true;
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const status = normalizeHouseLearningStatus(await response.json());
+        if (!response.ok) {
+          state.houseLearningEndpointAvailable = true;
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const status = normalizeHouseLearningStatus(payload, requestStartedAt);
         if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
+        state.houseLearningEndpointAvailable = true;
+        // Navigation can leave and return while the HTTPD still sends an
+        // already copied frame. Keep the learning status, fence its live comparison.
+        if (shadowEpoch !== state.houseLearningShadowEpoch || state.busyAction
+          || ["pending", "uncertain"].includes(state.houseLearningReset)) status.shadow = null;
         state.houseLearningStatus = status;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
@@ -250,14 +373,16 @@ export async function refreshHouseLearningStatus(options = {}) {
       probeCompleted = true;
     } finally {
       if (requestGeneration === state.houseLearningRequestId) {
-        if (probeCompleted) state.houseLearningEndpointChecked = true;
+        if (probeCompleted) {
+          state.houseLearningEndpointChecked = true;
+          if (shadowEpoch === state.houseLearningShadowEpoch) state.houseLearningLastFetchAt = Date.now();
+        }
         state.houseLearningEndpointChecking = false;
-        state.houseLearningLastFetchAt = Date.now();
       }
     }
     const changed = before !== JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
     // The initial probe must replace its loading panel immediately. Later status
-    // polls retain the settings partial-patch path while the panel is present.
+    // polls retain the partial-patch path while the panel is present.
     if (changed && !state.focusedField && (initialCapabilityCheck || !state.root?.querySelector("[data-oq-house-learning]"))) render();
     return changed;
   })();
@@ -266,6 +391,9 @@ export async function refreshHouseLearningStatus(options = {}) {
     return await state.houseLearningFetchPromise;
   } finally {
     state.houseLearningFetchPromise = null;
+    if (!resetReconcile && requestGeneration === state.houseLearningRequestId && shadowEpoch === state.houseLearningShadowEpoch) {
+      scheduleShadowRefresh(shadowFollowup);
+    }
   }
 }
 
@@ -280,6 +408,8 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
     t("houseLearning.reset.confirm"),
   ));
   if (!confirmReset()) return false;
+  invalidateWeatherForecast();
+  clearShadowRefresh();
 
   const staleRequest = state.houseLearningFetchPromise;
   state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
@@ -309,6 +439,10 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
     if (delayMs) await new Promise((resolve) => timerHost.setTimeout(resolve, delayMs));
     await refreshHouseLearningStatus({ force: true, resetReconcile: true });
     if (isHouseLearningResetConfirmed()) {
+      state.houseLearningRequestId += 1;
+      if (hasEntity("houseLearningEnabled")) {
+        state.entities.houseLearningEnabled = { ...state.entities.houseLearningEnabled, value: false, state: "OFF" };
+      }
       state.houseLearningReset = "";
       state.houseLearningResetError = "";
       state.controlNotice = t("houseLearning.reset.success");

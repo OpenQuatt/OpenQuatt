@@ -1,3 +1,4 @@
+import { handleWeatherChartFocus, handleWeatherChartKeyDown, handleWeatherChartPointer } from "../settings/weather-forecast.js";
 import { handlePerformanceTelemetryPromptAction, handlePerformanceTelemetryPromptKeyDown } from "../features/performance-telemetry-prompt.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { hasEntity } from "./app-shared.js";
@@ -164,6 +165,7 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleFocusChange(event) {
+    handleWeatherChartFocus(event);
     handleTimeInputFocus(event);
     handleHouseLearningChartPointerMove(event);
     window.setTimeout(() => {
@@ -395,6 +397,7 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleKeyDown(event) {
+    if (handleWeatherChartKeyDown(event)) return;
     if (handlePerformanceTelemetryPromptKeyDown(event)) return;
     if (event.key === "Enter" && event.target.type === "time") {
       event.preventDefault();
@@ -704,6 +707,7 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handlePointerDown(event) {
+    handleWeatherChartPointer(event);
     state.warmupSettingsPointerActive = state.appView === "settings" && state.settingsGroup === "heating";
     handleHouseLearningChartPointerMove(event);
     const replayScrubber = event.target.closest("[data-oq-control-replay-scrub]");
@@ -725,6 +729,7 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handlePointerMove(event) {
+    handleWeatherChartPointer(event);
     if (typeof handleEnergyHistoryPointerMove === "function") {
       handleEnergyHistoryPointerMove(event);
     }

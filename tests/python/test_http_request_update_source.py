@@ -27,6 +27,71 @@ def upstream_sources() -> dict[str, str]:
 
 
 class HttpRequestUpdateSourceTest(unittest.TestCase):
+    def test_http_ota_patch_is_pinned_and_idempotent(self) -> None:
+        source = resources.files("esphome.components.http_request.ota").joinpath("ota_http_request.cpp").read_text()
+        patched, changed = PATCH._transform("ota_http_request.cpp", source)
+        self.assertTrue(changed)
+        self.assertEqual(PATCH._transform("ota_http_request.cpp", patched), (patched, False))
+        with self.assertRaisesRegex(RuntimeError, "unexpected"):
+            PATCH._transform("ota_http_request.cpp", source.replace("uint8_t OtaHttpRequestComponent::do_ota_() {", "changed"))
+        self.assertLess(patched.index("bool acquired ="), patched.index("uint8_t buf["))
+        self.assertLess(patched.index("bool acquired ="), patched.index("!this->http_get_md5_()"))
+
+    def test_actual_manual_and_update_ota_admission_waits_or_fails_without_io(self) -> None:
+        ota = resources.files("esphome.components.http_request.ota").joinpath("ota_http_request.cpp").read_text()
+        ota = PATCH._transform("ota_http_request.cpp", ota)[0]
+        flash = "void OtaHttpRequestComponent::flash() {" + ota.split("void OtaHttpRequestComponent::flash() {", 1)[1].split(
+            "void OtaHttpRequestComponent::cleanup_", 1
+        )[0]
+        admission = ota.split(
+            "uint8_t OtaHttpRequestComponent::do_ota_() {", 1
+        )[1].split("  uint8_t buf[", 1)[0]
+        image_error = "  if (container == nullptr || container->status_code != HTTP_STATUS_OK) {" + ota.split(
+            "  if (container == nullptr || container->status_code != HTTP_STATUS_OK) {", 1
+        )[1].split("  // we will compute MD5", 1)[0]
+        update = upstream_sources()["http_request_update.cpp"]
+        perform = "void HttpRequestUpdate::perform(bool force) {" + update.split(
+            "void HttpRequestUpdate::perform(bool force) {", 1
+        )[1].split("\n}  // namespace", 1)[0]
+        fixture = (ROOT / "tests/fixtures/http_request_ota_admission.cpp").read_text()
+        source = fixture.replace("// GENERATED_FLASH", flash).replace("// GENERATED_ADMISSION", admission).replace(
+            "// GENERATED_PERFORM", perform).replace("// GENERATED_IMAGE_ERROR", image_error)
+        with tempfile.TemporaryDirectory(prefix="openquatt-ota-admission-") as temporary:
+            path = Path(temporary) / "test.cpp"
+            executable = Path(temporary) / "test"
+            path.write_text(source)
+            for flags in ((), ("-DUSE_OPENQUATT_WEATHER",)):
+                run_process([*compiler_command("-DUSE_OTA_STATE_LISTENER", *flags), "-I",
+                             str(ROOT / "components/openquatt_weather"), str(path), "-o", str(executable)],
+                            check=True, timeout=COMPILE_TIMEOUT_SECONDS)
+                run_process([str(executable)], check=True, timeout=RUN_TIMEOUT_SECONDS)
+
+    def test_generated_ota_group_is_validated_before_writes_and_upgrades_existing_update_patch(self) -> None:
+        ota = resources.files("esphome.components.http_request.ota").joinpath("ota_http_request.cpp").read_text()
+        originals = upstream_sources()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            core = SimpleNamespace(relative_src_path=lambda *parts: root.joinpath(*parts))
+            paths = {}
+            for name, source in originals.items():
+                path = core.relative_src_path("esphome", "components", "http_request", "update", name)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(source)
+                paths[name] = path
+            path = core.relative_src_path("esphome", "components", "http_request", "ota", "ota_http_request.cpp")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("changed upstream")
+            with self.assertRaisesRegex(RuntimeError, "unexpected"):
+                PATCH._patch_generated_sources(core)
+            for name, source in originals.items():
+                self.assertEqual(paths[name].read_text(), source)
+                paths[name].write_text(PATCH._transform(name, source)[0])
+            path.write_text(ota)
+            PATCH._patch_generated_sources(core)
+            self.assertEqual(path.read_text(), PATCH._transform("ota_http_request.cpp", ota)[0])
+            PATCH._patch_generated_sources(core)
+            self.assertEqual(path.read_text(), PATCH._transform("ota_http_request.cpp", ota)[0])
+
     def test_patch_rejects_changed_or_partially_patched_sources(self) -> None:
         originals = upstream_sources()
         for name, source in originals.items():
@@ -77,17 +142,21 @@ class HttpRequestUpdateSourceTest(unittest.TestCase):
         relative_url = cpp.split("    // Merge source_url_ and firmware_url\n", 1)[1].split(
             "\n#ifdef ESPHOME_PROJECT_VERSION", 1
         )[0]
+        completion = cpp.split("this_update->defer([this_update, result]() {\n", 1)[1].split(
+            "    if (result->error_str != nullptr)", 1
+        )[0]
         fixture = (ROOT / "tests/fixtures/http_request_update_source.cpp").read_text()
         source = fixture.replace("// GENERATED_HEADER", header).replace("// GENERATED_UPDATE", update).replace(
             "// GENERATED_RELATIVE_URL", relative_url
-        )
+        ).replace("// GENERATED_COMPLETION", completion)
         with tempfile.TemporaryDirectory(prefix="openquatt-update-source-") as temporary:
             path = Path(temporary) / "test.cpp"
             executable = Path(temporary) / "test"
             path.write_text(source)
-            for target_flags in (("-DUSE_ESP32",), ()):
+            for target_flags in (("-DUSE_ESP32",), (), ("-DUSE_ESP32", "-DUSE_OPENQUATT_WEATHER")):
                 run_process(
-                    [*compiler_command(*target_flags), str(path), "-o", str(executable)],
+                    [*compiler_command(*target_flags), "-I", str(ROOT / "components/openquatt_weather"),
+                     str(path), "-o", str(executable)],
                     check=True, timeout=COMPILE_TIMEOUT_SECONDS,
                 )
                 run_process([str(executable)], check=True, timeout=RUN_TIMEOUT_SECONDS)

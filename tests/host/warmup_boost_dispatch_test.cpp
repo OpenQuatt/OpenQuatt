@@ -12,6 +12,7 @@ struct GenerationSelect {
 #undef id
 #include "openquatt/includes/control/oq_hp_supervisory_logic.h"
 #include "openquatt/includes/control/oq_power_house_demand_logic.h"
+#include "openquatt/includes/control/oq_supervisory_power_limiter_logic.h"
 #include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "openquatt/includes/control/oq_power_house_run_extension_logic.h"
 #include "openquatt/includes/control/oq_warmup_runtime.h"
@@ -26,7 +27,7 @@ struct Simulation {
   oq_warmup_runtime::Runtime warmup;
   oq_warmup::Settings settings{0.8f, 0.1f, 300000U};
   oq_warmup::Input room{1000U, true, true, true, 1, 1, 19.08f, 17.0f, 0.1f};
-  oq_power_house::DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2, 20};
+  oq_power_house::DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2};
   oq_power_house::DemandState house_state;
   oq_heat_intent::State intent_state;
   oq_power_house_dispatch::DispatchInput dispatch;
@@ -99,10 +100,11 @@ struct Simulation {
       if (std::isfinite(hp_slew_w)) hp_slew_w = requested_w;
     }
     dispatch.now_ms = now;
-    dispatch.requested_w = oq_power_house::power_capped_request_w(requested_w, power_cap, 20, 5000);
-    dispatch.demand_level = std::min(power_cap, static_cast<int>(std::ceil(dispatch.requested_w * 20 / 5000)));
+    dispatch.requested_w =
+        oq_supervisory_power::limit_request_w(requested_w, oq_supervisory_power::request_limit_w(5000, power_cap, 20));
     selected = oq_power_house_dispatch::decide_dispatch(dispatch, limits, dispatch_state);
-    const float capped_house = oq_power_house::power_capped_request_w(house_w, power_cap, 20, 5000);
+    const float capped_house =
+        oq_supervisory_power::limit_request_w(house_w, oq_supervisory_power::request_limit_w(5000, power_cap, 20));
     deficit_w = oq_power_house_run_extension::compute_house_deficit_w(
         capped_house, selected.capacity_w, selected.output_valid, std::isfinite(hp_slew_w) ? NAN : selected.deficit_w);
     if (!oq_hp_supervisory::apply_heating_enable_gate(true, permission_valid, permission)) {
@@ -298,7 +300,7 @@ void test_repeated_ticks_do_not_accumulate_boost_or_house_deficit() {
 
 void test_composition_envelope_slew_and_no_boost_compatibility() {
   using namespace oq_power_house;
-  const DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2, 20};
+  const DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2};
   DemandInput input{6000, 12, -10, 18, 5000, 19.1f, 19.48f, NAN, 1, false};
   const WarmupBoost boost{19.18f, 2527.63f};
   auto out = decide_demand(input, tuning, {2527.63f, 1000, 0}, boost);
@@ -306,7 +308,7 @@ void test_composition_envelope_slew_and_no_boost_compatibility() {
   assert(near(out.contributions.warmup_base_w, 1071.43f));
   assert(near(out.contributions.warmup_extra_w, 840));
   out = decide_demand(input, tuning, {}, {19.18f, 9000});
-  assert(near(out.requested_w, 9840.0f) && out.raw_demand == 20);
+  assert(near(out.requested_w, 9840.0f));
   for (float water : {0.0f, 0.5f, 0.998f}) {
     input.water_limit_factor = water;
     assert(near(decide_demand(input, tuning, {}, boost).requested_w, decide_demand(input, tuning, {}).requested_w));

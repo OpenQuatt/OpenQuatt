@@ -1,3 +1,4 @@
+import { invalidateWeatherForecast, refreshWeatherForecast, shouldRefreshWeatherForecast } from "../features/weather-forecast.js";
 import { syncPerformanceTelemetryPrompt } from "../features/performance-telemetry-prompt.js";
 import { FREQUENCY_MINIMUM_KEYS, HP_PANEL_CONFIGS } from "./config.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
@@ -6,7 +7,7 @@ import { getSetupCompleteState, isTrendHistoryEnabled, renderAppSummary } from "
 import { AUX_RELAY_SETTING_KEYS, AUX_RELAY_STATE_KEYS, BOILER_DIAGNOSTIC_KEYS, BOILER_SETTING_KEYS, BOILER_SUPPORT_SWITCHING_KEYS, BULK_POLL_INTERVAL_MS, CIC_COMPATIBILITY_KEYS, CIC_POLLING_DIAGNOSTIC_KEYS, CIC_POLLING_SETTING_KEYS, COMMISSIONING_STATE_KEYS, COMPRESSOR_SETTING_KEYS, CONNECTIVITY_PROBE_SUCCESS_TTL_MS, CONNECTIVITY_PROBE_TIMEOUT_MS, CONTROL_REPLAY_STATE_KEYS, COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, COOLING_SCHEDULE_VALID_KEY, COOLING_SETTING_KEYS, CURVE_POINTS, CURVE_SETTING_KEYS, ENTITY_DEFS, ENTITY_REFRESH_CONCURRENCY, FAST_OVERVIEW_KEYS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_ENTITY_KEYS, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, FREQUENCY_CAP_KEYS, HEADER_ENTITY_KEYS, HIDDEN_POLL_INTERVAL_MS, INSTALLATION_MONITORING_STATE_KEYS, LIMIT_KEYS, OPENTHERM_DIAGNOSTIC_KEYS, OPENTHERM_SETTING_KEYS, OTB_DIAGNOSTIC_KEYS, OVERVIEW_ENERGY_COLUMN_CONFIGS, OVERVIEW_KEYS, OVERVIEW_METADATA_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SENSOR_CALIBRATION_KEYS, SENSOR_CALIBRATION_STATE_KEYS, SENSOR_SELECTION_KEYS, SENSOR_SELECTION_STATE_KEYS, SERVICE_CONTROL_KEYS, SERVICE_STATUS_ENTITY_KEYS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS, SETTINGS_KEYS, SILENT_SETTING_KEYS, STATIC_POLL_INTERVAL_MS, WARMUP_SETTING_KEYS, WARMUP_STATE_KEYS } from "./config.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { getEntityValue, parseLooseNumber } from "./entity-store.js";
-import { state } from "./state.js";
+import { invalidateHouseLearningShadow, state } from "./state.js";
 import { updateWebServerLogState } from "./feature-state.js";
 import { getDefaultAppView, getUrlAppView, setAppView } from "./navigation.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
@@ -20,7 +21,7 @@ import { getHeaderRenderSignature, patchHeaderDom } from "./header-render-contro
 import { patchSettingsDom } from "./settings-render-controls.js";
 import { ENERGY_HISTORY_VIEW_KEYS, getSettingsStorageRefreshKeys, SETTINGS_STORAGE_KEYS, TREND_HISTORY_VIEW_KEYS } from "./storage-history-keys.js";
 import { refreshEnergyHistoryData, refreshSettingsStorageState, refreshTrendHistoryData, refreshTrendHistoryMetadata, shouldRefreshSettingsStorageForCurrentSurface } from "./storage-history-controls.js";
-import { patchControlReplayDom, patchDiagnosisDom, patchEnergyDom, patchOverviewDom, patchResultsDom } from "./view-patch-controls.js";
+import { patchControlReplayDom, patchDiagnosisDom, patchEnergyDom, patchLearningDom, patchOverviewDom, patchResultsDom } from "./view-patch-controls.js";
 import { clearWebServerLogOutput, closeWebServerLogStream, resetWebServerLogRecoveryState } from "./webserver-log-controls.js";
 import { getMqttSensorsModalRenderSignature, refreshMqttStatus, shouldRefreshMqttStatusForCurrentSurface } from "../features/mqtt-actions.js";
 import { refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
@@ -165,6 +166,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
           ? refreshIncidentMonitoringData({ force: true })
           : false,
       ]);
+      if (shouldRefreshWeatherForecast()) void refreshWeatherForecast();
       if (shouldRefreshHouseLearningStatusSurface()) {
         void refreshHouseLearningStatus({ force: true });
       }
@@ -800,8 +802,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     return chunks;
   }
 
-  export async function fetchBulkEntityChunk(chunk) {
-    const timeoutMs = getEntityRequestTimeoutMs();
+  export async function fetchBulkEntityChunk(chunk, timeoutMs = getEntityRequestTimeoutMs()) {
     const fetchOptions = {
       method: "POST",
       cache: "no-store",
@@ -809,16 +810,16 @@ import { fetchWithTimeout } from "./browser-utils.js";
       body: chunk.body,
     };
 
-    const response = await fetchWithTimeout(
+    return fetchWithTimeout(
       BULK_ENTITY_ENDPOINT,
       fetchOptions,
       timeoutMs,
       `bulk entities request timed out after ${timeoutMs}ms`,
+      (response) => {
+        if (!response.ok) throw new Error(`bulk entities HTTP ${response.status}`);
+        return response.json();
+      },
     );
-    if (!response.ok) {
-      throw new Error(`bulk entities HTTP ${response.status}`);
-    }
-    return response.json();
   }
 
   export async function fetchServiceStatusPayload() {
@@ -1021,9 +1022,51 @@ import { fetchWithTimeout } from "./browser-utils.js";
     }
   }
 
+  let entityWriteRevision = 0;
+
+  export function beginEntityWriteAction() {
+    invalidateHouseLearningShadow();
+    return ++entityWriteRevision;
+  }
+
+  export function isEntityWriteActionCurrent(revision) {
+    return revision === entityWriteRevision;
+  }
+
+  let busyWriteRevision = 0;
+
+  export function startEntityWriteAction(action) {
+    const revision = beginEntityWriteAction();
+    busyWriteRevision = revision;
+    state.busyAction = action;
+    return revision;
+  }
+
+  export function ownsBusyAction(revision, action) {
+    return busyWriteRevision === revision && state.busyAction === action;
+  }
+
+  function controlErrorGuard() {
+    const previousControlError = state.controlError;
+    const writeRevision = entityWriteRevision;
+    const learningRequestId = state.houseLearningRequestId;
+    const learningSwitchBusy = state.busyAction === "switch-houseLearningEnabled";
+    const weatherRevision = state.weatherConfigRevision;
+    const weatherWriteBusy = ["switch-weatherEnabled", "save-weatherLocation"].includes(state.busyAction);
+    return () => !learningSwitchBusy && state.busyAction !== "switch-houseLearningEnabled"
+      && !weatherWriteBusy && weatherRevision === state.weatherConfigRevision
+      && writeRevision === entityWriteRevision && learningRequestId === state.houseLearningRequestId
+      && state.controlError === previousControlError;
+  }
+
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
+    const canUpdateControlError = controlErrorGuard();
     const timeWriteRevision = state.timeWriteRevision;
+    const weatherRevision = state.weatherConfigRevision;
+    const weatherWriteBusy = ["switch-weatherEnabled", "save-weatherLocation"].includes(state.busyAction);
+    const learningRequestId = state.houseLearningRequestId;
+    const learningSwitchBusy = state.busyAction === "switch-houseLearningEnabled";
     const performancePromptWriteRevision = state.performanceTelemetryPromptWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
@@ -1041,10 +1084,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
     if (!entityRefreshKeys.length) {
       applyDerivedState();
       syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
-      if (!state.busyAction) {
-        noteEntityRefreshSuccess();
-        state.controlError = "";
-      }
+      if (!state.busyAction) noteEntityRefreshSuccess();
+      if (canUpdateControlError()) state.controlError = "";
       return;
     }
 
@@ -1085,6 +1126,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
         // A poll started before/during a prompt write must not restore unhandled consent.
         if (["performanceTelemetryEnabled", "performanceTelemetryChoiceConfigured", "performanceTelemetryPromptHandled"].includes(key)
             && (state.performanceTelemetryPromptBusy || state.performanceTelemetryPromptWriteRevision !== performancePromptWriteRevision)) return;
+        if (key === "houseLearningEnabled"
+            && (learningSwitchBusy || state.busyAction === "switch-houseLearningEnabled"
+              || learningRequestId !== state.houseLearningRequestId)) return;
+        if (["weatherEnabled", "weatherLocation", "weatherStatus"].includes(key)
+            && (weatherWriteBusy || ["switch-weatherEnabled", "save-weatherLocation"].includes(state.busyAction)
+              || weatherRevision !== state.weatherConfigRevision)) return;
         // A poll started before/during a time write must not restore the old time.
         if (ENTITY_DEFS[key]?.domain === "time"
             && (state.savingTimeFields.has(key) || state.timeWriteRevision !== timeWriteRevision)) return;
@@ -1111,14 +1158,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
     syncInstallationMonitoringDetailsState(getInstallationMonitoringModel());
     if (firstError) {
       noteEntityRefreshFailure(firstError);
-      if (state.deviceReconnectMode) {
-        state.controlError = "";
-      } else {
-        state.controlError = t("entitySync.refreshIncomplete", { error: firstError });
+      if (canUpdateControlError()) {
+        state.controlError = state.deviceReconnectMode ? "" : t("entitySync.refreshIncomplete", { error: firstError });
       }
-    } else if (!state.busyAction) {
-      noteEntityRefreshSuccess();
-      state.controlError = "";
+    } else {
+      if (!state.busyAction) noteEntityRefreshSuccess();
+      if (canUpdateControlError()) state.controlError = "";
     }
   }
 
@@ -1127,6 +1172,14 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...(previous || {}),
       ...(payload || {}),
     };
+    if (key === "weatherStatus") {
+      next.consent_state = typeof payload?.value === "string" ? payload.consent_state : null;
+      if (next.consent_state === "off") state.weatherOptOutUnconfirmed = false;
+      if (previous?.consent_state !== next.consent_state) invalidateWeatherForecast();
+    }
+    if (previous && (key === "weatherLocation" || key === "weatherEnabled")
+        && (next.value !== previous.value || next.save_request !== previous.save_request
+          || next.save_status !== previous.save_status)) invalidateWeatherForecast();
     if (key === "firmwareUpdate") {
       // Revision is live confirmation metadata, never a cached capability from older firmware.
       next.manifest_revision = payload?.manifest_revision;
@@ -1163,8 +1216,14 @@ import { fetchWithTimeout } from "./browser-utils.js";
     }
   }
 
+  const LEARNING_VIEW_KEYS = [
+    "houseLearningEnabled", "houseLearningReset", "houseColdTemp", "houseOutdoorMax", "housePower",
+    "hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut", "weatherLocation", "weatherEnabled", "weatherStatus",
+  ];
+
   export function getInitialPrimeKeys() {
     const base = getPrimeBaseKeys();
+    if (state.appView === "learning") return [...new Set([...base, ...LEARNING_VIEW_KEYS])];
     if (state.appView === "settings") {
       return [...new Set([...base, ...getSettingsGroupHydrationKeys()])];
     }
@@ -1217,6 +1276,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       return;
     }
 
+    const canUpdateControlError = controlErrorGuard();
     const appView = state.appView;
     const isPrefetchOverview = options.prefetchView === "overview" && !options.forceBulk && appView === "settings";
     const syncView = isPrefetchOverview ? "overview" : appView;
@@ -1271,6 +1331,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
           ...getOverviewLikeHydrationKeys(syncView, { forceFast, includeBulk: isBulkDue }),
           ...staticKeys,
         ]
+      : appView === "learning"
+        ? ["setupComplete", ...HEADER_ENTITY_KEYS, ...LEARNING_VIEW_KEYS, ...staticKeys]
       : appView === "settings"
         ? [...new Set([
             ...getSettingsGroupHydrationKeys(),
@@ -1379,6 +1441,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       if (!shouldDeferSupplementary && shouldRefreshOduRuntimeFrequencySurface()) {
         await refreshOduRuntimeFrequencyStatuses();
       }
+      if (!shouldDeferSupplementary && shouldRefreshWeatherForecast()) void refreshWeatherForecast();
       if (!shouldDeferSupplementary && shouldRefreshHouseLearningStatusSurface()) {
         await refreshHouseLearningStatus();
       }
@@ -1498,6 +1561,10 @@ import { fetchWithTimeout } from "./browser-utils.js";
         }
         return;
       }
+      if (state.appView === "learning") {
+        if (!patchLearningDom()) render();
+        return;
+      }
       if (state.appView === "diagnosis") {
         if (!patchDiagnosisDom()) {
           render();
@@ -1526,7 +1593,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
         render();
       }
     } catch (error) {
-      if (!isPrefetchOverview) {
+      if (!isPrefetchOverview && canUpdateControlError()) {
         state.controlError = t("entitySync.statusLoadFailed", { error: error.message });
         render();
       }

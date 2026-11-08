@@ -11,6 +11,36 @@ Een bron levert een waarde aan OpenQuatt, bijvoorbeeld de kamertemperatuur. Het 
 
 `Auto` kiest volgens de regels van het betreffende signaal; het betekent niet dat altijd dezelfde integratie voorrang heeft. Een dauwpuntbron gebruikt bijvoorbeeld de hoogste geldige waarde, terwijl buitentemperatuur de laagste geldige waarde gebruikt. Zie [Instellingen en meetwaarden](../instellingen-en-meetwaarden.md#5-bronselectie) voor de bronregels.
 
+## Open-Meteo als buitenbron
+
+Neem voor een eigen Q-firmwarebuild `weather_outside_source.yaml` op onder
+`packages`. Vanuit een configuratie in `configs/heatpump_controller_q/` gebruik
+je deze include.
+
+```yaml
+packages:
+  weather: !include ../../openquatt/experimental/weather_outside_source.yaml
+```
+
+Dit pakket bevat Vooruitblik. Vervang een eventuele bestaande include van
+`weather_passive.yaml` door deze include. Stel na het installeren de locatie in
+en zet weersverwachting aan bij [Vooruitblik](leren.md#vooruitblik).
+Kies daarna **Auto** of **Open-Meteo** onder **Sensorselectie → Buitentemperatuur**.
+Gebruik je al **Auto** en staat weersverwachting aan, dan telt Open-Meteo na
+installatie van het pakket automatisch mee.
+
+De bron gebruikt de actuele kwartierwaarde van het KNMI-weermodel via
+Open-Meteo. **Auto** neemt die mee bij de keuze van de laagste geldige waarde.
+Bij gelijke waarden houdt de buitenbron die al vóór Open-Meteo in de
+keuzevolgorde stond voorrang. Zodra het modeltijdstip meer dan 30 minuten oud
+is, valt de waarde weg. In **Auto** kan OpenQuatt dan een andere geldige bron
+gebruiken. Kies je uitsluitend **Open-Meteo**, dan is de buitentemperatuur
+onbeschikbaar zolang de modelwaarde ontbreekt.
+
+De regeling en het leren kunnen de gekozen modeltemperatuur gebruiken. De
+antivriesbewaking en de koelbeveiliging zonder dauwpunt blijven hun
+buitenreferentie uit de bestaande bronnen halen.
+
 ## Bronnen / integraties
 
 Hier beheer je de directe gegevensbronnen en integraties:

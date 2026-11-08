@@ -21,6 +21,11 @@ const cssSources = resolveCssSources(webDir);
 
 const allowedBareImports = new Set(["virtual:embedded-assets"]);
 const boundaryAllowedEdges = new Set([
+  "views/learning.js -> settings/weather.js",
+  "core/entity-write-actions.js -> features/weather-forecast.js",
+  "core/entity-write-actions.js -> features/weather.js",
+  "core/entity-sync.js -> features/weather-forecast.js",
+  "core/entity-actions.js -> settings/weather-forecast.js",
   // Live COP and installation monitoring use the shared installation-topology data helper.
   "core/app-shared.js -> features/device-context.js",
   "core/installation-monitoring.js -> features/device-context.js",
@@ -58,6 +63,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-sync.js -> features/frequency-limits.js",
   "core/entity-actions.js -> features/frequency-limits.js",
   "core/entity-write-actions.js -> features/firmware-update.js",
+  "core/entity-write-actions.js -> features/house-learning.js",
   "core/entity-write-actions.js -> features/settings-change-log.js",
   "core/entity-write-actions.js -> features/security-actions.js",
   "core/entity-write-actions.js -> features/storage-history.js",
@@ -67,6 +73,7 @@ const boundaryAllowedEdges = new Set([
   "settings/house-learning.js -> views/stat-card.js",
   "views/overview.js -> settings/cooling.js",
   "views/shell.js -> settings/core.js",
+  "views/learning.js -> settings/house-learning.js",
 ]);
 
 function toBundlePath(value) {

@@ -20,6 +20,7 @@ import { captureCm100CommissioningScrollState, captureHistoryStorageModalScrollS
 import { renderSettingsGroupContent, renderSettingsGroupNav } from "../settings/core.js";
 import { renderSettingsFeedback, syncSettingsFeedback } from "../features/settings-feedback.js";
 import { renderEnergyView, renderResultsView } from "./energy.js";
+import { renderLearningView } from "./learning.js";
 import { renderControlReplayView } from "../features/control-replay-view.js";
 import { renderOverviewView, syncTechTooltipLayers } from "./heatpump.js";
 import { renderDiagnosisView, syncOverviewTrendInteractions } from "./overview.js";
@@ -77,6 +78,8 @@ export function renderSettingsView() {
       ? renderDiagnosisView()
       : state.appView === "results"
       ? renderResultsView()
+      : state.appView === "learning"
+      ? renderLearningView()
       : renderSettingsView();
   }
 
@@ -127,9 +130,9 @@ export function renderSettingsView() {
   export function captureSettingsPageScrollState() {
     if (
       state.nativeOpen ||
-      state.appView !== "settings" ||
-      state.renderedAppView !== "settings" ||
-      state.renderedSettingsGroup !== state.settingsGroup
+      !["settings", "learning"].includes(state.appView) ||
+      state.renderedAppView !== state.appView ||
+      (state.appView === "settings" && state.renderedSettingsGroup !== state.settingsGroup)
     ) {
       return null;
     }
@@ -141,6 +144,7 @@ export function renderSettingsView() {
     }
 
     return {
+      view: state.appView,
       group: state.settingsGroup,
       left: Number(window.scrollX || scroller?.scrollLeft || 0),
       top,
@@ -158,8 +162,8 @@ export function renderSettingsView() {
       if (
         token !== state.settingsPageScrollRestoreToken ||
         state.nativeOpen ||
-        state.appView !== "settings" ||
-        state.settingsGroup !== scrollState.group
+        state.appView !== scrollState.view ||
+        (state.appView === "settings" && state.settingsGroup !== scrollState.group)
       ) {
         return;
       }

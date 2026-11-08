@@ -2,12 +2,17 @@
 
 #include <esp_http_server.h>
 
+#include <atomic>
 #include <string>
 
+#include "PsramBuffer.h"
 #include "esphome/components/globals/globals_component.h"
 #include "esphome/components/web_server/web_server.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/component.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "snapshot_buffer_writer.h"
 #include "warmup_progress_snapshot.h"
 
 namespace esphome {
@@ -15,12 +20,14 @@ namespace openquatt_service_status {
 
 class OpenQuattServiceStatus : public Component {
  public:
+  ~OpenQuattServiceStatus();
   using BoolGlobal = globals::GlobalsComponent<bool>;
   using FloatGlobal = globals::GlobalsComponent<float>;
   using IntGlobal = globals::GlobalsComponent<int>;
   using StringGlobal = globals::GlobalsComponent<std::string>;
 
   void set_web_server(web_server::WebServer* web_server) { this->web_server_ = web_server; }
+  void set_duo_defrost_start_block(uint8_t mask) { this->duo_defrost_start_block_mask_ = mask; }
   void set_warmup_progress(uint8_t status, uint32_t elapsed_s) { this->warmup_progress_.publish(status, elapsed_s); }
   uint32_t warmup_progress() const { return this->warmup_progress_.read(); }
 
@@ -90,13 +97,27 @@ class OpenQuattServiceStatus : public Component {
   }
 
   void setup() override;
+  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override;
 
   void write_status(httpd_req_t* req) const;
 
  protected:
+  bool serialize_snapshot_(SnapshotBufferWriter& writer) const;
+  void refresh_snapshot_();
+
+  // Only the main loop reads the source globals or writes pending_snapshot_.
+  // HTTPD copies published_snapshot_ while locked, then sends its own copy.
+  SemaphoreHandle_t snapshot_lock_{nullptr};
+  openquatt_common::PsramBuffer<char> pending_snapshot_;
+  openquatt_common::PsramBuffer<char> published_snapshot_;
+  std::atomic<uint32_t> published_size_{0U};
+  uint32_t published_at_ms_{0U};  // Protected by snapshot_lock_.
+  uint32_t last_snapshot_ms_{0U};
   WarmupProgressSnapshot warmup_progress_;
+  // Written by the actuator and read by the snapshot builder on the ESPHome loop.
+  uint8_t duo_defrost_start_block_mask_{0};
   web_server::WebServer* web_server_{nullptr};
   IntGlobal* control_mode_code_{nullptr};
   BoolGlobal* commissioning_active_{nullptr};

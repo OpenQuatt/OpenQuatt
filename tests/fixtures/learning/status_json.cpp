@@ -6,9 +6,13 @@
 
 #include "../../../openquatt/includes/control/oq_ph_daily_collection_state_json.h"
 #include "../../../openquatt/includes/control/oq_ph_daily_record_quality_json.h"
+#include "../../../openquatt/includes/control/oq_ph_shadow_demand_types.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_persistence_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
+#ifdef OQ_TEST_DAILY_ACTIVITY_JSON
+#include "../../host/oq_ph_daily_source_fixture.h"
+#endif
 
 using namespace oq_ph_learning;
 using namespace oq_power_house::learning;
@@ -29,16 +33,24 @@ int oq_control_mode_code = INT32_MIN;
 int esp_reset_reason() { return INT32_MIN; }
 struct Endpoint {
   std::string largest;
+  std::string latest;
   unsigned publications = 0;
+  uint32_t expected_context_revision = UINT32_MAX;
   std::string exported;
   bool publish_export_json(const char* text, size_t length) {
     assert(length > 0 && length < kExportJsonBufferSize && text[length] == '\0');
     exported.assign(text, length);
     return true;
   }
-  bool publish_status_json(const char* text, size_t length) {
+  bool publish_status_json(const char* text, size_t length, size_t shadow_offset, uint64_t shadow_expiry,
+                           uint32_t shadow_generation, uint32_t context_revision) {
+    assert(shadow_offset > 0U && shadow_offset < length && text[shadow_offset] == ',');
+    assert(shadow_expiry == 15000U && shadow_generation == 1U);
+    assert(context_revision == expected_context_revision);
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
+    latest.assign(text, length);
     if (length > largest.size()) largest.assign(text, length);
+    latest.assign(text, length);
     ++publications;
     return true;
   }
@@ -55,6 +67,7 @@ struct RuntimeStorage {
   PassiveRuntimeStorage learner;
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
+  QualityConfig daily_quality;
   LearningSourceInput input;
   PassiveTickInput tick;
   SnapshotDiagnostics source_diagnostics;
@@ -86,6 +99,10 @@ struct Production {
   static const char* route_name_(int) { return "selected_outside_temperature"; }
   static void publish_export_error_() { assert(false && "production export exceeded its fixed cache"); }
   static void publish_status_error_() { assert(false && "production status exceeded its fixed cache"); }
+  void invalidate_shadow_(oq_power_house::ShadowDemandReason) {}
+  static oq_power_house::ShadowDemandResult shadow_demand_(const RuntimeStorage&) {
+    return {UINT64_MAX, 15000, UINT32_MAX, 1, 3100, 2750, -350, oq_power_house::ShadowDemandReason::READY};
+  }
   static void publish_paused_status_(RuntimeStorage& state) {
     paused_status = state.daily_resume_status;
     paused_reason = state.daily_resume_reason;
@@ -189,7 +206,57 @@ void test_daily_resume_cause_before_journal_load() {
   assert(strcmp(state.daily_resume_status, "none") == 0 && strcmp(state.daily_resume_reason, "none") == 0);
 }
 
-#ifdef OQ_TEST_EXPORT_JSON
+#if defined(OQ_TEST_DAILY_ACTIVITY_JSON)
+int main() {
+  bool comma = false;
+  std::cout << '[';
+  for (const bool system_heat : {true, false}) {
+    for (const float heat_w : {-30000.0f, 30000.0f}) {
+      RuntimeStorage state;
+      state.config.quality.max_daily_missing_heat_w = 12230.56f;
+      state.config.quality.max_observed_heat_w = 1.20f * state.config.quality.max_daily_missing_heat_w;
+      state.daily_quality = daily_heat_quality(state.config.quality, system_heat);
+      const PassiveContextView context{daily_source_fixture::kContext, sizeof(daily_source_fixture::kContext), 1};
+      initialize_passive_runtime(state.learner, context, state.config, true);
+      for (const uint32_t second : {0U, 10U}) {
+        auto raw = daily_source_fixture::source(second, heat_w);
+        raw.system_heat_enabled = system_heat;
+        raw.circuit_flow_lph = raw.flow_lph;
+        raw.system_supply_c = raw.hp2.water_out_c;
+        raw.system_supply_c.source = {PhysicalSourceKind::DIRECT_SENSOR, 4, PhysicalUnit::SYSTEM};
+        const auto batch = build_learning_snapshot(raw, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH);
+        const auto dynamic = build_learning_snapshot(raw, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC);
+        state.input = raw;
+        oq_ph_learning_status_endpoint.expected_context_revision = raw.context_revision;
+        state.tick = daily_source_fixture::production_tick(raw);
+        state.tick.batch_snapshot_available = batch.has_snapshot;
+        state.tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
+        state.tick.batch_source_status = state.batch_source_status = batch.status;
+        state.tick.batch_snapshot = batch.snapshot;
+        state.tick.dynamic_snapshot_available = dynamic.has_snapshot;
+        state.tick.dynamic_snapshot = dynamic.snapshot;
+        tick_passive_runtime(state.learner, state.tick, &state.daily_quality);
+      }
+      assert(state.learner.batch_accumulator.active == system_heat);
+      assert(!state.learner.thermal_accumulator.active && state.learner.thermal_state.accepted_samples == 0);
+      if (system_heat) {
+        assert(validate_snapshot(state.tick.batch_snapshot, state.config.quality) ==
+               LearningStatus::INVALID_MEASUREMENT);
+        assert(validate_snapshot(state.tick.batch_snapshot, state.daily_quality) == LearningStatus::OK);
+      }
+      state.summary = passive_runtime_summary(state.learner, state.tick.now_monotonic_ms);
+      Production::publish_status_(state, true, state.tick.now_epoch_s);
+      Production::publish_export_(state, true, state.tick.now_epoch_s);
+      if (comma) std::cout << ',';
+      comma = true;
+      std::cout << "{\"system_heat\":" << (system_heat ? "true" : "false") << ",\"heat_w\":" << heat_w
+                << ",\"status\":" << oq_ph_learning_status_endpoint.latest
+                << ",\"export\":" << oq_ph_learning_status_endpoint.exported << '}';
+    }
+  }
+  std::cout << "]\n";
+}
+#elif defined(OQ_TEST_EXPORT_JSON)
 int main() {
   RuntimeStorage state;
   state.learner.record_count = kMaxSegmentRecords;
@@ -240,15 +307,37 @@ int main() {
   learner.diagnostics.accepted_thermal_intervals = UINT32_MAX;
   summary.batch_advice_ready = summary.thermal_model_ready = true;
   summary.batch.candidate_available = true;
+  summary.batch.metadata_prepared = true;
+  summary.batch.train_segments = summary.batch.train_days = 18;
+  summary.batch.holdout_segments = summary.batch.holdout_days = 3;
+  summary.batch.preview = {true, {211.25f, 17.125f}, 21, 21, 1.97f, 12.34f};
+  summary.batch.train_min_c = 7.55f;
+  summary.batch.train_max_c = 12.34f;
+  summary.batch.train_p10_c = 8.28f;
+  summary.batch.train_p90_c = 11.88f;
   summary.batch.candidate.heat_loss_w_per_k = summary.batch.candidate.zero_power_temp_c =
       -std::numeric_limits<float>::max();
   summary.thermal.heat_loss_w_per_k = summary.thermal.thermal_capacity_wh_per_k = -std::numeric_limits<float>::max();
   summary.thermal.accepted_samples = summary.thermal.readiness_reasons = UINT32_MAX;
   state.config.thermal_window.target_duration_ms = UINT64_MAX;
-  state.config.quality.max_daily_missing_heat_w = 18344.30078125f;
+  state.daily_quality.max_daily_missing_heat_w = 18344.30078125f;
   state.input.context_revision = UINT32_MAX;
   state.source_diagnostics.invalid_reasons = UINT32_MAX;
   state.journal.status = "persistence_unavailable";
+  // A retained result cannot publish prepared metadata while paused. Rejected
+  // or initial fits also carry the explicit false flag instead of default counts.
+  summary.batch.metadata_prepared = false;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  summary.batch.metadata_prepared = true;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":true") != std::string::npos);
+  Production::publish_status_(state, false, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  learner.status = PassiveRuntimeStatus::PAUSED;
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
+  learner.status = PassiveRuntimeStatus::BLOCKED;
   // Enumerate names so later enum additions cannot silently defeat the budget.
   for (unsigned status = 0; status <= static_cast<unsigned>(LearningStatus::UNSTABLE_FIT); ++status) {
     summary.batch.status = learner.diagnostics.last_batch_rejection = static_cast<LearningStatus>(status);

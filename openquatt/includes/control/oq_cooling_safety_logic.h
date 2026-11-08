@@ -104,7 +104,7 @@ class CoolingSafetyRuntime {
     return finite_value(id(oq_cooling_fallback_night_min_last_c)) ? id(oq_cooling_fallback_night_min_last_c) : NAN;
   }
   float fallback_min_supply_temp() {
-    return fallback_minimum_supply(outside_valid(), id(outside_temp_selected).state, fallback_night_min_valid(),
+    return fallback_minimum_supply(outside_valid(), outside_safety_temperature(), fallback_night_min_valid(),
                                    id(cooling_fallback_night_min_outdoor_temp).state, room_valid(),
                                    id(room_temp_selected).state);
   }
@@ -125,9 +125,9 @@ class CoolingSafetyRuntime {
     if (now.hour < 6) {
       if (fallback_night_window_day_key_ != day_key || !finite_value(fallback_night_min_current_c_)) {
         fallback_night_window_day_key_ = day_key;
-        fallback_night_min_current_c_ = id(outside_temp_selected).state;
+        fallback_night_min_current_c_ = outside_safety_temperature();
       } else {
-        fallback_night_min_current_c_ = fminf(fallback_night_min_current_c_, id(outside_temp_selected).state);
+        fallback_night_min_current_c_ = fminf(fallback_night_min_current_c_, outside_safety_temperature());
       }
       return;
     }
@@ -159,7 +159,7 @@ class CoolingSafetyRuntime {
   const char* fallback_block_reason() {
     if (!id(cooling_without_dew_point_enabled).state) return "No dew point source";
     if (!outside_valid()) return "Fallback outside temperature unavailable";
-    if (id(outside_temp_selected).state < 20.0f)
+    if (outside_safety_temperature() < 20.0f)
       return "Fallback blocked below 20\xC2\xB0"
              "C outdoor";
     if (!fallback_min_valid()) return "Fallback minimum unavailable";
@@ -187,9 +187,9 @@ class CoolingSafetyRuntime {
     return id(cooling_fallback_night_min_outdoor_temp).has_state() &&
            finite_value(id(cooling_fallback_night_min_outdoor_temp).state);
   }
-  bool outside_valid() const {
-    return id(outside_temp_selected).has_state() && finite_value(id(outside_temp_selected).state);
-  }
+  static float outside_safety_temperature() { return oq_sensor_source::runtime().outside_safety_temperature(); }
+
+  bool outside_valid() const { return finite_value(outside_safety_temperature()); }
   bool room_valid() const { return id(room_temp_selected).has_state() && finite_value(id(room_temp_selected).state); }
   bool setpoint_valid() const {
     return id(room_setpoint_selected).has_state() && finite_value(id(room_setpoint_selected).state);

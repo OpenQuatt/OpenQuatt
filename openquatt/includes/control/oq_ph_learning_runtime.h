@@ -21,10 +21,16 @@
 #include "../learning/oq_ph_learning_live_logic.h"
 #include "../learning/oq_ph_learning_persistence_logic.h"
 #include "oq_ph_learning_json.h"
+#include "oq_ph_shadow_demand_logic.h"
+#include "oq_power_house_runtime.h"
 #include "oq_ph_daily_record_quality_json.h"
 #include "oq_ph_daily_collection_state_json.h"
 #include "oq_sensor_source_runtime.h"
+#ifdef USE_OPENQUATT_WEATHER
+#include "../learning/oq_ph_forecast_logic.h"
+#endif
 #include "../performance/hp_perf_limits.h"
+#include "oq_supervisory_power_limiter_runtime.h"
 
 namespace oq_ph_learning {
 
@@ -78,6 +84,8 @@ struct RuntimeStorage {
   PassiveTickInput tick;
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
+  QualityConfig daily_quality;
+  bool system_supply_observed = false;
   oq_sources::ResolvedLearningSource sources[4];
   uint8_t context[kMaxPassiveContextBytes]{};
   size_t context_size = 0;
@@ -112,9 +120,27 @@ struct RuntimeStorage {
 
 class Runtime : public esphome::ota::OTAGlobalStateListener {
  public:
+  // Called after the control tick returns. Keep its bounded publication frame
+  // separate from the control calculation and reuse the strict-PSRAM scratch.
+  __attribute__((noinline)) void refresh_shadow() {
+    if (!storage_) return;
+    auto& state = storage_[0];
+    const auto shadow = shadow_demand_(state);
+    JsonWriter json(state.json, sizeof(state.json));
+    json.add(",\"shadow\":");
+    oq_power_house::write_shadow_demand_json(json, shadow);
+    json.add("}");
+    const size_t length = json.size();
+    if (length == 0U || !id(oq_ph_learning_status_endpoint)
+                             .publish_shadow_json(state.json, length, shadow.expires_ms, shadow.generation,
+                                                  state.input.context_revision))
+      id(oq_ph_learning_status_endpoint).invalidate_shadow();
+  }
+
   void pause(LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
+    invalidate_shadow_(oq_power_house::ShadowDemandReason::INACTIVE);
     daily_restart_ticket.clear();
-    boot_restart_ticket = {};
+    boot_restart_ticket.revoke_checkpoint();
     if (!storage_) return;
     auto& state = storage_[0];
     state.boot_restart_ticket = {};
@@ -132,26 +158,31 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   // Called synchronously on the main loop, before polling pauses or shutdown
   // changes physical outputs. No task, internal-heap allocation or retry loop.
   void prepare_restart() {
-    if (!storage_) return;
+    invalidate_shadow_(oq_power_house::ShadowDemandReason::SERVICE_OR_OTA);
+    if (!storage_) {
+      daily_restart_ticket.remember_system_supply(boot_restart_ticket.system_supply_observed());
+      return;
+    }
     auto& state = storage_[0];
     if (state.restart_prepared) {
       // OTA retry can start before the paused learner runs again. Reuse only
       // the verified prefix without a second save. Retain measured RAM heat,
       // but mark the new polling pause as missing before another attempt.
-      state.learner.batch_accumulator.heat_gap_pending = true;
-      daily_restart_ticket.arm(state.journal, state.restart_checkpoint_verified);
+      oq_power_house::learning::detail::mark_daily_heat_gap(state.learner.batch_accumulator, state.daily_quality);
+      daily_restart_ticket.arm(state.journal, state.restart_checkpoint_verified, state.system_supply_observed);
       return;
     }
     if (state.reset_requested) tick();  // A pending explicit reset wins over persistence.
+    daily_restart_ticket.arm(state.journal, false, state.system_supply_observed);
     const auto clock = id(oq_time).now();
     if (state.daily_restore_pending || !state.learner.initialized || state.reset_requested || !clock.is_valid()) return;
     const bool saved = save_checkpoint_(state, clock.timestamp, oq_sources::monotonic_ms(), true);
     state.restart_checkpoint_verified = saved;
-    daily_restart_ticket.arm(state.journal, saved);
+    daily_restart_ticket.arm(state.journal, saved, state.system_supply_observed);
     // Keep the RAM prefix even if storage failed; a failed OTA can resume it.
     state.restart_prepared = true;
     state.daily_resume_last_observation_ms = 0;
-    state.learner.batch_accumulator.heat_gap_pending = true;
+    oq_power_house::learning::detail::mark_daily_heat_gap(state.learner.batch_accumulator, state.daily_quality);
     if (state.journal.loaded && state.learner.batch_accumulator.active) {
       state.daily_restore_allowed = true;
       state.daily_resume_reason = "none";
@@ -192,6 +223,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   }
 
   void measurement_context_changed() {
+    invalidate_shadow_(oq_power_house::ShadowDemandReason::CONTEXT_MISMATCH);
     if (!storage_) return;
     auto& state = storage_[0];
     state.measurement_context_changed = true;
@@ -202,8 +234,31 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   }
 
   void evaluation_policy_changed() {
+    invalidate_shadow_(oq_power_house::ShadowDemandReason::SETTINGS_CHANGED);
     if (!storage_) return;
     storage_[0].evaluation_policy_changed = true;
+  }
+
+  void supply_calibration_changed() {
+    // A backup can change only the supply offset. Revoke the current day
+    // and its restart grant without discarding 1R1C or retained history.
+    daily_restart_ticket.clear();
+    boot_restart_ticket.revoke_checkpoint();
+    if (!storage_) return;
+    auto& state = storage_[0];
+    state.boot_restart_ticket = {};
+    state.restart_checkpoint_verified = false;
+    state.daily_restore_pending = false;
+    cancel_daily_resume_status_(state, "context_changed");
+    state.daily_restore_allowed = false;
+    auto& day = state.learner.batch_accumulator;
+    if (day.active) {
+      state.learner.diagnostics.last_batch_rejection = LearningStatus::MIXED_CONTEXT;
+      state.learner.diagnostics.last_batch_source_status = SnapshotSourceStatus::OK;
+      diagnose_daily_discard(state.learner.daily_diagnostics, day, DailyCollectionCause::CONTEXT_CHANGED,
+                             LearningStatus::MIXED_CONTEXT, state.learner.last_epoch_s);
+      reset_segment(day);
+    }
   }
 
   void tick() {
@@ -306,7 +361,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     tick.active_line_valid = oq_power_house::valid_house_line(tick.active_line);
     tick.batch_snapshot_available = batch.has_snapshot;
     tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
-    tick.batch_source_status = batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT && !input.boiler_heat.valid
+    tick.batch_source_status = batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT &&
+                                       !batch.may_bridge_daily_gap && !input.boiler_heat.valid
                                    ? state.boiler_source_status
                                    : batch.status;
     tick.batch_snapshot = batch.snapshot;
@@ -314,7 +370,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     tick.dynamic_snapshot = dynamic.snapshot;
     const bool valid_daily_observation =
         enabled && context_valid && tick.active_line_valid && tick.batch_snapshot_available &&
-        validate_snapshot(tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+        validate_snapshot(tick.batch_snapshot, state.daily_quality) == LearningStatus::OK;
     if (state.daily_restore_pending) {
       if (!coherent_daily_restart_tick(state.daily_resume_last_observation_ms, now_ms, state.config.quality)) {
         state.daily_restore_allowed = false;
@@ -337,19 +393,23 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                              : decision == DailyResumeDecision::RESTORE ? "restore"
                                                                         : "discard",
                              snapshot_source_status_name(batch.status)};
-      if (decision == DailyResumeDecision::WAIT) state.daily_resume_last_observation_ms = now_ms;
-      if (decision == DailyResumeDecision::WAIT && batch.may_bridge_daily_gap && batch.has_snapshot) {
+      if (decision == DailyResumeDecision::WAIT) {
+        state.daily_resume_last_observation_ms = now_ms;
         if (!state.pending_daily_heat_initialized)
           state.pending_daily_heat_initialized =
               state.pending_daily.restore_daily(state.pending_daily_heat, context, state.config.quality);
-        if (state.pending_daily_heat_initialized && !oq_power_house::learning::detail::observe_restart_heat_only(
-                                                        state.pending_daily_heat, batch.snapshot, state.config.quality,
-                                                        daily_restart_gap_limit_ms(restart_policy))) {
-          state.daily_restore_allowed = false;
-          state.daily_resume_reason = "checkpoint_heat_time_invalid";
+        if (state.pending_daily_heat_initialized) {
+          if (batch.may_bridge_daily_gap && batch.has_snapshot) {
+            if (!oq_power_house::learning::detail::observe_restart_heat_only(
+                    state.pending_daily_heat, batch.snapshot, state.daily_quality,
+                    daily_restart_gap_limit_ms(restart_policy))) {
+              state.daily_restore_allowed = false;
+              state.daily_resume_reason = "checkpoint_heat_time_invalid";
+            }
+          } else {
+            oq_power_house::learning::detail::mark_daily_heat_gap(state.pending_daily_heat, state.daily_quality);
+          }
         }
-      } else if (decision == DailyResumeDecision::WAIT && state.pending_daily_heat_initialized) {
-        state.pending_daily_heat.heat_gap_pending = true;
       }
       if (decision != DailyResumeDecision::WAIT) {
         DailyCheckpointRestoreStatus restore_status = DailyCheckpointRestoreStatus::MISSING;
@@ -395,10 +455,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         state.daily_resume_last_observation_ms = now_ms;
         if (batch.may_bridge_daily_gap && batch.has_snapshot) {
           if (!oq_power_house::learning::detail::observe_restart_heat_only(
-                  state.learner.batch_accumulator, batch.snapshot, state.config.quality, kDailyMaximumGapMs))
+                  state.learner.batch_accumulator, batch.snapshot, state.daily_quality, kDailyMaximumGapMs))
             state.daily_restore_allowed = false;
         } else {
-          state.learner.batch_accumulator.heat_gap_pending = true;
+          oq_power_house::learning::detail::mark_daily_heat_gap(state.learner.batch_accumulator, state.daily_quality);
         }
         return;
       }
@@ -418,7 +478,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const uint32_t daily_start_before = state.learner.batch_accumulator.start_epoch_s;
     const uint32_t thermal_samples_before = state.learner.thermal_state.accepted_samples;
     // The paused tick still prunes expired records before checkpointing.
-    if (state.learner.initialized) tick_passive_runtime(state.learner, tick);
+    if (state.learner.initialized) tick_passive_runtime(state.learner, tick, &state.daily_quality);
     update_daily_resume_status_(state, resume_attempt, daily_start_before);
     if (state.learner.thermal_state.accepted_samples > thermal_samples_before) state.thermal_epoch = epoch;
     const auto diagnostic_capture = diagnostic_capture_decision(state.diagnostic_capture, enabled && !reset_processed);
@@ -433,6 +493,35 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - started_us;
     if (elapsed > state.max_tick_us) state.max_tick_us = elapsed;
   }
+
+#ifdef USE_OPENQUATT_WEATHER
+  // Read-only main-loop adapter. Reuse the learner's selected receipts and
+  // operational exclusions; the experiment never substitutes requested watts.
+  oq_power_house::forecast::Observation forecast_observation() const {
+    oq_power_house::forecast::Observation observation;
+    if (!storage_ || !id(oq_ph_learning_enabled).state || id(oq_runtime_polling_paused).state) return observation;
+    const auto& state = storage_[0];
+    const auto& tick = state.tick;
+    if (state.reset_requested || state.restart_prepared || state.measurement_context_changed || state.learner.blocked ||
+        !tick.opted_in || !tick.context_valid || !tick.dynamic_snapshot_available ||
+        !passive_runtime_detail::snapshot_matches_tick(tick.dynamic_snapshot, tick) ||
+        validate_snapshot(tick.dynamic_snapshot, state.config.quality) != LearningStatus::OK)
+      return observation;
+    const auto& snapshot = tick.dynamic_snapshot;
+    observation.valid = true;
+    observation.monotonic_ms = snapshot.monotonic_ms;
+    observation.epoch = snapshot.epoch_s;
+    observation.context = snapshot.context_revision;
+    observation.room_c = snapshot.room_c;
+    observation.outside_c = snapshot.outside_c;
+    observation.heat_w = snapshot.heat_to_water_w;
+    observation.model_ready = state.summary.thermal_model_ready;
+    observation.model_samples = state.summary.thermal.accepted_samples;
+    observation.h_w_per_k = state.summary.thermal.heat_loss_w_per_k;
+    observation.c_wh_per_k = state.summary.thermal.thermal_capacity_wh_per_k;
+    return observation;
+  }
+#endif
 
  private:
   static void clear_daily_resume_status_(RuntimeStorage& state) {
@@ -469,12 +558,16 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   esphome::openquatt_common::PsramObjectArray<RuntimeStorage, 1> storage_;
   bool allocation_attempted_ = false;
 
+  void invalidate_shadow_(oq_power_house::ShadowDemandReason reason) {
+    oq_power_house_runtime::runtime().invalidate_demand_evaluation(reason);
+  }
+
   bool save_checkpoint_(RuntimeStorage& state, uint32_t epoch, uint64_t now_ms, bool force) {
     if (state.learner.batch_accumulator.active &&
         !valid_daily_checkpoint(state.learner.batch_accumulator, state.config.quality))
       return false;
     return state.journal.save(
-        passive_runtime_dataset(state.learner), state.config.quality, epoch, now_ms,
+        passive_runtime_dataset(state.learner), state.daily_quality, epoch, now_ms,
         state.learner.diagnostics.accepted_batch_records,
         [&state](size_t slot) { return erase_slot_(state.partition, slot); },
         [&state](size_t slot, const uint8_t* data, size_t size) {
@@ -492,6 +585,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   void watch_measurement_select_(T& entity) {
     entity.add_on_state_callback([this](size_t) { this->measurement_context_changed(); });
   }
+
   template <typename T>
   void watch_policy_number_(T& entity) {
     entity.add_on_state_callback([this](float) { this->evaluation_policy_changed(); });
@@ -499,6 +593,24 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   template <typename T>
   void watch_policy_select_(T& entity) {
     entity.add_on_state_callback([this](size_t) { this->evaluation_policy_changed(); });
+  }
+
+  template <typename T>
+  void watch_shadow_switch_(T& entity) {
+    entity.add_on_state_callback(
+        [this](bool) { this->invalidate_shadow_(oq_power_house::ShadowDemandReason::SETTINGS_CHANGED); });
+  }
+
+  template <typename T>
+  void watch_shadow_number_(T& entity) {
+    entity.add_on_state_callback(
+        [this](float) { this->invalidate_shadow_(oq_power_house::ShadowDemandReason::SETTINGS_CHANGED); });
+  }
+
+  template <typename T>
+  void watch_shadow_source_(T& entity) {
+    entity.add_on_state_callback(
+        [this](size_t) { this->invalidate_shadow_(oq_power_house::ShadowDemandReason::SOURCE_CHANGED); });
   }
 
   bool setup_() {
@@ -515,6 +627,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
     auto& state = storage_[0];
     state.boot_restart_ticket = boot_ticket;
+    state.system_supply_observed = boot_ticket.system_supply_observed();
     esphome::ota::get_global_ota_callback()->add_global_state_listener(this);
     state.partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
     state.journal.setup(state.partition != nullptr &&
@@ -535,6 +648,24 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     watch_policy_number_(id(ph_kp_w_per_k));
     watch_policy_number_(id(ph_demand_rise_time_min));
     watch_policy_number_(id(ph_demand_fall_time_min));
+    watch_shadow_number_(id(ph_comfort_band_below_c));
+    watch_shadow_number_(id(ph_comfort_band_above_c));
+    watch_shadow_switch_(id(oq_enabled));
+    watch_shadow_switch_(id(oq_warmup_enabled));
+    watch_shadow_number_(id(oq_warmup_trigger_c));
+    watch_shadow_number_(id(oq_warmup_step_c));
+    watch_shadow_number_(id(oq_warmup_step_minutes));
+    watch_shadow_source_(id(room_temp_source));
+    watch_shadow_source_(id(room_setpoint_source));
+    watch_shadow_source_(id(outside_temp_source));
+    watch_shadow_source_(id(external_heat_demand_source));
+    id(external_heat_demand_selected).add_on_state_callback([this](float demand_w) {
+      if (std::isfinite(demand_w)) this->invalidate_shadow_(oq_power_house::ShadowDemandReason::EXTERNAL_OVERRIDE);
+    });
+    watch_shadow_source_(id(heating_enable_source));
+    id(cic_feed_url).add_on_state_callback([this](const std::string&) {
+      this->invalidate_shadow_(oq_power_house::ShadowDemandReason::SOURCE_CHANGED);
+    });
     watch_measurement_number_(id(hp1_water_in_temp_offset));
     watch_measurement_number_(id(hp1_water_out_temp_offset));
 #if OQ_TOPOLOGY_DUO
@@ -584,6 +715,24 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     in.setpoint_c = resolved_learning_measurement(state.sources[1], now_ms);
     in.outside_c = resolved_learning_measurement(state.sources[2], now_ms);
     in.flow_lph = resolved_learning_measurement(state.sources[3], now_ms);
+    const auto supply = oq_sensor_source::runtime().system_supply_receipt();
+    in.system_heat_enabled =
+        daily_system_heat_enabled(id(oq_aux_heat_source_present).has_state() && id(oq_aux_heat_source_present).state,
+                                  state.system_supply_observed, supply, now_ms);
+    state.daily_quality = daily_heat_quality(state.config.quality, in.system_heat_enabled);
+    if (in.system_heat_enabled) {
+      const auto& sources = oq_sensor_source::runtime();
+      const auto flow = sources.system_flow_receipt(now_ms, kHpLearningTiming.max_age_ms);
+      in.circuit_flow_lph = receipt_measurement(
+          flow, flow.value,
+          {PhysicalSourceKind::DIRECT_SENSOR, static_cast<uint32_t>(state.sources[3].route), PhysicalUnit::SYSTEM},
+          in.flow_lph.source_generation, kHpLearningTiming);
+      in.system_supply_c = receipt_measurement(
+          supply, supply.value,
+          {PhysicalSourceKind::DIRECT_SENSOR, static_cast<uint32_t>(id(oq_water_supply_temp_current_source_code)),
+           PhysicalUnit::SYSTEM},
+          id(oq_water_supply_temp_current_source_fingerprint), {30000, 30000});
+    }
     in.hp1 = learning_hp_measurements(oq_sources::hp1, PhysicalUnit::HP1, id(hp1_water_in_temp_offset).state,
                                       id(hp1_water_out_temp_offset).state, state.context_revision);
 #if OQ_TOPOLOGY_DUO
@@ -623,20 +772,31 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
 #endif
     in.boiler_heat = learning_boiler_heat(opentherm_selected, boiler_contract, boiler_telemetry);
+    if (in.system_heat_enabled) {
+      bool pumps_stopped = learning_pump_stopped(oq_sources::hp1.status_2108, now_ms);
+#if OQ_TOPOLOGY_DUO
+      pumps_stopped = pumps_stopped && learning_pump_stopped(oq_sources::hp2.status_2108, now_ms);
+#endif
+      in.circuit_flow_lph = learning_system_flow(in.circuit_flow_lph, in.flow_lph, state.sources[3].route,
+                                                 in.boiler_heat, now_ms, pumps_stopped);
+    }
     if (boiler_contract.valid && !in.boiler_heat.valid)
       state.boiler_source_status = SnapshotSourceStatus::BOILER_ACTIVE;
     auto& op = in.operation;
     op.captured_monotonic_ms = now_ms;
     const int cm = id(oq_control_mode_code);
     op.control_mode_valid = true;
-    op.control_mode = id(oq_heat_mode_code) == 0 && learning_control_mode_allows_measurement(cm)
-                          ? LearningControlMode::HEATING
-                          : LearningControlMode::OTHER;
+    op.control_mode = learning_control_mode(id(oq_heat_mode_code), cm);
     op.active_limit_valid =
         learning_strategy_output_current(id(oq_strategy_output_valid), id(oq_strategy_output_source_code),
                                          id(oq_strategy_active_code), millis(), id(oq_strategy_output_updated_ms)) &&
         isfinite(id(oq_strategy_water_limit_factor));
-    const bool power_cap_active = power_cap_binds_filtered_demand(id(oq_demand_filtered), id(oq_power_cap_f));
+    const bool power_cap_active =
+        id(oq_strategy_active_code) == 3
+            ? oq_supervisory_power::request_limit_active(
+                  id(oq_phouse_req_w),
+                  oq_supervisory_power_runtime::runtime().request_limit_w(id(house_rated_power_w).state))
+            : power_cap_binds_filtered_demand(id(oq_demand_filtered), id(oq_power_cap_f));
     op.active_limit = id(oq_strategy_water_limit_factor) < 0.999f || id(oq_strategy_water_trip_active) ||
                       id(oq_strategy_water_hard_trip_active) || id(oq_strategy_hp_saturated) || power_cap_active ||
                       !learning_hp_protection_clear(oq_sources::hp1, now_ms);
@@ -801,6 +961,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
       case R::MQTT_SETPOINT:
       case R::MQTT_OUTSIDE:
         return "MQTT";
+      case R::OPEN_METEO_OUTSIDE:
+        return "Open-Meteo";
       case R::HP1_FLOW:
       case R::HP1_OUTSIDE:
         return "HP1";
@@ -828,6 +990,48 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     static constexpr char ERROR[] =
         R"({"schema":1,"mode":"passive","status":"serialization_failed","auto_apply_allowed":false,"record_columns":[],"records":[],"diagnostic_columns":[],"diagnostics":[]})";
     id(oq_ph_learning_status_endpoint).publish_export_json(ERROR, sizeof(ERROR) - 1U);
+  }
+
+  static oq_power_house::ShadowDemandResult shadow_demand_(const RuntimeStorage& state) {
+    using Reason = oq_power_house::ShadowDemandReason;
+    const auto now_ms = oq_sources::monotonic_ms();
+    const auto frame = oq_power_house_runtime::runtime().demand_evaluation_frame();
+    Reason gate = Reason::READY;
+    if (state.reset_requested)
+      gate = Reason::RESET_PENDING;
+    else if (state.restart_prepared ||
+             (state.ota_pause.owner != nullptr && ota_notification_current(state.ota_pause.notification_ms, now_ms)) ||
+             id(oq_runtime_polling_paused).state || !state.input.operation.service_or_ota_valid ||
+             state.input.operation.service_or_ota || id(oq_control_mode_code) >= 99)
+      gate = Reason::SERVICE_OR_OTA;
+    else if (!id(oq_ph_learning_enabled).state || !id(oq_enabled).state || id(oq_strategy_active_code) != 3 ||
+             id(oq_heat_mode_code) != 0 || id(oq_control_mode_code) == 5 || id(oq_control_mode_code) == 98)
+      gate = Reason::INACTIVE;
+    else if (id(external_heat_demand_selected).has_state() && std::isfinite(id(external_heat_demand_selected).state))
+      gate = Reason::EXTERNAL_OVERRIDE;
+    else if (oq_warmup_runtime::runtime()
+                 .control_target(id(room_setpoint_selected).state, id(oq_warmup_trigger_c).state,
+                                 id(oq_warmup_enabled).state, id(room_temp_selected).state)
+                 .limited)
+      gate = Reason::WARMUP_ACTIVE;
+    else if (state.measurement_context_changed || !state.tick.context_valid)
+      gate = Reason::CONTEXT_MISMATCH;
+    else if (state.evaluation_policy_changed)
+      gate = Reason::SETTINGS_CHANGED;
+    else if (state.learner.blocked)
+      gate = Reason::INVALID_INPUTS;
+    for (size_t i = 0; i < 3 && gate == Reason::READY; ++i) {
+      const auto& resolver = oq_sensor_source::runtime();
+      const auto source = i == 0   ? resolver.resolved_room_temperature()
+                          : i == 1 ? resolver.resolved_room_setpoint()
+                                   : resolver.resolved_outside_temperature();
+      if (!resolved_learning_measurement(source, now_ms).valid || source.configuration_generation == 0 ||
+          frame.source_generation[i] != source.configuration_generation)
+        gate = Reason::SOURCE_CHANGED;
+    }
+    return oq_power_house::evaluate_shadow_demand(frame, state.summary.batch, state.config.fit,
+                                                  state.summary.batch_advice_ready && !state.summary.fit_running,
+                                                  state.input.context_revision, now_ms, gate);
   }
 
   static void publish_status_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
@@ -890,7 +1094,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                                     !state.learner.blocked && state.learner.status != PassiveRuntimeStatus::PAUSED;
     const bool batch_active = collecting_enabled && state.tick.batch_snapshot_available &&
                               passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
-                              validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+                              validate_snapshot(state.tick.batch_snapshot, state.daily_quality) == LearningStatus::OK;
     const bool thermal_active = collecting_enabled && thermal_window.active && thermal_window.last.epoch_s == epoch;
     json.add("{\"schema\":1,\"build\":\"" __DATE__ " " __TIME__
              " ph-passive-1\",\"mode\":\"passive\",\"enabled\":%s,"
@@ -913,6 +1117,33 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.number(summary.batch.candidate_available ? summary.batch.candidate.heat_loss_w_per_k : NAN);
     json.add(",\"t0_batch\":");
     json.number(summary.batch.candidate_available ? summary.batch.candidate.zero_power_temp_c : NAN);
+    json.add(
+        ",\"batch_fit\":{\"metadata_prepared\":%s,\"train_segments\":%u,\"holdout_segments\":%u,\"train_days\":%u,"
+        "\"holdout_days\":%u,\"train_"
+        "p10_c\":",
+        enabled && state.learner.status != PassiveRuntimeStatus::PAUSED && summary.batch.metadata_prepared ? "true"
+                                                                                                           : "false",
+        static_cast<unsigned>(summary.batch.train_segments), static_cast<unsigned>(summary.batch.holdout_segments),
+        static_cast<unsigned>(summary.batch.train_days), static_cast<unsigned>(summary.batch.holdout_days));
+    json.number(summary.batch.train_p10_c);
+    json.add(",\"train_p90_c\":");
+    json.number(summary.batch.train_p90_c);
+    json.add(",\"train_min_c\":");
+    json.number(summary.batch.train_min_c);
+    json.add(",\"train_max_c\":");
+    json.number(summary.batch.train_max_c);
+    json.add("}");
+    const auto& preview = summary.batch.preview;
+    json.add(",\"batch_preview\":{\"h\":");
+    json.number(preview.available ? preview.line.heat_loss_w_per_k : NAN);
+    json.add(",\"t0\":");
+    json.number(preview.available ? preview.line.zero_power_temp_c : NAN);
+    json.add(",\"segments\":%u,\"days\":%u,\"min_c\":", static_cast<unsigned>(preview.segments),
+             static_cast<unsigned>(preview.days));
+    json.number(preview.min_c);
+    json.add(",\"max_c\":");
+    json.number(preview.max_c);
+    json.add("}");
     json.add(",\"u_rls\":");
     json.number(summary.thermal.accepted_samples > 0 ? summary.thermal.heat_loss_w_per_k : NAN);
     // Numerical readiness is not independent validation of physical capacity.
@@ -952,9 +1183,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         snapshot_source_status_name(state.batch_source_status), state.daily_resume_reason);
     json.number(state.daily_restore_pending ? NAN : batch_window.missing_energy_uncertainty_ws / 3600.0);
     json.add(",\"batch_missing_heat_bound_w\":");
-    json.number(configured_daily_missing_heat_bound_w(state.config.quality));
+    json.number(configured_daily_missing_heat_bound_w(state.daily_quality));
     json.add(",\"batch_heat_measurement_limit_w\":");
-    json.number(configured_measurement_heat_limit_w(state.config.quality));
+    json.number(configured_measurement_heat_limit_w(state.daily_quality));
     json.add(",\"batch_budget_scope\":\"model_advice_only\"");
     json.add(",\"batch_missing_energy_budget_wh\":");
     json.number(kDailyMissingHeatBudgetW * 24.0);
@@ -991,14 +1222,21 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
     json.add(
         "],\"memory\":{\"internal_free\":%u,\"internal_min\":%u,\"internal_largest_block\":%u,\"loop_stack_high_water_"
-        "bytes\":%u,\"runtime_psram_bytes\":%u,\"max_tick_us\":%llu}}",
+        "bytes\":%u,\"runtime_psram_bytes\":%u,\"max_tick_us\":%llu}",
         static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
         static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
         static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), static_cast<unsigned>(sizeof(RuntimeStorage)),
         static_cast<unsigned long long>(state.max_tick_us));
+    const auto shadow = shadow_demand_(state);
+    const size_t shadow_prefix_length = json.size();
+    json.add(",\"shadow\":");
+    oq_power_house::write_shadow_demand_json(json, shadow);
+    json.add("}");
     const size_t length = json.size();
-    if (length == 0U || !id(oq_ph_learning_status_endpoint).publish_status_json(state.json, length)) {
+    if (length == 0U || !id(oq_ph_learning_status_endpoint)
+                             .publish_status_json(state.json, length, shadow_prefix_length, shadow.expires_ms,
+                                                  shadow.generation, state.input.context_revision)) {
       publish_status_error_();
     }
   }
@@ -1079,7 +1317,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     collection.enabled = enabled;
     collection.active = collecting && state.tick.batch_snapshot_available &&
                         passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
-                        validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+                        validate_snapshot(state.tick.batch_snapshot, state.daily_quality) == LearningStatus::OK;
     collection.gap_pending = collecting && window.source_gap_pending;
     collection.restore_pending = state.daily_restore_pending;
     collection.elapsed_s = state.daily_restore_pending   ? state.pending_daily.daily_checkpoint_elapsed_s()
@@ -1091,7 +1329,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     collection.last_source_status = state.learner.diagnostics.last_batch_source_status;
     collection.last_rejection = state.learner.diagnostics.last_batch_rejection;
     collection.uncertainty_wh = state.daily_restore_pending ? NAN : window.missing_energy_uncertainty_ws / 3600.0;
-    collection.missing_heat_bound_w = configured_daily_missing_heat_bound_w(state.config.quality);
+    collection.missing_heat_bound_w = configured_daily_missing_heat_bound_w(state.daily_quality);
     collection.restart = state.daily_restart;
     json.add("%s", kExportDailyCollectionStatePrefix);
     write_daily_collection_state_json(json, collection);
