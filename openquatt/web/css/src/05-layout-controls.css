@@ -468,16 +468,26 @@
   color: var(--oq-helper-accent-deep);
 }
 
+/* Two columns: what is shared on the left, the facts with the Why card under them on the right. The list
+   spans both rows, so its divider runs past both. */
 .oq-usage-facts-grid {
   display: grid;
-  grid-template-columns: 1.35fr minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px 22px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  gap: 16px 22px;
   align-items: start;
 }
 
 .oq-usage-facts-grid > .oq-usage-disclosure-column {
+  grid-row: span 2;
+  align-self: stretch;
   min-width: 0;
   padding: 0 22px 0 2px;
+  border-right: 1px solid var(--oq-helper-line);
+}
+
+.oq-usage-facts-grid > .oq-usage-why {
+  grid-column: 2;
 }
 
 .oq-usage-facts {
@@ -485,8 +495,6 @@
   gap: 16px;
   align-content: start;
   min-width: 0;
-  padding-left: 22px;
-  border-left: 1px solid var(--oq-helper-line);
 }
 
 .oq-usage-fact {

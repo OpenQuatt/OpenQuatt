@@ -66,7 +66,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Leren uses the Settings side navigation for its two panels: +123 B raw; 80 B raw headroom.
     // Results and Diagnose share a Charts tab with a side navigation that remembers the last view:
     // +1,264 B raw; 80 B raw headroom.
-    raw: 1_460_533,
+    // Settings tabs of their own for Backup and Data sharing, moved out of System: +622 B raw; 80 B raw headroom.
+    raw: 1_460_938,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

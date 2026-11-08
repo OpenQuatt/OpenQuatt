@@ -802,7 +802,9 @@
     { id: "integrations", labelKey: "settingsGroups.integrations", icon: "link" },
     { id: "service", labelKey: "settingsGroups.service", icon: "tool" },
     { id: "system", labelKey: "settingsGroups.system", icon: "server" },
+    { id: "backup", labelKey: "settingsGroups.backup", icon: "clipboard" },
     { id: "changes", labelKey: "settingsGroups.changes", icon: "clock" },
+    { id: "sharing", labelKey: "settingsGroups.sharing", icon: "shield" },
   ];
   export const SETTINGS_GROUP_IDS = new Set(SETTINGS_GROUPS.map((group) => group.id));
   export const HP_PANEL_CONFIGS = [

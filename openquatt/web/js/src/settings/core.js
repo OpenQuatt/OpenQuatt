@@ -17,7 +17,7 @@ import { patchControlledWarmupField, patchRunExtensionThresholds, renderSettings
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
-import { renderSettingsPrivacySection } from "./privacy.js";
+import { renderSettingsPrivacySection, renderSettingsPrivacyUnavailable } from "./privacy.js";
 import { getApiSecurityStatusDetail, getApiSecurityStatusLabel, renderSettingsAccessSecuritySection } from "./security.js";
 import { renderSettingsCounterServiceSection, renderSettingsServiceSection } from "./service.js";
 import { renderSettingsSilentSection } from "./silent.js";
@@ -110,6 +110,10 @@ function syncFrequencyRangeControl(control) {
         ? [renderSettingsCoolingSection()]
       : activeGroup === CHANGE_LOG_GROUP_ID
         ? [renderSettingsChangeLogSection()]
+      : activeGroup === "sharing"
+        ? [renderSettingsPrivacySection() || renderSettingsPrivacyUnavailable()]
+      : activeGroup === "backup"
+        ? [renderSettingsBackupSection()]
         : activeGroup === "integrations"
             ? [
                 renderSettingsOpenThermCicSection(),
@@ -120,8 +124,6 @@ function syncFrequencyRangeControl(control) {
                 renderSettingsQuickStartSection(),
                 renderSettingsTrendSection(),
                 renderSettingsAccessSecuritySection(),
-                renderSettingsPrivacySection(),
-                renderSettingsBackupSection(),
                 renderSettingsDiagnosticsSection(),
               ];
 

@@ -294,7 +294,7 @@ export function setAppView(view, options = {}) {
   state.appView = normalized;
   const group = APP_VIEWS.find((item) => item.id === normalized)?.group;
   if (group) state.appViewGroupLast = { ...state.appViewGroupLast, [group]: normalized };
-  if (normalized !== "settings" && state.usageTelemetryPreviewSurface === "settings-system") {
+  if (normalized !== "settings" && state.usageTelemetryPreviewSurface === "settings-sharing") {
     state.usageTelemetryPreviewSurface = "";
   }
 

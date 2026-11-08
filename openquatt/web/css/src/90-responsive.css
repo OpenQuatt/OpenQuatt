@@ -1050,10 +1050,17 @@
 @media (max-width: 860px) {
   .oq-usage-facts-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
   }
 
   .oq-usage-facts-grid > .oq-usage-disclosure-column {
+    grid-row: auto;
     padding-right: 2px;
+    border-right: none;
+  }
+
+  .oq-usage-facts-grid > .oq-usage-why {
+    grid-column: auto;
   }
 
   .oq-usage-facts {

@@ -37,7 +37,7 @@ import { t } from "../i18n/index.js";
 
   export function setSettingsGroup(groupId, options = {}) {
     state.settingsGroup = SETTINGS_GROUP_IDS.has(groupId) ? groupId : SETTINGS_GROUPS[0].id;
-    if (state.settingsGroup !== "system" && state.usageTelemetryPreviewSurface === "settings-system") {
+    if (state.settingsGroup !== "sharing" && state.usageTelemetryPreviewSurface === "settings-sharing") {
       state.usageTelemetryPreviewSurface = "";
     }
     try {

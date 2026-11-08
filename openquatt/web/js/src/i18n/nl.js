@@ -585,7 +585,9 @@ export default {
     integrations: "Bronnen / integraties",
     service: "Service",
     system: "Systeem",
+    backup: "Backup",
     changes: "Wijzigingen",
+    sharing: "Gegevens delen",
     navLabel: "Instellingen groepen",
   },
   settingsChangeLog: {
@@ -2174,6 +2176,7 @@ export default {
     sectionGroup: "Privacy",
     sectionTitle: "Vrijwillig gegevens delen",
     sectionCopy: "Help OpenQuatt verbeteren door technische gegevens te delen. Beide opties staan standaard uit en kunnen onafhankelijk van elkaar worden ingeschakeld. Geen wifi- of inloggegevens. Jouw privacy blijft altijd beschermd.",
+    unavailable: "Deze firmware heeft geen opties om gegevens te delen.",
   },
   oduDefrost: {
     title: "Ontdooien",

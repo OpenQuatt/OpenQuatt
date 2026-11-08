@@ -228,7 +228,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
     ],
     integrations: ["otEnabled", "cicPollingEnabled", "flowSource", "boilerConnection", "boilerCommandValid", "otbLinkAvailable", "otbConnectionState"],
     system: ["setupComplete", "projectVersionText", "releaseChannelText", "firmwareUpdateChannel", "statusLedsEnabled", "usageTelemetryEnabled", "usageTelemetryChoiceConfigured", "usageTelemetryInstallationId", "performanceTelemetryEnabled"],
+    backup: [],
     changes: [],
+    sharing: ["setupComplete", "usageTelemetryEnabled", "usageTelemetryChoiceConfigured", "usageTelemetryInstallationId", "performanceTelemetryEnabled"],
   };
 
   export const SETTINGS_GROUP_KEY_MAP = {
@@ -337,6 +339,14 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "performanceTelemetryEnabled",
       ...SETTINGS_STORAGE_KEYS,
       "debugLevel",
+    ],
+    backup: [],
+    sharing: [
+      "setupComplete",
+      "usageTelemetryEnabled",
+      "usageTelemetryChoiceConfigured",
+      "usageTelemetryInstallationId",
+      "performanceTelemetryEnabled",
     ],
     changes: [],
   };
@@ -1283,13 +1293,13 @@ import { fetchWithTimeout } from "./browser-utils.js";
     const quickStartModalVisible = state.quickStartModalOpen
       && (state.complete !== true || state.quickStartModalMode === "generation");
     const usageTelemetryPreviewSurface = syncView === "settings"
-      && state.settingsGroup === "system"
+      && state.settingsGroup === "sharing"
       && !quickStartModalVisible
-      ? "settings-system"
+      ? "settings-sharing"
       : "";
     const shouldCaptureUsageTelemetryPreview = Boolean(usageTelemetryPreviewSurface)
       && state.usageTelemetryPreviewSurface !== usageTelemetryPreviewSurface;
-    if (!usageTelemetryPreviewSurface && state.usageTelemetryPreviewSurface === "settings-system") {
+    if (!usageTelemetryPreviewSurface && state.usageTelemetryPreviewSurface === "settings-sharing") {
       state.usageTelemetryPreviewSurface = "";
     }
     const usageTelemetryPreviewKeys = shouldCaptureUsageTelemetryPreview
@@ -1387,11 +1397,11 @@ import { fetchWithTimeout } from "./browser-utils.js";
       }
       if (shouldCaptureUsageTelemetryPreview
         && state.appView === "settings"
-        && state.settingsGroup === "system"
+        && state.settingsGroup === "sharing"
         && !quickStartModalVisible) {
         const mqttEnabled = await loadUsageTelemetryPreviewMqttEnabled();
         if (state.appView === "settings"
-          && state.settingsGroup === "system"
+          && state.settingsGroup === "sharing"
           && !(state.quickStartModalOpen
             && (state.complete !== true || state.quickStartModalMode === "generation"))) {
           captureUsageTelemetryPreview(usageTelemetryPreviewSurface, { mqttEnabled });

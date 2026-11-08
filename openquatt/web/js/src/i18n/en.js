@@ -584,7 +584,9 @@ export default {
     integrations: "Sources / integrations",
     service: "Service",
     system: "System",
+    backup: "Backup",
     changes: "Changes",
+    sharing: "Data sharing",
     navLabel: "Settings groups",
   },
   settingsChangeLog: {
@@ -2174,6 +2176,7 @@ export default {
     sectionGroup: "Privacy",
     sectionTitle: "Voluntary data sharing",
     sectionCopy: "Help improve OpenQuatt by sharing technical data. Both options are off by default and can be enabled independently. No Wi-Fi or login credentials. Your privacy always stays protected.",
+    unavailable: "This firmware has no data sharing options.",
   },
   oduDefrost: {
     title: "Defrost",
