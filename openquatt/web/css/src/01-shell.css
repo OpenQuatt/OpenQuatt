@@ -17,13 +17,15 @@ body.oq-page-dark {
   background: #0f1724;
 }
 
+/* The gradient sits on html so it fills the whole window, also around the default body margin and below a short page. */
 html.oq-page-light {
   color-scheme: light;
-  background: #f6f2ea;
+  min-height: 100%;
+  background: linear-gradient(180deg, #f6f2ea 0%, #f8fafc 100%);
 }
 
 body.oq-page-light {
-  background: linear-gradient(180deg, #f6f2ea 0%, #f8fafc 100%);
+  background: transparent;
 }
 
 html.oq-surface-native,

@@ -3,21 +3,15 @@ import { hasEntity } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
 import { escapeHtml } from "../core/html.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
+import { renderSettingsFeedback, syncSettingsFeedback } from "../features/settings-feedback.js";
 import { state } from "../core/state.js";
 import { t } from "../i18n/index.js";
 import { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } from "../settings/house-learning.js";
 
-// No whitespace between the parts, so an empty message slot matches :empty and takes no space.
-function renderControlMessages() {
-  return `${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}${
-    state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}`;
-}
-
+// Messages appear as toasts, like in Settings; a patch picks up a message that arrives between renders.
 export function patchLearningView() {
-  const messages = state.root?.querySelector("[data-oq-learning-messages]");
-  if (!messages) return false;
-  const markup = renderControlMessages();
-  if (messages.innerHTML !== markup) messages.innerHTML = markup;
+  if (!state.root?.querySelector("[data-oq-feedback-stack]")) return false;
+  syncSettingsFeedback(state.root);
   const tabs = state.root?.querySelector("[data-oq-learning-panels]");
   const weather = hasWeatherSettings();
   if (Boolean(tabs) !== weather) return false;
@@ -44,9 +38,9 @@ export function renderLearningView() {
       <p class="oq-settings-view-note">${escapeHtml(t("learning.copy"))}</p>
     </aside>
     <div class="oq-settings-view-main">
-      <div data-oq-learning-messages>${renderControlMessages()}</div>
       ${panel || statusError || `<p class="oq-settings-action-note" role="status">${escapeHtml(t(loading ? "common.loading" : "learning.unavailable"))}</p>`}
     </div>
+    ${renderSettingsFeedback()}
   </section>`;
 }
 
