@@ -26,7 +26,7 @@ struct Simulation {
   oq_warmup_runtime::Runtime warmup;
   oq_warmup::Settings settings{0.8f, 0.1f, 300000U};
   oq_warmup::Input room{1000U, true, true, true, 1, 1, 19.08f, 17.0f, 0.1f};
-  oq_power_house::DemandTuning tuning{0, 3000, 0.1f, 0.3f, NAN, 5, 2, 20};
+  oq_power_house::DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2, 20, NAN};
   oq_power_house::DemandState house_state;
   oq_heat_intent::State intent_state;
   oq_power_house_dispatch::DispatchInput dispatch;
@@ -298,7 +298,7 @@ void test_repeated_ticks_do_not_accumulate_boost_or_house_deficit() {
 
 void test_composition_envelope_slew_and_no_boost_compatibility() {
   using namespace oq_power_house;
-  const DemandTuning tuning{0, 3000, 0.1f, 0.3f, NAN, 5, 2, 20};
+  const DemandTuning tuning{0, 3000, 0.1f, 0.3f, 5, 2, 20, NAN};
   DemandInput input{6000, 12, -10, 18, 5000, 19.1f, 19.48f, NAN, 1, false};
   const WarmupBoost boost{19.18f, 2527.63f};
   auto out = decide_demand(input, tuning, {2527.63f, 1000, 0}, boost);

@@ -21,6 +21,7 @@ struct DemandTuning {
   float comfort_below_c = NAN, comfort_above_c = NAN;
   float rise_time_min = NAN, fall_time_min = NAN;
   int demand_max = 0;
+  float memory_max_c = 0.2f;
 };
 struct DemandState {
   float last_w = 0.0f;
@@ -73,7 +74,7 @@ DemandDecision decide_demand(const DemandInput& in, const DemandTuning& tuning, 
   const float low_base_c = in.setpoint_c - below_c;
   const float high_base_c = in.setpoint_c + above_c;
   const float mid_base_c = low_base_c + 0.5f * (high_base_c - low_base_c);
-  const float memory_max_c = clamp_power(0.05f + 0.50f * above_c, 0.08f, 0.20f);
+  const float memory_max_c = tuning.memory_max_c;
   float memory_c = isfinite(state.comfort_memory_c) ? state.comfort_memory_c : 0.0f;
   memory_c = clamp_power(memory_c, 0.0f, memory_max_c);
   float dt_s = 0.0f;
@@ -144,7 +145,7 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
       input.room_c, input.setpoint_c, input.external_w, input.water_limit_factor, input.external_valid};
   const baseline_0282c2e9::DemandTuning frozen_tuning{
       tuning.temperature_guard_c, tuning.reaction_w_per_k, tuning.comfort_below_c, tuning.comfort_above_c,
-      tuning.rise_time_min,       tuning.fall_time_min,    tuning.demand_max};
+      tuning.rise_time_min,       tuning.fall_time_min,    tuning.demand_max, tuning.memory_max_c};
   const baseline_0282c2e9::DemandState frozen_state{state.last_w, state.last_ms, state.comfort_memory_c};
   const auto expected = baseline_0282c2e9::decide_demand(frozen_input, frozen_tuning, frozen_state);
   assert(actual.valid == expected.valid);

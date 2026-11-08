@@ -8,7 +8,7 @@ namespace {
 using namespace oq_power_house;
 bool near(float actual, float expected) { return fabsf(actual - expected) < 0.01f; }
 DemandInput input() { return {60001U, 3.0f, -10.0f, 16.0f, 6000.0f, 20.0f, 20.0f, NAN, 1.0f, false}; }
-DemandTuning tuning() { return {0.5f, 3000.0f, 0.1f, 0.3f, NAN, 10.0f, 5.0f, 20}; }
+DemandTuning tuning() { return {0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20, NAN}; }
 void test_model_and_feedforward() {
   struct ModelCase {
     float outside_c, expected_w;

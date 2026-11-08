@@ -27,9 +27,9 @@ struct DemandInput {
 struct DemandTuning {
   float temperature_guard_c = 0.0f, reaction_w_per_k = NAN;
   float comfort_below_c = NAN, comfort_above_c = NAN;
-  float memory_max_c = NAN;
   float rise_time_min = NAN, fall_time_min = NAN;
   int demand_max = 0;
+  float memory_max_c = NAN;
 };
 struct DemandState {
   float last_w = 0.0f;

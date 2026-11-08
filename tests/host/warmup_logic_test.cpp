@@ -210,7 +210,7 @@ static void test_strategy_inputs_and_no_synthetic_fast_start() {
   // Power House still supplies modelled house losses, but loses the large
   // room-error correction. Boiler deficit derives from this reduced request.
   oq_power_house::DemandInput demand{1000, 5, -10, 18, 10000, 17, 20, NAN, 1, false};
-  oq_power_house::DemandTuning tuning{0, 2000, 0.2f, 0.3f, NAN, 8, 3, 20};
+  oq_power_house::DemandTuning tuning{0, 2000, 0.2f, 0.3f, 8, 3, 20, NAN};
   const auto normal = oq_power_house::decide_demand(demand, tuning, {});
   demand.setpoint_c = target;
   const auto warming = oq_power_house::decide_demand(demand, tuning, {});
@@ -265,7 +265,7 @@ static void test_boost_power_response_and_target_cap() {
   auto state = start(in, settings);
   const float fixed_target = state.target_c;
   oq_power_house::DemandInput demand{1000, 5, -10, 18, 10000, 17, fixed_target, NAN, 1, false};
-  oq_power_house::DemandTuning tuning{0, 2000, 0.2f, 0.3f, NAN, 8, 3, 20};
+  oq_power_house::DemandTuning tuning{0, 2000, 0.2f, 0.3f, 8, 3, 20, NAN};
   const auto baseline = oq_power_house::decide_demand(demand, tuning, {});
   for (int i = 1; i <= 8; ++i) {
     in.now_ms += settings.step_ms;
