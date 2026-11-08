@@ -283,7 +283,7 @@ ota:
 http_request:
   id: req
   useragent: esphome/openquatt
-  timeout: 10s
+  timeout: 30s
   follow_redirects: true
   redirect_limit: 3
   buffer_size_rx: 2048
