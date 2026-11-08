@@ -15,6 +15,7 @@ const { refreshEntities } = await import("../js/src/core/entity-sync.js");
 const { commitDateTime, commitNumber, commitSelect, commitSwitch, commitText } = await import("../js/src/core/entity-write-actions.js");
 const { patchLearningDom } = await import("../js/src/core/view-patch-controls.js");
 const { renderLearningView } = await import("../js/src/views/learning.js");
+const { dismissSettingsFeedback } = await import("../js/src/features/settings-feedback.js");
 
 function response(payload, status = 200) {
   return { ok: status === 200, status, json: async () => payload };
@@ -411,41 +412,65 @@ for (const owner of ["learning", "supply"]) {
   });
 }
 
-test("achtergrondsync patcht Leren-meldingen zonder focus of de omringende DOM te vervangen", () => {
+// Stands in for the toast stack the last render mounted; it records the toasts a patch adds.
+function createToastStack() {
+  const toasts = [];
+  return {
+    toasts,
+    style: { setProperty() {} },
+    classList: { toggle() {} },
+    replaceChildren() { toasts.length = 0; },
+    insertAdjacentHTML(_position, markup) {
+      const toast = { id: markup.match(/data-toast-id="(\d+)"/)[1], markup, leaving: false, style: { setProperty() {} },
+        classList: { add(name) { if (name === "is-leaving") toast.leaving = true; }, toggle() {} },
+        offsetHeight: 0, clientHeight: 0, firstElementChild: null, remove() {} };
+      toasts.push(toast);
+    },
+    querySelector(selector) {
+      const id = selector.match(/data-toast-id="(\d+)"/)?.[1];
+      return toasts.find(toast => toast.id === id && !toast.leaving) || null;
+    },
+  };
+}
+
+test("achtergrondsync toont Leren-meldingen als toast zonder focus of de omringende DOM te vervangen", () => {
+  state.appView = "learning";
   state.entities.houseLearningEnabled = { value: false, state: "OFF" };
   const focus = { id: "grafiekknop" };
   document.activeElement = focus;
-  let messageWrites = 0;
-  let markup = "";
-  const messages = {
-    get innerHTML() { return markup; },
-    set innerHTML(value) { markup = value; messageWrites += 1; },
-  };
+  const stack = createToastStack();
   const status = { innerHTML: "" };
   const panel = { querySelector: selector => selector === "[data-oq-house-learning-status]" ? status : null };
   state.root = {
     scrollTop: 412,
-    querySelector: selector => selector === "[data-oq-learning-messages]" ? messages : selector === "[data-oq-house-learning]" ? panel : null,
+    querySelector: selector => selector === "[data-oq-feedback-stack]" ? stack : selector === "[data-oq-house-learning]" ? panel : null,
     set innerHTML(_value) { assert.fail("de hele pagina mag niet worden vervangen"); },
   };
-  state.controlError = "Schrijven <mislukt>";
-  assert.equal(patchLearningDom(), true);
-  assert.match(markup, /role="alert".*Schrijven &lt;mislukt&gt;/);
-  assert.equal(document.activeElement, focus);
-  assert.equal(state.root.scrollTop, 412);
-  patchLearningDom();
-  assert.equal(messageWrites, 1);
-  state.controlError = "";
-  state.controlNotice = "Opnieuw bevestigd";
-  patchLearningDom();
-  assert.match(markup, /role="status".*Opnieuw bevestigd/);
-  assert.doesNotMatch(markup, /role="alert"/);
-  state.controlNotice = "";
-  patchLearningDom();
-  assert.doesNotMatch(markup, /role=/);
-  assert.equal(document.activeElement, focus);
-  assert.equal(state.root.scrollTop, 412);
-  assert.match(renderLearningView(), /data-oq-learning-messages/);
+  const visible = () => stack.toasts.filter(toast => !toast.leaving);
+  try {
+    state.controlError = "Schrijven <mislukt>";
+    assert.equal(patchLearningDom(), true);
+    assert.equal(visible().length, 1);
+    assert.match(visible()[0].markup, /role="alert".*Schrijven &lt;mislukt&gt;/);
+    assert.equal(document.activeElement, focus);
+    assert.equal(state.root.scrollTop, 412);
+    patchLearningDom();
+    assert.equal(stack.toasts.length, 1, "dezelfde melding geeft geen tweede toast");
+    state.controlError = "";
+    state.controlNotice = "Opnieuw bevestigd";
+    patchLearningDom();
+    assert.equal(visible().length, 1, "de fouttoast verdwijnt zodra de fout weg is");
+    assert.match(visible()[0].markup, /Opnieuw bevestigd/);
+    assert.doesNotMatch(visible()[0].markup, /role="alert"/);
+    assert.equal(document.activeElement, focus);
+    assert.equal(state.root.scrollTop, 412);
+    const markup = renderLearningView();
+    assert.match(markup, /data-oq-feedback-stack/);
+    assert.doesNotMatch(markup, /data-oq-learning-messages|oq-helper-notice|oq-helper-error/);
+  } finally {
+    state.controlNotice = "";
+    dismissSettingsFeedback();
+  }
 });
 
 test("ontbrekende lokale bannercontainer vraagt de bestaande volledige renderfallback", () => {

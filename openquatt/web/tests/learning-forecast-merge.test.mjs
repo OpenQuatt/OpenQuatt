@@ -170,22 +170,26 @@ test("een bulkpoll van vóór een locatieactie wist geen nieuwe weerspecifieke f
   assert.equal(state.controlError, "locatie niet bevestigd");
 });
 
-test("de Leren-patch bewaart Vooruitblikbediening en patcht tegelijk actuele meldingen", () => {
+test("de Leren-patch bewaart Vooruitblikbediening en toont tegelijk actuele meldingen als toast", () => {
+  state.appView = "learning";
   const input = { value: "Brummen", selectionStart: 1, selectionEnd: 4 };
   document.activeElement = input;
-  const messages = { innerHTML: "" };
+  // Stands in for the mounted toast stack.
+  const added = [];
+  const stack = { style: { setProperty() {} }, classList: { toggle() {} }, replaceChildren() {},
+    insertAdjacentHTML: (_position, markup) => added.push(markup), querySelector: () => null };
   const toggle = { setAttribute() {}, dataset: {}, classList: { toggle() {} } };
   const pill = { classList: { toggle() {} } };
   const panel = { querySelector: selector => ({ '[data-oq-field="weatherLocation"]': input,
     '[data-control-key="weatherEnabled"]': toggle, '[data-oq-switch-pill="weatherEnabled"]': pill })[selector] };
-  state.root = { scrollTop: 200, querySelector: selector => ({ "[data-oq-learning-messages]": messages,
+  state.root = { scrollTop: 200, querySelector: selector => ({ "[data-oq-feedback-stack]": stack,
     "[data-oq-learning-panels]": {}, "[data-oq-weather-settings]": panel })[selector] };
   state.controlError = "Bewaren <mislukt>";
   const markup = renderLearningView();
-  assert.match(markup, /data-oq-learning-messages/);
+  assert.match(markup, /data-oq-feedback-stack/);
   assert.match(markup, /data-learning-panel="forecast" aria-pressed="true"/);
   assert.equal(patchLearningDom(), true);
-  assert.match(messages.innerHTML, /Bewaren &lt;mislukt&gt;/);
+  assert.match(added.join(""), /role="alert".*Bewaren &lt;mislukt&gt;/);
   assert.equal(document.activeElement, input);
   assert.equal(input.selectionStart, 1);
   assert.equal(input.selectionEnd, 4);

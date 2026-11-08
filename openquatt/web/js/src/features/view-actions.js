@@ -128,6 +128,11 @@ const viewActionHandlers = {
   },
   "select-settings-group": (button) => {
     setSettingsGroup(button.dataset.groupId || SETTINGS_GROUPS[0].id);
+    // The change-log link in a toast on Leren also opens Settings.
+    if (state.appView !== "settings") {
+      if (state.appView === "learning") suspendWeatherForecast();
+      setAppView("settings", { syncMode: "push" });
+    }
     if (state.settingsGroup === CHANGE_LOG_GROUP_ID) {
       void refreshSettingsChangeLog();
     }

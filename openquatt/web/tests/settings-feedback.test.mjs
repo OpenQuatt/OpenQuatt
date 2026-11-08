@@ -157,6 +157,45 @@ test("leaving the settings page finishes the messages, and a new change shows ag
   reset();
 });
 
+test("Leren shows the same toasts, and its change-log link stays because the log is not on screen", () => {
+  reset();
+  const group = state.settingsGroup;
+  state.appView = "learning";
+  state.settingsGroup = "changes";
+  state.controlNotice = NOTICE;
+  state.settingsUndo = undoFor("houseLearningEnabled");
+  const markup = renderAndSync();
+  assert.equal(toastsIn(markup).length, 1);
+  assert.match(markup, /data-oq-action="select-settings-group" data-group-id="changes">Bekijk in logboek/);
+  state.appView = "overview";
+  syncSettingsFeedback(createRoot());
+  state.appView = "learning";
+  assert.deepEqual(toastsIn(renderAndSync()), [], "leaving Leren finishes the toasts like leaving Settings");
+  state.settingsGroup = group;
+  reset();
+});
+
+test("the change-log link in a toast on Leren opens Settings at the log", async () => {
+  const { handleViewAction } = await import("../js/src/features/view-actions.js");
+  const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {});
+  setRenderCallback(() => {});
+  const group = state.settingsGroup;
+  try {
+    reset();
+    Object.assign(state, { appView: "learning", settingsGroup: "heating" });
+    handleViewAction("select-settings-group", { dataset: { groupId: "changes" } }, { preventDefault() {} });
+    assert.equal(state.appView, "settings");
+    assert.equal(state.settingsGroup, "changes");
+  } finally {
+    setRenderCallback(null);
+    globalThis.fetch = originalFetch;
+    state.settingsGroup = group;
+    reset();
+  }
+});
+
 test("the timer waits while a modal is visible", () => {
   mock.timers.enable({ apis: ["setTimeout"] });
   try {
