@@ -67,6 +67,13 @@ eerder ontstane onzekerheid niet. Voor het accepteren van warmtepompwarmte
 blijft de lagere generatie- en topologiegrens gelden.
 Het ingestelde ketelvermogen is een regelwaarde en bewijst geen maximum voor
 ongemeten ketelwarmte.
+Voor een korte, geverifieerde herstart met geldig CV-uit-bewijs vóór en na het
+gat gebruiken we een praktische onzekerheidsinschatting: de warmtepompgrens voor
+de ingestelde generatie en Single/Duo, onder de aanname dat de ketel in het gat
+geen extra CV-warmte heeft toegevoegd. Dit is geen gegarandeerde fysieke
+maximumfout; bij web-OTA kan de regeling tijdens upload nog draaien. Bestaande
+herstelvoorwaarden, eerdere onzekerheid en opgeslagen of waargenomen hogere
+grenzen blijven behouden. Ontbrekend CV-uit-bewijs houdt de brede systeemgrens.
 
 CM98 is normale vorstcirculatie en mag, net als stilstand en pompuitloop,
 meetellen. Voor pompbedrijf gelden de reguliere broncontroles en pauzes tijdens

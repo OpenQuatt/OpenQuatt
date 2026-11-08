@@ -15,6 +15,10 @@ class LearningRestartRuntimeTest(unittest.TestCase):
         source = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
         branch = production_function(source, "if (state.daily_restore_pending) {")
         prepare = production_function(source, "void prepare_restart() {")
+        save = " ".join(production_function(source, "bool save_checkpoint_(").split())
+        self.assertIn("passive_runtime_dataset(state.learner), checkpoint_quality,", save)
+        self.assertIn("daily_heat_quality(state.config.quality, true)", save)
+        self.assertIn("daily_checkpoint_heat_quality(state.config.quality, uncertain_quality, state.input,", save)
         self.assertLess(prepare.index("if (state.reset_requested) tick();"),
                         prepare.index("daily_restart_ticket.arm(state.journal, false, state.system_supply_observed);"))
         with tempfile.TemporaryDirectory(prefix="oq-learning-restart-owner-") as directory:
