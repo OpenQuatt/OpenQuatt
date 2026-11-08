@@ -1,4 +1,5 @@
 from pathlib import Path
+import importlib.util
 import re
 import shutil
 import tempfile
@@ -33,6 +34,32 @@ def yaml_key_pattern(key: str) -> str:
 
 
 class QConfigCompositionContractTest(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("esphome"), "ESPHome is required for package composition")
+    def test_standard_q_builds_include_weather_with_verified_consent(self) -> None:
+        from esphome.config import read_config
+        from esphome.core import CORE
+
+        self.addCleanup(CORE.reset)
+        for target in ("single.yaml", "duo.yaml", "duo_hil.yaml"):
+            with self.subTest(target=target):
+                CORE.reset()
+                CORE.config_path = ROOT / "configs/heatpump_controller_q" / target
+                config = read_config({})
+                self.assertIsNotNone(config)
+                weather = config["openquatt_weather"]
+                self.assertEqual(str(weather["location"]["id"]), "oq_weather_location")
+                self.assertEqual(str(weather["enabled_switch"]["id"]), "oq_weather_experiment_enabled")
+                self.assertEqual(weather["enabled_switch"]["restore_mode"], "DISABLED")
+                self.assertEqual(str(weather["pause_sensor"]), "oq_runtime_polling_paused")
+                for key in ("temperature_30m", "temperature_1h", "temperature_3h"):
+                    self.assertIn(key, weather)
+                selects = {str(item["id"]): item for item in config["select"]}
+                self.assertEqual(selects["outside_temp_source"]["options"],
+                                 ["Auto", "Outdoor unit", "HA input", "API input", "MQTT", "Open-Meteo"])
+                self.assertEqual(selects["outside_temp_source"]["initial_option"], "Auto")
+                sensors = {str(item["id"]): item for item in config["sensor"] if "id" in item}
+                self.assertIn("current_outside_temperature()", str(sensors["outside_temp_selected"]["lambda"]))
+
     def test_release_targets_only_pin_topology(self) -> None:
         for target, flag in (
             (SINGLE_TARGET, '-DOQ_TOPOLOGY_DUO=0'),

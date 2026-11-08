@@ -16,3 +16,4 @@ packages:
   openquatt_connection_wifi_eth: !include ../../openquatt/connection/wifi_eth.yaml
   openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
   openquatt_topology_duo: !include ../../openquatt/topology/duo.yaml
+  openquatt_weather: !include ../../openquatt/experimental/weather_outside_source.yaml
