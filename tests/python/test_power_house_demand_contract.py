@@ -26,6 +26,19 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("roundf(${oq_defrost_comp_min_f}) - 1.0f", YAML)
         self.assertIn("roundf(${oq_defrost_comp_min_f}) - 0.5f", YAML)
 
+    def test_compressor_response_learning_releases_after_cold_start(self) -> None:
+        # session_active remains true throughout a normal heating request.
+        # Only the transient sampling/assist/blocked state may suppress learning.
+        capture = RUNTIME.split("const bool may_learn =", 1)[1].split("const auto snapshot =", 1)[0]
+        self.assertNotIn("oq_cold_start_session_active", capture)
+        for state in ("oq_cold_start_pending", "oq_cold_start_hp_blocked", "oq_cold_start_assist_active"):
+            self.assertIn(f"!id({state})", capture)
+
+    def test_compressor_response_receipt_age_uses_source_clock(self) -> None:
+        capture = RUNTIME.split("const auto snapshot = this->compressor_feedback_", 1)[1].split("if (snapshot.response_changed)", 1)[0]
+        self.assertIn("receipt_now - raw.compressor_frequency.received_ms", capture)
+        self.assertNotIn("now_ms - raw.compressor_frequency.received_ms", capture)
+
     def test_demand_delegates_to_runtime(self) -> None:
         yaml = YAML
         text = RUNTIME

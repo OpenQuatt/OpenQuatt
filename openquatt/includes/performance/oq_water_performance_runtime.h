@@ -23,7 +23,8 @@ inline float own_outlet([[maybe_unused]] bool hp1, float fallback) {
              ? raw->water_out.value + offset
              : fallback;
 }
-inline CandidateModel capture(const oq_frequency_runtime::Context& frequency, float fallback, bool defrost) {
+inline CandidateModel capture(const oq_frequency_runtime::Context& frequency, float fallback, bool defrost,
+                              const std::array<oq_compressor_feedback::Snapshot, 2>& feedback = {}) {
   const auto now = oq_sources::monotonic_ms();
   const auto& raw = oq_sources::hp1;
   const float inlet = raw.water_in.value + id(hp1_water_in_temp_offset).state, flow = raw.flow.value;
@@ -35,7 +36,8 @@ inline CandidateModel capture(const oq_frequency_runtime::Context& frequency, fl
           flow,
           {defrost ? fallback : own_outlet(true, fallback), defrost ? fallback : own_outlet(false, fallback)},
           coupled,
-          id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked)};
+          id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked),
+          feedback};
 }
 }  // namespace oq_water_performance
 #endif
