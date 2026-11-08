@@ -46,12 +46,18 @@ export const WEB_BUNDLE_BUDGETS = [
     // On current PR1: +30,871 B raw / +9,824 B gzip (Node24.14.1).
     // Keep the existing 9,922 B migration allowance.
     // Inherit only PR1's 588 B raw budget increase; merge guards leave 122 B raw headroom.
-    // PR2 raw/gzip: 1,443,352 / 405,092 B; PR1 gzip base: 395,270 B (Node24.14.1).
-    // Optional outside source: +1,243 B raw / +350 B gzip versus PR2.
-    // Inherit PR2's 405,192 B ceiling plus that measured delta; relative limits stay unchanged.
-    // Merged raw/gzip: 1,444,595 / 405,442 B; preserve 122 B raw headroom.
-    raw: 1_444_717,
-    gzipBaselineCeiling: 405_542,
+    // Merged raw/gzip: 1,443,352 / 405,092 B; PR1 gzip base: 395,270 B (Node24.14.1).
+    // Move the absolute ceiling with that base, preserving the feature allowance.
+    // Demand comparison retains its existing 5,763 B raw allowance over PR2.
+    // Measured delta over PR2: 5,762 B raw / 2,074 B gzip (Node24.14.1).
+    // Until the parent PR merges, the dev-targeted stack includes that exact gzip delta.
+    // Preserve the inherited 100 B migration margin and the regular relative limits.
+    // Bounded expiry refresh and write invalidation: +1,501 B raw / +469 B gzip
+    // versus 63002f64 on Node24.14.1; keep the existing raw/gzip headroom.
+    // Optional outside source: +1,243 B raw / +350 B gzip versus PR2 (Node24.14.1).
+    // Add that measured delta on top of dev's ceilings; relative limits stay unchanged.
+    raw: 1_451_981,
+    gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.

@@ -119,6 +119,57 @@ function renderCurrentLearningStatus() {
   return renderHouseLearningStatusMarkup(state.houseLearningStatus, "primary");
 }
 
+const SHADOW_REASON_KEYS = {
+  unavailable: "houseLearning.shadow.reasons.unavailable",
+  batch_not_ready: "houseLearning.shadow.reasons.batchNotReady",
+  context_mismatch: "houseLearning.shadow.reasons.contextMismatch",
+  outside_range: "houseLearning.shadow.reasons.outsideRange",
+  invalid_candidate: "houseLearning.shadow.reasons.invalidCandidate",
+  inactive: "houseLearning.shadow.reasons.inactive",
+  startup: "houseLearning.shadow.reasons.startup",
+  warmup_active: "houseLearning.shadow.reasons.warmupActive",
+  external_override: "houseLearning.shadow.reasons.externalOverride",
+  stale_frame: "houseLearning.shadow.reasons.staleFrame",
+  source_changed: "houseLearning.shadow.reasons.sourceChanged",
+  settings_changed: "houseLearning.shadow.reasons.settingsChanged",
+  service_or_ota: "houseLearning.shadow.reasons.serviceOrOta",
+  reset_pending: "houseLearning.shadow.reasons.resetPending",
+  invalid_inputs: "houseLearning.shadow.reasons.invalidInputs",
+};
+
+let shadowExpiryTimer = null;
+
+export function renderHouseLearningShadow(status = state.houseLearningStatus) {
+  if (!status?.shadow) return "";
+  const shadow = status.shadow;
+  const pending = state.houseLearningReset === "pending" || state.houseLearningReset === "uncertain";
+  const current = canAssessModel(status) && !learningStatusPending(status) && !pending && !state.busyAction;
+  const remaining = shadow.expiresAt - performance.now();
+  const available = current && status.batchAdviceReady && shadow.available && remaining > 0;
+  if (status === state.houseLearningStatus) {
+    window.clearTimeout(shadowExpiryTimer);
+    if (available) {
+      shadowExpiryTimer = window.setTimeout(() => {
+        if (state.houseLearningStatus !== status) return;
+        const node = state.root?.querySelector("[data-oq-house-learning-shadow]");
+        if (node) patchLearningMarkup(node, renderHouseLearningShadow());
+      }, Math.ceil(remaining));
+    }
+  }
+  const reason = pending ? "reset_pending" : !status.enabled ? "inactive"
+    : !current || (shadow.available && remaining <= 0) ? "stale_frame" : shadow.available ? "batch_not_ready" : shadow.reason;
+  const values = [["houseLearning.shadow.manual", shadow.manualW], ["houseLearning.shadow.candidate", shadow.candidateW],
+    ["houseLearning.shadow.delta", shadow.deltaW]];
+  return `<section class="oq-learning-shadow" aria-label="${escapeHtml(t("houseLearning.shadow.title"))}">
+    <div class="oq-house-learning-section-head"><h4>${escapeHtml(t("houseLearning.shadow.title"))}</h4>
+      ${renderSettingsInfoToggle("house-learning-shadow", t("houseLearning.shadow.title"), t("houseLearning.shadow.help"))}</div>
+    ${available ? `<p class="oq-house-learning-current-note">${escapeHtml(t("houseLearning.shadow.copy"))}</p>
+      <dl class="oq-learning-shadow-values">${values.map(([key, value], index) =>
+        `<div><dt>${escapeHtml(t(key))}</dt><dd>${escapeHtml(`${index === 2 && value > 0 ? "+" : ""}${formatNumber(value, { maximumFractionDigits: 0 })} W`)}</dd></div>`).join("")}</dl>`
+      : `<p class="oq-settings-action-note">${escapeHtml(t(SHADOW_REASON_KEYS[reason] || "houseLearning.shadow.reasons.unavailable"))}</p>`}
+  </section>`;
+}
+
 function measurementProgress(phase, status) {
   if (!status.enabled || statusIsStale(status) || !Number.isFinite(phase?.elapsedSeconds)
       || phase.elapsedSeconds < 0 || !Number.isFinite(phase.targetSeconds) || phase.targetSeconds <= 0) return "";
@@ -396,6 +447,7 @@ export function renderHouseLearningSettings() {
       </div>
       <div class="oq-settings-section-body">
         <div data-oq-house-learning-status>${renderCurrentLearningStatus()}</div>
+        <div data-oq-house-learning-shadow>${renderHouseLearningShadow()}</div>
         <div class="oq-house-learning-chart-panel" data-oq-house-learning-chart-panel data-oq-chart-signature="${escapeHtml(houseLearningChartSignature(busy))}">${renderHouseLearningChartPanel(busy)}</div>
       </div>
     </section>`;
@@ -410,7 +462,7 @@ function patchLearningMarkup(node, markup) {
   const info = focused && active.dataset?.infoId;
   const action = focused && active.dataset?.oqAction;
   const selector = control === "houseLearningEnabled" ? '[data-control-key="houseLearningEnabled"]'
-    : ["house-learning-window", "house-learning-readiness", "house-learning-thermal", "house-learning-chart"].includes(info)
+    : ["house-learning-window", "house-learning-readiness", "house-learning-thermal", "house-learning-chart", "house-learning-shadow"].includes(info)
     ? `[data-info-id="${info}"]`
     : ["load-house-learning-chart", "download-house-learning"].includes(action) ? `[data-oq-action="${action}"]`
     : focused && active.dataset?.oqButtonKey === "houseLearningReset" ? '[data-oq-button-key="houseLearningReset"]'
@@ -447,6 +499,8 @@ export function patchHouseLearningSettingsStatus() {
       chartNode.setAttribute("data-oq-chart-signature", signature);
     }
   }
+  const shadowNode = panel.querySelector("[data-oq-house-learning-shadow]");
+  if (shadowNode) patchLearningMarkup(shadowNode, renderHouseLearningShadow());
   const markup = renderCurrentLearningStatus();
   patchLearningMarkup(node, markup);
   const secondary = panel?.querySelector("[data-oq-house-learning-secondary]");

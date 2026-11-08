@@ -73,8 +73,9 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertNotIn("oq_power_limit_peak_w", COOLING + COOLING_RUNTIME)
 
     def test_heating_curve_dispatch_uses_power_capped_continuous_demand(self) -> None:
-        for marker in ("oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), capped, config.demand_max_f)", "phase_target_power_w(heat_phase, demand_u, owner_capacity_w, duo_capacity_w)", "const float target_power_w = demand_u * capacity_w;", "const float dispatch_u = config.demand_max_f > 0 ? static_cast<float>(capped) / config.demand_max_f : 0.0f;", "dispatch_u >= 0.95f", "dispatch_u >= duo_enable_min_u", "dispatch_u <= duo_disable_max_u", "const bool demand_active = demand_u > 0.0f;", "hp1_candidate, hp2_candidate, demand_active"):
-            self.assertIn(marker, HEATING_CURVE_RUNTIME)
+        runtime = " ".join(HEATING_CURVE_RUNTIME.split())
+        for marker in ("oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), capped, config.demand_max_f)", "phase_target_power_w(single_recovery_scale, demand_u, owner_capacity_w, duo_capacity_w)", "const float target_power_w = demand_u * capacity_w;", "const float dispatch_u = config.demand_max_f > 0 ? static_cast<float>(capped) / config.demand_max_f : 0.0f;", "demand_u >= 0.95f", "dispatch_u >= duo_enable_min_u", "dispatch_u <= duo_disable_max_u", "const bool demand_active = demand_u > 0.0f;", "hp1_candidate, hp2_candidate, demand_active"):
+            self.assertIn(marker, runtime)
         self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE_RUNTIME)
 
 if __name__ == "__main__":

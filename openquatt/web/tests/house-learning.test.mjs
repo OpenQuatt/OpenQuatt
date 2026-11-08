@@ -12,7 +12,7 @@ globalThis.window = {
   localStorage: { getItem: () => null },
 };
 
-const { state } = await import("../js/src/core/state.js");
+const { invalidateHouseLearningShadow, state } = await import("../js/src/core/state.js");
 const {
   HOUSE_LEARNING_STATUS_INTERVAL_MS,
   downloadHouseLearningExport,
@@ -24,11 +24,12 @@ const {
   resetHouseLearningData,
   shouldRefreshHouseLearningStatusSurface,
 } = await import("../js/src/features/house-learning.js");
-const { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
+const { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningShadow, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
 const { getInitialPrimeKeys, refreshEntities, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { commitSwitch } = await import("../js/src/core/entity-write-actions.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
 const { renderLearningView } = await import("../js/src/views/learning.js");
+const { setAppView } = await import("../js/src/core/navigation.js");
 const { setLocale } = await import("../js/src/i18n/index.js");
 
 function switchEntity(value = false) {
@@ -36,6 +37,7 @@ function switchEntity(value = false) {
 }
 
 test.afterEach(() => {
+  invalidateHouseLearningShadow();
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
   document.hidden = false;
   state.nativeOpen = false;
@@ -1467,6 +1469,88 @@ test("een stilvallende readback- of statusbody houdt de leerbediening niet geblo
   } finally {
     window.setTimeout = originalTimeout;
   }
+});
+
+test("een uitgestelde vergelijkingsbody kan terugnavigatie niet overleven", async () => {
+  state.appView = "learning";
+  state.learningForecastOpen = false;
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const originalFetch = globalThis.fetch;
+  const ready = statusPayload({
+    enabled: true, journal_status: "saved_verified", batch_advice_ready: true, context_revision: 8, shadow_ttl_ms: 10000,
+    shadow: {
+      schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+      source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+      available: true, reason: "ready", manual_w: 3100, candidate_w: 2750, delta_w: -350, auto_apply_allowed: false,
+    },
+  });
+  let release;
+  const body = new Promise(resolve => { release = resolve; });
+  globalThis.fetch = async () => ({ ok: true, json: () => body });
+  try {
+    const oldRequest = refreshHouseLearningStatus({ force: true });
+    setAppView("settings");
+    setAppView("learning");
+    release(ready);
+    await oldRequest;
+    assert.equal(state.houseLearningStatus.batchAdviceReady, true);
+    assert.equal(state.houseLearningStatus.shadow, null);
+    assert.equal(state.houseLearningLastFetchAt, 0);
+    await refreshHouseLearningStatus();
+    assert.equal(state.houseLearningStatus.shadow.available, true);
+    setAppView("settings");
+    assert.equal(state.houseLearningStatus.shadow, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("warmtevraag vergelijkt alleen een actuele en goedgekeurde berekening", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["Date"], now: 1_793_963_600_000 });
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const payload = statusPayload({
+    enabled: true, journal_status: "saved_verified", batch_advice_ready: true, context_revision: 8, shadow_ttl_ms: 10000,
+    shadow: {
+      schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+      source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+      available: true, reason: "ready", manual_w: 3100, candidate_w: 2750, delta_w: -350, auto_apply_allowed: false,
+    },
+  });
+  const render = (changes = {}) => renderHouseLearningShadow(normalizeHouseLearningStatus({ ...payload, ...changes }));
+  const html = render();
+  assert.match(html, /Ingestelde woninglijn/);
+  assert.match(html, /Geleerde woninglijn/);
+  assert.match(html, /3[.]100 W/);
+  assert.match(html, /2[.]750 W/);
+  assert.match(html, /-350 W/);
+  assert.doesNotMatch(html, /<button[^>]+(?:apply|commit)/);
+
+  for (const override of [
+    { auto_apply_allowed: true }, { source: "simulation" }, { context_revision: 7 },
+    { manual_w: "3100" }, { candidate_w: -1 }, { delta_w: 350 }, { tick_ms: 0 },
+    { available: false, reason: "external_override" },
+  ]) {
+    const invalid = { ...payload.shadow, ...override };
+    assert.doesNotMatch(render({ shadow: invalid }), /3[.]100 W/);
+    assert.equal(normalizeHouseLearningStatus({ ...payload, shadow: invalid }).shadow.reason, "invalid_inputs");
+  }
+  const waiting = { ...payload.shadow, available: false, reason: "batch_not_ready", manual_w: null, candidate_w: null, delta_w: null };
+  assert.match(render({ batch_advice_ready: false, shadow: waiting }), /zodra de geleerde woninglijn is goedgekeurd/);
+  assert.doesNotMatch(render({ batch_advice_ready: false, shadow: waiting }), /<dl/);
+  assert.doesNotMatch(render({ enabled: false }), /<dl/);
+  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch - 31 }), /<dl/);
+  assert.match(render({ tick_epoch: payload.tick_epoch + 30 }), /<dl/);
+  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch + 31 }), /<dl/);
+  assert.doesNotMatch(render({ shadow_ttl_ms: undefined }), /<dl/);
+  assert.doesNotMatch(render({ shadow_ttl_ms: 30001 }), /<dl/);
+  assert.match(render({ shadow: undefined, shadow_expired: true }), /actuele vergelijking/);
+  const expired = normalizeHouseLearningStatus(payload, performance.now() - 10001);
+  assert.match(renderHouseLearningShadow(expired), /actuele vergelijking/);
+  assert.doesNotMatch(renderHouseLearningShadow(expired), /<dl/);
+  state.houseLearningReset = "pending";
+  assert.match(render(), /bevestiging van het wissen/);
+  assert.doesNotMatch(render(), /<dl/);
+  assert.equal(renderHouseLearningShadow(normalizeHouseLearningStatus(statusPayload())), "");
 });
 
 test("display preview is optional and cannot replace the independent advice candidate", () => {

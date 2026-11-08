@@ -6,7 +6,7 @@ import { syncEntities } from "../core/entity-sync.js";
 import { setAppView } from "../core/navigation.js";
 import { render } from "../core/render-scheduler.js";
 import { setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
-import { state } from "../core/state.js";
+import { invalidateHouseLearningShadow, state } from "../core/state.js";
 import { setTrendWindowHours } from "../core/trend-window.js";
 import { setEnergyHistoryPeriodToNow, setEnergyHistoryView, shiftEnergyHistoryPeriod } from "../views/energy.js";
 import { refreshTrendHistoryData } from "./storage-history.js";
@@ -56,7 +56,8 @@ const viewActionHandlers = {
   "select-learning-panel": (button) => {
     const open = button.dataset.learningPanel === "forecast";
     if (open === state.learningForecastOpen) return;
-    if (!open) suspendWeatherForecast();
+    if (open) invalidateHouseLearningShadow();
+    else suspendWeatherForecast();
     state.learningForecastOpen = open;
     render();
     if (open) void refreshWeatherForecast();

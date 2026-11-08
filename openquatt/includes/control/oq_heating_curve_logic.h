@@ -11,6 +11,8 @@
 
 namespace oq_curve {
 
+inline constexpr int kMaintainOvershootDemandCap = 8;
+
 struct ControlProfileTuning {
   float start_delta_c = 0.45f;
   float stop_delta_c = 0.90f;
@@ -75,6 +77,7 @@ struct DemandInput {
   bool oil_return_mask_active = false;
   int applied_total_level = 0;
   int demand_max = 0;
+  bool duo_running = false;
 };
 struct DemandDecision {
   DemandState next;
@@ -371,12 +374,17 @@ inline DemandDecision decide_demand(const DemandInput& in, const ControlProfileT
     }
     out.next.regime_code = regime;
     if (regime == 1) {
-      demand = std::max(demand, std::min(in.demand_max, std::max(2, in.applied_total_level + 1)));
+      // The single ramp floor would feed applied Duo power back into its PID request.
+      if (!in.duo_running) demand = std::max(demand, std::min(in.demand_max, std::max(2, in.applied_total_level + 1)));
     } else {
       static constexpr float thresholds[] = {0.00f, 0.10f, 0.20f, 0.35f, 0.50f, 0.70f, 0.90f};
-      static constexpr int caps[] = {1, 2, 3, 4, 5, 6, 8};
+      static constexpr int caps[] = {1, 2, 3, 4, 5, 6, kMaintainOvershootDemandCap};
+      // Let PID sustain an active Duo through small crossings of the setpoint.
+      // Apply the shifted caps on overshoot; low PID demand can still shed Duo.
+      constexpr float duo_overshoot_band_c = 0.10f;
+      const float cap_error_c = in.duo_running ? supply_error_c + thresholds[6] + duo_overshoot_band_c : supply_error_c;
       for (int i = 0; i < 7; ++i)
-        if (supply_error_c <= thresholds[i]) {
+        if (cap_error_c <= thresholds[i]) {
           demand = std::min(demand, caps[i]);
           break;
         }

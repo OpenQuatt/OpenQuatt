@@ -3,6 +3,7 @@ import { hasEntity } from "../core/app-shared.js";
 import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
+import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
 import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
 import { t } from "../i18n/index.js";
@@ -58,7 +59,34 @@ const collectionPhase = (collection, prefix) => {
   };
 };
 
-export function normalizeHouseLearningStatus(payload = {}) {
+const SHADOW_REASONS = new Set([
+  "ready", "inactive", "startup", "warmup_active", "external_override", "stale_frame", "source_changed",
+  "settings_changed", "service_or_ota", "reset_pending", "invalid_inputs", "batch_not_ready", "context_mismatch",
+  "outside_range", "invalid_candidate",
+]);
+
+function normalizeHouseLearningShadow(payload, requestStartedAt) {
+  if (payload.shadow_expired === true) return { available: false, reason: "stale_frame" };
+  if (!Object.hasOwn(payload, "shadow")) return null;
+  const value = payload.shadow;
+  const invalid = { available: false, reason: "invalid_inputs" };
+  if (!value || value.schema !== 1 || value.semantics !== "one_step_from_observed_state"
+      || value.scope !== "base_before_start_stop_dispatch" || value.source !== "actual" || value.state_origin !== "live_pre_tick"
+      || value.run_id !== null || value.auto_apply_allowed !== false || payload.auto_apply_allowed !== false
+      || typeof value.available !== "boolean" || !SHADOW_REASONS.has(value.reason)
+      || value.available !== (value.reason === "ready") || !Number.isSafeInteger(value.tick_ms) || value.tick_ms < 0
+      || !Number.isInteger(value.context_revision) || value.context_revision < 0) return invalid;
+  const { manual_w: manualW, candidate_w: candidateW, delta_w: deltaW } = value;
+  if (!value.available) return [manualW, candidateW, deltaW].every(item => item === null)
+    ? { available: false, reason: value.reason } : invalid;
+  const ttl = payload.shadow_ttl_ms;
+  if (!Number.isInteger(ttl) || ttl <= 0 || ttl > 30000 || value.tick_ms === 0 || value.context_revision === 0 || value.context_revision !== payload.context_revision
+      || ![manualW, candidateW, deltaW].every(Number.isFinite) || manualW < 0 || candidateW < 0
+      || Math.abs(candidateW - manualW - deltaW) > Math.max(0.01, Math.abs(manualW) * 0.00001, Math.abs(candidateW) * 0.00001)) return invalid;
+  return { available: true, reason: "ready", manualW, candidateW, deltaW, expiresAt: requestStartedAt + ttl };
+}
+
+export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = performance.now()) {
   if (Number(payload.schema) !== 1 || payload.mode !== "passive") throw translatedError("houseLearning.errors.unknownStatusFormat");
   const source = (key) => {
     const item = payload.sources?.[key];
@@ -87,6 +115,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
       || preview.min_c !== null && preview.max_c !== null && preview.min_c <= preview.max_c);
   return {
     enabled: payload.enabled === true,
+    shadow: normalizeHouseLearningShadow(payload, requestStartedAt),
     controlMode: numberOrNull(payload.control_mode),
     storageReady: payload.storage_ready === true,
     status: String(payload.status || "unknown"),
@@ -139,6 +168,51 @@ export function normalizeHouseLearningStatus(payload = {}) {
 
 export function shouldRefreshHouseLearningStatusSurface() {
   return !document.hidden && !state.nativeOpen && state.appView === "learning" && !state.learningForecastOpen && hasEntity("houseLearningEnabled");
+}
+
+// One expiry follow-up and at most two short retries per normal status poll.
+// Keep the normal 10-second fallback cadence even when a follow-up finishes later.
+let shadowRefresh = null;
+const SHADOW_REFRESH_DELAY_MS = 200;
+const SHADOW_REFRESH_LIMIT = 3;
+
+function clearShadowRefresh() {
+  if (state.houseLearningShadowTimer != null) window.clearTimeout(state.houseLearningShadowTimer);
+  state.houseLearningShadowTimer = null;
+  shadowRefresh = null;
+}
+
+function shadowRefreshCurrent(plan) {
+  return plan && plan === shadowRefresh && plan.epoch === state.houseLearningShadowEpoch
+    && plan.requestId === state.houseLearningRequestId && plan.status === state.houseLearningStatus
+    && shouldRefreshHouseLearningStatusSurface()
+    && !state.busyAction && !["pending", "uncertain"].includes(state.houseLearningReset);
+}
+
+function scheduleShadowRefresh(previous) {
+  const status = state.houseLearningStatus;
+  const plan = previous || {
+    epoch: state.houseLearningShadowEpoch, requestId: state.houseLearningRequestId,
+    pollAt: state.houseLearningLastFetchAt, attempts: 0,
+  };
+  shadowRefresh = plan;
+  plan.lastFetchAt = state.houseLearningLastFetchAt;
+  plan.status = status;
+  if (!shadowRefreshCurrent(plan)) { clearShadowRefresh(); return; }
+  const shadow = status?.shadow;
+  if (!status?.enabled || !status.batchAdviceReady || !shadow
+    || (!shadow.available && shadow.reason !== "stale_frame") || plan.attempts >= SHADOW_REFRESH_LIMIT) return;
+  const delay = shadow.available ? Math.max(SHADOW_REFRESH_DELAY_MS, shadow.expiresAt - performance.now() + SHADOW_REFRESH_DELAY_MS)
+    : SHADOW_REFRESH_DELAY_MS;
+  state.houseLearningShadowTimer = window.setTimeout(() => {
+    if (plan !== shadowRefresh) return;
+    state.houseLearningShadowTimer = null;
+    if (!shadowRefreshCurrent(plan)) { clearShadowRefresh(); return; }
+    plan.attempts += 1;
+    void refreshHouseLearningStatus({ force: true, shadowFollowup: plan }).then(changed => {
+      if (changed && shadowRefreshCurrent(plan) && !patchLearningDom()) render();
+    });
+  }, Math.ceil(delay));
 }
 
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
@@ -235,15 +309,22 @@ export function handleHouseLearningAction(action, button, pressNamedButton) {
 
 export async function refreshHouseLearningStatus(options = {}) {
   const resetReconcile = options.resetReconcile === true;
-  if (!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) return false;
+  const shadowFollowup = options.shadowFollowup;
+  if (shadowFollowup && !shadowRefreshCurrent(shadowFollowup)) return false;
+  if (!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) { clearShadowRefresh(); return false; }
   if (state.houseLearningReset === "pending" && !resetReconcile) return false;
   if (state.houseLearningFetchPromise) return state.houseLearningFetchPromise;
-  if (!options.force && Date.now() - Number(state.houseLearningLastFetchAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
+  const intervalAt = shadowRefreshCurrent(shadowRefresh) && shadowRefresh.lastFetchAt === state.houseLearningLastFetchAt
+    ? shadowRefresh.pollAt : state.houseLearningLastFetchAt;
+  if (!options.force && Date.now() - Number(intervalAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
     return false;
   }
+  if (!shadowFollowup) clearShadowRefresh();
   const initialCapabilityCheck = !state.houseLearningEndpointAvailable && !state.houseLearningEndpointChecked;
   const requestGeneration = Number(state.houseLearningRequestId || 0);
   const before = JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
+  const requestStartedAt = performance.now();
+  const shadowEpoch = state.houseLearningShadowEpoch;
   state.houseLearningEndpointChecking = true;
   state.houseLearningFetchPromise = (async () => {
     let probeCompleted = false;
@@ -265,9 +346,13 @@ export async function refreshHouseLearningStatus(options = {}) {
           state.houseLearningEndpointAvailable = true;
           throw new Error(`HTTP ${response.status}`);
         }
-        const status = normalizeHouseLearningStatus(payload);
+        const status = normalizeHouseLearningStatus(payload, requestStartedAt);
         if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
         state.houseLearningEndpointAvailable = true;
+        // Navigation can leave and return while the HTTPD still sends an
+        // already copied frame. Keep the learning status, fence its live comparison.
+        if (shadowEpoch !== state.houseLearningShadowEpoch || state.busyAction
+          || ["pending", "uncertain"].includes(state.houseLearningReset)) status.shadow = null;
         state.houseLearningStatus = status;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
@@ -290,7 +375,7 @@ export async function refreshHouseLearningStatus(options = {}) {
       if (requestGeneration === state.houseLearningRequestId) {
         if (probeCompleted) {
           state.houseLearningEndpointChecked = true;
-          state.houseLearningLastFetchAt = Date.now();
+          if (shadowEpoch === state.houseLearningShadowEpoch) state.houseLearningLastFetchAt = Date.now();
         }
         state.houseLearningEndpointChecking = false;
       }
@@ -306,6 +391,9 @@ export async function refreshHouseLearningStatus(options = {}) {
     return await state.houseLearningFetchPromise;
   } finally {
     state.houseLearningFetchPromise = null;
+    if (!resetReconcile && requestGeneration === state.houseLearningRequestId && shadowEpoch === state.houseLearningShadowEpoch) {
+      scheduleShadowRefresh(shadowFollowup);
+    }
   }
 }
 
@@ -321,6 +409,7 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
   ));
   if (!confirmReset()) return false;
   invalidateWeatherForecast();
+  clearShadowRefresh();
 
   const staleRequest = state.houseLearningFetchPromise;
   state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;

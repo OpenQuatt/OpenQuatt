@@ -525,3 +525,6 @@ interval:
               (${oq_ot_room_temperature_fresh_expr}),
               (${oq_ot_room_setpoint_fresh_expr}),
           });
+          #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+          oq_ph_learning::runtime().refresh_shadow();
+          #endif
