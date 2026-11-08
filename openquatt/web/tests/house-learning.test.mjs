@@ -1016,6 +1016,10 @@ test("preview-reset pauzeert leren en bevestigt gewiste opslag zoals de firmware
   assert.equal(isHouseLearningResetConfirmed(status), true);
   assert.equal(status.rlsSamples, 0);
   assert.equal(mockState.houseLearning.resetCount, 1);
+  mockState.houseLearning.preview = "checks";
+  const cleared = mock.getHouseLearningStatusPayload();
+  assert.equal(cleared.batch_fit, undefined);
+  assert.equal(cleared.batch_preview, undefined);
 });
 
 
@@ -1614,8 +1618,8 @@ test("onvoorbereide fitmetadata wist de geladen dagmetingen niet", async () => {
     } }));
     assert.equal(status.batchFit, null);
     const html = renderHouseLearningReadiness(records, { fit: status.batchFit });
-    assert.match(html, /12 <span>\/ 9 nodig/);
-    assert.match(html, /Leren: 9 · Controleren: 3/);
+    assert.match(html, /Leerdagen<\/dt><dd>9 <span>\/ 6 nodig/);
+    assert.match(html, /Controledagen<\/dt><dd>3 <span>\/ 3 nodig/);
     assert.doesNotMatch(html, /Leren: 0|0 <span>\/ 9 nodig/);
   }
 });

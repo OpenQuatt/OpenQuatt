@@ -520,8 +520,8 @@
 .oq-house-learning-readiness-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .oq-house-learning-readiness h5 { margin: 0; color: var(--oq-helper-ink); font-size: 0.94rem; }
 .oq-house-learning-readiness p { margin: 4px 0 0; max-width: 760px; }
-.oq-house-learning-readiness-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px 32px; max-width: 720px; margin: 16px 0 0; }
-.oq-house-learning-readiness-metric { display: grid; gap: 4px; }
+.oq-house-learning-readiness-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px 32px; margin: 16px 0 0; }
+.oq-house-learning-readiness-metric { display: grid; align-content: start; gap: 4px; }
 .oq-house-learning-readiness-metrics dt { font-size: 0.78rem; font-weight: 600; }
 .oq-house-learning-readiness-metrics dd { margin: 0; color: var(--oq-helper-ink); font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .oq-house-learning-readiness-metrics dd span { color: var(--oq-helper-faint); font-size: 0.8rem; font-weight: 400; }
@@ -531,6 +531,9 @@
 .oq-house-learning-readiness-track { height: 4px; overflow: hidden; margin: 3px 0; border-radius: 4px; background: var(--oq-helper-line); }
 .oq-house-learning-readiness-track span { display: block; height: 100%; border-radius: inherit; background: var(--oq-helper-accent); }
 .oq-house-learning-readiness-metric.is-complete .oq-house-learning-readiness-track span { background: var(--oq-helper-modal-success-ink); }
+@media (max-width: 680px) {
+  .oq-house-learning-readiness-metrics { grid-template-columns: 1fr; gap: 16px; }
+}
 .oq-house-learning-chart-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--oq-helper-faint); font-size: 0.78rem; }
 
 .oq-house-learning-chart-wrap { position: relative; }

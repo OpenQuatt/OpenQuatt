@@ -28,6 +28,8 @@
   const entities = new Map();
   let devControlsRoot = null;
   const learningPreview = new URL(window.location.href).searchParams.get("learningPreview");
+  const checkingPreviewTemperatures = [4.4, 4.96, 5.4, 5.8, 6.2, 6.6, 7, 7.4, 7.8, 8.2,
+    8.6, 9, 9.4, 9.8, 10.2, 10.6, 11, 11.4, 11.84, 12.3];
   // The demo does not invite visitors to share data; ?performancePrompt=1 shows the invitation for development.
   const performancePromptPreview = new URL(window.location.href).searchParams.get("performancePrompt") === "1";
   const state = {
@@ -247,6 +249,7 @@
 
   if (learningPreview === "spread") state.houseLearning.records = 16;
   if (learningPreview === "days") state.houseLearning.records = 8;
+  if (learningPreview === "checks") state.houseLearning.records = checkingPreviewTemperatures.length + 4;
 
   function isCoolingScenario(name = state.scenario) {
     return name === "cooling" || name === "cooling_startup_wait" || name === "cooling_limited" || name === "cooling_buffer_stop" || name === "cooling_stop_reasons" || name === "cooling_limiter_log";
@@ -5979,7 +5982,12 @@
       daily_record_count: dailyCount, legacy_record_count: legacyCount, reference_room_c: 20,
       collection: { batch_active: enabled && state.boiler === "off", batch_elapsed_s: enabled ? 9200 : 0, batch_target_s: 86400,
         batch_last_rejection: null, thermal_active: enabled && !invalidReasons.length, thermal_elapsed_s: enabled ? 420 : 0, thermal_target_s: 1800, thermal_intervals: state.houseLearning.rlsSamples },
-      batch_status: ready ? "advice_ready" : dailyCount < 9 ? "insufficient_data" : "insufficient_spread", batch_advice_ready: ready,
+      batch_status: ready ? "advice_ready" : dailyCount < 9 || state.houseLearning.preview === "checks" ? "insufficient_data" : "insufficient_spread", batch_advice_ready: ready,
+      ...(state.houseLearning.preview === "checks" && dailyCount > 0 ? {
+        batch_fit: { metadata_prepared: true, train_segments: 20, holdout_segments: 0,
+          train_days: 20, holdout_days: 0, train_p10_c: 4.96, train_p90_c: 11.84, train_min_c: 4.4, train_max_c: 12.3 },
+        batch_preview: { segments: 20, days: 20, h: 186.4, t0: 16.8, min_c: 4.4, max_c: 12.3 },
+      } : {}),
       advice_ready: false, auto_apply_allowed: false,
       h_batch: ready ? 186.4 : null, t0_batch: ready ? 16.8 : null,
       u_rls: ready ? 179.2 : null, c_rls_wh_per_k: ready ? 7420 : null,
@@ -6008,10 +6016,12 @@
       record_columns: ["start_epoch_s", "end_epoch_s", "mean_room_c", "mean_setpoint_c", "mean_outside_c", "mean_heat_w", "room_trend_k_per_h", "context_revision", "effective_outside_c", "record_kind"],
       records: Array.from({ length: state.houseLearning.records }, (_item, index) => {
         const end = now - ((state.houseLearning.records - index) * 86400);
-        const outside = state.houseLearning.preview === "spread"
+        const outside = state.houseLearning.preview === "checks"
+          ? checkingPreviewTemperatures[Math.max(0, index - legacyCount)]
+          : state.houseLearning.preview === "spread"
           ? 8.4 + [0, 1, 8, 4, 2, 11, 6, 10, 5, 3, 7, 9][Math.max(0, index - legacyCount)] * 0.35
           : 2.5 + (index * 0.35);
-        const room = Number((20.3 + index * 0.02).toFixed(2));
+        const room = state.houseLearning.preview === "checks" ? 20 : Number((20.3 + index * 0.02).toFixed(2));
         const effectiveOutside = Number((outside - (room - 20)).toFixed(2));
         const kind = index < legacyCount ? 0 : 1;
         return [end - (kind ? 86400 : 14400), end, room, 20.5, Number(outside.toFixed(2)), Math.round(186.4 * (16.8 - effectiveOutside)), 0.01, 8, effectiveOutside, kind];
