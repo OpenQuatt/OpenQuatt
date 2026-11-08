@@ -14,7 +14,7 @@ import { refreshTrendHistoryData } from "./storage-history.js";
 import { refreshOduRuntimeFrequencyStatuses } from "./odu-runtime-frequency.js";
 import { refreshOduDefrostStatuses } from "./odu-defrost.js";
 import { refreshOduSettingsStatuses } from "./odu-settings.js";
-import { dismissSettingsFeedback } from "./settings-feedback.js";
+import { dismissSettingsFeedback, finishFeedbackUndo, takeFeedbackUndo } from "./settings-feedback.js";
 import { CHANGE_LOG_GROUP_ID, exportSettingsChangeLog, refreshSettingsChangeLog } from "./settings-change-log.js";
 
 function openServiceSettings() {
@@ -252,12 +252,12 @@ const viewActionHandlers = {
   "open-cm100-commissioning-modal": () => openServiceSettings(),
   "open-installation-monitoring": () => openServiceSettings(),
   "open-service-task-modal": (button) => openServiceTask(button),
-  "dismiss-settings-feedback": () => {
-    dismissSettingsFeedback();
-    render();
+  "dismiss-settings-feedback": (button) => {
+    if (dismissSettingsFeedback(button?.dataset.toastId)) render();
   },
-  "undo-settings-change": () => {
-    void undoSettingsChange();
+  "undo-settings-change": (button) => {
+    const undo = takeFeedbackUndo(button?.dataset.toastId);
+    if (undo) void undoSettingsChange(undo).finally(finishFeedbackUndo);
   },
 };
 

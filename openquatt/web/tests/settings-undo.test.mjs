@@ -90,3 +90,13 @@ test("undo only applies while its own notice is on screen", async () => {
   assert.equal(await undoSettingsChange(), false);
   assert.deepEqual(writes, []);
 });
+
+test("a toast can still undo its own change after a newer notice", async () => {
+  assert.equal(await commitNumber("coolingDemandMax", 7), true);
+  const undo = state.settingsUndo;
+  state.controlNotice = "Iets anders bijgewerkt.";
+  writes = [];
+  assert.equal(await undoSettingsChange(undo), true);
+  assert.equal(writes.length, 1);
+  assert.match(writes[0], /value=4$/);
+});

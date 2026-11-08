@@ -3109,6 +3109,7 @@ export default {
     entityUpdated: "{name} bijgewerkt.",
     entityRestored: "{name} teruggezet naar {value}.",
     undo: "Ongedaan maken",
+    viewChangeLog: "Bekijk in logboek",
     entityUpdateFailed: "{name} kon niet worden bijgewerkt. {error}",
     entityAdjustFailed: "{name} aanpassen mislukt ({error}).",
     dateTimeExpected: "{name} verwacht datum en tijd.",

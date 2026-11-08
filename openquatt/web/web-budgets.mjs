@@ -67,7 +67,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Results and Diagnose share a Charts tab with a side navigation that remembers the last view:
     // +1,264 B raw; 80 B raw headroom.
     // Settings tabs of their own for Backup and Data sharing, moved out of System: +622 B raw; 80 B raw headroom.
-    raw: 1_460_938,
+    // A change-log link in the settings toast and stacked toasts (up to three, fanned out on hover,
+    // dismissable one by one, undo per toast): +3,790 B raw; 80 B raw headroom.
+    raw: 1_464_218,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

@@ -178,10 +178,11 @@ function recordEntityChange(key, previousValue, nextValue) {
 }
 
 // Writes the previous value back through the same commit path, which also logs the reverse change.
-export async function undoSettingsChange() {
-  const undo = state.settingsUndo;
-  if (!undo || undo.notice !== state.controlNotice || state.busyAction) return false;
-  state.settingsUndo = null;
+// A toast passes its own undo; without one, only the undo of the notice on screen applies.
+export async function undoSettingsChange(toastUndo = null) {
+  const undo = toastUndo || state.settingsUndo;
+  if (!undo || state.busyAction || (!toastUndo && undo.notice !== state.controlNotice)) return false;
+  if (undo === state.settingsUndo) state.settingsUndo = null;
   const domain = ENTITY_DEFS[undo.key]?.domain;
   let restored = false;
   if (domain === "select") {

@@ -3109,6 +3109,7 @@ export default {
     entityUpdated: "{name} updated.",
     entityRestored: "{name} restored to {value}.",
     undo: "Undo",
+    viewChangeLog: "View in log",
     entityUpdateFailed: "{name} could not be updated. {error}",
     entityAdjustFailed: "Adjusting {name} failed ({error}).",
     dateTimeExpected: "{name} expects a date and time.",
