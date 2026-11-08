@@ -718,6 +718,7 @@
     { id: "overview", labelKey: "navigation.overview", icon: "monitor-dashboard" },
     { id: "energy", labelKey: "navigation.energy", icon: "zap" },
     { id: "results", labelKey: "navigation.results", icon: "bar-chart" },
+    { id: "learning", labelKey: "navigation.learning", icon: "bar-chart" },
     { id: "control", labelKey: "navigation.control", icon: "activity", badge: "BETA" },
     { id: "diagnosis", labelKey: "navigation.diagnosis", icon: "activity" },
     { id: "settings", labelKey: "navigation.settings", icon: "settings" },
