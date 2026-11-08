@@ -28,6 +28,8 @@
   const entities = new Map();
   let devControlsRoot = null;
   const learningPreview = new URL(window.location.href).searchParams.get("learningPreview");
+  // The demo does not invite visitors to share data; ?performancePrompt=1 shows the invitation for development.
+  const performancePromptPreview = new URL(window.location.href).searchParams.get("performancePrompt") === "1";
   const state = {
     scenario: "heating",
     installation: "duo",
@@ -1507,6 +1509,52 @@
     return makeAuthResponse(200, getAuthStatusPayload());
   }
 
+  // Mirrors the firmware change log: 100 newest entries, label/from/to share 65 bytes of UTF-8.
+  const CHANGE_LOG_CAPACITY = 100;
+  const CHANGE_LOG_TEXT_BYTES = 65;
+  // Counted by code point: the mock also runs in test sandboxes without TextEncoder.
+  function utf8ByteLength(text) {
+    let length = 0;
+    for (const character of text) {
+      const codePoint = character.codePointAt(0);
+      length += codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : codePoint < 0x10000 ? 3 : 4;
+    }
+    return length;
+  }
+  const changeLog = (() => {
+    const now = Math.floor(Date.now() / 1000);
+    return [
+      { seq: 1, at: now - 3 * 86400, label: "Verwarmingsstrategie", from: "Stooklijn", to: "Power House" },
+      { seq: 2, at: now - 2 * 86400 + 3600, label: "Minimale koel-aanvoer", from: "17 °C", to: "18 °C" },
+      { seq: 3, at: now - 5400, label: "Stille modus", from: "Uit", to: "Schema" },
+    ];
+  })();
+
+  function handleChangeLogList() {
+    return mockResponse(200, { ok: true, capacity: CHANGE_LOG_CAPACITY, entries: changeLog.slice().reverse() });
+  }
+
+  function handleChangeLogAppend(init) {
+    const params = parseAuthFormBody(init);
+    if (params.get("csrf_token") !== getAuthStatusPayload().csrf_token) {
+      return mockResponse(403, { ok: false, error: "forbidden" });
+    }
+    const entry = {
+      at: Number(params.get("at")) || Math.floor(Date.now() / 1000),
+      label: String(params.get("label") || ""),
+      from: String(params.get("from") || ""),
+      to: String(params.get("to") || ""),
+    };
+    const textBytes = utf8ByteLength(`${entry.label}${entry.from}${entry.to}`);
+    if (!entry.label || textBytes > CHANGE_LOG_TEXT_BYTES) {
+      return mockResponse(400, { ok: false, error: "invalid_entry" });
+    }
+    const seq = (changeLog[changeLog.length - 1]?.seq || 0) + 1;
+    changeLog.push({ seq, ...entry });
+    changeLog.splice(0, Math.max(0, changeLog.length - CHANGE_LOG_CAPACITY));
+    return mockResponse(200, { ok: true, seq });
+  }
+
   function handleAuthChange(init) {
     const params = parseAuthFormBody(init);
     const status = getAuthStatusPayload();
@@ -2088,7 +2136,7 @@
     setEntity("binary_sensor", "Usage statistics choice configured", { value: false, state: false });
     setEntity("switch", "Performance model validation", { value: false, state: false });
     setEntity("binary_sensor", "Performance model validation choice configured", { value: false, state: false });
-    setEntity("binary_sensor", "Performance model validation prompt handled", { value: false, state: false });
+    setEntity("binary_sensor", "Performance model validation prompt handled", { value: !performancePromptPreview, state: !performancePromptPreview });
     setEntity("text_sensor", "Usage statistics installation ID", { value: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f", state: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f" });
     setEntity("text", "CIC - Feed URL", { value: "http://192.168.2.117:8080/beta/feed/data.json", state: "http://192.168.2.117:8080/beta/feed/data.json" });
     setEntity("switch", "OpenTherm Enabled", { value: false, state: false });
@@ -6011,6 +6059,12 @@
       const method = String(init?.method || "GET").toUpperCase();
       if (url.pathname === "/auth/status" && (!init || !init.method || String(init.method).toUpperCase() === "GET")) {
         return handleAuthStatus();
+      }
+      if (url.pathname === "/openquatt/change-log" && method === "GET") {
+        return handleChangeLogList();
+      }
+      if (url.pathname === "/openquatt/change-log" && method === "POST") {
+        return handleChangeLogAppend(init || {});
       }
       if (url.pathname === "/auth/change" && String(init?.method || "GET").toUpperCase() === "POST") {
         return handleAuthChange(init || {});

@@ -56,7 +56,20 @@ export const WEB_BUNDLE_BUDGETS = [
     // versus 63002f64 on Node24.14.1; keep the existing raw/gzip headroom.
     // Optional outside source: +1,243 B raw / +350 B gzip versus PR2 (Node24.14.1).
     // Add that measured delta on top of dev's ceilings; relative limits stay unchanged.
-    raw: 1_451_981,
+    // Settings change log (settings group, table, posting entries and copy in both locales):
+    // measured raw 1,400,322 B, +4,053 B versus the feedback-position commit (Node 24.4.1); 80 B raw headroom.
+    // Undo for plain settings writes in the feedback toast (#783): +1,286 B raw; 80 B raw headroom.
+    // Change-log JSON export, fault outline on heat-pump panels and a fault pill next to the logo:
+    // +1,832 B raw; 80 B raw headroom.
+    // Combined with dev eef39329+: measured raw 1,459,066 B / gzip 410,912 B (Node 24.4.1),
+    // +2,642 B gzip versus dev (within the relative limit); 80 B raw headroom.
+    // Leren uses the Settings side navigation for its two panels: +123 B raw; 80 B raw headroom.
+    // Results and Diagnose share a Charts tab with a side navigation that remembers the last view:
+    // +1,264 B raw; 80 B raw headroom.
+    // Settings tabs of their own for Backup and Data sharing, moved out of System: +622 B raw; 80 B raw headroom.
+    // A change-log link in the settings toast and stacked toasts (up to three, fanned out on hover,
+    // dismissable one by one, undo per toast): +3,790 B raw; 80 B raw headroom.
+    raw: 1_464_218,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -64,5 +77,24 @@ export const WEB_BUNDLE_BUDGETS = [
   // Passive-learning layout: +2,969 B raw / +493 B gzip versus dev 388f6f9d
   // on Node 24.14.1; preserves the existing 1,581 B raw headroom.
   // Outlook and weather graphs add 4,367 B raw and 823 B gzip.
-  { file: "css/openquatt-app.css", raw: 220_851 },
+  // Heat-pump schematic motion moves from a per-frame JS loop to CSS animations:
+  // +408 B CSS raw while the JS bundle shrinks by 1,392 B raw (Node 24.4.1);
+  // preserves the existing 80 B raw headroom.
+  // A top or bottom position for settings feedback, chosen in the interface menu: +105 B CSS raw;
+  // preserves the 80 B raw headroom.
+  // Settings change log table and its stacked phone layout: +973 B CSS raw; preserves the 80 B raw headroom.
+  // Edge fades on sideways-scrolling tab strips, driven by a scroll timeline: +939 B CSS raw;
+  // preserves the 80 B raw headroom.
+  // Touch-safe sliders and the undo action in the feedback toast (#783): +870 B CSS raw;
+  // preserves the 80 B raw headroom.
+  // Fault outline, fault notice tone, header fault pill and wrapping section actions: +1,066 B CSS raw;
+  // preserves the 80 B raw headroom.
+  // The calmer UI restyles every view at once: +1,607 B gzip versus dev 6dd491f5 (+3.8%), above the 3%
+  // relative limit. This ceiling admits that once with ~180 B gzip headroom; after the merge the base
+  // reaches the ceiling, so later changes fall back to the regular relative limit.
+  // Re-measured after merging dev with the weather graphs: raw 225,789 B, gzip 44,805 B versus
+  // dev 43,167 B (+1,638 B, +3.8%; Node 24.4.1); ~180 B gzip and 80 B raw headroom.
+  // Charts tab: energy-history controls stack by panel width and the side-navigation column shrinks its
+  // content: +161 B CSS raw; preserves the 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 225_975, gzipBaselineCeiling: 44_985 },
 ];

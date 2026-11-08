@@ -125,6 +125,9 @@
 
 @media (max-width: 640px) {
   .oq-house-learning-current-head { flex-direction: column; gap: 10px; }
+  .oq-house-learning-current-head > div:first-child { position: relative; }
+  .oq-house-learning-current-head .oq-settings-info { position: static; }
+  .oq-house-learning-current-head .oq-settings-info-popover { left: 0; right: auto; }
   .oq-house-learning-count { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; text-align: left; }
   .oq-house-learning-count strong { font-size: 1.1rem; }
 

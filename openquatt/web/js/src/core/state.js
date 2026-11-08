@@ -100,6 +100,8 @@ export const state = {
   quickStartModalMode: "wizard",
   settingsGroup: getStoredSettingsGroup(),
   appView: "",
+  // Last view opened per top-level tab group, such as Results or Diagnose under Charts.
+  appViewGroupLast: {},
   learningForecastOpen: false,
   weatherConfigRevision: 0,
   weatherOptOutUnconfirmed: false,
@@ -112,6 +114,7 @@ export const state = {
   overviewThemeMedia: null,
   hpVisualMode: getStoredHpVisualMode(),
   hpLayoutMode: getStoredHpLayoutMode(),
+  feedbackPosition: getStoredFeedbackPosition(),
   ...createHistoryState(getStoredTrendWindowHours()),
   deviceReconnectMode: "",
   deviceReconnectStartedAt: 0,
@@ -133,6 +136,8 @@ export const state = {
   busyAction: "",
   controlError: "",
   controlNotice: "",
+  // The previous value of the last plain settings write, offered as undo while its notice shows.
+  settingsUndo: null,
   ...createDiagnosticsState(),
   ...createSettingsState(),
   quickStartSetupUpdateComplete: initialQuickStartSetupComplete,
@@ -238,6 +243,15 @@ export function getStoredHpVisualMode() {
     return window.localStorage.getItem("oq-hp-visual-mode") === "compact" ? "compact" : "schematic";
   } catch (_error) {
     return "schematic";
+  }
+}
+
+
+export function getStoredFeedbackPosition() {
+  try {
+    return window.localStorage.getItem("oq-feedback-position") === "bottom" ? "bottom" : "top";
+  } catch (_error) {
+    return "top";
   }
 }
 

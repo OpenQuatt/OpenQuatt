@@ -719,21 +719,39 @@
   export const COOLING_SCHEDULE_VALID_KEY = "coolingEnableValid";
   export const COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY = "coolingEnableEffectiveSource";
   export const COOLING_SCHEDULE_TIME_KEYS = ["coolingScheduleStartTime", "coolingScheduleEndTime"];
+  // Views in a group share one top-level tab and switch through a side navigation inside it.
+  export const APP_VIEW_GROUPS = {
+    charts: { labelKey: "navigation.charts", icon: "bar-chart" },
+  };
   export const APP_VIEWS = [
     { id: "overview", labelKey: "navigation.overview", icon: "monitor-dashboard" },
     { id: "energy", labelKey: "navigation.energy", icon: "zap" },
-    { id: "results", labelKey: "navigation.results", icon: "bar-chart" },
+    { id: "results", labelKey: "navigation.results", icon: "bar-chart", group: "charts" },
     { id: "learning", labelKey: "navigation.learning", icon: "bar-chart" },
-    { id: "control", labelKey: "navigation.control", icon: "activity", badge: "BETA" },
-    { id: "diagnosis", labelKey: "navigation.diagnosis", icon: "activity" },
+    { id: "control", labelKey: "navigation.control", icon: "activity" },
+    { id: "diagnosis", labelKey: "navigation.diagnosis", icon: "activity", group: "charts" },
     { id: "settings", labelKey: "navigation.settings", icon: "settings" },
   ];
   export const APP_VIEW_IDS = new Set(APP_VIEWS.map((view) => view.id));
+  // Top-level tabs: a group appears once, at the position of its first view.
+  export const APP_NAV_ITEMS = APP_VIEWS.reduce((items, view) => {
+    if (!view.group) {
+      return [...items, { id: view.id, labelKey: view.labelKey, icon: view.icon, badge: view.badge, views: [view.id] }];
+    }
+    const existing = items.find((item) => item.id === view.group);
+    if (existing) {
+      existing.views.push(view.id);
+      return items;
+    }
+    return [...items, { id: view.group, ...APP_VIEW_GROUPS[view.group], views: [view.id] }];
+  }, []);
 
   export const OQ_ICON_PATHS = {
     activity: '<path d="M3 12h4l2-7 4 14 2-7h6"/>',
+    "alert-circle": '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5"/><path d="M12 16h.01"/>',
     "bar-chart": '<path d="M4 19V5"/><path d="M20 19H4"/><rect x="7" y="11" width="3" height="5" rx="1"/><rect x="12" y="7" width="3" height="9" rx="1"/><rect x="17" y="3" width="3" height="13" rx="1"/>',
     calculator: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M16 14v4"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     clipboard: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
     "clipboard-check": '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/><path d="m11 14 2 2 4-5"/>',
@@ -784,6 +802,9 @@
     { id: "integrations", labelKey: "settingsGroups.integrations", icon: "link" },
     { id: "service", labelKey: "settingsGroups.service", icon: "tool" },
     { id: "system", labelKey: "settingsGroups.system", icon: "server" },
+    { id: "backup", labelKey: "settingsGroups.backup", icon: "clipboard" },
+    { id: "changes", labelKey: "settingsGroups.changes", icon: "clock" },
+    { id: "sharing", labelKey: "settingsGroups.sharing", icon: "shield" },
   ];
   export const SETTINGS_GROUP_IDS = new Set(SETTINGS_GROUPS.map((group) => group.id));
   export const HP_PANEL_CONFIGS = [
@@ -2391,7 +2412,4 @@
   export const HIDDEN_POLL_INTERVAL_MS = 30000;
   export const POLL_JITTER_MIN_MS = 250;
   export const POLL_JITTER_MAX_MS = 750;
-  export const FLOW_DASH_CYCLE_PX = 22;
-  export const FLOW_OFFSET_PX_PER_SEC = FLOW_DASH_CYCLE_PX / 1.7;
-  export const FAN_ROTATION_DEG_PER_SEC = 360 / 3.2;
 export const OPENQUATT_RESUME_CLEAR_VALUE = "2000-01-01 00:00:00";

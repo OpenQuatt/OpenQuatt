@@ -66,8 +66,8 @@
   .oq-learning-workspace-targets article { padding-inline: 8px; }
   .oq-learning-workspace-targets article:first-child { padding-left: 0; }
 }
-.oq-learning-panels { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-.oq-learning-panels [aria-pressed="true"] { border-color: var(--oq-helper-accent); }
+/* Empty messages would add a grid gap above the first card. */
+.oq-learning-view [data-oq-learning-messages]:empty { display: none; }
 .oq-weather-controls { margin-bottom: 24px; }
 .oq-weather-controls p { color: var(--oq-helper-soft); }
 .oq-weather-controls .oq-helper-input { width: 100%; }

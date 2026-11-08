@@ -33,16 +33,15 @@ In hetzelfde paneel kies je onder **Uiterlijk en overzicht** voor `Automatisch`,
 
 ## Hoofdschermen
 
-De web-app heeft zeven hoofdschermen.
+De web-app heeft zes hoofdschermen.
 
 | Scherm | Gebruik |
 |---|---|
 | `Overzicht` | Live zien wat OpenQuatt nu doet en of de belangrijkste waarden logisch zijn. |
 | `Energie` | Vermogen, energie, COP en EER bekijken. |
-| `Resultaten` | Opgeslagen energie- en resultaathistorie over een langere periode bekijken. |
+| `Grafieken` | Onder Resultaten opgeslagen energie- en resultaathistorie over een langere periode bekijken. Onder Diagnose live waarden en korte trendhistorie naast elkaar bekijken om gedrag te onderzoeken. |
 | `Leren` | Meetvoortgang, dagmetingen en het woningmodel bekijken. |
 | `Beslislog` | Terugzien welke regelbeslissingen OpenQuatt nam en waarom. Deze functie is nog beta. |
-| `Diagnose` | Live waarden en korte trendhistorie naast elkaar bekijken om gedrag te onderzoeken. |
 | `Instellingen` | OpenQuatt configureren, bijwerken en beheren. |
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.

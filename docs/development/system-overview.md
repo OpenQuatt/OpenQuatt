@@ -475,14 +475,24 @@ Persistent histories use separate, sector-aligned regions inside `openquatt_data
 | Energy day totals | 1024 KiB | Long-term daily records |
 | Energy hour detail | 368 KiB | Up to 365 retained day records |
 | Decision log | 128 KiB | Up to 5120 exact events, limited to 7 days |
+| Crash telemetry | 8 KiB | Two alternating crash records |
+| Passive house-learning journal | 16 KiB | Two 8 KiB A/B journal slots |
+| Settings change log | 12 KiB | Three-sector ring of 80-byte records; at least the newest 100 changes |
 
 The decision log keeps exact events in PSRAM and normally writes new records to flash in hourly batches.
 Safety-relevant incident, HP-availability, mode and fallback transitions request an earlier coalesced flash write.
 Each compact flash
 record is 24 bytes and retains its timestamp, type, source, reason, mode, transition values and duration. The smallest
-`openquatt_data` partition is 1920 KiB; all maximum archive regions together use 1880 KiB and therefore leave 40 KiB
-unassigned. The 16 MB table leaves 4136 KiB unassigned. The decision-log region is checked at compile time against the
+`openquatt_data` partition is 1920 KiB; all maximum archive regions together use 1916 KiB and therefore leave 4 KiB
+unassigned. The 16 MB table leaves 4100 KiB unassigned. Each region is checked at compile time against the
 smallest partition and at runtime against the partition actually present.
+
+The settings change log is fed by the web UI: after a setting is written, the browser posts the label and the old and
+new display value to `/openquatt/change-log` (authenticated, same-origin and CSRF-checked). The HTTP task validates
+the UTF-8 text (label, from and to share 65 bytes), keeps the entry in a strict-PSRAM ring and queues it; only the main
+loop writes flash, one record per loop iteration. A sector is erased only when it becomes the new head, and any
+failed or unverified write disables persistence until reboot while the RAM copy keeps working. A rate limit of 20
+entries plus one every 30 seconds bounds flash wear from a misbehaving client.
 
 
 ## 10. UI and Observability Organization

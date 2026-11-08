@@ -8,7 +8,7 @@ import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUr
 import { primeEntities, syncEntities } from "./entity-sync.js";
 import { clearPreparedDebugRecordingCopy, refreshDebugRecordingDeviceStatus } from "../features/debug-recording.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
-import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "./motion.js";
+import { clearLegacyMotionVariables, syncMotionAnimations } from "./motion.js";
 import { render } from "./render-scheduler.js";
 import { patchLearningDom } from "./view-patch-controls.js";
 import { t } from "../i18n/index.js";
@@ -37,7 +37,7 @@ import { t } from "../i18n/index.js";
 
   export function setSettingsGroup(groupId, options = {}) {
     state.settingsGroup = SETTINGS_GROUP_IDS.has(groupId) ? groupId : SETTINGS_GROUPS[0].id;
-    if (state.settingsGroup !== "system" && state.usageTelemetryPreviewSurface === "settings-system") {
+    if (state.settingsGroup !== "sharing" && state.usageTelemetryPreviewSurface === "settings-sharing") {
       state.usageTelemetryPreviewSurface = "";
     }
     try {
@@ -71,6 +71,15 @@ import { t } from "../i18n/index.js";
     }
   }
 
+  export function setFeedbackPosition(position) {
+    state.feedbackPosition = position === "bottom" ? "bottom" : "top";
+    try {
+      window.localStorage.setItem("oq-feedback-position", state.feedbackPosition);
+    } catch (_error) {
+      // Ignore storage failures in embedded browsers.
+    }
+  }
+
   export function setHpLayoutMode(mode) {
     state.hpLayoutMode = mode === "focus-hp1" || mode === "focus-hp2" ? mode : "equal";
     try {
@@ -80,13 +89,10 @@ import { t } from "../i18n/index.js";
     }
   }
 
+  // The CSS media query stops the motion itself; re-anchor animations that restart when motion returns.
   export function handleReducedMotionPreferenceChange(event) {
     state.reducedMotion = Boolean(event?.matches);
-    if (state.reducedMotion) {
-      stopMotionLoop();
-      return;
-    }
-    startMotionLoop();
+    syncMotionAnimations();
   }
 
   export function bindReducedMotionPreference() {
@@ -194,14 +200,12 @@ import { t } from "../i18n/index.js";
     syncNativeVisibility();
     if (state.nativeOpen) {
       stopEntityPolling();
-      stopMotionLoop();
       if (!state.nativeFrontendLoaded) {
         void ensureNativeFrontendLoaded();
       }
       return;
     }
 
-    startMotionLoop();
     startEntityPolling();
 
     if (options.refresh === false) {

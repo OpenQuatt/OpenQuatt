@@ -1,4 +1,4 @@
-import { APP_VIEWS, HP_PANEL_CONFIGS, renderOqIcon } from "./config.js";
+import { APP_NAV_ITEMS, APP_VIEWS, HP_PANEL_CONFIGS, renderOqIcon } from "./config.js";
 import { isCurveMode } from "./domain-helpers.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { formatValue, getEntityValue, hasEntity } from "./entity-store.js";
@@ -251,21 +251,38 @@ export { hasEntity } from "./entity-store.js";
     return null;
   }
 
+  // Diagnose only exists while trend history is on; the open view always stays reachable.
+  export function getNavItemViews(item) {
+    return item.views.filter((id) => id !== "diagnosis" || isTrendHistoryEnabled() || id === state.appView);
+  }
+
+  export function getAppNavItem(view = state.appView) {
+    return APP_NAV_ITEMS.find((item) => item.views.includes(view)) || null;
+  }
+
   export function renderAppNav() {
     return `
       <div class="oq-helper-app-nav">
-        ${APP_VIEWS.filter((view) => view.id !== "diagnosis" || isTrendHistoryEnabled()).map((view) => `
+        ${APP_NAV_ITEMS.map((item) => {
+          const views = getNavItemViews(item);
+          if (!views.length) return "";
+          const active = item.views.includes(state.appView);
+          // A group tab reopens the view used last within it.
+          const remembered = state.appViewGroupLast?.[item.id];
+          const target = active ? state.appView : views.includes(remembered) ? remembered : views[0];
+          return `
           <button
-            class="oq-helper-app-tab ${state.appView === view.id ? "is-active" : ""}"
+            class="oq-helper-app-tab ${active ? "is-active" : ""}"
             type="button"
             data-oq-action="select-view"
-            data-view-id="${escapeHtml(view.id)}"
+            data-view-id="${escapeHtml(target)}"
           >
-            ${renderOqIcon(view.icon, "oq-helper-app-tab-icon")}
-            <span>${escapeHtml(t(view.labelKey))}</span>
-            ${view.badge ? `<span class="oq-helper-app-tab-badge">${escapeHtml(view.badge)}</span>` : ""}
+            ${renderOqIcon(item.icon, "oq-helper-app-tab-icon")}
+            <span>${escapeHtml(t(item.labelKey))}</span>
+            ${item.badge ? `<span class="oq-helper-app-tab-badge">${escapeHtml(item.badge)}</span>` : ""}
           </button>
-        `).join("")}
+        `;
+        }).join("")}
       </div>
     `;
   }

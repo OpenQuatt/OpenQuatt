@@ -73,6 +73,10 @@ test.beforeEach(t => {
   state.houseLearningEndpointChecking = false;
   state.houseLearningFetchPromise = null;
   state.houseLearningLastFetchAt = 0;
+  // These tests count status polls; an already loaded chart keeps the measurement auto-load out of them.
+  state.houseLearningChart = [];
+  state.houseLearningChartLoading = false;
+  state.houseLearningChartError = "";
   state.houseLearningRequestId += 1;
   state.houseLearningShadowEpoch += 1;
   state.root = { querySelector: selector => selector === "[data-oq-house-learning]" ? {} : null };
@@ -200,6 +204,7 @@ for (const duringBody of [false, true]) {
     let reads = 0, writes = 0, bulkReads = 0;
     state.entities.phKp = { value: 250, state: "250", min_value: 0, max_value: 1000, step: 1 };
     t.mock.method(globalThis, "fetch", async (url, options = {}) => {
+      if (url === "/auth/status") return ok({}); // Change-log logging; not a learning read.
       if (url === "/openquatt/entities") {
         bulkReads += 1;
         const keys = new URLSearchParams(options.body).get("entities").split("\n").map(line => line.split("\t")[0]);

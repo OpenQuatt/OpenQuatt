@@ -64,6 +64,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/frequency-limits.js",
   "core/entity-write-actions.js -> features/firmware-update.js",
   "core/entity-write-actions.js -> features/house-learning.js",
+  "core/entity-write-actions.js -> features/settings-change-log.js",
   "core/entity-write-actions.js -> features/security-actions.js",
   "core/entity-write-actions.js -> features/storage-history.js",
   "core/entity-write-actions.js -> features/webserver-logs.js",

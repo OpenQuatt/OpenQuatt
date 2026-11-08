@@ -5,7 +5,8 @@ import { formatOpenQuattResumeDateTime, getEntityValue, getOpenQuattPauseDraftVa
 import { isDeviceReconnectRecovering } from "../core/device-reconnect.js";
 import { setHeaderRenderControls } from "../core/header-render-controls.js";
 import { renderModalShell } from "../core/modal-shell.js";
-import { getEntitySignatureFragment } from "../core/render-signatures.js";
+import { getEntitySignatureFragment, getRenderSignature } from "../core/render-signatures.js";
+import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
 import { state } from "../core/state.js";
 import { getDebugRecordingHubStatusLabel, renderDebugRecordingHeaderStatus, renderDebugRecordingModal } from "./debug-recording.js";
 import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel, getRuntimeCounterResetKey } from "./device-context.js";
@@ -38,6 +39,7 @@ import { render } from "../core/render-scheduler.js";
       state.appView,
       state.complete ? "complete" : "incomplete",
       state.overviewThemePreference,
+      state.feedbackPosition,
       state.hpVisualMode,
       getEntitySignatureFragment("installationTopology"),
       getEntitySignatureFragment("hardwareProfileText"),
@@ -218,10 +220,51 @@ import { render } from "../core/render-scheduler.js";
     `;
   }
 
+  // Installation monitoring problems stay visible on every page, next to the logo.
+  export function getHeaderAlertModel() {
+    const monitoring = getInstallationMonitoringModel();
+    if (!monitoring.active) {
+      return null;
+    }
+    const [first] = monitoring.problems;
+    const more = monitoring.problems.length - 1;
+    return {
+      fault: monitoring.severity === "fault",
+      title: monitoring.title,
+      detail: first ? `${first.label}${more > 0 ? ` (+${more})` : ""}` : "",
+    };
+  }
+
+  function renderHeaderAlertContent(model) {
+    if (!model) {
+      return "";
+    }
+    return `<button class="oq-helper-alert${model.fault ? " oq-helper-alert--fault" : ""}" type="button" data-oq-action="open-installation-monitoring" title="${escapeHtml(t("header.alertOpen"))}">${renderOqIcon("alert-circle", "oq-helper-alert-icon")}<span class="oq-helper-alert-title">${escapeHtml(model.title)}</span>${model.detail ? `<span class="oq-helper-alert-detail">${escapeHtml(model.detail)}</span>` : ""}</button>`;
+  }
+
+  // The slot stays in place so live polling can fill or empty it without a full render.
+  export function renderHeaderAlert(model = getHeaderAlertModel()) {
+    return `<div class="oq-helper-alert-slot" role="status" data-oq-header-alert data-render-signature="${escapeHtml(getRenderSignature(model))}">${renderHeaderAlertContent(model)}</div>`;
+  }
+
+  function patchHeaderAlert() {
+    const slot = typeof state.root?.querySelector === "function" ? state.root.querySelector("[data-oq-header-alert]") : null;
+    if (!slot) {
+      return;
+    }
+    const model = getHeaderAlertModel();
+    const signature = getRenderSignature(model);
+    if (slot.dataset.renderSignature !== signature) {
+      slot.innerHTML = renderHeaderAlertContent(model);
+      slot.dataset.renderSignature = signature;
+    }
+  }
+
   export function patchHeaderDom() {
     if (!state.root) {
       return false;
     }
+    patchHeaderAlert();
     if (state.systemModal === "connectivity") {
       return false;
     }
@@ -291,10 +334,18 @@ import { render } from "../core/render-scheduler.js";
     return controls.render();
   }
 
+  // The dock sits next to the app shell, not inside it, so it carries the shell's dark theme class itself.
   export function renderDevPanel() {
     if (!__OQ_PREVIEW__) {
       return "";
     }
+    const markup = renderDevPanelDock();
+    return markup
+      ? `<div class="oq-helper-devdock-theme${state.overviewTheme === "dark" ? " oq-helper-shell--dark" : ""}">${markup}</div>`
+      : "";
+  }
+
+  function renderDevPanelDock() {
     const controlsMarkup = renderHeaderDevControls();
     if (!controlsMarkup) {
       return "";
@@ -391,6 +442,13 @@ import { render } from "../core/render-scheduler.js";
             <button class="oq-helper-hub-chip${state.overviewThemePreference === "auto" ? " is-active" : ""}" type="button" data-oq-action="select-overview-theme" data-overview-theme="auto" title="${escapeHtml(t("header.themeAutoHint"))}">${escapeHtml(t("header.themeAuto"))}</button>
             <button class="oq-helper-hub-chip${state.overviewThemePreference === "light" ? " is-active" : ""}" type="button" data-oq-action="select-overview-theme" data-overview-theme="light">${escapeHtml(t("header.themeLight"))}</button>
             <button class="oq-helper-hub-chip${state.overviewThemePreference === "dark" ? " is-active" : ""}" type="button" data-oq-action="select-overview-theme" data-overview-theme="dark">${escapeHtml(t("header.themeDark"))}</button>
+          </div>
+        </div>
+        <div class="oq-helper-hub-block">
+          <p class="oq-helper-hub-kicker">${escapeHtml(t("header.feedbackSection"))}</p>
+          <div class="oq-helper-hub-switches" role="group" aria-label="${escapeHtml(t("header.feedbackLabel"))}">
+            <button class="oq-helper-hub-chip${state.feedbackPosition === "top" ? " is-active" : ""}" type="button" data-oq-action="select-feedback-position" data-feedback-position="top">${escapeHtml(t("header.feedbackTop"))}</button>
+            <button class="oq-helper-hub-chip${state.feedbackPosition === "bottom" ? " is-active" : ""}" type="button" data-oq-action="select-feedback-position" data-feedback-position="bottom">${escapeHtml(t("header.feedbackBottom"))}</button>
           </div>
         </div>
         <div class="oq-helper-hub-block">

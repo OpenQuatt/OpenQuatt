@@ -1,6 +1,7 @@
+/* The metrics shrink and wrap, so the action stays inside the card next to the settings navigation. */
 .oq-settings-storage-summary {
   display: grid;
-  grid-template-columns: minmax(220px, 0.72fr) minmax(520px, 1.28fr) auto;
+  grid-template-columns: minmax(200px, 0.72fr) minmax(0, 1.28fr) auto;
   gap: 14px;
   align-items: center;
   margin-top: 16px;
@@ -32,7 +33,7 @@
 
 .oq-settings-storage-summary-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
   min-width: 0;
 }

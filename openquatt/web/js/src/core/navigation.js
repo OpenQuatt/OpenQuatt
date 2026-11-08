@@ -1,5 +1,5 @@
 import { isTrendHistoryEnabled } from "./app-shared.js";
-import { APP_VIEW_IDS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "./config.js";
+import { APP_VIEW_IDS, APP_VIEWS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "./config.js";
 import { invalidateHouseLearningShadow, state } from "./state.js";
 
 export function getDefaultAppView() {
@@ -292,7 +292,9 @@ export function setAppView(view, options = {}) {
   const changed = state.appView !== normalized;
   if (changed && state.appView === "learning") invalidateHouseLearningShadow();
   state.appView = normalized;
-  if (normalized !== "settings" && state.usageTelemetryPreviewSurface === "settings-system") {
+  const group = APP_VIEWS.find((item) => item.id === normalized)?.group;
+  if (group) state.appViewGroupLast = { ...state.appViewGroupLast, [group]: normalized };
+  if (normalized !== "settings" && state.usageTelemetryPreviewSurface === "settings-sharing") {
     state.usageTelemetryPreviewSurface = "";
   }
 

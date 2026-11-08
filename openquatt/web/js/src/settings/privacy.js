@@ -26,3 +26,13 @@ export function renderSettingsPrivacySection() {
     </div>`,
   );
 }
+
+// The sharing group has its own tab; without either option it explains why it is empty.
+export function renderSettingsPrivacyUnavailable() {
+  return renderSettingsSection(
+    t("settingsPrivacy.sectionGroup"),
+    t("settingsPrivacy.sectionTitle"),
+    t("settingsPrivacy.unavailable"),
+    "",
+  );
+}

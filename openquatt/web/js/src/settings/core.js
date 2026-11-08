@@ -9,14 +9,15 @@ import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, ge
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getEspTemperatureLabel } from "../features/header-status.js";
 import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/security-access.js";
+import { CHANGE_LOG_GROUP_ID, renderSettingsChangeLogSection } from "../features/settings-change-log.js";
 import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSelectControl } from "./controls.js";
 import { t } from "../i18n/index.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { patchControlledWarmupField, patchRunExtensionThresholds, renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
-import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
+import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
-import { renderSettingsPrivacySection } from "./privacy.js";
+import { renderSettingsPrivacySection, renderSettingsPrivacyUnavailable } from "./privacy.js";
 import { getApiSecurityStatusDetail, getApiSecurityStatusLabel, renderSettingsAccessSecuritySection } from "./security.js";
 import { renderSettingsCounterServiceSection, renderSettingsServiceSection } from "./service.js";
 import { renderSettingsSilentSection } from "./silent.js";
@@ -107,6 +108,12 @@ function syncFrequencyRangeControl(control) {
         ? [renderSettingsHeatingSection(), renderLearningSettingsLink()]
       : activeGroup === "cooling"
         ? [renderSettingsCoolingSection()]
+      : activeGroup === CHANGE_LOG_GROUP_ID
+        ? [renderSettingsChangeLogSection()]
+      : activeGroup === "sharing"
+        ? [renderSettingsPrivacySection() || renderSettingsPrivacyUnavailable()]
+      : activeGroup === "backup"
+        ? [renderSettingsBackupSection()]
         : activeGroup === "integrations"
             ? [
                 renderSettingsOpenThermCicSection(),
@@ -114,11 +121,8 @@ function syncFrequencyRangeControl(control) {
                 renderSettingsSensorSelectionSection(),
               ]
             : [
-                renderSettingsQuickStartSection(),
                 renderSettingsTrendSection(),
                 renderSettingsAccessSecuritySection(),
-                renderSettingsPrivacySection(),
-                renderSettingsBackupSection(),
                 renderSettingsDiagnosticsSection(),
               ];
 

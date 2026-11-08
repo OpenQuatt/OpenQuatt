@@ -218,13 +218,24 @@ function scheduleShadowRefresh(previous) {
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
 export const getHouseLearningExportEndpoint = () => `${getBasePath()}/openquatt/learning/export`;
 
+// The measurement card is always open, so its data loads once the status is known.
+// A cleared journal has nothing to show, and a failed load waits for the refresh button.
+function autoLoadHouseLearningChart() {
+  const status = state.houseLearningStatus;
+  if (!status || !state.houseLearningEndpointAvailable || state.houseLearningChart !== null
+    || state.houseLearningChartLoading || state.houseLearningChartError
+    || (status.records === 0 && status.journalStatus === "cleared")
+    || !shouldRefreshHouseLearningStatusSurface()) return;
+  void loadHouseLearningChart();
+}
+
 export async function loadHouseLearningChart() {
   if (state.houseLearningChartLoading || state.busyAction || state.houseLearningReset === "pending") return false;
   const requestId = Number(state.houseLearningChartRequestId || 0) + 1;
   state.houseLearningChartRequestId = requestId;
   state.houseLearningChartLoading = true;
   state.houseLearningChartError = "";
-  render();
+  if (!patchLearningDom()) render();
   try {
     const payload = await fetchWithTimeout(
       getHouseLearningExportEndpoint(),
@@ -252,7 +263,7 @@ export async function loadHouseLearningChart() {
   } finally {
     if (requestId === state.houseLearningChartRequestId) {
       state.houseLearningChartLoading = false;
-      render();
+      if (!patchLearningDom()) render();
     }
   }
 }
@@ -290,13 +301,6 @@ export function handleHouseLearningAction(action, button, pressNamedButton) {
     return true;
   }
   if (action === "load-house-learning-chart") {
-    if ((state.houseLearningChart !== null || state.houseLearningChartError) && !state.houseLearningChartLoading) {
-      state.houseLearningChart = null;
-      state.houseLearningChartFetchedAt = 0;
-      state.houseLearningChartError = "";
-      render();
-      return true;
-    }
     void loadHouseLearningChart();
     return true;
   }
@@ -317,6 +321,7 @@ export async function refreshHouseLearningStatus(options = {}) {
   const intervalAt = shadowRefreshCurrent(shadowRefresh) && shadowRefresh.lastFetchAt === state.houseLearningLastFetchAt
     ? shadowRefresh.pollAt : state.houseLearningLastFetchAt;
   if (!options.force && Date.now() - Number(intervalAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
+    autoLoadHouseLearningChart();
     return false;
   }
   if (!shadowFollowup) clearShadowRefresh();
@@ -394,6 +399,7 @@ export async function refreshHouseLearningStatus(options = {}) {
     if (!resetReconcile && requestGeneration === state.houseLearningRequestId && shadowEpoch === state.houseLearningShadowEpoch) {
       scheduleShadowRefresh(shadowFollowup);
     }
+    if (!resetReconcile) autoLoadHouseLearningChart();
   }
 }
 

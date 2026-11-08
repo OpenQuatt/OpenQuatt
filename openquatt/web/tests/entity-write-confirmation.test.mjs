@@ -107,6 +107,7 @@ test("leerschakelaar bevestigt een trage verse bulkbody en schrijft eenmaal", as
   let writes = 0;
   let reads = 0;
   t.mock.method(globalThis, "fetch", async url => {
+    if (url === "/auth/status") return response({}); // Change-log logging; not a setting write.
     if (url === "/openquatt/entities") {
       reads += 1;
       return { ok: true, json: async () => { clock.advance(3500); return readback(); } };
@@ -129,6 +130,7 @@ test("een eerste read-timeout kan binnen dezelfde bevestigingsdeadline herstelle
   let reads = 0;
   let writes = 0;
   t.mock.method(globalThis, "fetch", async (url, { signal } = {}) => {
+    if (url === "/auth/status") return response({}); // Change-log logging; not a setting write.
     if (url === "/openquatt/entities") {
       if (++reads === 1) return { ok: true, json: () => new Promise((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(signal.reason), { once: true });
@@ -222,6 +224,7 @@ test("aanvoerbron gebruikt dezelfde trage, begrensde bevestiging zonder tweede w
   let writes = 0;
   let reads = 0;
   t.mock.method(globalThis, "fetch", async (url, options = {}) => {
+    if (url === "/auth/status") return response({}); // Change-log logging; not a setting write.
     if (url === "/openquatt/entities") return bulkResponse(options.body);
     if (options.method === "POST") { writes += 1; return response({}); }
     reads += 1;

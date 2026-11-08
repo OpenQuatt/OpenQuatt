@@ -687,6 +687,21 @@
   line-height: 1.4;
 }
 
+/* Results sits next to the Charts side navigation, so the controls follow the panel width, not the screen. */
+.oq-energy-history {
+  container-type: inline-size;
+}
+
+@container (max-width: 960px) {
+  .oq-energy-history-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oq-energy-history-period {
+    width: auto;
+  }
+}
+
 @media (max-width: 900px) {
   .oq-overview-energy-grid,
   .oq-overview-energy-grid--two {

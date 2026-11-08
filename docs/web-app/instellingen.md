@@ -11,9 +11,14 @@ Open **Instellingen** in de web-app en kies de groep die bij je vraag past. Voor
 | Koelvenster, koelvraag of dauwpuntbeveiliging | [Koelen](#koelen) |
 | Sensoren en externe invoer | [Bronnen / integraties](#bronnen-integraties) |
 | Ontluchten, testen, kalibreren of buitenunitinstellingen | [Service](#service) |
-| Updates, backup, opslag of toegang | [Systeem](#systeem) |
+| Updates, opslag of toegang | [Systeem](#systeem) |
+| Een backup maken of terugzetten | [Backup](#backup) |
+| Terugzien welke instellingen zijn gewijzigd | [Wijzigingen](#wijzigingen) |
+| Kiezen welke gegevens je vrijwillig deelt | [Gegevens delen](#gegevens-delen) |
 
 Verander één instelling tegelijk en controleer het effect. Bij onverklaarbaar gedrag begin je bij [Problemen oplossen](../problemen-oplossen.md).
+
+Een wijziging wordt direct opgeslagen. Daarna toont een melding de oude en de nieuwe waarde, met de knop **Ongedaan maken** om de vorige waarde terug te zetten en **Bekijk in logboek** voor het [wijzigingslogboek](#wijzigingen). Meldingen stapelen tot drie. Houd de muis op de stapel om ze onder elkaar te zien; elke melding sluit je los met het kruisje. Op een touchscreen verschuift een schuifregelaar alleen als je het bolletje versleept; een tik op de baan tijdens het scrollen verandert niets.
 
 ### Installatie
 
@@ -317,7 +322,21 @@ Ben je het wachtwoord vergeten of werkt de bestaande Home Assistant-koppeling ni
 
 #### Overig systeembeheer
 
-Zie [Gegevens delen en privacy](privacy.md) voor de keuzes over gegevens delen, [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
+Zie [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
+
+### Backup
+
+Onder **Backup** sla je een JSON-backup op van de instellingen die de web-app beheert, en zet je die later terug. Zie [Backup en restore](onderhoud.md#backup-en-restore) voor wat er wel en niet in een backup zit.
+
+### Wijzigingen
+
+Het **Wijzigingslogboek** toont welke instellingen via de web-app zijn aangepast, met tijdstip en de oude en nieuwe waarde. De nieuwste wijziging staat bovenaan. OpenQuatt bewaart de laatste 100 wijzigingen in de flash-partitie `openquatt_data`, zodat ze een herstart of update overleven en vanuit elke browser zichtbaar zijn; oudere wijzigingen vallen automatisch weg. Het tijdstip komt van de klok van de browser waarin je de wijziging maakte. Met **Exporteren (JSON)** download je het logboek als JSON-bestand.
+
+Wijzigingen via Home Assistant, MQTT of de ESPHome-API verschijnen hier niet, en tekstvelden zoals adressen of tokens worden bewust niet gelogd. Lange namen en waarden worden ingekort tot ze in een logregel passen.
+
+### Gegevens delen
+
+Onder **Gegevens delen** kies je of OpenQuatt gebruiksstatistieken en prestatiemetingen mag delen. Beide staan standaard uit en werken los van elkaar. Zie [Gegevens delen en privacy](privacy.md) voor wat er wordt gedeeld en hoe je het weer uitzet.
 
 ## Verder
 

@@ -295,11 +295,8 @@ export function createFirmwareState() {
 export function createMotionState(reducedMotion) {
   return {
     draggingCurveKey: "",
-    motionFrame: 0,
-    motionStartedAt: 0,
     reducedMotion,
     motionPreferenceMedia: null,
     motionPreferenceListener: null,
-    motionTargets: { pipeFlows: [], fanBlades: [] },
   };
 }
