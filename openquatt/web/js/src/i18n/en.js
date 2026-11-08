@@ -163,6 +163,7 @@ export default {
     },
   },
   learningWorkspace: {
+    "navLabel": "Learning sections",
     "forecastTab": "Outlook",
     "reliability": "Reliability",
     "stillNeeded": "Still needed",

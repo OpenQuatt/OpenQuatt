@@ -63,7 +63,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // +1,832 B raw; 80 B raw headroom.
     // Combined with dev eef39329+: measured raw 1,459,066 B / gzip 410,912 B (Node 24.4.1),
     // +2,642 B gzip versus dev (within the relative limit); 80 B raw headroom.
-    raw: 1_459_146,
+    // Leren uses the Settings side navigation for its two panels: +123 B raw; 80 B raw headroom.
+    raw: 1_459_269,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

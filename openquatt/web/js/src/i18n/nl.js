@@ -164,6 +164,7 @@ export default {
     },
   },
   learningWorkspace: {
+    "navLabel": "Onderdelen van Leren",
     "forecastTab": "Vooruitblik",
     "reliability": "Betrouwbaarheid",
     "stillNeeded": "Nog nodig",

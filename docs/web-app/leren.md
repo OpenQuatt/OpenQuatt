@@ -94,8 +94,9 @@ passief leren gedeeld.
 
 ## Vooruitblik
 
-Met de optionele weerproef op een Heatpump Controller Q verschijnt naast **Leren**
-het tabblad **Vooruitblik**. Vul een Nederlandse plaatsnaam, postcode of
+Met de optionele weerproef op een Heatpump Controller Q staat in de navigatie
+van Leren, onder **Leren**, ook **Vooruitblik**. Op een telefoon staat die
+navigatie bovenaan. Vul een Nederlandse plaatsnaam, postcode of
 coördinaten in en zet **Weersverwachting gebruiken** aan. De controller stuurt
 de locatie naar Open-Meteo om de plaats en de KNMI-weersverwachting op te halen.
 Locatie en toestemming blijven lokaal op de controller bewaard en staan buiten
