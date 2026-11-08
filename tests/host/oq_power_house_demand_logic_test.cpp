@@ -124,9 +124,9 @@ void test_demand_finite_contract() {
   auto recovered = input();
   recovered.now_ms = stopped.next.last_ms + 60000U;
   assert(near(decide_demand(recovered, tuning(), stopped.next).requested_w, 600.0f));
-  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.1f, 0.3f, 10, 5, NAN}, {}).valid);
+  assert(!decide_demand({60001U, 3, 10, 9, 6000, 20, 20, NAN, 1, false}, {-2, 3000, 0.1f, 0.3f, 10, 5, 0.2}, {}).valid);
   assert(!decide_demand({60001U, 3, -10, 16, 6000, -0x1.fffffep+127f, 0x1.fffffep+127f, NAN, 1, false},
-                        {0.5f, 0, 0.1f, 0.3f, 10, 5, NAN}, {})
+                        {0.5f, 0, 0.1f, 0.3f, 10, 5, 0.2}, {})
               .valid);
 }
 void test_demand_slew_and_limits() {
