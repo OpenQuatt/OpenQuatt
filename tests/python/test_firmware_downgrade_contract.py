@@ -16,6 +16,7 @@ class FirmwareDowngradeContractTest(unittest.TestCase):
 
         self.assertIn("- update.check:\n          id: oq_firmware_update", install_script)
         self.assertIn("&& id(oq_fw_check_target_ready)", install_script)
+        self.assertIn("&& id(oq_firmware_update).manifest_result_matches(expected_manifest)", install_script)
         self.assertIn("- update.perform:\n                id: oq_firmware_update", install_script)
         self.assertIn("force_update: true", install_script)
         self.assertLess(
@@ -30,7 +31,8 @@ class FirmwareDowngradeContractTest(unittest.TestCase):
             COMMON_PACKAGE,
         )
         self.assertIn(
-            "- script.execute: oq_install_firmware_update_target_deferred",
+            "id: oq_install_firmware_update_target_deferred\n"
+            "                expected_manifest: !lambda return id(oq_firmware_update).get_source_url();",
             COMMON_PACKAGE,
         )
 

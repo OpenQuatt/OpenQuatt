@@ -24,6 +24,9 @@
 #include "oq_ph_daily_record_quality_json.h"
 #include "oq_ph_daily_collection_state_json.h"
 #include "oq_sensor_source_runtime.h"
+#ifdef USE_OPENQUATT_WEATHER
+#include "../learning/oq_ph_forecast_logic.h"
+#endif
 #include "../performance/hp_perf_limits.h"
 #include "oq_supervisory_power_limiter_runtime.h"
 
@@ -434,6 +437,35 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - started_us;
     if (elapsed > state.max_tick_us) state.max_tick_us = elapsed;
   }
+
+#ifdef USE_OPENQUATT_WEATHER
+  // Read-only main-loop adapter. Reuse the learner's selected receipts and
+  // operational exclusions; the experiment never substitutes requested watts.
+  oq_power_house::forecast::Observation forecast_observation() const {
+    oq_power_house::forecast::Observation observation;
+    if (!storage_ || !id(oq_ph_learning_enabled).state || id(oq_runtime_polling_paused).state) return observation;
+    const auto& state = storage_[0];
+    const auto& tick = state.tick;
+    if (state.reset_requested || state.restart_prepared || state.measurement_context_changed || state.learner.blocked ||
+        !tick.opted_in || !tick.context_valid || !tick.dynamic_snapshot_available ||
+        !passive_runtime_detail::snapshot_matches_tick(tick.dynamic_snapshot, tick) ||
+        validate_snapshot(tick.dynamic_snapshot, state.config.quality) != LearningStatus::OK)
+      return observation;
+    const auto& snapshot = tick.dynamic_snapshot;
+    observation.valid = true;
+    observation.monotonic_ms = snapshot.monotonic_ms;
+    observation.epoch = snapshot.epoch_s;
+    observation.context = snapshot.context_revision;
+    observation.room_c = snapshot.room_c;
+    observation.outside_c = snapshot.outside_c;
+    observation.heat_w = snapshot.heat_to_water_w;
+    observation.model_ready = state.summary.thermal_model_ready;
+    observation.model_samples = state.summary.thermal.accepted_samples;
+    observation.h_w_per_k = state.summary.thermal.heat_loss_w_per_k;
+    observation.c_wh_per_k = state.summary.thermal.thermal_capacity_wh_per_k;
+    return observation;
+  }
+#endif
 
  private:
   static void clear_daily_resume_status_(RuntimeStorage& state) {

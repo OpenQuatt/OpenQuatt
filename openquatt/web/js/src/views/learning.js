@@ -1,3 +1,4 @@
+import { hasWeatherSettings, patchWeatherSettings, renderWeatherSettings } from "../settings/weather.js";
 import { hasEntity } from "../core/app-shared.js";
 import { escapeHtml } from "../core/html.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
@@ -15,17 +16,26 @@ export function patchLearningView() {
   if (!messages) return false;
   const markup = renderControlMessages();
   if (messages.innerHTML !== markup) messages.innerHTML = markup;
-  return patchHouseLearningSettingsStatus();
+  const tabs = state.root?.querySelector("[data-oq-learning-panels]");
+  const weather = hasWeatherSettings();
+  if (Boolean(tabs) !== weather) return false;
+  return weather && state.learningForecastOpen ? patchWeatherSettings() : patchHouseLearningSettingsStatus();
 }
 
 export function renderLearningView() {
-  const panel = renderHouseLearningSettings();
+  const weather = hasWeatherSettings();
+  const forecast = weather && state.learningForecastOpen;
+  const panel = forecast ? renderWeatherSettings() : renderHouseLearningSettings();
   const loading = state.loadingEntities || (hasEntity("houseLearningEnabled") && !state.houseLearningEndpointChecked);
   const statusError = state.houseLearningStatusError ? renderHouseLearningStatusMarkup() : "";
   return `<section class="oq-helper-panel">
     <h2 class="oq-helper-section-title">${escapeHtml(t("navigation.learning"))}</h2>
     <p class="oq-helper-section-copy">${escapeHtml(t("learning.copy"))}</p>
     <div data-oq-learning-messages>${renderControlMessages()}</div>
+    ${weather ? `<div class="oq-learning-panels" data-oq-learning-panels>
+      <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-learning-panel" data-learning-panel="measurements" aria-pressed="${!forecast}">${escapeHtml(t("navigation.learning"))}</button>
+      <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-learning-panel" data-learning-panel="forecast" aria-pressed="${forecast}">${escapeHtml(t("learningWorkspace.forecastTab"))}</button>
+    </div>` : ""}
     ${panel || statusError || `<p class="oq-settings-action-note" role="status">${escapeHtml(t(loading ? "common.loading" : "learning.unavailable"))}</p>`}
   </section>`;
 }

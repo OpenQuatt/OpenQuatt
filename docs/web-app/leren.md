@@ -90,3 +90,39 @@ ombouw van Single naar Duo of omgekeerd wis je de leerdata voordat je de
 nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet.
 Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van
 passief leren gedeeld.
+
+
+## Vooruitblik
+
+Met de optionele weerproef op een Heatpump Controller Q verschijnt naast **Leren**
+het tabblad **Vooruitblik**. Vul een Nederlandse plaatsnaam, postcode of
+coördinaten in en zet **Weersverwachting gebruiken** aan. De controller stuurt
+de locatie naar Open-Meteo om de plaats en de KNMI-weersverwachting op te halen.
+Locatie en toestemming blijven lokaal op de controller bewaard en staan buiten
+de instellingenback-up. De controller stopt het ophalen zodra je de functie
+uitzet en bevestigt de keuze na opslag. Wacht vóór een herstart of firmware-update
+tot **Uit** is bevestigd. Zolang de opslag loopt of als die mislukt, kan na een
+herstart de vorige opgeslagen stand weer gelden. Probeer het opnieuw bij een
+opslagfout. Bij de eerste upgrade vanaf de eerdere weerproef staat de functie
+uit. Zet haar opnieuw aan als je wilt blijven delen met Open-Meteo.
+
+De controller voert firmwarecontroles, weeropvragen en firmwaredownloads na elkaar uit.
+Een handmatige firmwarecontrole kan daardoor even wachten op Open-Meteo.
+Bij een firmwaredownload wacht de controller maximaal twee seconden op de vorige
+verbinding. Is die dan nog bezet, dan start de download niet; probeer de update
+later opnieuw.
+
+Het scherm toont 36 uur aan buitentemperatuur en wind. Wijs in de grafiek een uur
+aan, gebruik de pijltjestoetsen of open **Bekijk uurwaarden**.
+
+**Temperatuur in huis** geeft een voorlopig scenario voor 30, 60 en 180 minuten.
+De berekening neemt de actuele kamertemperatuur als beginpunt, houdt de gemeten
+warmteafgifte constant en gebruikt de verwachte buitentemperatuur. Wind is
+extra informatie in de grafiek. Het scenario stuurt de regeling niet aan.
+
+Na een herstart zijn actuele metingen, een geldige weersverwachting en een
+actueel beoordeeld woningmodel nodig. De controller kan een opgeslagen schatting
+herstellen. Het scenario wacht op een nieuwe geldige meetperiode van 30 minuten.
+Bij een korte onderbreking kan het laatst ontvangen scenario tijdelijk zichtbaar
+blijven. De waarden verdwijnen na 30 seconden zonder bevestiging of zodra hun
+tijdstip is verstreken.

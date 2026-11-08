@@ -21,6 +21,11 @@ const cssSources = resolveCssSources(webDir);
 
 const allowedBareImports = new Set(["virtual:embedded-assets"]);
 const boundaryAllowedEdges = new Set([
+  "views/learning.js -> settings/weather.js",
+  "core/entity-write-actions.js -> features/weather-forecast.js",
+  "core/entity-write-actions.js -> features/weather.js",
+  "core/entity-sync.js -> features/weather-forecast.js",
+  "core/entity-actions.js -> settings/weather-forecast.js",
   // Live COP and installation monitoring use the shared installation-topology data helper.
   "core/app-shared.js -> features/device-context.js",
   "core/installation-monitoring.js -> features/device-context.js",

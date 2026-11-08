@@ -1,10 +1,12 @@
+import { commitWeatherLocation } from "../features/weather.js";
+import { invalidateWeatherForecast, refreshWeatherForecast } from "../features/weather-forecast.js";
 import { hasEntity } from "./app-shared.js";
 import { fetchWithTimeout } from "./browser-utils.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEADER_ENTITY_KEYS, LIMIT_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
 import { armRestartRefresh, awaitRestartEvidence, beginDeviceReconnect, clearRestartRefresh } from "./device-reconnect.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
-import { beginEntityWriteAction, buildBulkEntityChunks, ENTITY_REQUEST_TIMEOUT_MS, fetchBulkEntityChunk, getSettingsRefreshKeys, isEntityWriteActionCurrent, isLikelyDeviceConnectionError, mergeEntityPayload, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
+import { beginEntityWriteAction, buildBulkEntityChunks, ENTITY_REQUEST_TIMEOUT_MS, fetchBulkEntityChunk, getSettingsRefreshKeys, isEntityWriteActionCurrent, isLikelyDeviceConnectionError, mergeEntityPayload, ownsBusyAction, refreshEntities, refreshIncidentMonitoringData, startEntityWriteAction, syncEntities } from "./entity-sync.js";
 import {
   createIncidentActionRequestId,
   postIncidentActionRequest,
@@ -22,19 +24,6 @@ import { refreshSettingsStorageStateSoon, SETTINGS_STORAGE_KEYS } from "../featu
 import { refreshWebServerLogHistory } from "../features/webserver-logs.js";
 import { waitForPerformanceTelemetryChoiceConfirmation } from "./performance-telemetry-domain.js";
 import { waitForUsageTelemetryChoiceConfirmation } from "./usage-telemetry-domain.js";
-
-let busyWriteRevision = 0;
-
-function startEntityWriteAction(action) {
-  const revision = beginEntityWriteAction();
-  busyWriteRevision = revision;
-  state.busyAction = action;
-  return revision;
-}
-
-function ownsBusyAction(revision, action) {
-  return busyWriteRevision === revision && state.busyAction === action;
-}
 
 async function commitTelemetrySwitch({ key, choiceKey, extraRefreshKeys = [], waitForChoiceConfirmation, entity, enabled }) {
   const confirmChoice = (expectedEnabled) => waitForChoiceConfirmation({
@@ -111,28 +100,33 @@ async function commitPerformanceTelemetrySwitch(entity, enabled) {
 }
 
 // One write, bounded read-only confirmation. Each read keeps the normal entity timeout.
-async function pollEntityConfirmation(read, accept, isCurrent = () => true) {
-  const deadline = performance.now() + 20000;
+async function pollEntityConfirmation(read, accept, isCurrent = () => true, {
+  timeoutMs = 20000, delays = [0, 250, 500, 1000],
+} = {}) {
+  const deadline = performance.now() + timeoutMs;
   let error = new Error(t("common.unknown"));
-  for (const delay of [0, 250, 500, 1000]) {
+  for (const delay of delays) {
     const beforeDelay = deadline - performance.now();
     if (!isCurrent() || beforeDelay <= 0) break;
     if (delay) await new Promise(resolve => setTimeout(resolve, Math.min(delay, beforeDelay)));
     const remaining = deadline - performance.now();
     if (!isCurrent() || remaining <= 0) break;
+    let payload;
     try {
-      const payload = await read(Math.min(ENTITY_REQUEST_TIMEOUT_MS, remaining));
-      if (!isCurrent() || performance.now() >= deadline) break;
-      if (accept(payload)) return { confirmed: true };
+      payload = await read(Math.min(ENTITY_REQUEST_TIMEOUT_MS, remaining));
     } catch (readError) {
       error = readError;
+      continue;
     }
+    if (!isCurrent() || performance.now() >= deadline) break;
+    if (accept(payload)) return { confirmed: true };
   }
   return { confirmed: false, error };
 }
 
 async function confirmSupplySourceSelection(key, option, isCurrent) {
   const entity = ENTITY_DEFS[key];
+  let actual = "";
   const { confirmed, error } = await pollEntityConfirmation(
     timeoutMs => fetchWithTimeout(buildEntityPath(entity.domain, entity.name), {
       cache: "no-store",
@@ -142,16 +136,17 @@ async function confirmSupplySourceSelection(key, option, isCurrent) {
       return response.json();
     }),
     payload => {
-      const actual = String(payload?.value ?? payload?.state ?? "");
+      actual = String(payload?.value ?? payload?.state ?? "");
       if (actual) {
         state.entities[key] = { ...(state.entities[key] || {}), ...payload, state: actual, value: actual };
       }
-      if (actual !== option) throw new Error(t("actions.controllerMismatch", { value: actual || t("common.unknown") }));
-      return true;
+      return actual === option;
     },
     isCurrent,
   );
-  if (!confirmed) throw new Error(t("actions.controllerStatusUnconfirmed", { error: error.message }));
+  if (!confirmed) throw new Error(t("actions.controllerStatusUnconfirmed", {
+    error: actual ? t("actions.controllerMismatch", { value: actual }) : error.message,
+  }));
 }
 
 export async function commitSelect(key, option) {
@@ -303,18 +298,29 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
 }
 
 async function confirmSwitchReadback(key, enabled, isCurrent) {
-  const [chunk] = buildBulkEntityChunks([key], "all");
+  const weather = key === "weatherEnabled";
+  const [chunk] = buildBulkEntityChunks(weather ? [key, "weatherStatus"] : [key], "all");
   const requestId = state.houseLearningRequestId;
+  const weatherRevision = state.weatherConfigRevision;
   const { confirmed } = await pollEntityConfirmation(
     timeoutMs => fetchBulkEntityChunk(chunk, timeoutMs),
     payload => {
-      const readback = payload?.entities?.[key];
-      if (!Array.isArray(payload?.missing) || payload.missing.includes(key)
-        || readback?.value !== enabled || readback.state !== (enabled ? "ON" : "OFF")) return false;
+      if (!Array.isArray(payload?.missing) || payload.missing.includes(key)) return false;
+      const readback = payload.entities?.[key];
+      if (weather) {
+        const status = payload.entities?.weatherStatus;
+        if (payload.missing.includes("weatherStatus") || typeof status?.value !== "string") return false;
+        state.entities.weatherStatus = mergeEntityPayload("weatherStatus", state.entities.weatherStatus, status);
+        if (status.consent_state === "failed") throw new Error(t("weather.status.consentFailed"));
+        if (status.consent_state !== (enabled ? "on" : "off")) return false;
+      }
+      if (readback?.value !== enabled || readback.state !== (enabled ? "ON" : "OFF")) return false;
       state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+      if (weather) state.weatherOptOutUnconfirmed = false;
       return true;
     },
-    () => isCurrent() && requestId === state.houseLearningRequestId,
+    () => isCurrent() && (weather ? weatherRevision === state.weatherConfigRevision : requestId === state.houseLearningRequestId),
+    weather ? { timeoutMs: 5000, delays: [0, 100, 250, 500, 1000, 1500] } : undefined,
   );
   return confirmed;
 }
@@ -334,15 +340,24 @@ export async function commitSwitch(key, enabled) {
   }
 
   const isLearningSwitch = key === "houseLearningEnabled";
-  if (isLearningSwitch && (state.busyAction || state.houseLearningReset === "pending")) return;
+  const isWeatherSwitch = key === "weatherEnabled";
+  const name = isWeatherSwitch ? t("weather.enableLabel") : entity.name;
+  if (((isLearningSwitch || isWeatherSwitch) && state.busyAction) || (isLearningSwitch && state.houseLearningReset === "pending")) return;
   if (isLearningSwitch) {
     state.houseLearningRequestId += 1;
     state.houseLearningEndpointChecking = false;
   }
+  if (isWeatherSwitch) {
+    state.weatherConfigRevision += 1;
+    if (!enabled) state.weatherOptOutUnconfirmed = true;
+  }
+  if (isLearningSwitch || isWeatherSwitch) invalidateWeatherForecast();
 
   const busyAction = `switch-${key}`;
   const actionRevision = startEntityWriteAction(busyAction);
-  const isCurrent = () => isEntityWriteActionCurrent(actionRevision);
+  const weatherRevision = state.weatherConfigRevision;
+  const isCurrent = () => isEntityWriteActionCurrent(actionRevision)
+    && (!isWeatherSwitch || weatherRevision === state.weatherConfigRevision);
   state.controlNotice = "";
   state.controlError = "";
   render();
@@ -350,28 +365,30 @@ export async function commitSwitch(key, enabled) {
   try {
     const action = enabled ? "turn_on" : "turn_off";
     const path = buildEntityPath(entity.domain, entity.name, action);
-    const response = isLearningSwitch
+    const response = isLearningSwitch || isWeatherSwitch
       ? await fetchWithTimeout(path, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS)
       : await fetch(path, { method: "POST" });
-    if (isLearningSwitch && !isCurrent()) return;
+    if ((isLearningSwitch || isWeatherSwitch) && !isCurrent()) return;
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    if (isLearningSwitch) {
-      const staleStatus = state.houseLearningFetchPromise;
-      // Fence status and switch reads issued before the controller acknowledged the write.
-      state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
-      state.houseLearningEndpointChecking = false;
-      state.houseLearningStatus = null;
-      render();
+    if (isLearningSwitch || isWeatherSwitch) {
+      const staleStatus = isLearningSwitch ? state.houseLearningFetchPromise : null;
+      if (isLearningSwitch) {
+        // Fence status and switch reads issued before the controller acknowledged the write.
+        state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
+        state.houseLearningEndpointChecking = false;
+        state.houseLearningStatus = null;
+        render();
+      }
       const confirmed = await confirmSwitchReadback(key, enabled, isCurrent);
       if (!isCurrent()) return;
       if (staleStatus) await staleStatus;
       if (!isCurrent()) return;
-      await refreshHouseLearningStatus({ force: true });
+      if (isLearningSwitch) await refreshHouseLearningStatus({ force: true });
       if (!isCurrent()) return;
-      if (!confirmed) throw new Error(t("learning.switchUnconfirmed"));
-      state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
+      if (!confirmed) throw new Error(t(isLearningSwitch ? "learning.switchUnconfirmed" : "weather.switchUnconfirmed"));
+      state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name });
       return;
     }
     state.entities[key] = {
@@ -379,7 +396,7 @@ export async function commitSwitch(key, enabled) {
       value: enabled,
       state: enabled,
     };
-    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
+    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name });
     state.busyAction = "";
     if (state.appView === "overview") {
       await refreshEntities([...OVERVIEW_KEYS, ...HEADER_ENTITY_KEYS, "setupComplete", ...FIRMWARE_ENTITY_KEYS], "state");
@@ -393,12 +410,13 @@ export async function commitSwitch(key, enabled) {
     }
     render();
   } catch (error) {
-    if (isLearningSwitch && !isCurrent()) return;
-    state.controlError = t("actions.entityAdjustFailed", { name: entity.name, error: error.message });
+    if ((isLearningSwitch || isWeatherSwitch) && !isCurrent()) return;
+    state.controlError = t("actions.entityAdjustFailed", { name, error: error.message });
     render();
   } finally {
-    if (!isLearningSwitch || ownsBusyAction(actionRevision, busyAction)) state.busyAction = "";
+    if ((!isLearningSwitch && !isWeatherSwitch) || ownsBusyAction(actionRevision, busyAction)) state.busyAction = "";
     render();
+    if (isWeatherSwitch && isCurrent()) void refreshWeatherForecast({ force: true });
   }
 }
 
@@ -533,6 +551,7 @@ export async function commitTime(key, value) {
 }
 
 export async function commitText(key, value) {
+  if (key === "weatherLocation") return commitWeatherLocation(value);
   const entity = ENTITY_DEFS[key];
   const normalized = String(value || "").trim();
   startEntityWriteAction(`save-${key}`);

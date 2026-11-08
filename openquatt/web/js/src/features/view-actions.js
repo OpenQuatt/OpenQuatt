@@ -1,3 +1,4 @@
+import { refreshWeatherForecast, suspendWeatherForecast } from "./weather-forecast.js";
 import { isTrendHistoryEnabled } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { SETTINGS_GROUPS } from "../core/config.js";
@@ -52,11 +53,28 @@ function toggleSettingsAdvanced(event, button) {
 }
 
 const viewActionHandlers = {
+  "select-learning-panel": (button) => {
+    const open = button.dataset.learningPanel === "forecast";
+    if (open === state.learningForecastOpen) return;
+    if (!open) suspendWeatherForecast();
+    state.learningForecastOpen = open;
+    render();
+    if (open) void refreshWeatherForecast();
+    else void syncEntities({ forceFast: true });
+  },
+  "toggle-weather-hourly": (button, event) => {
+    const details = button.closest("details");
+    if (!details) return;
+    event.preventDefault();
+    details.open = !details.open;
+    state.weatherForecastHourlyOpen = details.open;
+  },
   "select-view": (button) => {
     if ((button.dataset.viewId || "") === "diagnosis" && !isTrendHistoryEnabled()) {
       return;
     }
     const nextView = button.dataset.viewId || "overview";
+    if (state.appView === "learning" && nextView !== "learning") suspendWeatherForecast();
     setAppView(nextView, { syncMode: "push" });
     render();
     void syncEntities({ forceFast: true });

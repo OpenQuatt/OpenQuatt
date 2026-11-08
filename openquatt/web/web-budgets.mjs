@@ -42,14 +42,19 @@ export const WEB_BUNDLE_BUDGETS = [
     // versus b18f4d15 on Node 24.14.1, preserving 444 B raw headroom.
     // All-days display preview and NL/EN explanation: +1,300 B raw vs664f45c.
     // Preserve444 B raw headroom; relative gzip limits remain unchanged.
-    // Review fixes add 588 B raw versus cbf178dc (Node 24.14.1).
-    // Preserve 444 B raw headroom; relative gzip limits remain unchanged.
-    raw: 1_412_603,
-    gzipBaselineCeiling: 362_000,
+    // Outlook, localized settings, atomic scenario and the interactive weather charts.
+    // On current PR1: +30,871 B raw / +9,824 B gzip (Node24.14.1).
+    // Keep the existing 9,922 B migration allowance.
+    // Inherit only PR1's 588 B raw budget increase; merge guards leave 122 B raw headroom.
+    // Merged raw/gzip: 1,443,352 / 405,092 B; PR1 gzip base: 395,270 B (Node24.14.1).
+    // Move the absolute ceiling with that base, preserving the feature allowance.
+    raw: 1_443_474,
+    gzipBaselineCeiling: 405_192,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
   // Dark-theme contrast fixes (accent tokens, heating advice, tooltips, badges and inputs) add ~4.5 kB raw / ~0.8 kB gzip.
   // Passive-learning layout: +2,969 B raw / +493 B gzip versus dev 388f6f9d
   // on Node 24.14.1; preserves the existing 1,581 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 216_484 },
+  // Outlook and weather graphs add 4,367 B raw and 823 B gzip.
+  { file: "css/openquatt-app.css", raw: 220_851 },
 ];

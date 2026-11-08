@@ -1,3 +1,4 @@
+import { invalidateWeatherForecast } from "./weather-forecast.js";
 import { hasEntity } from "../core/app-shared.js";
 import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
 import { render } from "../core/render-scheduler.js";
@@ -137,7 +138,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
 }
 
 export function shouldRefreshHouseLearningStatusSurface() {
-  return !document.hidden && !state.nativeOpen && state.appView === "learning" && hasEntity("houseLearningEnabled");
+  return !document.hidden && !state.nativeOpen && state.appView === "learning" && !state.learningForecastOpen && hasEntity("houseLearningEnabled");
 }
 
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
@@ -319,6 +320,7 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
     t("houseLearning.reset.confirm"),
   ));
   if (!confirmReset()) return false;
+  invalidateWeatherForecast();
 
   const staleRequest = state.houseLearningFetchPromise;
   state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
@@ -348,6 +350,10 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
     if (delayMs) await new Promise((resolve) => timerHost.setTimeout(resolve, delayMs));
     await refreshHouseLearningStatus({ force: true, resetReconcile: true });
     if (isHouseLearningResetConfirmed()) {
+      state.houseLearningRequestId += 1;
+      if (hasEntity("houseLearningEnabled")) {
+        state.entities.houseLearningEnabled = { ...state.entities.houseLearningEnabled, value: false, state: "OFF" };
+      }
       state.houseLearningReset = "";
       state.houseLearningResetError = "";
       state.controlNotice = t("houseLearning.reset.success");
