@@ -15,7 +15,7 @@ import { t } from "../i18n/index.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { patchControlledWarmupField, patchRunExtensionThresholds, renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
-import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
+import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
 import { renderSettingsPrivacySection, renderSettingsPrivacyUnavailable } from "./privacy.js";
 import { getApiSecurityStatusDetail, getApiSecurityStatusLabel, renderSettingsAccessSecuritySection } from "./security.js";
@@ -121,7 +121,6 @@ function syncFrequencyRangeControl(control) {
                 renderSettingsSensorSelectionSection(),
               ]
             : [
-                renderSettingsQuickStartSection(),
                 renderSettingsTrendSection(),
                 renderSettingsAccessSecuritySection(),
                 renderSettingsDiagnosticsSection(),
