@@ -161,6 +161,17 @@ int main() {
     assert(static_cast<size_t>(original.raw.chunks) == (original.raw.body.size() + 1023U) / 1024U);
     assert(live_buffers == 2);
     std::cout << original.raw.body << '\n';
+    parent.set_duo_defrost_start_block(1); parent.publish();
+    AsyncWebServerRequest hp1_blocked("/openquatt/service/status"); render(handler, hp1_blocked);
+    assert(hp1_blocked.raw.body.find(R"("duoStartGuardStatus":{"state":"HP1 wacht op het ontdooien van HP2")")
+           != std::string::npos);
+    parent.set_duo_defrost_start_block(2); parent.publish();
+    AsyncWebServerRequest hp2_blocked("/openquatt/service/status"); render(handler, hp2_blocked);
+    assert(hp2_blocked.raw.body.find(R"("duoStartGuardStatus":{"state":"HP2 wacht op het ontdooien van HP1")")
+           != std::string::npos);
+    parent.set_duo_defrost_start_block(0); parent.publish();
+    AsyncWebServerRequest cleared("/openquatt/service/status"); render(handler, cleared);
+    assert(cleared.raw.body == original.raw.body);
     for (const char* path : {"/openquatt/service/status/other", "/other"}) {
       AsyncWebServerRequest request(path); assert(!handler.canHandle(&request));
     }

@@ -150,6 +150,11 @@ void test_restart_lock_and_regimes() {
   in.applied_total_level = 7;
   out = decide_demand(in, tuning(), active(0));
   assert(out.next.regime_code == 1 && out.demand == 8 && near(out.demand_continuous, 8.0f));
+  in.duo_running = true;
+  in.applied_total_level = 18;
+  out = decide_demand(in, tuning(), active(1));
+  assert(out.next.regime_code == 1 && out.demand == 4 && near(out.demand_continuous, 4.0f));
+  in.duo_running = false;
   in.supply_c = 34.85f;
   out = decide_demand(in, tuning(), active(1));
   assert(out.next.regime_code == 2 && out.demand == 3);
@@ -168,14 +173,17 @@ void test_maintain_caps() {
   struct Case {
     float error_c;
     int expected;
+    bool duo_running = false;
   };
-  const Case cases[] = {{-0.1f, 1}, {0.05f, 2}, {0.15f, 3}, {0.30f, 4},
-                        {0.45f, 5}, {0.60f, 6}, {0.80f, 8}, {1.00f, 20}};
+  const Case cases[] = {{-0.1f, 1},       {0.05f, 2},         {0.15f, 3},        {0.30f, 4},
+                        {0.45f, 5},       {0.60f, 6},         {0.80f, 8},        {1.00f, 20},
+                        {0.0f, 20, true}, {-0.04f, 20, true}, {-0.15f, 8, true}, {-1.05f, 1, true}};
   for (const auto& test : cases) {
     auto in = input();
     in.pid_output = 1.0f;
     in.supply_c = in.supply_target_c - test.error_c;
     in.oil_return_mask_active = true;
+    in.duo_running = test.duo_running;
     const auto out = decide_demand(in, tuning(), active(2));
     assert(out.valid && out.next.regime_code == 2 && out.demand == test.expected &&
            near(out.demand_continuous, static_cast<float>(test.expected)));

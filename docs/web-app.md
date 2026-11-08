@@ -39,9 +39,9 @@ De web-app heeft zes hoofdschermen.
 |---|---|
 | `Overzicht` | Live zien wat OpenQuatt nu doet en of de belangrijkste waarden logisch zijn. |
 | `Energie` | Vermogen, energie, COP en EER bekijken. |
-| `Resultaten` | Opgeslagen energie- en resultaathistorie over een langere periode bekijken. |
+| `Grafieken` | Onder Resultaten opgeslagen energie- en resultaathistorie over een langere periode bekijken. Onder Diagnose live waarden en korte trendhistorie naast elkaar bekijken om gedrag te onderzoeken. |
+| `Leren` | Meetvoortgang, dagmetingen en het woningmodel bekijken. |
 | `Beslislog` | Terugzien welke regelbeslissingen OpenQuatt nam en waarom. Deze functie is nog beta. |
-| `Diagnose` | Live waarden en korte trendhistorie naast elkaar bekijken om gedrag te onderzoeken. |
 | `Instellingen` | OpenQuatt configureren, bijwerken en beheren. |
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
@@ -109,6 +109,7 @@ met geldige gegevens geen beschikbare capaciteit vindt. De sensornaam
 | OpenQuatt voor het eerst configureren | [Eerste keer instellen](web-app/quick-start.md) |
 | Comfort en installatie-instellingen aanpassen | [Instellingen aanpassen](web-app/instellingen.md) |
 | Kiezen welke sensoren en externe waarden de regeling gebruikt | [Bronnen en integraties](web-app/bronnen.md) |
+| Dagmeting, meetkwaliteit en woningmodel volgen | [Leren](web-app/leren.md) |
 | Vermogen, rendement en historie bekijken | [Energie en resultaten](web-app/energie.md) |
 | Onverwacht gedrag onderzoeken en gegevens bewaren | [Diagnose en logboeken](web-app/diagnose.md) |
 | Firmware bijwerken of instellingen veiligstellen | [Updates en backups](web-app/onderhoud.md) |
@@ -120,14 +121,3 @@ Voor normaal gebruik begin je bij [Dagelijkse controle](dagelijks/controleren.md
 ## Bij problemen
 
 Ga naar [Problemen oplossen](problemen-oplossen.md). Voor een eerste Home Assistant-koppeling zie [OpenQuatt koppelen](dashboard/koppelen.md).
-
-## Meetkwaliteit bij passief leren
-
-Onder `Instellingen` → `Verwarming` laat de leergrafiek bewaarde dagmetingen
-zien, ook als hun meetkwaliteit onvoldoende is voor modeladvies. De tooltip
-toont warmtedekking, temperatuurdekking, warmte-onzekerheid en modelgewicht.
-Historische kwaliteit blijft onbekend. Alleen door de controller geschikte
-metingen tellen mee voor de adviesvoortgang; ongeschikte dagen worden niet gewist.
-Bij oudere firmware zonder kwaliteitsgegevens blijft de bestaande weergave gelden.
-Passief leren past geen regelparameters automatisch toe. Zie het
-[meetbron- en kwaliteitscontract](development/power-house-learning-sources.md).

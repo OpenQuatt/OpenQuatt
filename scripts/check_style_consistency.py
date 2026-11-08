@@ -159,6 +159,7 @@ NESTED_KEY_ORDER_RULES = {
         "openquatt_base_common",
         "openquatt_connection_wifi_eth",
         "openquatt_packages_common",
+        "openquatt_weather",
     ),
     ("configs/heatpump_controller_q/duo.yaml", "packages"): (
         "openquatt_substitutions_common",
@@ -168,6 +169,7 @@ NESTED_KEY_ORDER_RULES = {
         "openquatt_connection_wifi_eth",
         "openquatt_packages_common",
         "openquatt_topology_duo",
+        "openquatt_weather",
     ),
     ("openquatt/oq_packages_common.yaml", "packages"): (
         "oq_runtime_packages",

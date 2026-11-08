@@ -1,5 +1,6 @@
 import { syncPerformanceTelemetryPrompt } from "../features/performance-telemetry-prompt.js";
-import { renderAppNav, syncDocumentTheme, syncDocumentTitle } from "../core/app-shared.js";
+import { getAppNavItem, getNavItemViews, renderAppNav, syncDocumentTheme, syncDocumentTitle } from "../core/app-shared.js";
+import { APP_VIEWS, renderOqIcon } from "../core/config.js";
 import { LOGO_MARKUP } from "../core/embedded-assets.js";
 import { getSettingsRenderSignature } from "../core/render-signatures.js";
 import { escapeHtml } from "../core/html.js";
@@ -9,16 +10,18 @@ import { captureSettingsFocusContinuity, restoreSettingsFocusContinuity } from "
 import { setRenderCallback } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { deferTimeInputRender } from "../core/time-input.js";
-import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "../core/motion.js";
+import { clearLegacyMotionVariables, syncMotionAnimations } from "../core/motion.js";
 import { bindHeaderDevControls, syncNativeVisibility } from "../core/runtime.js";
 import { renderDeviceReconnectModal, renderUpdateModal } from "../features/firmware-update.js";
-import { getDeviceVersionLabel, getHeaderRenderSignature, renderControlModeOverrideBanner, renderDevPanel, renderHeaderStatus, renderNativeSurfaceShell, renderSystemModal } from "../features/header-status.js";
+import { getDeviceVersionLabel, getHeaderRenderSignature, renderControlModeOverrideBanner, renderDevPanel, renderHeaderAlert, renderHeaderStatus, renderNativeSurfaceShell, renderSystemModal } from "../features/header-status.js";
 import { getMqttSensorsModalRenderSignature } from "../features/mqtt-actions.js";
 import { updateMqttState } from "../core/feature-state.js";
 import { captureQuickStartScrollState, queueQuickStartScrollRestore, renderQuickStartModal } from "../features/quickstart.js";
 import { captureCm100CommissioningScrollState, captureHistoryStorageModalScrollState, captureServiceTaskModalScrollState, captureSettingsBackupRestoreModalScrollState, captureWebServerLogScrollState, queueCm100CommissioningScrollRestore, queueHistoryStorageModalScrollRestore, queueServiceTaskModalScrollRestore, queueSettingsBackupRestoreModalScrollRestore, queueWebServerLogScrollRestore, syncWebServerLogStream } from "../features/webserver-logs.js";
 import { renderSettingsGroupContent, renderSettingsGroupNav } from "../settings/core.js";
+import { renderSettingsFeedback, syncSettingsFeedback } from "../features/settings-feedback.js";
 import { renderEnergyView, renderResultsView } from "./energy.js";
+import { renderLearningView } from "./learning.js";
 import { renderControlReplayView } from "../features/control-replay-view.js";
 import { renderOverviewView, syncTechTooltipLayers } from "./heatpump.js";
 import { renderDiagnosisView, syncOverviewTrendInteractions } from "./overview.js";
@@ -29,14 +32,35 @@ const restoreFocusedSettingsField = (focusState) => restoreSettingsFocusContinui
 
 export function renderSettingsView() {
     return `
-      <section class="oq-helper-panel">
-        <p class="oq-helper-label">${escapeHtml(t("shell.settingsLabel"))}</p>
-        <h2 class="oq-helper-section-title">${escapeHtml(t("shell.settingsTitle"))}</h2>
-        <p class="oq-helper-section-copy">${escapeHtml(t("shell.settingsCopy"))}</p>
-        ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
-        ${state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
-        ${renderSettingsGroupNav()}
-        ${renderSettingsGroupContent()}
+      <section class="oq-settings-view">
+        <aside class="oq-settings-view-aside">
+          ${renderSettingsGroupNav()}
+          <p class="oq-settings-view-note">${escapeHtml(t("shell.settingsNote"))}</p>
+        </aside>
+        <div class="oq-settings-view-main">
+          ${renderSettingsGroupContent()}
+        </div>
+        ${renderSettingsFeedback()}
+      </section>
+    `;
+  }
+
+  // Results and Diagnose share the Charts tab, laid out like Settings with their own side navigation.
+  export function renderChartsView() {
+    const item = getAppNavItem();
+    const buttons = getNavItemViews(item).map((id) => {
+      const view = APP_VIEWS.find((entry) => entry.id === id);
+      const active = id === state.appView;
+      return `<button class="oq-settings-group-button${active ? " is-active" : ""}" type="button" data-oq-action="select-view" data-view-id="${escapeHtml(id)}" aria-pressed="${active}">${renderOqIcon(view.icon, "oq-settings-group-button-icon")}<span class="oq-settings-group-button-label">${escapeHtml(t(view.labelKey))}</span></button>`;
+    }).join("");
+    return `
+      <section class="oq-settings-view">
+        <aside class="oq-settings-view-aside">
+          <nav class="oq-settings-group-nav" aria-label="${escapeHtml(t("navigation.chartsNavLabel"))}">${buttons}</nav>
+        </aside>
+        <div class="oq-settings-view-main">
+          ${state.appView === "diagnosis" ? renderDiagnosisView() : renderResultsView()}
+        </div>
       </section>
     `;
   }
@@ -71,10 +95,10 @@ export function renderSettingsView() {
       ? renderControlReplayView()
       : state.appView === "energy"
       ? renderEnergyView()
-      : state.appView === "diagnosis"
-      ? renderDiagnosisView()
-      : state.appView === "results"
-      ? renderResultsView()
+      : state.appView === "diagnosis" || state.appView === "results"
+      ? renderChartsView()
+      : state.appView === "learning"
+      ? renderLearningView()
       : renderSettingsView();
   }
 
@@ -125,9 +149,9 @@ export function renderSettingsView() {
   export function captureSettingsPageScrollState() {
     if (
       state.nativeOpen ||
-      state.appView !== "settings" ||
-      state.renderedAppView !== "settings" ||
-      state.renderedSettingsGroup !== state.settingsGroup
+      !["settings", "learning"].includes(state.appView) ||
+      state.renderedAppView !== state.appView ||
+      (state.appView === "settings" && state.renderedSettingsGroup !== state.settingsGroup)
     ) {
       return null;
     }
@@ -139,6 +163,7 @@ export function renderSettingsView() {
     }
 
     return {
+      view: state.appView,
       group: state.settingsGroup,
       left: Number(window.scrollX || scroller?.scrollLeft || 0),
       top,
@@ -156,8 +181,8 @@ export function renderSettingsView() {
       if (
         token !== state.settingsPageScrollRestoreToken ||
         state.nativeOpen ||
-        state.appView !== "settings" ||
-        state.settingsGroup !== scrollState.group
+        state.appView !== scrollState.view ||
+        (state.appView === "settings" && state.settingsGroup !== scrollState.group)
       ) {
         return;
       }
@@ -177,6 +202,25 @@ export function renderSettingsView() {
       window.requestAnimationFrame(restore);
       window.setTimeout(restore, 80);
     });
+  }
+
+  // A full render resets the horizontally scrolling tab bars on narrow screens.
+  function revealActiveNavItems() {
+    for (const [navSelector, itemSelector] of [
+      [".oq-helper-app-nav", ".oq-helper-app-tab.is-active"],
+      [".oq-settings-group-nav", ".oq-settings-group-button.is-active"],
+    ]) {
+      const nav = state.root.querySelector(navSelector);
+      const item = nav?.querySelector(itemSelector);
+      if (!item || nav.scrollWidth <= nav.clientWidth) {
+        continue;
+      }
+      const navBox = nav.getBoundingClientRect();
+      const itemBox = item.getBoundingClientRect();
+      if (itemBox.left < navBox.left || itemBox.right > navBox.right) {
+        nav.scrollLeft += itemBox.left - navBox.left - (navBox.width - itemBox.width) / 2;
+      }
+    }
   }
 
   export function render() {
@@ -231,7 +275,6 @@ export function renderSettingsView() {
       state.settingsRenderSignature = "";
       state.headerRenderSignature = getHeaderRenderSignature();
       updateMqttState({ mqttSensorsModalRenderSignature: "" });
-      stopMotionLoop();
       syncNativeVisibility();
       syncWebServerLogStream();
       bindHeaderDevControls();
@@ -250,17 +293,15 @@ export function renderSettingsView() {
     const mainContent = state.loadingEntities
       ? `${currentViewContent}${renderInitialLoadingView()}`
       : currentViewContent;
-    const wideFlushCard = state.appView === "overview" || state.appView === "control" || state.appView === "energy" ||
-      state.appView === "diagnosis" || state.appView === "results";
-
     state.root.innerHTML = `
       ${renderDevPanel()}
       <div class="oq-helper-shell${state.overviewTheme === "dark" ? " oq-helper-shell--dark" : ""}">
-        <div class="oq-helper-card${wideFlushCard ? " oq-helper-card--wide-flush" : ""}">
+        <div class="oq-helper-card">
           <div class="oq-helper-head">
             <div class="oq-helper-brand">
               <div class="oq-helper-logo-lockup">
                 <div data-oq-action="matrix-version-tap" style="display:contents">${LOGO_MARKUP}</div>
+                ${renderHeaderAlert()}
               </div>
               <p class="oq-helper-lead">${escapeHtml(t("shell.lead"))}</p>
             </div>
@@ -295,9 +336,11 @@ export function renderSettingsView() {
     clearLegacyMotionVariables();
     syncTechTooltipLayers();
     syncWebServerLogStream();
-    startMotionLoop();
+    syncMotionAnimations();
     syncOverviewTrendInteractions();
     syncNativeVisibility();
+    revealActiveNavItems();
+    syncSettingsFeedback(state.root);
     bindHeaderDevControls();
     syncDocumentTheme();
     syncDocumentTitle();

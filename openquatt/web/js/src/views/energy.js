@@ -1366,7 +1366,6 @@ import { renderStatCard } from "./stat-card.js";
         <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
           <div class="oq-overview-head">
             <div>
-              <p class="oq-helper-label">${escapeHtml(t("energy.resultsKicker"))}</p>
               <h2 class="oq-helper-section-title">${escapeHtml(t("energy.resultsTitle"))}</h2>
               <p class="oq-helper-section-copy">${escapeHtml(t("energy.resultsCopy"))}</p>
             </div>

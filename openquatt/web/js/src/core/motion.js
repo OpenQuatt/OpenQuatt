@@ -1,4 +1,3 @@
-import { FAN_ROTATION_DEG_PER_SEC, FLOW_OFFSET_PX_PER_SEC } from "./config.js";
 import { state } from "./state.js";
 
 export function clearLegacyMotionVariables() {
@@ -14,106 +13,24 @@ export function clearLegacyMotionVariables() {
   }
 }
 
-export function refreshMotionTargets() {
-  state.motionTargets = {
-    pipeFlows: [],
-    fanBlades: [],
-  };
-
-  if (!state.root) {
+// Pipe flow and fan motion are CSS animations. A full render recreates the schematic, which would restart
+// them from the first frame; anchoring every one to the document timeline origin keeps the motion continuous.
+export function syncMotionAnimations(root = state.root) {
+  if (!root || typeof root.querySelectorAll !== "function") {
     return 0;
   }
 
-  const runningBoards = state.root.querySelectorAll(".oq-hp-schematic-board.is-running");
-  runningBoards.forEach((board) => {
-    board.querySelectorAll(".oq-hp-tech-pipe-flow").forEach((node) => {
-      state.motionTargets.pipeFlows.push(node);
+  let aligned = 0;
+  root.querySelectorAll(".oq-hp-tech-pipe-flow, .oq-hp-tech-fan-blades").forEach((node) => {
+    if (typeof node.getAnimations !== "function") {
+      return;
+    }
+    node.getAnimations().forEach((animation) => {
+      if (animation.animationName && animation.startTime !== 0) {
+        animation.startTime = 0;
+        aligned += 1;
+      }
     });
   });
-
-  const waterFlowBoards = state.root.querySelectorAll(".oq-hp-schematic-board.is-water-flowing:not(.is-running)");
-  waterFlowBoards.forEach((board) => {
-    board.querySelectorAll('.oq-hp-tech-pipe-flow[data-oq-flow-variant="water"]').forEach((node) => {
-      state.motionTargets.pipeFlows.push(node);
-    });
-  });
-
-  const fanBoards = state.root.querySelectorAll(".oq-hp-schematic-board.is-fan-running");
-  fanBoards.forEach((board) => {
-    board.querySelectorAll(".oq-hp-tech-fan-blades").forEach((node) => {
-      state.motionTargets.fanBlades.push(node);
-    });
-  });
-
-  return state.motionTargets.pipeFlows.length + state.motionTargets.fanBlades.length;
-}
-
-export function hasMotionTargets() {
-  return state.motionTargets.pipeFlows.length > 0 || state.motionTargets.fanBlades.length > 0;
-}
-
-export function syncMotionVariables(now = performance.now()) {
-  if (!state.root || state.reducedMotion) {
-    return false;
-  }
-
-  if (!hasMotionTargets() && refreshMotionTargets() === 0) {
-    return false;
-  }
-
-  if (!state.motionStartedAt) {
-    state.motionStartedAt = now;
-  }
-
-  const elapsedSeconds = (now - state.motionStartedAt) / 1000;
-  const fanRotation = (elapsedSeconds * FAN_ROTATION_DEG_PER_SEC) % 360;
-
-  state.motionTargets.pipeFlows.forEach((node) => {
-    const speedMultiplier = node.dataset.oqFlowVariant === "water" ? 0.42 : 1;
-    const nodeOffset = -(elapsedSeconds * FLOW_OFFSET_PX_PER_SEC * speedMultiplier);
-    node.style.strokeDashoffset = `${nodeOffset.toFixed(3)}px`;
-  });
-  state.motionTargets.fanBlades.forEach((node) => {
-    node.style.transform = `rotate(${fanRotation.toFixed(3)}deg)`;
-  });
-  return true;
-}
-
-export function tickMotion(now) {
-  if (!syncMotionVariables(now)) {
-    state.motionFrame = 0;
-    state.motionStartedAt = 0;
-    return;
-  }
-  state.motionFrame = window.requestAnimationFrame(tickMotion);
-}
-
-export function startMotionLoop() {
-  if (state.reducedMotion) {
-    return;
-  }
-
-  if (refreshMotionTargets() === 0) {
-    return;
-  }
-  if (state.motionFrame) {
-    return;
-  }
-
-  const now = performance.now();
-  state.motionStartedAt = now;
-  if (!syncMotionVariables(now)) {
-    state.motionStartedAt = 0;
-    return;
-  }
-  state.motionFrame = window.requestAnimationFrame(tickMotion);
-}
-
-export function stopMotionLoop() {
-  if (state.motionFrame) {
-    window.cancelAnimationFrame(state.motionFrame);
-    state.motionFrame = 0;
-  }
-  state.motionStartedAt = 0;
-  clearLegacyMotionVariables();
+  return aligned;
 }

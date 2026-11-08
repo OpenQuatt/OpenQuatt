@@ -12,7 +12,7 @@ globalThis.window = {
   localStorage: { getItem: () => null },
 };
 
-const { state } = await import("../js/src/core/state.js");
+const { invalidateHouseLearningShadow, state } = await import("../js/src/core/state.js");
 const {
   HOUSE_LEARNING_STATUS_INTERVAL_MS,
   downloadHouseLearningExport,
@@ -24,9 +24,12 @@ const {
   resetHouseLearningData,
   shouldRefreshHouseLearningStatusSurface,
 } = await import("../js/src/features/house-learning.js");
-const { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
-const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
+const { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningShadow, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
+const { getInitialPrimeKeys, refreshEntities, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
+const { commitSwitch } = await import("../js/src/core/entity-write-actions.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+const { renderLearningView } = await import("../js/src/views/learning.js");
+const { setAppView } = await import("../js/src/core/navigation.js");
 const { setLocale } = await import("../js/src/i18n/index.js");
 
 function switchEntity(value = false) {
@@ -34,8 +37,10 @@ function switchEntity(value = false) {
 }
 
 test.afterEach(() => {
+  invalidateHouseLearningShadow();
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
   document.hidden = false;
+  state.nativeOpen = false;
   state.busyAction = "";
   state.controlError = "";
   state.controlNotice = "";
@@ -57,6 +62,22 @@ test.afterEach(() => {
   state.root = null;
   state.focusedField = null;
   setRenderCallback(null);
+});
+
+test("fitvoortgang blijft optioneel en accepteert alleen samenhangende firmwarevelden", () => {
+  const fit = { metadata_prepared: true, train_segments: 18, holdout_segments: 3, train_days: 18, holdout_days: 3,
+    train_p10_c: 8.28, train_p90_c: 11.88, train_min_c: 7.55, train_max_c: 12.34 };
+  const status = normalizeHouseLearningStatus(statusPayload({ records: 21, batch_fit: fit }));
+  assert.deepEqual(status.batchFit, { trainCount: 18, checkCount: 3, trainDays: 18, checkDays: 3,
+    p10: 8.28, p90: 11.88, minC: 7.55, maxC: 12.34 });
+  assert.equal(status.batchAdviceReady, false);
+  assert.equal(normalizeHouseLearningStatus(statusPayload()).batchFit, null);
+  for (const change of [{ metadata_prepared: false }, { metadata_prepared: undefined }, { metadata_prepared: 1 },
+    { train_days: -1 }, { holdout_segments: "3" }, { train_days: 19 },
+    { train_segments: 129 }, { train_min_c: null }, { train_max_c: 4 }, { train_p90_c: NaN }]) {
+    assert.equal(normalizeHouseLearningStatus(statusPayload({ records: 21,
+      batch_fit: { ...fit, ...change } })).batchFit, null);
+  }
 });
 
 function statusPayload(overrides = {}) {
@@ -255,9 +276,8 @@ test("budgetscope beperkt de limiet tot modeladvies en behoudt oude firmwarecopy
   }
 });
 
-test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm opgehaald", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+test("leerstatus wordt alleen op het zichtbare leerscherm opgehaald", async () => {
+  state.appView = "learning";
   state.entities = { houseLearningEnabled: switchEntity(false) };
   state.houseLearningLastFetchAt = 0;
   state.houseLearningFetchPromise = null;
@@ -273,19 +293,24 @@ test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm op
     fetches += 1;
     return { ok: true, status: 200, json: async () => statusPayload() };
   };
-  assert.equal(shouldRefreshHouseLearningStatusSurface(), false);
+  assert.equal(shouldRefreshHouseLearningStatusSurface(), true);
   assert.equal(await refreshHouseLearningStatus({ force: true }), false);
-  assert.equal(fetches, 0);
+  assert.equal(fetches, 1);
+  state.nativeOpen = true;
+  assert.equal(await refreshHouseLearningStatus({ force: true }), false);
+  state.nativeOpen = false;
+  state.appView = "settings";
+  assert.equal(await refreshHouseLearningStatus({ force: true }), false);
+  assert.equal(fetches, 1);
 
   state.entities.strategy = { value: "Power House" };
   state.appView = "overview";
   assert.equal(await refreshHouseLearningStatus({ force: true }), false);
-  assert.equal(fetches, 0);
+  assert.equal(fetches, 1);
 });
 
-test("directe heating-entry vervangt de eerste capabilitycheck na de statusrespons", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+test("directe learning-entry vervangt de eerste capabilitycheck na de statusrespons", async () => {
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
   let respond;
   globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
@@ -297,15 +322,15 @@ test("directe heating-entry vervangt de eerste capabilitycheck na de statusrespo
   assert.equal(renderHouseLearningSettings(), "");
 });
 
-test("directe heating-entry vervangt de laadstatus ook na een geslaagde respons", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+test("directe learning-entry vervangt de laadstatus ook na een geslaagde respons", async () => {
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
+  state.houseLearningChart = [];
   let rendered = "";
   let renders = 0;
   const statusNode = { innerHTML: "" };
   const panel = { removed: false, remove() { this.removed = true; }, querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : null };
-  state.root = { querySelector: () => panel };
+  state.root = { querySelector: (selector) => selector === "[data-oq-house-learning]" ? panel : null };
   setRenderCallback(() => { renders += 1; rendered = renderHouseLearningSettings(); });
   let respond;
   globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
@@ -322,12 +347,11 @@ test("directe heating-entry vervangt de laadstatus ook na een geslaagde respons"
   assert.equal(renders, 2);
   globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => statusPayload({ enabled: true, control_mode: 2, status: "collecting", records: 43 }) });
   assert.equal(await refreshHouseLearningStatus({ force: true }), true);
-  assert.equal(renders, 2, "normale statusupdates bouwen het instellingenscherm niet opnieuw op");
+  assert.equal(renders, 2, "normale statusupdates bouwen het leerscherm niet opnieuw op");
 });
 
 test("een herhaalde 404-probe toont geen laadblok opnieuw", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
   const responses = [];
   globalThis.fetch = () => new Promise((resolve) => responses.push(resolve));
@@ -341,19 +365,18 @@ test("een herhaalde 404-probe toont geen laadblok opnieuw", async () => {
     remove() { this.removed = true; },
     querySelector: () => ({ innerHTML: "" }),
   };
-  state.root = { querySelector: () => panel };
+  state.root = { querySelector: (selector) => selector === "[data-oq-house-learning]" ? panel : null };
   const retry = refreshHouseLearningStatus({ force: true });
 
   assert.equal(renderHouseLearningSettings(), "");
-  assert.equal(patchHouseLearningSettingsStatus(), true);
-  assert.equal(panel.removed, true);
+  assert.equal(patchHouseLearningSettingsStatus(), false);
+  assert.equal(panel.removed, undefined);
   responses.shift()({ ok: false, status: 404, json: async () => ({}) });
   assert.equal(await retry, false);
 });
 
 test("een late statusrespons na navigatie bevestigt de capability niet", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
   let respond;
   globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
@@ -369,8 +392,7 @@ test("een late statusrespons na navigatie bevestigt de capability niet", async (
 
 test("annuleren verstuurt geen reset en een geweigerde reset blijft als fout zichtbaar", async () => {
   document.hidden = false;
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
   state.busyAction = "";
   state.controlError = "";
@@ -395,8 +417,7 @@ test("annuleren verstuurt geen reset en een geweigerde reset blijft als fout zic
 
 test("reset negeert een oude status en meldt pas succes na leeg, gepauzeerd en gewist journal", async () => {
   document.hidden = false;
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
   state.busyAction = "";
   state.controlError = "";
@@ -435,12 +456,12 @@ test("reset negeert een oude status en meldt pas succes na leeg, gepauzeerd en g
   assert.equal(isHouseLearningResetConfirmed(), true);
   assert.equal(isHouseLearningResetConfirmed({ ...state.houseLearningStatus, status: "reset_pending" }), false);
   assert.equal(state.houseLearningStatus.records, 0);
+  assert.equal(state.entities.houseLearningEnabled.value, false);
   assert.match(state.controlNotice, /gewist.*gepauzeerd/);
 });
 
 test("reset wist een lopende grafiekexport en laat de laadtoestand niet hangen", async () => {
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
   let releaseExport;
   let requests = 0;
@@ -486,8 +507,7 @@ test("geaccepteerde maar onbevestigde reset blijft onzeker en wordt niet opnieuw
 
 test("endpointfouten blijven zichtbaar en een late JSON-body wordt genegeerd", async () => {
   document.hidden = false;
-  state.appView = "settings";
-  state.settingsGroup = "heating";
+  state.appView = "learning";
   state.entities = { houseLearningEnabled: switchEntity(false) };
   state.houseLearningEndpointAvailable = false;
   state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true, advice_ready: true }));
@@ -704,7 +724,10 @@ test("bronroutes en leerwaterwaarden gebruiken bestaande entities", () => {
   assert.match(markup, /HP1 en HP2/);
   assert.match(markup, /0 bij stilstand/);
   assert.match(markup, /0 meetperioden afgerond/);
-  for (const key of ["hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut"]) assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes(key));
+  state.appView = "learning";
+  for (const key of ["hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut", "houseLearningEnabled", "houseLearningReset", "housePower"]) {
+    assert.ok(getInitialPrimeKeys().includes(key), key);
+  }
 });
 
 test("gepauzeerde en verouderde status claimen geen actuele verzameling of geldige bron", () => {
@@ -756,6 +779,30 @@ test("diagnostische export gebruikt de bestaande browserdownload", async () => {
   }
 });
 
+test("stilgevallen exportbody laat de grafiek en download na hun timeout opnieuw toe", async () => {
+  const originalTimer = window.setTimeout;
+  const originalFetch = globalThis.fetch;
+  window.setTimeout = (callback) => setTimeout(callback, 0);
+  globalThis.fetch = async (_path, { signal }) => ({
+    ok: true,
+    json: () => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+  });
+  try {
+    assert.equal(await loadHouseLearningChart(), false);
+    assert.equal(state.houseLearningChartLoading, false);
+    assert.equal(state.houseLearningChartError.vars.error.translationKey, "houseLearning.errors.chartTimeout");
+
+    await downloadHouseLearningExport();
+    assert.equal(state.busyAction, "");
+    assert.equal(state.houseLearningStatusError.vars.error.translationKey, "houseLearning.errors.exportTimeout");
+  } finally {
+    window.setTimeout = originalTimer;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen", () => {
   state.entities = {};
   state.houseLearningEndpointAvailable = true;
@@ -771,7 +818,7 @@ test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen
   assert.match(markup, /Passief leren/);
   assert.doesNotMatch(markup, /data-oq-field="houseLearning(?:Hydraulics|Fluid)"/);
   assert.doesNotMatch(markup, /Hydraulische opstelling|Warmtedragende vloeistof/);
-  assert.match(markup, /Geen automatische wijzigingen/);
+  assert.match(renderLearningView(), /Passief leren past je instellingen niet aan/);
   assert.doesNotMatch(markup, /Andere warmtebron|No other heat in CM2|R1-uit is geen bewijs/);
   assert.doesNotMatch(markup, /Meetcontract en grenzen|Calorimetrie gecontroleerd|Onzekerheid warmtevermogen|Maximale meetflow|Temperatuurtolerantie koppelpunt|Grens externe warmtebijdrage/);
   assert.match(markup, /Nog niet beoordeeld/);
@@ -785,36 +832,47 @@ test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen
   }
 });
 
-test("passief leren verbergt standaard alle meetdetails en beheeracties achter één ingang", () => {
+test("meetgegevens staan open in een eigen kaart onder het leerpaneel", () => {
   state.entities = { houseLearningEnabled: switchEntity(true), houseLearningReset: {} };
   state.houseLearningEndpointAvailable = true;
   state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true, daily_record_count: 12 }));
   state.houseLearningChart = null;
   state.busyAction = "";
-  const collapsed = renderHouseLearningSettings();
-  assert.match(collapsed, /aria-label="Meetgegevens tonen" aria-expanded="false"/);
-  assert.match(collapsed, /Woninglijn uit dagmetingen/);
-  assert.doesNotMatch(collapsed, /data-oq-house-learning-secondary|oq-house-learning-thermal|<details\b|data-oq-action="download-house-learning"|data-oq-entity-action|Warmteverlies \(U\)|Warmteopslag \(C\)/);
+  const waiting = renderHouseLearningSettings();
+  assert.doesNotMatch(waiting, /data-oq-action="load-house-learning-chart"[^>]*aria-expanded/);
+  assert.match(waiting, /Woninglijn uit dagmetingen/);
+  assert.match(waiting, /role="status">Meetgegevens laden…/);
+  assert.match(waiting, /data-oq-house-learning-secondary[\s\S]*data-oq-action="download-house-learning"/);
   state.houseLearningChart = [];
   const html = renderHouseLearningSettings();
-  assert.match(html, /aria-label="Meetgegevens verbergen" aria-expanded="true"/);
+  assert.doesNotMatch(html, /Meetgegevens laden…/);
+  assert.match(html, /<section class="oq-settings-section" data-oq-house-learning-chart-panel[^>]*><div class="oq-settings-section-head">[\s\S]*<h3>Meetgegevens<\/h3><button[^>]*data-oq-action="load-house-learning-chart"[^>]*>Vernieuwen<\/button>/);
   assert.equal((html.match(/<details\b/g) || []).length, 1);
   assert.match(html, /data-oq-settings-advanced="house-learning-technical"[\s\S]*Bronnen en technische details/);
   assert.doesNotMatch(html, /data-oq-settings-advanced="house-learning-model"/);
-  assert.ok(html.indexOf("data-oq-house-learning-status") < html.indexOf("data-oq-house-learning-chart-panel"));
+  assert.ok(html.indexOf("data-oq-house-learning-status") < html.indexOf("</section>"));
+  assert.ok(html.indexOf("</section>") < html.indexOf("data-oq-house-learning-chart-panel"));
   assert.ok(html.indexOf("data-oq-house-learning-chart-panel") < html.indexOf("data-oq-house-learning-secondary"));
   assert.ok(html.indexOf("data-oq-house-learning-secondary") < html.indexOf("<details"));
   assert.match(html, /role="switch"[\s\S]*data-control-key="houseLearningEnabled"[\s\S]*aria-checked="true"/);
   assert.match(html, /data-oq-action="download-house-learning"/);
-  assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
-  const closedAgain = renderHouseLearningSettings();
-  assert.doesNotMatch(closedAgain, /data-oq-house-learning-secondary|oq-house-learning-actions|Bronnen en technische details/);
+  assert.match(html, /data-oq-button-key="houseLearningReset"/);
+});
+
+test("een gewist leerjournaal toont de lege grafiek zonder export te laden", () => {
+  state.entities = { houseLearningEnabled: switchEntity(false) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ records: 0, journal_status: "cleared" }));
+  state.houseLearningChart = null;
+  const html = renderHouseLearningSettings();
+  assert.doesNotMatch(html, /Meetgegevens laden…/);
+  assert.match(html, /Nog geen grafiek beschikbaar/);
 });
 
 test("de oude leerstatus-uitklapper opent de nieuwe technische details niet vanzelf", () => {
   state.entities = { houseLearningEnabled: switchEntity(true) };
   state.houseLearningEndpointAvailable = true;
-  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true }));
   state.houseLearningChart = [];
   const before = state.settingsAdvancedOpen;
   try {
@@ -827,7 +885,7 @@ test("de oude leerstatus-uitklapper opent de nieuwe technische details niet vanz
   }
 });
 
-test("mislukte grafieklading houdt beheer bereikbaar en kan worden gesloten voor een nieuwe poging", () => {
+test("mislukte grafieklading houdt beheer bereikbaar en Vernieuwen probeert opnieuw", async () => {
   state.entities = { houseLearningEnabled: switchEntity(true), houseLearningReset: {} };
   state.houseLearningEndpointAvailable = true;
   state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
@@ -835,17 +893,19 @@ test("mislukte grafieklading houdt beheer bereikbaar en kan worden gesloten voor
   state.houseLearningChartLoading = false;
   state.houseLearningChartError = "Meetgegevens niet beschikbaar";
   const html = renderHouseLearningSettings();
-  assert.match(html, /aria-label="Meetgegevens verbergen" aria-expanded="true"/);
   assert.match(html, /Meetgegevens niet beschikbaar/);
+  assert.doesNotMatch(html, /Meetgegevens laden…/);
   assert.match(html, /data-oq-house-learning-secondary/);
   assert.match(html, /data-oq-action="download-house-learning"/);
   assert.match(html, /data-oq-button-key="houseLearningReset"/);
   assert.doesNotMatch(html, /oq-house-learning-chart-wrap/);
+  let requests = 0;
+  globalThis.fetch = async () => { requests += 1; return { ok: true, json: async () => ({ schema: 1, mode: "passive", record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"], records: [] }) }; };
   assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
   assert.equal(state.houseLearningChartError, "");
-  const closed = renderHouseLearningSettings();
-  assert.match(closed, /aria-label="Meetgegevens tonen" aria-expanded="false"/);
-  assert.doesNotMatch(closed, /data-oq-house-learning-secondary|oq-house-learning-actions/);
+  assert.equal(requests, 1);
+  for (let tick = 0; tick < 20 && state.houseLearningChartLoading; tick += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(state.houseLearningChart, []);
 });
 
 test("de compacte leerschakelaar behoudt de bestaande loading- en schrijfgates", () => {
@@ -867,7 +927,8 @@ test("de compacte leerschakelaar behoudt de bestaande loading- en schrijfgates",
 });
 
 test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigde polls te renderen", () => {
-  const status = normalizeHouseLearningStatus(statusPayload({ batch_status: "insufficient_spread" }));
+  const status = normalizeHouseLearningStatus(statusPayload({ enabled: true, batch_status: "insufficient_spread", reference_room_c: 20 }));
+  state.houseLearningChart = [];
   assert.equal(status.batchStatus, "insufficient_spread");
   assert.equal(normalizeHouseLearningStatus(statusPayload({ batch_status: undefined })).batchStatus, "unknown");
   state.entities = { houseLearningEnabled: switchEntity(true) };
@@ -877,15 +938,22 @@ test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigd
   const secondaryNode = { innerHTML: "" };
   let signature;
   let writes = 0;
-  const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; } };
-  const nodes = { "[data-oq-house-learning-status]": statusNode, "[data-oq-house-learning-secondary]": secondaryNode, "[data-oq-house-learning-chart-panel]": chartNode };
-  state.root = { querySelector: () => ({ querySelector: (selector) => nodes[selector] || null }) };
+  const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; },
+    querySelector: (selector) => selector === "[data-oq-house-learning-secondary]" ? secondaryNode : null };
+  const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : null };
+  state.root = { querySelector: (selector) => selector === "[data-oq-house-learning-chart-panel]" ? chartNode : panel };
   patchHouseLearningSettingsStatus();
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 1);
   status.batchStatus = "unstable_fit";
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 2);
+  status.batchFit = { trainCount: 18, checkCount: 2, trainDays: 18, checkDays: 2,
+    minC: 7.55, maxC: 12.34, p10: 8.28, p90: 11.88 };
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 3, "nieuwe firmware-leersplit en bereik vernieuwen de uitleg");
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 3, "een ongewijzigde leersplit behoudt de grafiek en focus");
   assert.match(secondaryNode.innerHTML, /Bronnen en technische details/);
 });
 
@@ -954,20 +1022,36 @@ test("preview-reset pauzeert leren en bevestigt gewiste opslag zoals de firmware
 test("grafiekpatch behoudt meetpuntfocus bij ongewijzigde data en volgt nieuwe fit", () => {
   state.entities = { houseLearningEnabled: switchEntity(true), houseColdTemp: { value: -10 }, houseOutdoorMax: { value: 16 }, housePower: { value: 5200 } };
   state.houseLearningEndpointAvailable = true;
-  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({ enabled: true }));
   state.houseLearningChart = [];
   state.houseLearningChartFetchedAt = 100;
   const statusNode = { innerHTML: "" };
   let signature;
   let writes = 0;
-  const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; } };
-  const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : selector === "[data-oq-house-learning-chart-panel]" ? chartNode : null };
-  state.root = { querySelector: () => panel };
+  const point = { dataset: { oqHouseLearningTip: "Meetpunt van 5 °C" } };
+  const originalActive = document.activeElement;
+  let pointFocus = 0;
+  const chartNode = {
+    contains: active => active === point,
+    querySelectorAll: () => [{ dataset: point.dataset, focus: () => { pointFocus += 1; } }],
+    getAttribute: () => signature,
+    setAttribute: (_key, value) => { signature = value; },
+    set innerHTML(_value) { writes += 1; },
+    querySelector: () => null,
+  };
+  const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : null };
+  state.root = { querySelector: (selector) => selector === "[data-oq-house-learning-chart-panel]" ? chartNode : panel };
   patchHouseLearningSettingsStatus();
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 1);
   state.houseLearningStatus.hBatch = 210;
-  patchHouseLearningSettingsStatus();
+  document.activeElement = point;
+  try {
+    patchHouseLearningSettingsStatus();
+    assert.equal(pointFocus, 1);
+  } finally {
+    document.activeElement = originalActive;
+  }
   assert.equal(writes, 2);
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   patchHouseLearningSettingsStatus();
@@ -988,24 +1072,45 @@ test("een bestaande grafiekfout wordt na taalwissel opnieuw vertaald", async () 
 });
 
 
-test("meetgegevens sluiten verwijdert de grafiek zonder netwerkrequest en kan opnieuw openen", async () => {
+test("Vernieuwen laadt de meetgegevens opnieuw en houdt de grafiek zichtbaar tijdens het laden", async () => {
   state.entities = { houseLearningEnabled: switchEntity(true) };
   state.houseLearningEndpointAvailable = true;
   state.houseLearningChart = [];
   state.houseLearningChartFetchedAt = 100;
   let requests = 0;
-  globalThis.fetch = async () => { requests += 1; return { ok: true, json: async () => ({ schema: 1, mode: "passive", record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"], records: [] }) }; };
-  assert.match(renderHouseLearningSettings(), /Meetgegevens verbergen/);
+  let respond;
+  globalThis.fetch = () => { requests += 1; return new Promise((resolve) => { respond = resolve; }); };
   assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
-  assert.equal(state.houseLearningChart, null);
-  assert.equal(state.houseLearningChartFetchedAt, 0);
-  assert.equal(requests, 0);
-  assert.match(renderHouseLearningSettings(), /Meetgegevens tonen/);
-  assert.equal(await loadHouseLearningChart(), true);
   assert.equal(requests, 1);
-  assert.match(renderHouseLearningSettings(), /Meetgegevens verbergen/);
+  assert.equal(state.houseLearningChartLoading, true);
+  const loading = renderHouseLearningSettings();
+  assert.match(loading, /data-oq-action="load-house-learning-chart" disabled/);
+  assert.match(loading, /Nog geen grafiek beschikbaar/);
+  assert.doesNotMatch(loading, /Meetgegevens laden…/);
+  respond({ ok: true, json: async () => ({ schema: 1, mode: "passive", record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"], records: [] }) });
+  for (let tick = 0; tick < 20 && state.houseLearningChartLoading; tick += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(state.houseLearningChartLoading, false);
+  assert.ok(state.houseLearningChartFetchedAt > 100);
+  assert.doesNotMatch(renderHouseLearningSettings(), /data-oq-action="load-house-learning-chart" disabled/);
 });
 
+test("meetgegevens laden vanzelf zodra de leerstatus bekend is en niet opnieuw na een fout", async () => {
+  state.appView = "learning";
+  state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
+  const requests = [];
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return String(url).endsWith("/export")
+      ? { ok: false, status: 503, json: async () => ({}) }
+      : { ok: true, status: 200, json: async () => statusPayload({ enabled: true }) };
+  };
+  await refreshHouseLearningStatus({ force: true });
+  for (let tick = 0; tick < 20 && state.houseLearningChartLoading; tick += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(requests.map(url => url.split("/").pop()), ["status", "export"]);
+  assert.ok(state.houseLearningChartError);
+  await refreshHouseLearningStatus({ force: true });
+  assert.deepEqual(requests.map(url => url.split("/").pop()), ["status", "export", "status"]);
+});
 
 test("optionele eerdere woninglijnafwijzing blijft compatibel met oude statuspayloads", () => {
   for (const value of [undefined, null, "", "   ", 17, {}]) {
@@ -1186,7 +1291,7 @@ test("ontbrekende thermische voortgang wordt niet als bevestigde pauze gepresent
 });
 
 
-test("negatief dagpunt blijft beschikbaar na grafiek sluiten en opnieuw laden", async () => {
+test("negatief dagpunt blijft beschikbaar na opnieuw laden", async () => {
   state.entities = { houseLearningEnabled: switchEntity(true) };
   state.houseLearningEndpointAvailable = true;
   state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({
@@ -1204,12 +1309,341 @@ test("negatief dagpunt blijft beschikbaar na grafiek sluiten en opnieuw laden", 
   assert.equal(await loadHouseLearningChart(), true);
   assert.equal(state.houseLearningChart[0].heatW, -20);
   assert.match(renderHouseLearningSettings(), /Netto warmte: -20 W/);
-  assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
-  assert.equal(state.houseLearningChart, null);
-  assert.equal(requests, 1);
-  assert.match(renderHouseLearningSettings(), /Meetgegevens tonen/);
   assert.equal(await loadHouseLearningChart(), true);
   assert.equal(requests, 2);
   assert.equal(state.houseLearningChart[0].heatW, -20);
   assert.match(renderHouseLearningSettings(), /Netto warmte: -20 W/);
+});
+
+test("Leren toont twee aparte voortgangsbalken bij een kleine klokafwijking", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["Date"], now: 1_793_963_600_000 });
+  const payload = statusPayload({
+    enabled: true, daily_record_count: 4, rls_samples: 10,
+    h_batch: 220, t0_batch: 20, batch_advice_ready: true, journal_status: "saved_verified",
+    u_rls: 220, c_rls_wh_per_k: 8000, rls_ready: true, rls_readiness_reasons: [], capacity_validated: false,
+    collection: { batch_active: true, batch_elapsed_s: 43200, batch_target_s: 86400,
+      thermal_active: true, thermal_elapsed_s: 450, thermal_target_s: 1800 },
+  });
+  for (const offset of [0, 2, -30, 30]) {
+    const status = normalizeHouseLearningStatus({ ...payload, tick_epoch: payload.tick_epoch + offset });
+    const html = renderHouseLearningStatusMarkup(status, "primary");
+    assert.match(html, /12:00:00 \/ 24:00:00[\s\S]*width:50%[\s\S]*Modelstatus · Beoordeeld/, `offset ${offset} s`);
+    assert.match(html, /7:30 \/ 30:00[\s\S]*width:25%[\s\S]*Modelstatus · Voorlopige schatting/, `offset ${offset} s`);
+  }
+  for (const overrides of [
+    { enabled: false },
+    { tick_epoch: 0 },
+    { tick_epoch: payload.tick_epoch - 31 },
+    { tick_epoch: payload.tick_epoch + 31 },
+    { tick_epoch: payload.tick_epoch + 3600 },
+  ]) {
+    const inactive = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...payload, ...overrides }), "primary");
+    assert.doesNotMatch(inactive, /width:[0-9]|Modelstatus · Beoordeeld/);
+  }
+});
+
+test("Leren biedt een bruikbaar scherm zonder leerendpoint", () => {
+  state.loadingEntities = false;
+  state.entities = {};
+  assert.match(renderLearningView(), /Passief leren is niet beschikbaar/);
+  state.entities = { houseLearningEnabled: switchEntity(false) };
+  assert.match(renderLearningView(), /Laden/);
+  state.houseLearningEndpointChecked = true;
+  assert.match(renderLearningView(), /Passief leren is niet beschikbaar/);
+});
+
+test("leerschakelaar bevestigt de readback en verwerpt oude switch- en statusresponsen", async () => {
+  state.appView = "learning";
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningEndpointChecked = true;
+  let releaseStatus;
+  let releaseSwitch;
+  let releaseDuringWrite;
+  let markReadback;
+  const readback = new Promise(resolve => { markReadback = resolve; });
+  const responses = { status: 0, switch: 0, write: 0 };
+  const ok = payload => ({ ok: true, status: 200, json: async () => payload });
+  const switchPayload = value => ({ entities: { houseLearningEnabled: { value, state: value ? "ON" : "OFF" } }, missing: [] });
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === "/openquatt/learning/status") {
+      if (++responses.status === 1) return new Promise(resolve => { releaseStatus = resolve; });
+      return ok(statusPayload({ enabled: false, records: 43 }));
+    }
+    if (url === "/openquatt/entities") {
+      if (++responses.switch === 1) return new Promise(resolve => { releaseSwitch = resolve; });
+      if (responses.switch === 3) return new Promise(resolve => { releaseDuringWrite = resolve; });
+      markReadback();
+      return ok(switchPayload(false));
+    }
+    assert.equal(url, "/switch/Power%20House%20Passive%20Learning/turn_off");
+    assert.equal(options.method, "POST");
+    responses.write += 1;
+    return ok({});
+  };
+  const oldStatus = refreshHouseLearningStatus({ force: true });
+  const oldSwitch = refreshEntities(["houseLearningEnabled"], "all");
+  const write = commitSwitch("houseLearningEnabled", false);
+  await readback;
+  const duringWrite = refreshEntities(["houseLearningEnabled"], "all");
+  assert.equal(state.controlNotice, "");
+  releaseStatus(ok(statusPayload({ enabled: true, records: 99 })));
+  assert.equal(await oldStatus, false);
+  await write;
+  releaseSwitch(ok(switchPayload(true)));
+  await oldSwitch;
+  releaseDuringWrite(ok(switchPayload(true)));
+  await duringWrite;
+  assert.deepEqual(responses, { status: 2, switch: 3, write: 1 });
+  assert.equal(state.entities.houseLearningEnabled.value, false);
+  assert.equal(state.houseLearningStatus.records, 43);
+  assert.match(state.controlNotice, /uitgeschakeld/);
+});
+
+test("geopende meetgegevens verbergen live details bij een afwijkende schakelstand", () => {
+  state.appView = "learning";
+  state.entities = { houseLearningEnabled: switchEntity(false) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningEndpointChecked = true;
+  state.houseLearningChart = [];
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, storage_ready: true, status: "collecting",
+    collection: { thermal_active: true, thermal_elapsed_s: 450, thermal_target_s: 1800 },
+  }));
+  const markup = renderLearningView();
+  assert.match(markup, /Wacht op de actuele leerstatus/);
+  assert.doesNotMatch(markup, /7:30|class="oq-house-learning-thermal"/);
+  assert.match(markup, /Diagnostische leerdata downloaden/);
+});
+
+test("leerschakelaar wacht op verwerking na een eerste oude readback", async () => {
+  state.appView = "learning";
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const originalFetch = globalThis.fetch;
+  let reads = 0;
+  let writes = 0;
+  globalThis.fetch = async (url) => {
+    if (url === "/openquatt/entities") {
+      const value = ++reads === 1;
+      return { ok: true, json: async () => ({ entities: { houseLearningEnabled: { value, state: value ? "ON" : "OFF" } }, missing: [] }) };
+    }
+    if (url === "/openquatt/learning/status") {
+      return { ok: true, json: async () => statusPayload({ enabled: false }) };
+    }
+    assert.equal(url, "/switch/Power%20House%20Passive%20Learning/turn_off");
+    writes += 1;
+    return { ok: true };
+  };
+  try {
+    await commitSwitch("houseLearningEnabled", false);
+    assert.equal(writes, 1);
+    assert.equal(reads, 2);
+    assert.equal(state.entities.houseLearningEnabled.value, false);
+    assert.match(state.controlNotice, /uitgeschakeld/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("een geaccepteerde leerschakelaar zonder geldige verse readback meldt geen succes", async () => {
+  state.appView = "learning";
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningEndpointChecked = true;
+  const cases = [
+    { entities: { houseLearningEnabled: { value: true, state: "ON" } }, missing: [] },
+    { entities: { houseLearningEnabled: { value: null, state: "unknown" } }, missing: [] },
+    { entities: { houseLearningEnabled: { value: false, state: "ON" } }, missing: [] },
+    { entities: {}, missing: ["houseLearningEnabled"] },
+    { entities: { houseLearningEnabled: { value: false, state: "OFF" } }, missing: ["houseLearningEnabled"] },
+  ];
+  for (const payload of cases) {
+    state.entities = { houseLearningEnabled: switchEntity(true) };
+    globalThis.fetch = async (url) => ({
+      ok: true, status: 200,
+      json: async () => url === "/openquatt/entities" ? payload : statusPayload({ enabled: true }),
+    });
+    await commitSwitch("houseLearningEnabled", false);
+    assert.equal(state.entities.houseLearningEnabled.value, true);
+    assert.equal(state.controlNotice, "");
+    assert.match(state.controlError, /nieuwe leerstand nog niet bevestigd/);
+  }
+});
+
+test("een stilvallende readback- of statusbody houdt de leerbediening niet geblokkeerd", async () => {
+  const originalTimeout = window.setTimeout;
+  window.setTimeout = (callback) => setTimeout(callback, 5);
+  try {
+    for (const stallEndpoint of ["/openquatt/entities", "/openquatt/learning/status"]) {
+      state.appView = "learning";
+      state.houseLearningEndpointAvailable = true;
+      state.houseLearningEndpointChecked = true;
+      state.entities = { houseLearningEnabled: switchEntity(true) };
+      globalThis.fetch = async (url, { signal } = {}) => ({
+        ok: true, status: 200,
+        json: async () => {
+          if (url === stallEndpoint) {
+            return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+          }
+          return url === "/openquatt/entities"
+            ? { entities: { houseLearningEnabled: { value: false, state: "OFF" } }, missing: [] }
+            : statusPayload({ enabled: false });
+        },
+      });
+      await commitSwitch("houseLearningEnabled", false);
+      assert.equal(state.busyAction, "");
+      if (stallEndpoint === "/openquatt/entities") {
+        assert.equal(state.controlNotice, "");
+        assert.match(state.controlError, /nog niet bevestigd/);
+      } else {
+        assert.match(state.controlNotice, /uitgeschakeld/);
+        assert.match(renderLearningView(), /Leerstatus kon niet worden opgehaald\. leerstatus-time-out/);
+      }
+    }
+  } finally {
+    window.setTimeout = originalTimeout;
+  }
+});
+
+test("een uitgestelde vergelijkingsbody kan terugnavigatie niet overleven", async () => {
+  state.appView = "learning";
+  state.learningForecastOpen = false;
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const originalFetch = globalThis.fetch;
+  const ready = statusPayload({
+    enabled: true, journal_status: "saved_verified", batch_advice_ready: true, context_revision: 8, shadow_ttl_ms: 10000,
+    shadow: {
+      schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+      source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+      available: true, reason: "ready", manual_w: 3100, candidate_w: 2750, delta_w: -350, auto_apply_allowed: false,
+    },
+  });
+  let release;
+  const body = new Promise(resolve => { release = resolve; });
+  globalThis.fetch = async () => ({ ok: true, json: () => body });
+  try {
+    const oldRequest = refreshHouseLearningStatus({ force: true });
+    setAppView("settings");
+    setAppView("learning");
+    release(ready);
+    await oldRequest;
+    assert.equal(state.houseLearningStatus.batchAdviceReady, true);
+    assert.equal(state.houseLearningStatus.shadow, null);
+    assert.equal(state.houseLearningLastFetchAt, 0);
+    await refreshHouseLearningStatus();
+    assert.equal(state.houseLearningStatus.shadow.available, true);
+    setAppView("settings");
+    assert.equal(state.houseLearningStatus.shadow, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("warmtevraag vergelijkt alleen een actuele en goedgekeurde berekening", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["Date"], now: 1_793_963_600_000 });
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const payload = statusPayload({
+    enabled: true, journal_status: "saved_verified", batch_advice_ready: true, context_revision: 8, shadow_ttl_ms: 10000,
+    shadow: {
+      schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+      source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+      available: true, reason: "ready", manual_w: 3100, candidate_w: 2750, delta_w: -350, auto_apply_allowed: false,
+    },
+  });
+  const render = (changes = {}) => renderHouseLearningShadow(normalizeHouseLearningStatus({ ...payload, ...changes }));
+  const html = render();
+  assert.match(html, /Ingestelde woninglijn/);
+  assert.match(html, /Geleerde woninglijn/);
+  assert.match(html, /3[.]100 W/);
+  assert.match(html, /2[.]750 W/);
+  assert.match(html, /-350 W/);
+  assert.doesNotMatch(html, /<button[^>]+(?:apply|commit)/);
+
+  for (const override of [
+    { auto_apply_allowed: true }, { source: "simulation" }, { context_revision: 7 },
+    { manual_w: "3100" }, { candidate_w: -1 }, { delta_w: 350 }, { tick_ms: 0 },
+    { available: false, reason: "external_override" },
+  ]) {
+    const invalid = { ...payload.shadow, ...override };
+    assert.doesNotMatch(render({ shadow: invalid }), /3[.]100 W/);
+    assert.equal(normalizeHouseLearningStatus({ ...payload, shadow: invalid }).shadow.reason, "invalid_inputs");
+  }
+  const waiting = { ...payload.shadow, available: false, reason: "batch_not_ready", manual_w: null, candidate_w: null, delta_w: null };
+  assert.match(render({ batch_advice_ready: false, shadow: waiting }), /zodra de geleerde woninglijn is goedgekeurd/);
+  assert.doesNotMatch(render({ batch_advice_ready: false, shadow: waiting }), /<dl/);
+  assert.doesNotMatch(render({ enabled: false }), /<dl/);
+  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch - 31 }), /<dl/);
+  assert.match(render({ tick_epoch: payload.tick_epoch + 30 }), /<dl/);
+  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch + 31 }), /<dl/);
+  assert.doesNotMatch(render({ shadow_ttl_ms: undefined }), /<dl/);
+  assert.doesNotMatch(render({ shadow_ttl_ms: 30001 }), /<dl/);
+  assert.match(render({ shadow: undefined, shadow_expired: true }), /actuele vergelijking/);
+  const expired = normalizeHouseLearningStatus(payload, performance.now() - 10001);
+  assert.match(renderHouseLearningShadow(expired), /actuele vergelijking/);
+  assert.doesNotMatch(renderHouseLearningShadow(expired), /<dl/);
+  state.houseLearningReset = "pending";
+  assert.match(render(), /bevestiging van het wissen/);
+  assert.doesNotMatch(render(), /<dl/);
+  assert.equal(renderHouseLearningShadow(normalizeHouseLearningStatus(statusPayload())), "");
+});
+
+test("display preview is optional and cannot replace the independent advice candidate", () => {
+  const preview = {h:190,t0:18,segments:21,days:21,min_c:1.97,max_c:12.34};
+  const raw = statusPayload({records:21,h_batch:213,t0_batch:17.4,batch_preview:preview});
+  const normalized = normalizeHouseLearningStatus(raw);
+  assert.deepEqual(normalized.batchPreview,{h:190,t0:18,count:21,days:21,minC:1.97,maxC:12.34});
+  assert.equal(normalized.hBatch,213); assert.equal(normalized.t0Batch,17.4);
+  assert.equal(normalized.batchAdviceReady,false); assert.equal(normalized.adviceReady,false);
+  assert.equal(normalizeHouseLearningStatus(statusPayload()).batchPreview,undefined);
+  for (const change of [{segments:22},{days:-1},{h:"190"},{h:null},{t0:NaN},{min_c:13},{days:5},{segments:129}]) {
+    assert.equal(normalizeHouseLearningStatus({...raw,batch_preview:{...preview,...change}}).batchPreview,null);
+  }
+  const unavailable = normalizeHouseLearningStatus({...raw,batch_preview:{...preview,h:null,t0:null}});
+  assert.equal(unavailable.batchPreview.h,null);
+  assert.equal(unavailable.hBatch,213);
+});
+
+test("onvoorbereide fitmetadata wist de geladen dagmetingen niet", async () => {
+  const { renderHouseLearningReadiness } = await import("../js/src/settings/house-learning-readiness.js");
+  const records = Array.from({ length: 12 }, (_, index) => ({
+    recordKind: 1, outsideC: 4 + index, startEpoch: 1700000000 + index * 86400,
+  }));
+  for (const metadata_prepared of [false, undefined]) {
+    const status = normalizeHouseLearningStatus(statusPayload({ records: 12, batch_fit: {
+      metadata_prepared, train_segments: 0, holdout_segments: 0, train_days: 0, holdout_days: 0,
+      train_p10_c: null, train_p90_c: null, train_min_c: null, train_max_c: null,
+    } }));
+    assert.equal(status.batchFit, null);
+    const html = renderHouseLearningReadiness(records, { fit: status.batchFit });
+    assert.match(html, /12 <span>\/ 9 nodig/);
+    assert.match(html, /Leren: 9 · Controleren: 3/);
+    assert.doesNotMatch(html, /Leren: 0|0 <span>\/ 9 nodig/);
+  }
+});
+
+test("statuskaart en grafiek kiezen dezelfde voorlopige lijn", async () => {
+  const { getHouseLearningChartModel } = await import("../js/src/settings/house-learning-chart.js");
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const preview = { h: 190, t0: 18, segments: 8, days: 8, min_c: 4, max_c: 10 };
+  for (const overrides of [
+    { h_batch: null, t0_batch: null, batch_preview: preview, available: true },
+    { h_batch: 213, t0_batch: 17.4, batch_preview: { ...preview, h: null, t0: null }, available: false },
+  ]) {
+    const status = normalizeHouseLearningStatus(statusPayload({ enabled: true, journal_status: "saved_verified", records: 8, ...overrides }));
+    const html = renderHouseLearningStatusMarkup(status, "primary");
+    const chart = getHouseLearningChartModel([], {}, { h: status.hBatch, t0: status.t0Batch,
+      preview: status.batchPreview, ready: false });
+    assert.equal(chart.learnedValid, overrides.available);
+    assert.match(html, overrides.available ? /Modelstatus · Voorlopige schatting/ : /Modelstatus · Nog geen schatting/);
+  }
+});
+
+test("RLS-fitgereedheid vervangt geen onafhankelijke warmteopslagvalidatie", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const raw = statusPayload({ enabled: true, journal_status: "saved_verified",
+    u_rls: 220, c_rls_wh_per_k: 8000, rls_ready: true, rls_readiness_reasons: [] });
+  for (const capacity_validated of [false, true]) {
+    const html = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...raw, capacity_validated }), "primary");
+    const thermal = html.slice(html.indexOf("Opwarmen en afkoelen"));
+    assert.match(thermal, capacity_validated ? /Modelstatus · Beoordeeld/ : /Modelstatus · Voorlopige schatting/);
+  }
 });

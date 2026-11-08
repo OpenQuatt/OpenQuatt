@@ -916,9 +916,11 @@
 }
 .oq-performance-prompt .oq-usage-facts-grid {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: none;
   gap: 20px;
 }
-.oq-performance-prompt .oq-usage-facts-grid > .oq-usage-disclosure-column { padding: 0; }
+.oq-performance-prompt .oq-usage-facts-grid > .oq-usage-disclosure-column { grid-row: auto; padding: 0; border-right: none; }
+.oq-performance-prompt .oq-usage-facts-grid > .oq-usage-why { grid-column: auto; }
 .oq-performance-prompt .oq-usage-disclosure-column-head h4 { margin: 0; }
 .oq-performance-prompt .oq-usage-disclosure-column ul { gap: 12px; }
 .oq-performance-prompt .oq-usage-disclosure-column li {

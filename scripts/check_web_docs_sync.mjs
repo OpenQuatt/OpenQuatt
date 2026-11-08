@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { APP_VIEWS, QUICK_STEPS, SETTINGS_GROUPS } from "../openquatt/web/js/src/core/config.js";
+import { APP_NAV_ITEMS, QUICK_STEPS, SETTINGS_GROUPS } from "../openquatt/web/js/src/core/config.js";
 import nl from "../openquatt/web/js/src/i18n/nl.js";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -70,7 +70,8 @@ function resolveNl(key) {
 }
 
 const quickStepLabels = QUICK_STEPS.map((step) => resolveNl(step.titleKey));
-const viewLabels = APP_VIEWS.map((view) => resolveNl(view.labelKey));
+// The main-screen table follows the top-level tabs; grouped views appear under their group tab.
+const viewLabels = APP_NAV_ITEMS.map((item) => resolveNl(item.labelKey));
 const settingsGroupLabels = SETTINGS_GROUPS.map((group) => resolveNl(group.labelKey));
 
 assertEqual(

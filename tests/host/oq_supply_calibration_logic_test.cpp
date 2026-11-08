@@ -59,6 +59,11 @@ int main() {
   assert(load_record(cic_storage).fingerprint == valid_cic_record.fingerprint &&
          load_record(cic_storage).checksum == valid_cic_record.checksum &&
          load_record(cic_storage).offset_c == valid_cic_record.offset_c);
+  bool offset_changed = true;
+  assert(restore_record(cic_storage, cic_b, -0.18f, offset_changed) && !offset_changed);
+  assert(!restore_record(cic_storage, cic_b, 2.01f, offset_changed) && !offset_changed);
+  assert(restore_record(cic_storage, cic_b, 0.0f, offset_changed) && offset_changed);
+  assert(restore_record(cic_storage, cic_b, 0.0f, offset_changed) && !offset_changed);
 
   const CalibrationRecord interrupted_record{cic_b.fingerprint, 0U, -0.22f};
   assert(record_present(interrupted_record));

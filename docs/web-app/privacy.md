@@ -17,7 +17,7 @@ Deze opsomming gaat over het uurbericht. Voor de inhoud en verwerking van crashr
 
 ## Delen aan- of uitzetten
 
-1. Open **Instellingen → Systeem** in de web-app.
+1. Open **Instellingen → Gegevens delen** in de web-app.
 2. Open **Gebruiksstatistieken** of **Prestatiemetingen**, afhankelijk van de keuze die je wilt wijzigen.
 3. Bekijk de toelichting en, bij gebruiksstatistieken, **Welke gegevens worden gedeeld?**.
 4. Zet de gewenste keuze aan of uit. Controleer beide keuzes als je helemaal geen van deze gegevens wilt delen.
@@ -42,7 +42,7 @@ ook na herstart en OTA-update. De popup sluit pas na bevestiging van de opgeslag
 keuze. Uitstellen schrijft niets naar de controller. Als browseropslag niet beschikbaar
 is, geldt het uitstel tot het herladen van de pagina. Onder **Welke gegevens worden
 gedeeld?** vind je uitleg over de metingen, het verzendinterval en het bron-IP-adres.
-Je kunt delen later altijd wijzigen via **Instellingen → Systeem**.
+Je kunt delen later altijd wijzigen via **Instellingen → Gegevens delen**.
 
 ## Wat gebeurt er daarna?
 

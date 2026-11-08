@@ -1,0 +1,73 @@
+.oq-weather-forecast { display: grid; gap: 16px; min-width: 0; margin: 24px 0 16px; }
+.oq-weather-forecast h4 { margin: 0; color: var(--oq-helper-ink); }
+.oq-weather-chart-note { margin: 0; color: var(--oq-helper-soft); font-size: 0.84rem; line-height: 1.5; }
+.oq-weather-header { display: flex; justify-content: space-between; align-items: start; gap: 12px 24px; flex-wrap: wrap; }
+.oq-weather-header .oq-weather-chart-note { margin-top: 5px; font-size: 0.78rem; }
+.oq-weather-meta { display: grid; gap: 4px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-align: right; font-size: 0.78rem; color: var(--oq-helper-soft); }
+.oq-weather-meta strong { color: var(--oq-helper-ink); font-weight: 600; }
+.oq-weather-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; min-width: 0; padding: 20px 0 16px; border-block: 1px solid var(--oq-helper-line); }
+.oq-weather-chart { min-width: 0; margin: 0; }
+.oq-weather-chart figcaption { display: flex; justify-content: space-between; margin: 0 0 16px 30px; color: var(--oq-helper-ink); font-size: 0.86rem; font-weight: 600; }
+.oq-weather-chart figcaption span { color: var(--oq-helper-faint); font-weight: 400; }
+.oq-weather-plot { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 8px; row-gap: 10px; }
+.oq-weather-y { display: flex; flex-direction: column; justify-content: space-between; text-align: right; }
+.oq-weather-x { grid-column: 2; display: flex; justify-content: space-between; gap: 6px; }
+.oq-weather-x, .oq-weather-y { color: var(--oq-helper-soft); font-size: 0.7rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.oq-weather-chart svg { display: block; width: 100%; height: 128px; overflow: visible; cursor: crosshair; touch-action: pan-y; }
+.oq-weather-chart svg:focus-visible { outline: 2px solid var(--oq-helper-sky); outline-offset: 3px; border-radius: 4px; }
+.oq-weather-chart line { stroke: var(--oq-helper-line); stroke-width: 1; }
+.oq-weather-chart svg * { vector-effect: non-scaling-stroke; }
+.oq-weather-chart-line { fill: none; stroke: var(--oq-helper-sky); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.oq-weather-chart-line--temperature { stroke: var(--oq-helper-accent); }
+.oq-weather-chart-line--wind { stroke: var(--oq-helper-sky); }
+.oq-weather-chart [hidden] { display: none; }
+.oq-weather-chart .oq-weather-cursor-line { stroke: var(--oq-helper-soft); stroke-dasharray: 3 3; }
+.oq-weather-cursor-dot { fill: var(--oq-helper-accent); stroke: var(--oq-helper-card); stroke-width: 2; }
+.oq-weather-chart[data-oq-weather-chart="wind"] .oq-weather-cursor-dot { fill: var(--oq-helper-sky); }
+.oq-weather-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; }
+.oq-weather-footer .oq-weather-chart-note { font-size: 0.76rem; }
+.oq-weather-inspect { min-height: 1.5em; margin: 0; color: var(--oq-helper-ink); font-size: 0.84rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.oq-weather-hourly summary { cursor: pointer; color: var(--oq-helper-ink); font-size: 0.86rem; }
+.oq-weather-table-wrap { max-height: 240px; overflow: auto; margin-top: 8px; }
+.oq-weather-hourly table { width: 100%; border-collapse: collapse; font-size: 0.8rem; color: var(--oq-helper-ink); }
+.oq-weather-hourly th, .oq-weather-hourly td { padding: 7px; border-bottom: 1px solid var(--oq-helper-line); text-align: right; white-space: nowrap; }
+.oq-weather-hourly th:first-child { text-align: left; }
+
+.oq-helper-shell--dark .oq-weather-chart-line--wind { stroke: #60a5fa; }
+.oq-helper-shell--dark .oq-weather-chart-line--temperature { stroke: #fb923c; }
+
+@media (max-width: 800px) {
+  .oq-weather-charts { grid-template-columns: minmax(0, 1fr); }
+  .oq-weather-meta { text-align: left; }
+}
+
+.oq-learning-workspace-result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin-bottom: 24px; }
+.oq-learning-workspace-result-head h4 { margin: 0; font-size: .95rem; color: var(--oq-helper-ink); }
+.oq-learning-workspace-quality { padding: 3px 8px; border-radius: 5px; background: var(--oq-helper-card-muted); color: var(--oq-helper-soft); font-size: .72rem; font-weight: 600; }
+.oq-learning-workspace-quality[data-quality="provisional"], .oq-learning-workspace-quality[data-quality="previous"] { color: var(--oq-helper-accent-deep); background: var(--oq-helper-accent-soft); }
+.oq-learning-workspace-scenario-condition { margin: -10px 0 20px; color: var(--oq-helper-soft); font-size: .82rem; line-height: 1.6; }
+.oq-learning-workspace-targets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 12px; }
+.oq-learning-workspace-targets article { min-width: 0; padding: 0 24px; }
+.oq-learning-workspace-targets article:first-child { padding-left: 0; }
+.oq-learning-workspace-targets article + article { border-left: 1px solid var(--oq-helper-line); }
+.oq-learning-workspace-targets h5 { margin: 0 0 8px; color: var(--oq-helper-soft); font-size: .8rem; font-weight: 600; line-height: 1.5; }
+.oq-learning-workspace-targets strong { display: block; color: var(--oq-helper-ink); font-size: 1.8rem; letter-spacing: -.04em; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.oq-learning-workspace-targets small { display: block; margin-top: 5px; color: var(--oq-helper-faint); font-size: .7rem; line-height: 1.5; }
+.oq-learning-workspace-issued { margin: 12px 0 0; color: var(--oq-helper-faint); font-size: .73rem; }
+.oq-learning-workspace-forecast-notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; margin: 24px 0 28px; padding-top: 20px; border-top: 1px solid var(--oq-helper-line); font-size: .8rem; line-height: 1.6; color: var(--oq-helper-soft); }
+.oq-learning-workspace-forecast-notes h5 { margin: 0 0 8px; color: var(--oq-helper-faint); font-size: .7rem; font-weight: 650; text-transform: uppercase; letter-spacing: .025em; }
+.oq-learning-workspace-forecast-notes p { margin: 0; }
+.oq-learning-workspace-forecast-notes p + p { margin-top: 8px; }
+.oq-learning-workspace-forecast-notes ul { margin: 0; padding-left: 17px; }
+.oq-learning-workspace-forecast-notes li + li { margin-top: 5px; }
+
+@media (max-width: 700px) {
+  .oq-learning-workspace-forecast-notes { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .oq-learning-workspace-targets article { padding-inline: 8px; }
+  .oq-learning-workspace-targets article:first-child { padding-left: 0; }
+}
+/* Empty messages would add a grid gap above the first card. */
+.oq-learning-view [data-oq-learning-messages]:empty { display: none; }
+.oq-weather-controls { margin-bottom: 24px; }
+.oq-weather-controls p { color: var(--oq-helper-soft); }
+.oq-weather-controls .oq-helper-input { width: 100%; }

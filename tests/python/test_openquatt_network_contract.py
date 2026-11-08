@@ -107,8 +107,14 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
         )
         self.assertNotIn("openquatt-heatpump-controller-q-single-wifi.firmware.factory.bin", INSTALLER)
         self.assertNotIn("openquatt-heatpump-controller-q-duo-eth.firmware.factory.bin", INSTALLER)
-        self.assertIn('hardware === "heatpump_controller_q"', INSTALLER)
+        self.assertIn('input[name="topology"]:checked', INSTALLER)
+        self.assertIn("const profile = PROFILES[topology];", INSTALLER)
+        self.assertIn('name="topology" value="single"', INSTALLER_PAGE)
+        self.assertIn('name="topology" value="duo"', INSTALLER_PAGE)
+        self.assertNotIn('name="hardware"', INSTALLER_PAGE)
+        self.assertNotIn('name="connection"', INSTALLER_PAGE)
         self.assertIn("wifiProvisioning: true", INSTALLER)
+        self.assertIn('id="wifi-provision-panel"', INSTALLER_PAGE)
         self.assertIn("zonder opgeslagen Wi-Fi-gegevens", INSTALLER_PAGE)
 
 

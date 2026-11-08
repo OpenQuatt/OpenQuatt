@@ -9,7 +9,7 @@ external_components:
   - source:
       type: local
       path: ${external_components_path}
-    components: [web_server, web_server_base, openquatt_web_auth, openquatt_recovery, openquatt_trends, openquatt_energy_history, openquatt_log_history, openquatt_debug_recorder, openquatt_entities, openquatt_service_status, openquatt_mqtt_config, openquatt_decision_log, openquatt_incident_manager, openquatt_odu_eeprom_dump, openquatt_odu_runtime_frequency, openquatt_odu_settings, openquatt_odu_defrost]
+    components: [web_server, web_server_base, openquatt_web_auth, openquatt_recovery, openquatt_trends, openquatt_energy_history, openquatt_log_history, openquatt_debug_recorder, openquatt_entities, openquatt_change_log, openquatt_service_status, openquatt_mqtt_config, openquatt_decision_log, openquatt_incident_manager, openquatt_odu_eeprom_dump, openquatt_odu_runtime_frequency, openquatt_odu_settings, openquatt_odu_defrost]
 
 openquatt_web_auth:
   id: oq_web_auth_store
@@ -40,6 +40,10 @@ openquatt_entities:
     - curve_tsupply_5
     - curve_tsupply_10
     - curve_tsupply_15
+
+openquatt_change_log:
+  id: oq_change_log
+  web_auth: oq_web_auth_store
 
 openquatt_decision_log:
   id: oq_decision_log

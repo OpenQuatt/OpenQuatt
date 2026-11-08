@@ -1039,40 +1039,6 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
     );
   }
 
-  export function renderSettingsQuickStartSection() {
-    const statusLabel = state.complete === true ? t("settings.qsDone") : state.complete === false ? t("settings.qsOpen") : t("settings.qsLoading");
-    const statusCopy = state.complete === true
-      ? t("settings.qsDoneCopy")
-      : state.complete === false
-        ? t("settings.qsOpenCopy")
-        : t("settings.qsLoadingCopy");
-
-    return renderSettingsSection(
-      t("settingsInstallation.qsSectionGroup"),
-      t("settingsInstallation.qsSectionTitle"),
-      t("settingsInstallation.qsSectionCopy"),
-      `
-        <div class="oq-settings-quickstart-status">
-          <div class="oq-settings-quickstart-status-row">
-            <div>
-              <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settings.qsCurrentStatus"))}</p>
-              <strong class="oq-settings-quickstart-status-value">${escapeHtml(statusLabel)}</strong>
-            </div>
-            <button
-              class="oq-helper-button oq-helper-button--ghost"
-              type="button"
-              data-oq-action="reset"
-              ${state.busyAction === "reset" ? "disabled" : ""}
-            >
-              ${escapeHtml(t("settings.qsReset"))}
-            </button>
-          </div>
-          <p class="oq-settings-quickstart-status-copy">${escapeHtml(statusCopy)}</p>
-        </div>
-      `,
-    );
-  }
-
   function renderSettingsSystemOpenAction(action) {
     return `<button
       class="oq-helper-button oq-helper-button--ghost"
@@ -1129,8 +1095,26 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
           ${renderSettingsSystemRow({ dataValue: "datetime", label: t("settingsInstallation.diagDatetime"), value: dateTime })}
           ${renderSettingsSystemRow({ dataValue: "espTemp", label: t("settingsInstallation.diagEspTemp"), value: getEspTemperatureLabel() })}
           ${renderSettingsSystemRow({
+            dataValue: "quickStart",
+            label: "",
+            value: t("settingsInstallation.qsSectionTitle"),
+            note: state.complete === true
+              ? t("settings.qsDoneCopy")
+              : state.complete === false
+                ? t("settings.qsOpenCopy")
+                : t("settings.qsLoadingCopy"),
+            action: `<button
+              class="oq-helper-button oq-helper-button--ghost"
+              type="button"
+              data-oq-action="reset"
+              ${state.busyAction === "reset" ? "disabled" : ""}
+            >
+              ${escapeHtml(t("settings.qsReset"))}
+            </button>`,
+          })}
+          ${renderSettingsSystemRow({
             dataValue: "restart",
-            label: t("settingsInstallation.diagRestart"),
+            label: "",
             value: t("settingsInstallation.diagRestartValue"),
             note: t("settingsInstallation.diagRestartNote"),
             action: `<button
@@ -1144,7 +1128,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
           })}
           ${hasEntity("factoryResetButton") ? renderSettingsSystemRow({
             dataValue: "factory-reset",
-            label: t("settingsInstallation.diagFactory"),
+            label: "",
             value: t("settingsInstallation.diagFactoryValue"),
             note: t("settingsInstallation.diagFactoryNote"),
             action: `<button
@@ -1159,8 +1143,8 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
           ${hasEntity("statusLedsEnabled") ? `
             ${renderSettingsSystemRow({
               dataValue: "statusLeds",
-              label: t("settingsInstallation.diagLeds"),
-              value: isEntityActive("statusLedsEnabled") ? t("common.on") : t("common.off"),
+              label: "",
+              value: t("settingsInstallation.diagLeds"),
               note: t("settingsInstallation.diagLedsNote"),
               action: renderSettingsCompactSwitchControl(
                 "statusLedsEnabled",

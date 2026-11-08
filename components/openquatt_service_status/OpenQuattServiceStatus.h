@@ -27,6 +27,7 @@ class OpenQuattServiceStatus : public Component {
   using StringGlobal = globals::GlobalsComponent<std::string>;
 
   void set_web_server(web_server::WebServer* web_server) { this->web_server_ = web_server; }
+  void set_duo_defrost_start_block(uint8_t mask) { this->duo_defrost_start_block_mask_ = mask; }
   void set_warmup_progress(uint8_t status, uint32_t elapsed_s) { this->warmup_progress_.publish(status, elapsed_s); }
   uint32_t warmup_progress() const { return this->warmup_progress_.read(); }
 
@@ -115,6 +116,8 @@ class OpenQuattServiceStatus : public Component {
   uint32_t published_at_ms_{0U};  // Protected by snapshot_lock_.
   uint32_t last_snapshot_ms_{0U};
   WarmupProgressSnapshot warmup_progress_;
+  // Written by the actuator and read by the snapshot builder on the ESPHome loop.
+  uint8_t duo_defrost_start_block_mask_{0};
   web_server::WebServer* web_server_{nullptr};
   IntGlobal* control_mode_code_{nullptr};
   BoolGlobal* commissioning_active_{nullptr};

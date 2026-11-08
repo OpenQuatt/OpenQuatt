@@ -182,7 +182,7 @@ Vanaf dit punt kun je OpenQuatt zelfstandig via de web-app gebruiken. Home Assis
 
 ## Passief leren voor Power House
 
-Op Heatpump Controller Q Single en Duo kan Power House optioneel **passief leren**. Je vindt dit onder **Instellingen → Verwarmen → Power House**.
+Op Heatpump Controller Q Single en Duo kan Power House optioneel **passief leren**. Je vindt dit in de web-app onder [**Leren**](web-app/leren.md).
 
 Na inschakelen verzamelt OpenQuatt alleen geschikte verwarmingsperioden en schat het warmteverlies van de woning en een bijbehorende woninglijn. De verzamelde leerdata blijft na een herstart of software-update bewaard, en de gekozen aan/uit-stand blijft behouden. **Passief leren staat standaard aan**; bewust uitschakelen blijft ook na een herstart of update behouden.
 

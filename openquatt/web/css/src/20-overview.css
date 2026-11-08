@@ -1,6 +1,4 @@
 .oq-overview-board {
-  --oq-overview-bg: linear-gradient(180deg, rgba(30, 40, 56, 0.98), rgba(23, 32, 46, 0.98));
-  --oq-overview-border: rgba(124, 141, 165, 0.24);
   --oq-overview-ink: #e8eef8;
   --oq-overview-title: #f8fafc;
   --oq-overview-soft: #cad5e2;
@@ -16,29 +14,25 @@
   --oq-overview-lane-bg: rgba(31, 42, 57, 0.96);
   --oq-overview-lane-border: rgba(124, 141, 165, 0.2);
   --oq-overview-row-border: rgba(124, 141, 165, 0.18);
+  --oq-overview-segment-bg: rgba(15, 23, 42, 0.32);
+  --oq-overview-segment-active-bg: rgba(148, 163, 184, 0.18);
   --oq-stat-background: var(--oq-overview-lane-bg);
   --oq-stat-border: var(--oq-overview-panel-border);
   --oq-stat-ink: var(--oq-overview-title);
   --oq-stat-soft: var(--oq-overview-soft);
   --oq-overview-interactive-transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
-  padding: 24px;
-  border-radius: var(--oq-helper-radius-lg);
-  background: var(--oq-overview-bg);
-  border: 1px solid var(--oq-overview-border);
   color: var(--oq-overview-ink);
   position: relative;
 }
 
 .oq-overview-board--light {
-  --oq-overview-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.98));
-  --oq-overview-border: #e5e7eb;
   --oq-overview-ink: #374151;
   --oq-overview-title: #111827;
   --oq-overview-soft: #6b7280;
   --oq-overview-muted: #6b7280;
   --oq-overview-surface: #ffffff;
   --oq-overview-surface-border: #e5e7eb;
-  --oq-overview-panel-bg: #f8fafc;
+  --oq-overview-panel-bg: #ffffff;
   --oq-overview-panel-border: #e5e7eb;
   --oq-overview-chip-bg: rgba(255, 255, 255, 0.94);
   --oq-overview-chip-border: #dbe3ee;
@@ -47,9 +41,13 @@
   --oq-overview-lane-bg: #ffffff;
   --oq-overview-lane-border: #e5e7eb;
   --oq-overview-row-border: #e5e7eb;
+  --oq-overview-segment-bg: #f1f5f9;
+  --oq-overview-segment-active-bg: #ffffff;
 }
 
-.oq-overview-summary-shell,
+.oq-overview-kpis,
+.oq-overview-statuspanel,
+.oq-overview-controlpanel-stack,
 .oq-overview-system,
 .oq-overview-temps,
 .oq-overview-hp,
@@ -58,9 +56,16 @@
   border: 1px solid var(--oq-overview-panel-border);
 }
 
+/* Each kind of information gets one card: figures, state, temperatures and controls. */
 .oq-overview-summary-shell {
-  padding: 16px;
-  border-radius: var(--oq-helper-radius-lg);
+  display: grid;
+  gap: 16px;
+}
+
+.oq-overview-warmup {
+  margin: 0;
+  color: var(--oq-overview-soft);
+  line-height: 1.5;
 }
 
 .oq-overview-monitoring-notice {
@@ -77,6 +82,11 @@
 
 .oq-overview-monitoring-notice.is-hidden {
   display: none;
+}
+
+.oq-overview-monitoring-notice.is-fault {
+  border-color: rgba(234, 88, 12, 0.6);
+  background: rgba(234, 88, 12, 0.1);
 }
 
 .oq-overview-monitoring-notice > div {
@@ -140,83 +150,145 @@
   color: var(--oq-overview-soft);
 }
 
-.oq-overview-summary-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 430px);
-  gap: 16px;
-  margin-top: 12px;
-  align-items: start;
+.oq-overview-sectionhead h3,
+.oq-overview-system-copy h3 {
+  margin: 0;
+  color: var(--oq-overview-soft);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
-.oq-overview-summary-main,
-.oq-overview-kpis,
+.oq-overview-system-copy p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+.oq-overview-summary-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .oq-overview-summary-side {
   display: grid;
   min-width: 0;
-  align-content: start;
 }
 
-.oq-overview-summary-main,
-.oq-overview-summary-side {
-  gap: 10px;
-  align-self: start;
+.oq-overview-summary-side:empty {
+  display: none;
 }
 
-.oq-overview-kpis {
-  gap: 8px;
-}
-
-.oq-overview-summary-side {
-  padding-top: 0;
+.oq-overview-kpis,
+.oq-overview-statuspanel,
+.oq-overview-controlpanel-stack {
+  min-width: 0;
+  padding: 24px;
+  border-radius: var(--oq-helper-radius-lg);
 }
 
 .oq-overview-top {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 0;
-  align-items: stretch;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.oq-overview-controlpanel {
-  background: var(--oq-overview-lane-bg);
-  border: 1px solid var(--oq-overview-panel-border);
+.oq-overview-top .oq-stat {
+  gap: 4px;
+  padding: 0 24px;
+  border: 0;
+  border-left: 1px solid var(--oq-overview-row-border);
+  border-radius: 0;
+  background: transparent;
 }
 
-.oq-overview-sectionhead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 28px;
+.oq-overview-top .oq-stat:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
-.oq-overview-sectionhead h3 {
-  margin: 0;
+.oq-overview-top .oq-stat-value {
+  font-size: 1.85rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.oq-overview-sectionhead,
+.oq-overview-temps > .oq-overview-system-copy {
+  margin-bottom: 10px;
+}
+
+/* Status and temperatures share one shape: a focal value, a meaning line, then compact rows.
+   The meaning line takes the state colour, so the value keeps the card's left edge. */
+.oq-overview-cardhero {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--oq-overview-row-border);
+}
+
+.oq-overview-cardhero strong {
   color: var(--oq-overview-title);
-  font-size: 0.92rem;
-  font-weight: 800;
-  letter-spacing: 0.01em;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
-.oq-overview-statuspanel,
-.oq-overview-controlpanel-stack {
-  display: grid;
-  gap: 8px;
-  align-content: start;
+.oq-overview-cardhero span {
+  color: var(--oq-overview-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
-.oq-overview-statusgrid {
+.oq-overview-cardhero--green span {
+  color: #15803d;
+}
+
+.oq-overview-cardhero--orange span {
+  color: #c2410c;
+}
+
+.oq-overview-cardhero--sky span {
+  color: #0369a1;
+}
+
+.oq-helper-shell--dark .oq-overview-cardhero--green span {
+  color: #86efac;
+}
+
+.oq-helper-shell--dark .oq-overview-cardhero--orange span {
+  color: #fdba74;
+}
+
+.oq-helper-shell--dark .oq-overview-cardhero--sky span {
+  color: #7dd3fc;
+}
+
+.oq-overview-cardrows {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  align-items: stretch;
+}
+
+.oq-overview-temps-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .oq-overview-controlpanel {
   display: grid;
   gap: 10px;
-  padding: 14px 16px;
-  border-radius: var(--oq-helper-radius-md);
+  padding: 14px 0;
+  border-top: 1px solid var(--oq-overview-row-border);
+}
+
+.oq-overview-sectionhead + .oq-overview-controlpanel {
+  padding-top: 6px;
+  border-top: 0;
+}
+
+.oq-overview-controlpanel:last-child {
+  padding-bottom: 0;
 }
 
 .oq-overview-controlpanel p {
@@ -232,12 +304,25 @@
   gap: 10px;
 }
 
-.oq-overview-controlpanel-meta-item,
-.oq-overview-controlpanel-head {
+.oq-overview-controlpanel-meta-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.oq-overview-controlpanel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.oq-overview-controlpanel-name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .oq-overview-controlpanel-meta-item {
@@ -247,8 +332,7 @@
   min-width: 0;
 }
 
-.oq-overview-controlpanel-meta-item span,
-.oq-overview-controlpanel-head span {
+.oq-overview-controlpanel-meta-item span {
   color: #667085;
   font-size: 0.78rem;
   font-weight: 700;
@@ -256,24 +340,34 @@
   text-transform: uppercase;
 }
 
-.oq-overview-controlpanel-head span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.oq-overview-controlpanel-name > span {
+  color: var(--oq-overview-title);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
-.oq-overview-controlpanel-head span::before {
+/* The state line carries the colour through its dot. */
+.oq-overview-controlpanel-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--oq-overview-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.oq-overview-controlpanel-state::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: #cbd5e1;
-  box-shadow: 0 0 0 4px rgba(203, 213, 225, 0.16);
   flex: 0 0 auto;
 }
 
-.oq-overview-controlpanel-meta-item strong,
-.oq-overview-controlpanel-head strong {
+.oq-overview-controlpanel-meta-item strong {
   color: var(--oq-overview-title);
   font-size: 0.9rem;
   line-height: 1.2;
@@ -305,94 +399,58 @@
   color: #fb923c;
 }
 
-.oq-overview-controlpanel--green .oq-overview-controlpanel-head span {
-  color: #3f6f55;
-}
-
-.oq-overview-controlpanel--green .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--green .oq-overview-controlpanel-state::before {
   background: #22c55e;
   box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
 }
 
-.oq-overview-controlpanel--blue .oq-overview-controlpanel-head span,
-.oq-overview-controlpanel--sky .oq-overview-controlpanel-head span {
-  color: #46678e;
-}
-
-.oq-overview-controlpanel--blue .oq-overview-controlpanel-head span::before,
-.oq-overview-controlpanel--sky .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--blue .oq-overview-controlpanel-state::before,
+.oq-overview-controlpanel--sky .oq-overview-controlpanel-state::before {
   background: #3b82f6;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.14);
 }
 
-.oq-overview-controlpanel--orange .oq-overview-controlpanel-head span {
-  color: #9a5a35;
-}
-
-.oq-overview-controlpanel--orange .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--orange .oq-overview-controlpanel-state::before {
   background: #f97316;
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.14);
 }
 
-.oq-overview-controlpanel--violet .oq-overview-controlpanel-head span {
-  color: #74638f;
-}
-
-.oq-overview-controlpanel--violet .oq-overview-controlpanel-head span::before {
+.oq-overview-controlpanel--violet .oq-overview-controlpanel-state::before {
   background: #a855f7;
   box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.14);
 }
 
-.oq-helper-shell--dark .oq-overview-controlpanel-head span {
-  color: var(--oq-overview-muted);
-}
-
-.oq-helper-shell--dark .oq-overview-controlpanel--green .oq-overview-controlpanel-head span {
-  color: #86efac;
-}
-
-.oq-helper-shell--dark .oq-overview-controlpanel--blue .oq-overview-controlpanel-head span,
-.oq-helper-shell--dark .oq-overview-controlpanel--sky .oq-overview-controlpanel-head span {
-  color: #93c5fd;
-}
-
-.oq-helper-shell--dark .oq-overview-controlpanel--orange .oq-overview-controlpanel-head span {
-  color: #fdba74;
-}
-
-.oq-helper-shell--dark .oq-overview-controlpanel--violet .oq-overview-controlpanel-head span {
-  color: #c4b5fd;
-}
-
-.oq-overview-controlpanel-state {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--oq-overview-chip-border);
-  background: var(--oq-overview-chip-bg);
-  color: var(--oq-overview-title);
-  font-size: 0.76rem;
-}
-
 .oq-overview-controlpanel-state--green {
-  border-color: rgba(34, 197, 94, 0.34);
+  color: #15803d;
 }
 
 .oq-overview-controlpanel-state--blue,
 .oq-overview-controlpanel-state--sky {
-  border-color: rgba(59, 130, 246, 0.28);
+  color: #1d4ed8;
 }
 
 .oq-overview-controlpanel-state--orange {
-  border-color: rgba(249, 115, 22, 0.32);
+  color: #c2410c;
 }
 
 .oq-overview-controlpanel-state--violet {
-  border-color: rgba(139, 92, 246, 0.3);
-  background: rgba(139, 92, 246, 0.08);
+  color: #7c3aed;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-state--green {
+  color: #86efac;
+}
+
+.oq-helper-shell--dark :is(.oq-overview-controlpanel-state--blue, .oq-overview-controlpanel-state--sky) {
+  color: #93c5fd;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-state--orange {
+  color: #fdba74;
+}
+
+.oq-helper-shell--dark .oq-overview-controlpanel-state--violet {
+  color: #c4b5fd;
 }
 
 .oq-overview-controlpanel-meta-item--loading strong,
@@ -414,19 +472,24 @@
 
 .oq-overview-controlpanel-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .oq-overview-controlpanel-actions--split {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
+/* One joined control instead of three loose buttons. */
 .oq-overview-controlpanel-segmented {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--oq-overview-chip-border);
+  border-radius: 11px;
+  background: var(--oq-overview-segment-bg);
 }
 
 .oq-overview-controlpanel-segment,
@@ -445,14 +508,24 @@
 
 .oq-overview-controlpanel-segment,
 .oq-overview-controlpanel-toggle {
-  min-height: 40px;
-  padding: 0 15px;
-  border-radius: 13px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
   border: 1px solid var(--oq-overview-chip-border);
   background: var(--oq-overview-chip-bg);
   color: var(--oq-overview-title);
   font-size: 0.85rem;
-  font-weight: 700;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.oq-overview-controlpanel-segmented .oq-overview-controlpanel-segment {
+  min-height: 30px;
+  padding: 0 12px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--oq-overview-soft);
 }
 
 .oq-overview-controlpanel-segment:hover,
@@ -461,9 +534,16 @@
   border-color: rgba(37, 99, 235, 0.22);
 }
 
-.oq-overview-controlpanel-segment.is-selected {
-  border-color: rgba(37, 99, 235, 0.28);
-  background: rgba(37, 99, 235, 0.12);
+.oq-overview-controlpanel-segmented .oq-overview-controlpanel-segment:hover {
+  border-color: transparent;
+  color: var(--oq-overview-title);
+}
+
+.oq-overview-controlpanel-segmented .oq-overview-controlpanel-segment.is-selected {
+  border-color: var(--oq-overview-chip-border);
+  background: var(--oq-overview-segment-active-bg);
+  color: var(--oq-overview-title);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .oq-overview-controlpanel-segment:disabled,
@@ -480,23 +560,23 @@
   gap: 8px;
 }
 
-.oq-overview-controlpanel-toggle {
-  min-width: 160px;
-}
-
-.oq-overview-controlpanel-actions:not(.oq-overview-controlpanel-actions--split) .oq-overview-controlpanel-toggle {
-  width: 100%;
-}
-
 .oq-overview-controlpanel-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   border: 1px solid var(--oq-overview-chip-border);
   background: var(--oq-overview-chip-bg);
   color: var(--oq-overview-title);
-  font-size: 0.95rem;
-  line-height: 1;
+}
+
+.oq-overview-controlpanel-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .oq-overview-controlpanel-icon:hover {
@@ -505,18 +585,37 @@
 }
 
 .oq-overview-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
-  gap: 16px;
   margin-top: 16px;
 }
 
 .oq-overview-system,
 .oq-overview-temps,
-.oq-overview-hp,
+.oq-overview-hp {
+  padding: 24px;
+  border-radius: var(--oq-helper-radius-lg);
+}
+
+/* A heat pump with a fault gets an orange outline around its panel and schematic. */
+.oq-overview-hp.is-alert {
+  border-color: rgba(234, 88, 12, 0.75);
+  box-shadow: 0 0 0 1px rgba(234, 88, 12, 0.45), 0 10px 28px rgba(234, 88, 12, 0.14);
+}
+
 .oq-overview-energy {
   padding: 20px;
   border-radius: var(--oq-helper-radius-lg);
+}
+
+/* Requested power on the left, how it is built up on the right. */
+.oq-overview-system {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 2.2fr);
+  gap: 16px 40px;
+  align-items: start;
+}
+
+.oq-overview-system > .oq-overview-system-copy {
+  grid-column: 1 / -1;
 }
 
 .oq-overview-chip {
@@ -548,11 +647,6 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
-  margin-top: 16px;
-  padding: 18px;
-  border-radius: 22px;
-  background: var(--oq-overview-chip-bg);
-  border: 1px solid var(--oq-overview-panel-border);
 }
 
 .oq-overview-hero-main {
@@ -582,19 +676,25 @@
 
 .oq-overview-metrics {
   display: grid;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 16px;
+}
+
+.oq-overview-metrics .oq-stat {
+  padding: 2px 0 2px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.oq-overview-metrics .oq-stat--accent::before {
+  width: 3px;
+  border-radius: 3px;
 }
 
 .oq-overview-metrics--three-column {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.oq-overview-temps-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
 
 .oq-overview-row {
   display: flex;
@@ -613,28 +713,17 @@
   color: var(--oq-overview-title);
 }
 
+/* Each chart is one card on the page; no panel around the grid, no frame around the plot. */
 .oq-overview-trends {
-  margin-top: 16px;
-  padding: 20px;
-  border-radius: 24px;
-  background: var(--oq-overview-panel-bg);
-  border: 1px solid var(--oq-overview-panel-border);
-  position: relative;
+  margin-top: 20px;
 }
 
 .oq-overview-trends-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
+  gap: 12px 24px;
+  align-items: end;
   margin: 0;
-}
-
-.oq-overview-trends-info-wrap {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 3;
 }
 
 .oq-overview-trends-meta {
@@ -647,27 +736,17 @@
 }
 
 .oq-overview-trends-window {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: var(--oq-overview-lane-bg);
-  border: 1px solid var(--oq-overview-lane-border);
-  align-content: start;
-  width: fit-content;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
   max-width: 100%;
 }
 
-.oq-overview-trends-window span {
-  color: var(--oq-overview-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.oq-overview-trends-window {
-  justify-items: start;
+.oq-overview-trends-window > span {
+  color: var(--oq-overview-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .oq-overview-trends-info {
@@ -696,23 +775,22 @@
     gap: 10px;
   }
 
-  .oq-overview-trends-info-wrap {
-    top: 14px;
-    right: 14px;
-  }
-
   .oq-overview-trends-meta {
     width: 100%;
-    justify-items: end;
+    justify-items: start;
   }
 
   .oq-overview-trends-window {
-    width: fit-content;
-    max-width: 100%;
+    position: relative;
   }
 
   .oq-overview-trends-info {
-    justify-self: end;
+    position: static;
+  }
+
+  .oq-overview-trends-info .oq-settings-info-popover {
+    left: 0;
+    right: auto;
   }
 }
 
@@ -748,26 +826,23 @@
 }
 
 .oq-overview-trends-windowbar {
-  display: inline-flex;
   flex-wrap: wrap;
-  gap: 8px;
 }
 
 .oq-overview-trends-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 14px;
+  gap: 16px;
 }
 
 .oq-overview-trendcard {
   position: relative;
   display: grid;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 20px;
-  background: var(--oq-overview-lane-bg);
-  border: 1px solid var(--oq-overview-lane-border);
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--oq-helper-radius-lg);
+  background: var(--oq-overview-panel-bg);
+  border: 1px solid var(--oq-overview-panel-border);
   overflow: hidden;
 }
 
@@ -777,12 +852,11 @@
 
 .oq-overview-trendcard-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: max-content minmax(0, 1fr);
   grid-template-areas:
-    "kicker meta"
     "title meta"
     "description description";
-  gap: 4px 12px;
+  gap: 6px 16px;
   align-items: start;
 }
 
@@ -790,22 +864,12 @@
   display: contents;
 }
 
-.oq-overview-trendcard-kicker {
-  grid-area: kicker;
-  margin: 0;
-  color: var(--oq-overview-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .oq-overview-trendcard-copy h4 {
   grid-area: title;
   margin: 0;
   color: var(--oq-overview-title);
-  font-size: 0.96rem;
-  line-height: 1.06;
+  font-size: 1rem;
+  line-height: 1.3;
 }
 
 .oq-overview-trendcard-copy > p:last-child {
@@ -842,23 +906,42 @@
   gap: 6px;
 }
 
+/* Legend entries toggle a series; the dot carries the line colour. */
 .oq-overview-trend-pill {
   display: inline-flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
-  padding: 6px 8px;
-  border-radius: 10px;
-  border: 2px solid var(--oq-overview-chip-border);
-  background: var(--oq-overview-chip-bg);
-  align-content: start;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
   text-align: left;
   font: inherit;
   cursor: pointer;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+
+.oq-overview-trend-pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--oq-trend-pill-color, #94a3b8);
+  align-self: center;
+  flex: 0 0 auto;
+}
+
+.oq-overview-trend-pill:hover {
+  background: var(--oq-overview-segment-bg);
 }
 
 .oq-overview-trend-pill.is-hidden {
-  opacity: 0.48;
+  opacity: 0.45;
+}
+
+.oq-overview-trend-pill.is-hidden strong {
+  text-decoration: line-through;
 }
 
 .oq-overview-trend-pill:focus-visible {
@@ -867,40 +950,41 @@
 }
 
 .oq-overview-trend-pill span {
-  color: var(--oq-overview-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
+  color: var(--oq-overview-soft);
+  font-size: 0.8rem;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .oq-overview-trend-pill strong {
   color: var(--oq-overview-title);
-  font-size: 0.84rem;
-  line-height: 1.1;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .oq-overview-trend-pill--orange {
-  border-color: rgba(249, 115, 22, 0.75);
+  --oq-trend-pill-color: #f97316;
 }
 
 .oq-overview-trend-pill--green {
-  border-color: rgba(22, 163, 74, 0.75);
+  --oq-trend-pill-color: #16a34a;
 }
 
 .oq-overview-trend-pill--blue {
-  border-color: rgba(59, 130, 246, 0.75);
+  --oq-trend-pill-color: #3b82f6;
 }
 
 .oq-overview-trend-pill--sky {
-  border-color: rgba(14, 165, 233, 0.75);
+  --oq-trend-pill-color: #0ea5e9;
 }
 
 .oq-overview-trend-pill--slate {
-  border-color: rgba(100, 116, 139, 0.75);
+  --oq-trend-pill-color: #64748b;
 }
 
 .oq-overview-trend-pill--violet {
-  border-color: rgba(124, 58, 237, 0.75);
+  --oq-trend-pill-color: #7c3aed;
 }
 
 .oq-overview-trend-chart {
@@ -918,8 +1002,8 @@
 }
 
 .oq-overview-trend-chart-bg {
-  fill: var(--oq-overview-lane-bg);
-  stroke: var(--oq-overview-row-border);
+  fill: transparent;
+  stroke: none;
 }
 
 .oq-overview-trend-grid {

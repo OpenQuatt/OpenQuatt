@@ -125,6 +125,9 @@
 
 @media (max-width: 640px) {
   .oq-house-learning-current-head { flex-direction: column; gap: 10px; }
+  .oq-house-learning-current-head > div:first-child { position: relative; }
+  .oq-house-learning-current-head .oq-settings-info { position: static; }
+  .oq-house-learning-current-head .oq-settings-info-popover { left: 0; right: auto; }
   .oq-house-learning-count { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; text-align: left; }
   .oq-house-learning-count strong { font-size: 1.1rem; }
 
@@ -615,4 +618,32 @@
   gap: 10px;
   align-items: flex-start;
   margin-top: 0;
+}
+
+.oq-learning-models {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.oq-learning-models .oq-house-learning-current { min-width: 0; }
+
+@media (max-width: 700px) {
+  .oq-learning-models { grid-template-columns: minmax(0, 1fr); }
+}
+
+.oq-learning-shadow { margin: 20px 0; padding: 16px 0; border-block: 1px solid var(--oq-helper-line); }
+.oq-learning-shadow .oq-house-learning-section-head h4 { margin: 0; }
+.oq-learning-shadow-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 0;
+}
+.oq-learning-shadow-values dt { color: var(--oq-helper-soft); font-size: .8rem; }
+.oq-learning-shadow-values dd { margin: 4px 0 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) {
+  .oq-learning-shadow-values { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .oq-learning-shadow-values div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .oq-learning-shadow-values dd { margin: 0; }
 }

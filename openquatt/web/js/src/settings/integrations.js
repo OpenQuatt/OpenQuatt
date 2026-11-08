@@ -428,11 +428,19 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       }
       return formatSettingsOptionLabel(source);
     };
+    const openMeteoAvailable = hasEntity("outsideTempOpenMeteo")
+      && getSelectEntityOptions(state.entities.outsideTempSource || {}).includes("Open-Meteo");
     const getOutsideTempUsedSource = () => {
       const source = String(getEntityValue("outsideTempSource") || "").trim();
       const mqttUnavailableReason = getMqttUnavailableSourceReason("outside_temperature");
       if (source === "MQTT" && mqttUnavailableReason) {
         return mqttUnavailableReason;
+      }
+      if (openMeteoAvailable && hasEntity("outsideTempEffectiveSourceCode")) {
+        // Firmware publishes the route chosen on the same tick as the temperature.
+        const code = getEntityNumericValue("outsideTempEffectiveSourceCode");
+        const routes = { 3: "Outdoor unit", 5: "HA input", 6: "API input", 7: "MQTT", 13: "Open-Meteo" };
+        return formatSettingsOptionLabel(routes[code] || "");
       }
       if (source !== "Auto") {
         return formatSettingsOptionLabel(source);
@@ -826,7 +834,8 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
     };
     const coolingEnableSourceLabel = formattedSourceValue("coolingEnableSource", { optionLabels: coolingEnableSourceLabels });
     const coolingEnableEffectiveSource = formattedEffectivePermissionSourceValue("coolingEnableEffectiveSource");
-    const outsideTemperatureAutoInfo = mqttAvailable
+    const openMeteoValid = Number.isFinite(getEntityNumericValue("outsideTempOpenMeteo"));
+    const outsideTemperatureAutoInfo = openMeteoAvailable ? t("settingsIntegrations.autoOutsideOpenMeteo") : mqttAvailable
       ? hasValidHaSource("outsideTempHa", "outsideTempHaValid")
         ? t("settingsIntegrations.autoOutsideFull")
         : t("settingsIntegrations.autoOutsideShort")
@@ -1029,6 +1038,17 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         measurementRows: [
           renderSourceRow({ label: optionLabel("Outdoor unit"), key: "outsideTempLocalAggregated", sourceKind: "outdoor", sourceState: "available", effective: sourcesMatch(outsideTemperatureUsedSource, optionLabel("Outdoor unit")) }),
           ...renderExternalSourceRows("outsideTempSource", outsideTemperatureUsedSource, buildExternalSourceKeys("outsideTemp", "OutsideTemperature")),
+          openMeteoAvailable ? renderSourceRow({
+            label: t("settingsIntegrations.measOpenMeteo"),
+            key: "outsideTempOpenMeteo",
+            sourceKind: "open-meteo",
+            sourceState: openMeteoValid ? "valid" : "invalid",
+            value: openMeteoValid ? "" : "—",
+            status: openMeteoValid ? "" : t("settingsIntegrations.apiMissing"),
+            statusTitle: t("settingsIntegrations.openMeteoUnavailable"),
+            statusTone: "invalid",
+            effective: sourcesMatch(outsideTemperatureUsedSource, "Open-Meteo"),
+          }) : "",
         ],
       }),
       buildPermissionSignal({

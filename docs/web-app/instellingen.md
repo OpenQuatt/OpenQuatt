@@ -11,9 +11,14 @@ Open **Instellingen** in de web-app en kies de groep die bij je vraag past. Voor
 | Koelvenster, koelvraag of dauwpuntbeveiliging | [Koelen](#koelen) |
 | Sensoren en externe invoer | [Bronnen / integraties](#bronnen-integraties) |
 | Ontluchten, testen, kalibreren of buitenunitinstellingen | [Service](#service) |
-| Updates, backup, opslag of toegang | [Systeem](#systeem) |
+| Updates, opslag of toegang | [Systeem](#systeem) |
+| Een backup maken of terugzetten | [Backup](#backup) |
+| Terugzien welke instellingen zijn gewijzigd | [Wijzigingen](#wijzigingen) |
+| Kiezen welke gegevens je vrijwillig deelt | [Gegevens delen](#gegevens-delen) |
 
 Verander één instelling tegelijk en controleer het effect. Bij onverklaarbaar gedrag begin je bij [Problemen oplossen](../problemen-oplossen.md).
+
+Een wijziging wordt direct opgeslagen. Daarna toont een melding de oude en de nieuwe waarde, met de knop **Ongedaan maken** om de vorige waarde terug te zetten en **Bekijk in logboek** voor het [wijzigingslogboek](#wijzigingen). Meldingen stapelen tot drie. Houd de muis op de stapel om ze onder elkaar te zien; elke melding sluit je los met het kruisje. Op een touchscreen verschuift een schuifregelaar alleen als je het bolletje versleept; een tik op de baan tijdens het scrollen verandert niets.
 
 ### Installatie
 
@@ -215,105 +220,7 @@ aparte meetwaarde aan; de web-app toont daarom geen berekende uitsplitsing ervan
 De stooklijn gebruikt een gefilterde buitentemperatuur, die tijdelijk kan afwijken
 van de actuele buitenmeting.
 
-#### Huismodel volgen en passief leren
-
-Bij Power House op Heatpump Controller Q Single en Duo staat onderaan **Verwarmen**
-het experimentele blok `Huismodel volgen`. Standaard zie je alleen de schakelaar,
-de lopende dagmeting en het aantal afgeronde dagmetingen. Bij uitgeschakeld leren
-blijven lege voortgangsbalken weg. Passief leren verandert geen regelinstellingen.
-
-Open **Meetgegevens → Bekijken** voor de grafiek, de voorwaarden voor een geleerde
-woninglijn en het model uit opwarmen en afkoelen. **Sluiten** verbergt al deze
-gegevens, inclusief de download- en wisknoppen. Bronstatus, watertemperaturen en
-woninglijnparameters staan daarbinnen onder **Bronnen en technische details**.
-Een bron die het verzamelen blokkeert, wordt ook in de hoofdstatus genoemd.
-
-De functie gebruikt dezelfde geselecteerde bronwaarden als de regeling.
-OpenTherm-telemetrie is hiervoor niet vereist.
-
-Er zijn twee soorten meetperioden, met elk een eigen teller:
-
-- **Opwarmen en afkoelen:** perioden van 30 minuten, ook als de kamertemperatuur
-  verandert. Het eenvoudige huismodel (1R1C) schat warmteverlies en warmteopslag.
-  Dit model kan op geschikte metingen wachten, bijvoorbeeld tijdens ontdooien,
-  terwijl een geldige dagmeting doorgaat.
-- **Woninglijn uit dagmetingen:** een volledige, doorlopende periode van 24 uur
-  meet de afgegeven warmte, inclusief verwarmingspauzes en setpointwijzigingen.
-  De totale warmte over die periode bepaalt het gemiddelde warmtevermogen.
-  Buitentemperatuur en warmtevermogen leveren een meetpunt voor de woninglijn,
-  omgerekend naar een referentie van **20 °C in huis**. Een andere comfortinstelling
-  of setpointwijziging start de dagmeting niet opnieuw.
-
-Een korte meetonderbreking kan tot maximaal 2 minuten worden overbrugd als de
-bedrijfstoestand bekend is. De dagkaart toont dan **Wacht kort op meetwaarde** met
-behouden voortgang; er worden op dat moment geen geldige meetwaarden verzameld.
-Een langere onderbreking, onbekende bedrijfstoestand of herstart begint het
-onvoltooide 24-uursvenster opnieuw. Cv-ketelwarmte, koelen en service onderbreken de
-dagmeting ook. Bevestigd uitsluitend OpenTherm-tapwaterbedrijf onderbreekt de meting
-niet; cv-activiteit en vlam zonder duidelijke bestemming blijven uitgesloten.
-Eerder opgeslagen, afgeronde metingen en modelschattingen blijven behouden.
-De laatste onderbreking of afwijzing
-blijft zichtbaar totdat een nieuwe woninglijnperiode is opgeslagen; deze melding
-wordt niet over een herstart bewaard. Bij een meetafwijzing toont nieuwe firmware
-ook de concrete bron- of ketelreden, bijvoorbeeld een verouderd ketelcommando.
-Na geweigerd dagherstel toont de kaart de herstelreden tijdens de eerste
-vervangende leerdag. De melding vervalt zodra die dag eindigt of opnieuw begint.
-Nieuwe firmware toont
-ook de conditionele onzekerheidslast door meetgaten ten opzichte van het
-bestaande dagbudget; dit is geen gemeten energiefout. De export bewaart bovendien
-de laatste verloren voortgang en oorzaak sinds initialiseren of resetten van
-de collector. Die diagnostiek wordt niet over een herstart bewaard.
-Oude stabiele vieruursperioden blijven als
-oude metingen beschikbaar in de grafiek en de export.
-Veel korte meetperioden betekenen dus niet automatisch dat er ook dagmetingen voor
-de woninglijn zijn. Beide schattingen hebben eigen kwaliteitscontroles; een voltooide
-dagmeting betekent niet dat het model al voldoende gegevens heeft of wordt toegepast.
-
-`Passief leren` staat standaard aan. De gekozen stand blijft na een herstart of
-firmware-update behouden; bewust uitschakelen blijft dus uit. Bij de eerste update
-vanaf de eerdere versie die altijd uit startte, wordt leren standaard ingeschakeld.
-De leerfunctie heeft geen aparte
-kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat nog niet.
-`Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
-Bij een fysieke ombouw van Single naar Duo of andersom blijft de oude leerstand ook behouden.
-Wis dan zelf de leerdata voordat je opnieuw gaat leren of de modelschattingen beoordeelt: de
-waterzijdige meetopstelling is veranderd. Een gewone bronwissel vereist deze reset niet.
-Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van passief
-leren gedeeld (`house_learning_enabled`), niet de leerdata of modelwaarden.
-`Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
-geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../development/power-house-autotuning-development.md).
-
-#### Woninglijn en meetresultaten
-
-De grafiek onder **Meetgegevens** vergelijkt de ingestelde woninglijn (blauw) met
-de afgeronde dagmetingen van 24 uur (punten). De korte perioden voor
-opwarmen en afkoelen zijn geen punten in deze grafiek. Een beschikbare geleerde woninglijn wordt
-groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
-doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
-de tijdelijke kamercorrectie of vermogensbegrenzing. De dagmetingen en geleerde lijn
-zijn omgerekend naar 20 °C in huis. Oude vieruursmetingen blijven zichtbaar en
-zijn in de puntinformatie gemarkeerd als oude meting.
-
-De leerstatus, grafiek, meldingen en bediening volgen de gekozen app-taal (Nederlands of Engels).
-Getallen en datums gebruiken de bijbehorende notatie; de JSON-export behoudt zijn vaste formaat.
-
-Met **Bekijken** haal je de bewaarde meetpunten op. Het voortgangsblok toont hoeveel
-volledige dagmetingen beschikbaar zijn en welke temperatuurspreiding nog ontbreekt.
-De huidige standaardgrenzen zijn minimaal negen dagmetingen: zes om te leren en de
-laatste drie voor onafhankelijke controle. De leerdagen moeten minimaal 6 °C
-spreiding tussen P10 en P90 hebben, omgerekend naar 20 °C in huis. Elk van de drie
-temperatuurgebieden moet minstens twee leerdagen bevatten; geen gebied mag meer
-dan 67% van de leerdagen bevatten. Oude vieruursmetingen tellen hiervoor niet mee.
-De getallen worden afgeleid uit de opgehaalde meetgegevens; de controller beoordeelt
-ook meetkwaliteit, stabiliteit en validatie. Afwijzingen zoals een instabiele lijn
-worden apart toegelicht. Opnieuw ophalen maakt nieuw opgeslagen dagen zichtbaar.
-
-Bij een meetpunt kun je datum, meetduur,
-gemiddelde buitentemperatuur, de naar 20 °C omgerekende buitenwaarde en het
-gemiddelde warmtevermogen bekijken. Zonder voldoende gegevens blijft
-de geleerde lijn weg; de grafiek verandert geen instellingen. `H` beschrijft hoeveel
-extra vermogen per graad kouder nodig is. De `Verwarmingsgrens (T₀)` is het geschatte
-nulpunt van deze lijn, geen schakelinstelling die de verwarming aan- of uitzet.
+Volg de dagmeting en het woningmodel op de pagina [Leren](leren.md).
 
 ### Koelen
 
@@ -415,7 +322,21 @@ Ben je het wachtwoord vergeten of werkt de bestaande Home Assistant-koppeling ni
 
 #### Overig systeembeheer
 
-Zie [Gegevens delen en privacy](privacy.md) voor de keuzes over gegevens delen, [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
+Zie [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
+
+### Backup
+
+Onder **Backup** sla je een JSON-backup op van de instellingen die de web-app beheert, en zet je die later terug. Zie [Backup en restore](onderhoud.md#backup-en-restore) voor wat er wel en niet in een backup zit.
+
+### Wijzigingen
+
+Het **Wijzigingslogboek** toont welke instellingen via de web-app zijn aangepast, met tijdstip en de oude en nieuwe waarde. De nieuwste wijziging staat bovenaan. OpenQuatt bewaart de laatste 100 wijzigingen in de flash-partitie `openquatt_data`, zodat ze een herstart of update overleven en vanuit elke browser zichtbaar zijn; oudere wijzigingen vallen automatisch weg. Het tijdstip komt van de klok van de browser waarin je de wijziging maakte. Met **Exporteren (JSON)** download je het logboek als JSON-bestand.
+
+Wijzigingen via Home Assistant, MQTT of de ESPHome-API verschijnen hier niet, en tekstvelden zoals adressen of tokens worden bewust niet gelogd. Lange namen en waarden worden ingekort tot ze in een logregel passen.
+
+### Gegevens delen
+
+Onder **Gegevens delen** kies je of OpenQuatt gebruiksstatistieken en prestatiemetingen mag delen. Beide staan standaard uit en werken los van elkaar. Zie [Gegevens delen en privacy](privacy.md) voor wat er wordt gedeeld en hoe je het weer uitzet.
 
 ## Verder
 
