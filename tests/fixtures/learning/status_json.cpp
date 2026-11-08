@@ -35,6 +35,7 @@ struct Endpoint {
   std::string largest;
   std::string latest;
   unsigned publications = 0;
+  uint32_t expected_context_revision = UINT32_MAX;
   std::string exported;
   bool publish_export_json(const char* text, size_t length) {
     assert(length > 0 && length < kExportJsonBufferSize && text[length] == '\0');
@@ -45,7 +46,7 @@ struct Endpoint {
                            uint32_t shadow_generation, uint32_t context_revision) {
     assert(shadow_offset > 0U && shadow_offset < length && text[shadow_offset] == ',');
     assert(shadow_expiry == 15000U && shadow_generation == 1U);
-    assert(context_revision == UINT32_MAX);
+    assert(context_revision == expected_context_revision);
     assert(length != 0 && length < kStatusJsonBufferSize && text[length] == '\0');
     latest.assign(text, length);
     if (length > largest.size()) largest.assign(text, length);
@@ -226,6 +227,7 @@ int main() {
         const auto batch = build_learning_snapshot(raw, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH);
         const auto dynamic = build_learning_snapshot(raw, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC);
         state.input = raw;
+        oq_ph_learning_status_endpoint.expected_context_revision = raw.context_revision;
         state.tick = daily_source_fixture::production_tick(raw);
         state.tick.batch_snapshot_available = batch.has_snapshot;
         state.tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
