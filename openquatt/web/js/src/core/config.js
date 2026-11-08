@@ -719,16 +719,32 @@
   export const COOLING_SCHEDULE_VALID_KEY = "coolingEnableValid";
   export const COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY = "coolingEnableEffectiveSource";
   export const COOLING_SCHEDULE_TIME_KEYS = ["coolingScheduleStartTime", "coolingScheduleEndTime"];
+  // Views in a group share one top-level tab and switch through a side navigation inside it.
+  export const APP_VIEW_GROUPS = {
+    charts: { labelKey: "navigation.charts", icon: "bar-chart" },
+  };
   export const APP_VIEWS = [
     { id: "overview", labelKey: "navigation.overview", icon: "monitor-dashboard" },
     { id: "energy", labelKey: "navigation.energy", icon: "zap" },
-    { id: "results", labelKey: "navigation.results", icon: "bar-chart" },
+    { id: "results", labelKey: "navigation.results", icon: "bar-chart", group: "charts" },
     { id: "learning", labelKey: "navigation.learning", icon: "bar-chart" },
     { id: "control", labelKey: "navigation.control", icon: "activity" },
-    { id: "diagnosis", labelKey: "navigation.diagnosis", icon: "activity" },
+    { id: "diagnosis", labelKey: "navigation.diagnosis", icon: "activity", group: "charts" },
     { id: "settings", labelKey: "navigation.settings", icon: "settings" },
   ];
   export const APP_VIEW_IDS = new Set(APP_VIEWS.map((view) => view.id));
+  // Top-level tabs: a group appears once, at the position of its first view.
+  export const APP_NAV_ITEMS = APP_VIEWS.reduce((items, view) => {
+    if (!view.group) {
+      return [...items, { id: view.id, labelKey: view.labelKey, icon: view.icon, badge: view.badge, views: [view.id] }];
+    }
+    const existing = items.find((item) => item.id === view.group);
+    if (existing) {
+      existing.views.push(view.id);
+      return items;
+    }
+    return [...items, { id: view.group, ...APP_VIEW_GROUPS[view.group], views: [view.id] }];
+  }, []);
 
   export const OQ_ICON_PATHS = {
     activity: '<path d="M3 12h4l2-7 4 14 2-7h6"/>',

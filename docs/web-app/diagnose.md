@@ -11,7 +11,7 @@
 
 ## Diagnose
 
-`Diagnose` combineert actuele waarden met korte historie. Dat helpt bij vragen zoals:
+`Diagnose`, onder `Grafieken`, combineert actuele waarden met korte historie. Dat helpt bij vragen zoals:
 
 - loopt de aanvoertemperatuur rustig op;
 - blijft de flow stabiel;

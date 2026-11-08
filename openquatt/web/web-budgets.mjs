@@ -64,7 +64,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Combined with dev eef39329+: measured raw 1,459,066 B / gzip 410,912 B (Node 24.4.1),
     // +2,642 B gzip versus dev (within the relative limit); 80 B raw headroom.
     // Leren uses the Settings side navigation for its two panels: +123 B raw; 80 B raw headroom.
-    raw: 1_459_269,
+    // Results and Diagnose share a Charts tab with a side navigation that remembers the last view:
+    // +1,264 B raw; 80 B raw headroom.
+    raw: 1_460_533,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -89,5 +91,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // reaches the ceiling, so later changes fall back to the regular relative limit.
   // Re-measured after merging dev with the weather graphs: raw 225,789 B, gzip 44,805 B versus
   // dev 43,167 B (+1,638 B, +3.8%; Node 24.4.1); ~180 B gzip and 80 B raw headroom.
-  { file: "css/openquatt-app.css", raw: 225_869, gzipBaselineCeiling: 44_985 },
+  // Charts tab: energy-history controls stack by panel width and the side-navigation column shrinks its
+  // content: +161 B CSS raw; preserves the 80 B raw headroom.
+  { file: "css/openquatt-app.css", raw: 225_975, gzipBaselineCeiling: 44_985 },
 ];

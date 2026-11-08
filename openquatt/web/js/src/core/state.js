@@ -100,6 +100,8 @@ export const state = {
   quickStartModalMode: "wizard",
   settingsGroup: getStoredSettingsGroup(),
   appView: "",
+  // Last view opened per top-level tab group, such as Results or Diagnose under Charts.
+  appViewGroupLast: {},
   learningForecastOpen: false,
   weatherConfigRevision: 0,
   weatherOptOutUnconfirmed: false,

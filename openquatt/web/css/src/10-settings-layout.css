@@ -121,8 +121,10 @@
   line-height: 1.5;
 }
 
+/* minmax(0, 1fr) lets wide content such as charts shrink with the column instead of overflowing it. */
 .oq-settings-view-main {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   min-width: 0;
 }

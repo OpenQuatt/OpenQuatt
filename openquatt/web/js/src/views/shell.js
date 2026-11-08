@@ -1,5 +1,6 @@
 import { syncPerformanceTelemetryPrompt } from "../features/performance-telemetry-prompt.js";
-import { renderAppNav, syncDocumentTheme, syncDocumentTitle } from "../core/app-shared.js";
+import { getAppNavItem, getNavItemViews, renderAppNav, syncDocumentTheme, syncDocumentTitle } from "../core/app-shared.js";
+import { APP_VIEWS, renderOqIcon } from "../core/config.js";
 import { LOGO_MARKUP } from "../core/embedded-assets.js";
 import { getSettingsRenderSignature } from "../core/render-signatures.js";
 import { escapeHtml } from "../core/html.js";
@@ -44,6 +45,26 @@ export function renderSettingsView() {
     `;
   }
 
+  // Results and Diagnose share the Charts tab, laid out like Settings with their own side navigation.
+  export function renderChartsView() {
+    const item = getAppNavItem();
+    const buttons = getNavItemViews(item).map((id) => {
+      const view = APP_VIEWS.find((entry) => entry.id === id);
+      const active = id === state.appView;
+      return `<button class="oq-settings-group-button${active ? " is-active" : ""}" type="button" data-oq-action="select-view" data-view-id="${escapeHtml(id)}" aria-pressed="${active}">${renderOqIcon(view.icon, "oq-settings-group-button-icon")}<span class="oq-settings-group-button-label">${escapeHtml(t(view.labelKey))}</span></button>`;
+    }).join("");
+    return `
+      <section class="oq-settings-view">
+        <aside class="oq-settings-view-aside">
+          <nav class="oq-settings-group-nav" aria-label="${escapeHtml(t("navigation.chartsNavLabel"))}">${buttons}</nav>
+        </aside>
+        <div class="oq-settings-view-main">
+          ${state.appView === "diagnosis" ? renderDiagnosisView() : renderResultsView()}
+        </div>
+      </section>
+    `;
+  }
+
   export function renderInitialLoadingView() {
     return renderModalShell({
       modalId: "initial-load",
@@ -74,10 +95,8 @@ export function renderSettingsView() {
       ? renderControlReplayView()
       : state.appView === "energy"
       ? renderEnergyView()
-      : state.appView === "diagnosis"
-      ? renderDiagnosisView()
-      : state.appView === "results"
-      ? renderResultsView()
+      : state.appView === "diagnosis" || state.appView === "results"
+      ? renderChartsView()
       : state.appView === "learning"
       ? renderLearningView()
       : renderSettingsView();
