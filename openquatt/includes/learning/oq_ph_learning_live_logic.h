@@ -537,6 +537,35 @@ inline PhysicalMeasurement<BoilerHeatState> learning_boiler_heat(
   return result;
 }
 
+inline bool learning_boiler_off_since_boot(uint32_t output_last_change_ms, bool heat_observed, bool& boot_heat_seen) {
+  boot_heat_seen = boot_heat_seen || heat_observed;
+  return output_last_change_ms == 0 && !boot_heat_seen;
+}
+
+inline const QualityConfig& daily_checkpoint_heat_quality(const QualityConfig& hp_quality,
+                                                          const QualityConfig& daily_quality,
+                                                          const LearningSourceInput& input, bool boiler_output_active,
+                                                          uint64_t now_ms) {
+  return !boiler_output_active && live_measurement_fresh(input.boiler_heat, now_ms) &&
+                 input.boiler_heat.value == BoilerHeatState::NO_HEAT
+             ? hp_quality
+             : daily_quality;
+}
+
+inline QualityConfig daily_restart_heat_quality(const QualityConfig& hp_quality, const QualityConfig& daily_quality,
+                                                const LearningSourceInput& input, bool verified_ticket) {
+  auto quality = daily_heat_quality(daily_quality, input.system_heat_enabled);
+  if (verified_ticket && input.system_heat_enabled && input.boiler_never_started_since_boot &&
+      input.monotonic_ms <= kDailyMaximumRestartGapMs &&
+      live_measurement_fresh(input.boiler_heat, input.monotonic_ms) &&
+      input.boiler_heat.value == BoilerHeatState::NO_HEAT) {
+    // Practical short-restart estimate: assume no unobserved boiler contribution.
+    // Retained gap floors/peaks still apply; this is not a guaranteed physical maximum.
+    quality.max_daily_missing_heat_w = configured_daily_missing_heat_bound_w(hp_quality);
+  }
+  return quality;
+}
+
 }  // namespace oq_power_house::learning
 
 #endif  // OQ_PH_LEARNING_CORE_AVAILABLE

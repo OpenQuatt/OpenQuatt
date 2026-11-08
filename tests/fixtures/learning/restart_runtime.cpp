@@ -135,7 +135,7 @@ void prepare(RuntimeStorage& state, const QualityConfig& quality = QualityConfig
   state.journal.persisted_daily_checkpoint_epoch = kEpoch + 7200;
   state.pending_daily = {{state.journal.bytes[0], size}, sizeof(kContext), 0};
   DailyRestartTicket rtc{};
-  rtc.arm(state.journal, true);
+  rtc.arm(state.journal, true, state.system_supply_observed);
   state.boot_restart_ticket = rtc.consume(true);
   assert(!rtc.matches(7, state.pending_daily));
   state.learner.record_count = 17;
@@ -246,6 +246,103 @@ void test_restart_gap_retains_the_checkpoint_heat_bound_after_boiler_is_disabled
   assert(fabs(day.missing_energy_uncertainty_ws - before - expected) < 0.01);
   assert(day.gap_heat_bound_floor_w == 0.0f);
   retained_data_unchanged(state);
+}
+
+void test_verified_restart_uses_a_conditional_hp_estimate() {
+  QualityConfig hp;
+  hp.max_daily_missing_heat_w = 12230.56f;
+  hp.max_observed_heat_w = 1.20f * hp.max_daily_missing_heat_w;
+  const auto system = daily_heat_quality(hp, true);
+  auto raw = daily_source_fixture::source(34, 3000.0f);
+  raw.epoch_s = kEpoch + 7341;
+  raw.system_heat_enabled = true;
+  raw.boiler_never_started_since_boot = true;
+  raw.circuit_flow_lph = raw.flow_lph;
+  raw.system_supply_c =
+      daily_source_fixture::measured(raw.hp2.water_out_c.value, 4, PhysicalUnit::SYSTEM, raw.monotonic_ms);
+  const auto& saved_quality = daily_checkpoint_heat_quality(hp, system, raw, false, raw.monotonic_ms);
+  assert(&saved_quality == &hp);
+  assert(&daily_checkpoint_heat_quality(hp, system, raw, true, raw.monotonic_ms) == &system);
+  RuntimeStorage state;
+  state.config.quality = state.learner.config.quality = hp;
+  state.system_supply_observed = true;
+  // The production save owner uses base quality for a confirmed CV-off system
+  // day; existing accumulator floors/observed peaks survive the roundtrip.
+  prepare(state, saved_quality);
+  state.daily_quality = system;
+  const auto saved_checkpoint_epoch = state.pending_daily.daily_checkpoint_epoch();
+  production_recovery(state, raw.epoch_s, true, true, true, false, 0, NAN, &raw);
+  assert(!state.daily_restore_pending && state.learner.batch_accumulator.restart_pending);
+  assert(configured_daily_missing_heat_bound_w(state.daily_quality) == hp.max_daily_missing_heat_w);
+  assert(configured_measurement_heat_limit_w(state.daily_quality) == 50000.0f);
+  auto& day = state.learner.batch_accumulator;
+  const auto before = day.missing_energy_uncertainty_ws;
+  const auto batch = build_learning_snapshot(raw, hp);
+  assert(observe_snapshot(day, batch.snapshot, state.daily_quality).status == LearningStatus::COLLECTING);
+  const double expected =
+      daily_gap_uncertainty_ws(hp.max_daily_missing_heat_w, 0, batch.snapshot.heat_to_water_w, 141000, 0, 141000);
+  assert(fabs(day.missing_energy_uncertainty_ws - before - expected) < 0.02);
+  assert(state.pending_daily.daily_checkpoint_epoch() == saved_checkpoint_epoch);
+  retained_data_unchanged(state);
+
+  RuntimeStorage disabled;
+  disabled.config.quality = disabled.learner.config.quality = hp;
+  disabled.system_supply_observed = true;
+  prepare(disabled, hp);
+  auto hp_only = raw;
+  hp_only.system_heat_enabled = false;
+  production_recovery(disabled, hp_only.epoch_s, true, true, true, false, 0, NAN, &hp_only);
+  assert(configured_daily_missing_heat_bound_w(disabled.daily_quality) == 50000);
+  auto& disabled_day = disabled.learner.batch_accumulator;
+  const auto disabled_before = disabled_day.missing_energy_uncertainty_ws;
+  const auto disabled_batch = build_learning_snapshot(hp_only, hp);
+  assert(observe_snapshot(disabled_day, disabled_batch.snapshot, disabled.daily_quality).status ==
+         LearningStatus::COLLECTING);
+  const auto broad = daily_gap_uncertainty_ws(50000, 0, disabled_batch.snapshot.heat_to_water_w, 141000, 0, 141000);
+  assert(fabs(disabled_day.missing_energy_uncertainty_ws - disabled_before - broad) < 0.02);
+  retained_data_unchanged(disabled);
+
+  // Missing proof, activity, stale receipts and long uptime retain the broad bound.
+  for (unsigned failure = 0; failure < 6; ++failure) {
+    auto input = raw;
+    bool ticket = true;
+    if (failure == 0) ticket = false;
+    if (failure == 1) input.boiler_never_started_since_boot = false;
+    if (failure == 2) input.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
+    if (failure == 3) input.boiler_heat.valid = false;
+    if (failure == 4) input.boiler_heat.received_monotonic_ms = input.monotonic_ms + 1;
+    if (failure == 5) input.monotonic_ms = kDailyMaximumRestartGapMs + 1ULL;
+    const auto quality = daily_restart_heat_quality(hp, system, input, ticket);
+    assert(configured_daily_missing_heat_bound_w(quality) == 50000);
+    if (failure >= 2) assert(&daily_checkpoint_heat_quality(hp, system, input, false, input.monotonic_ms) == &system);
+  }
+
+  // Old/observed gap floors and accrued uncertainty cannot be lowered.
+  SegmentAccumulator gap;
+  gap.heat_last_w = 0;
+  gap.heat_gap_pending = true;
+  gap.gap_heat_bound_floor_w = 50000;
+  gap.missing_energy_uncertainty_ws = 12345;
+  auto endpoint = sample(1, 1000);
+  const auto bounded = daily_restart_heat_quality(hp, system, raw, true);
+  auto interval = detail::daily_heat_interval(gap, endpoint, bounded, 1000);
+  assert(interval.valid && interval.uncertainty_ws == 50000);
+  assert(gap.missing_energy_uncertainty_ws == 12345 && gap.gap_heat_bound_floor_w == 50000);
+
+  // A day boundary splits the same conditional uncertainty exactly.
+  gap.gap_heat_bound_floor_w = hp.max_daily_missing_heat_w;
+  gap.heat_last_elapsed_ms = kSegmentDurationMs - 20000;
+  interval = detail::daily_heat_interval(gap, endpoint, bounded, kSegmentDurationMs + 10000);
+  assert(interval.valid);
+  assert(fabs(interval.uncertainty_ws - hp.max_daily_missing_heat_w * 20.0) < 0.01);
+  assert(fabs(interval.next_uncertainty_ws - hp.max_daily_missing_heat_w * 10.0) < 0.01);
+
+  bool seen = false;
+  assert(learning_boiler_off_since_boot(0, false, seen));
+  assert(!learning_boiler_off_since_boot(0, true, seen));
+  assert(!learning_boiler_off_since_boot(0, false, seen));  // Physical contradiction stays sticky.
+  seen = false;
+  assert(!learning_boiler_off_since_boot(1000, false, seen));  // Earlier controlled on -> off.
 }
 
 void test_supply_calibration_change_revokes_boot_and_live_checkpoints() {
@@ -462,6 +559,7 @@ void test_heat_outlier_never_hides_boot_receipt_or_tick_failures() {
 }
 
 int main() {
+  test_verified_restart_uses_a_conditional_hp_estimate();
   test_duplicate_restart_epoch_preserves_missing_heat_evidence();
   test_heat_outlier_wait_preserves_ticket_bounds_and_retained_history();
   test_heat_outlier_never_hides_boot_receipt_or_tick_failures();

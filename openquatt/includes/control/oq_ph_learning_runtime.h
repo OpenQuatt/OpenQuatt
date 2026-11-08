@@ -86,6 +86,7 @@ struct RuntimeStorage {
   PassiveRuntimeConfig config;
   QualityConfig daily_quality;
   bool system_supply_observed = false;
+  bool boot_boiler_heat_seen = false;
   oq_sources::ResolvedLearningSource sources[4];
   uint8_t context[kMaxPassiveContextBytes]{};
   size_t context_size = 0;
@@ -379,6 +380,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
       // Pending records are immutable. Recheck the one-use ticket before
       // granting boot-only recovery time; a known interruption still vetoes it.
       const bool verified_ticket = state.boot_restart_ticket.matches(state.journal.sequence, state.pending_daily);
+      if (verified_ticket && state.boot_restart_ticket.system_supply_observed())
+        state.daily_quality = daily_heat_quality(state.daily_quality, true);
+      state.daily_quality = daily_restart_heat_quality(state.config.quality, state.daily_quality, input,
+                                                       verified_ticket && state.daily_restore_allowed);
       const auto restart_policy = state.boot_restart_ticket.recovery_policy(state.journal.sequence, state.pending_daily,
                                                                             state.daily_restore_allowed);
       const auto decision = daily_resume_decision(
@@ -407,7 +412,11 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
               state.daily_resume_reason = "checkpoint_heat_time_invalid";
             }
           } else {
-            oq_power_house::learning::detail::mark_daily_heat_gap(state.pending_daily_heat, state.daily_quality);
+            // No heat endpoint yet. Preserve existing floors until the
+            // complete restart observation chooses its conditional envelope.
+            const auto& gap_quality =
+                verified_ticket && input.boiler_never_started_since_boot ? state.config.quality : state.daily_quality;
+            oq_power_house::learning::detail::mark_daily_heat_gap(state.pending_daily_heat, gap_quality);
           }
         }
       }
@@ -566,8 +575,15 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     if (state.learner.batch_accumulator.active &&
         !valid_daily_checkpoint(state.learner.batch_accumulator, state.config.quality))
       return false;
+    bool boiler_output_active = id(oq_boiler_output_request) || id(boiler_relay).state;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    boiler_output_active = boiler_output_active || id(oq_otb_applied_command_active);
+#endif
+    const auto uncertain_quality = daily_heat_quality(state.config.quality, true);
+    const auto& checkpoint_quality = daily_checkpoint_heat_quality(state.config.quality, uncertain_quality, state.input,
+                                                                   boiler_output_active, now_ms);
     return state.journal.save(
-        passive_runtime_dataset(state.learner), state.daily_quality, epoch, now_ms,
+        passive_runtime_dataset(state.learner), checkpoint_quality, epoch, now_ms,
         state.learner.diagnostics.accepted_batch_records,
         [&state](size_t slot) { return erase_slot_(state.partition, slot); },
         [&state](size_t slot, const uint8_t* data, size_t size) {
@@ -809,6 +825,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const bool boiler_heat_observed =
         id(oq_boiler_output_request) || id(boiler_relay).state || applied_ot_command_active ||
         (live_measurement_fresh(boiler_telemetry, now_ms) && boiler_telemetry.value == BoilerHeatState::HEAT_ACTIVE);
+    in.boiler_never_started_since_boot = learning_boiler_off_since_boot(
+        id(oq_boiler_output_last_change_ms), boiler_heat_observed, state.boot_boiler_heat_seen);
     if (const char* reason = daily_restart_interruption_reason(in, boiler_heat_observed, state.config.quality)) {
       if (state.daily_restore_allowed) state.daily_resume_reason = reason;
       state.daily_restore_allowed = false;

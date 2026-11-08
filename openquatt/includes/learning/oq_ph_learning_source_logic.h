@@ -147,6 +147,7 @@ struct LearningSourceInput {
   HeatPumpRawMeasurements hp1;
   HeatPumpRawMeasurements hp2;
   PhysicalMeasurement<BoilerHeatState> boiler_heat;
+  bool boiler_never_started_since_boot = false;
   LearningOperationalContext operation;
 };
 
