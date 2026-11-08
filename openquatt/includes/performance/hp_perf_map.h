@@ -19,7 +19,8 @@ static constexpr float T_amb_bp[N_AMB] = {-15.00f, -7.00f, 2.00f, 7.00f, 12.00f}
 // the electrical power by 10-30 %. Their heat rows repeat the 35 C row, so only
 // the COP changes. The data reached about 2 C outside; the -15 and -7 C cells
 // of these rows extrapolate the measured trend and are an estimate until
-// winter data is in.
+// winter data is in. Per cell the COP never drops towards lower supply; where
+// the extrapolation would, a cell keeps the next-higher node's value.
 static constexpr float T_sup_bp[N_SUP] = {25.00f, 30.00f, 35.00f, 45.00f, 55.00f};
 
 static constexpr float P_th_W[N_AMB][N_SUP][N_LVL] = {
@@ -62,21 +63,21 @@ static constexpr float P_th_W[N_AMB][N_SUP][N_LVL] = {
 static constexpr float COP[N_AMB][N_SUP][N_LVL] = {
     {
         {1.93f, 2.06f, 2.20f, 2.28f, 2.38f, 2.48f, 2.57f, 2.62f, 2.58f, 2.52f},
-        {1.77f, 1.91f, 2.04f, 2.10f, 2.17f, 2.20f, 2.24f, 2.25f, 2.21f, 2.16f},
+        {1.78f, 1.98f, 2.15f, 2.22f, 2.28f, 2.30f, 2.31f, 2.30f, 2.26f, 2.21f},
         {1.78f, 1.98f, 2.15f, 2.22f, 2.28f, 2.30f, 2.31f, 2.30f, 2.26f, 2.21f},
         {1.03f, 1.31f, 1.57f, 1.70f, 1.80f, 1.89f, 1.94f, 1.99f, 2.00f, 2.00f},
         {0.22f, 0.59f, 0.94f, 1.12f, 1.28f, 1.41f, 1.51f, 1.62f, 1.69f, NAN},
     },
     {
         {2.96f, 2.99f, 3.06f, 3.10f, 3.18f, 3.26f, 3.35f, 3.36f, 3.27f, 3.18f},
-        {2.72f, 2.78f, 2.84f, 2.86f, 2.89f, 2.90f, 2.92f, 2.89f, 2.81f, 2.73f},
+        {2.73f, 2.88f, 2.99f, 3.02f, 3.04f, 3.03f, 3.01f, 2.95f, 2.87f, 2.79f},
         {2.73f, 2.88f, 2.99f, 3.02f, 3.04f, 3.03f, 3.01f, 2.95f, 2.87f, 2.79f},
         {1.80f, 2.03f, 2.23f, 2.31f, 2.38f, 2.43f, 2.45f, 2.45f, 2.43f, 2.40f},
         {0.81f, 1.12f, 1.41f, 1.55f, 1.67f, 1.77f, 1.83f, 1.90f, NAN, NAN},
     },
     {
         {4.82f, 4.65f, 4.55f, 4.53f, 4.53f, 4.57f, 4.63f, 4.59f, 4.45f, 4.31f},
-        {4.22f, 4.16f, 4.09f, 4.06f, 4.02f, 3.99f, 3.97f, 3.89f, 3.77f, 3.66f},
+        {4.22f, 4.16f, 4.09f, 4.07f, 4.04f, 3.99f, 3.97f, 3.89f, 3.77f, 3.66f},
         {3.96f, 4.04f, 4.08f, 4.07f, 4.04f, 3.99f, 3.94f, 3.83f, 3.71f, 3.60f},
         {2.82f, 2.98f, 3.11f, 3.16f, 3.18f, 3.19f, 3.17f, 3.13f, 3.06f, 2.99f},
         {1.62f, 1.87f, 2.08f, 2.18f, 2.26f, 2.32f, 2.35f, 2.37f, NAN, NAN},

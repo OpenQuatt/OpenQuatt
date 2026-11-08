@@ -111,6 +111,9 @@ void assert_low_supply_rows() {
         assert(std::isnan(cop35) == std::isnan(oq_perf_v1::COP[ambient][supply][index]));
       }
       if (std::isnan(cop35)) continue;
+      // Less lift never costs efficiency: the COP does not drop towards lower supply.
+      for (int supply = 0; supply < kSupply35; ++supply)
+        assert(oq_perf_v1::COP[ambient][supply][index] >= oq_perf_v1::COP[ambient][supply + 1][index]);
       // Between the low-supply nodes the COP is interpolated linearly, like the rest of the table.
       const float outside_c = oq_perf_v1::T_amb_bp[ambient];
       assert_value(oq_perf_v1::interp_cop(index + 1, outside_c, 32.5f),
