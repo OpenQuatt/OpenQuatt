@@ -273,8 +273,9 @@ class Runtime {
     const int retained_hp1 = hp1_candidate.must_stop ? 0 : hp1_candidate.previous_applied_level;
     const int retained_hp2 = hp2_candidate.must_stop ? 0 : hp2_candidate.previous_applied_level;
     const auto current_power = model.pair(retained_hp1, retained_hp2);
-    const bool may_settle = current_power.valid() && std::isfinite(id(oq_power_limit_peak_w)) &&
-                            current_power.electrical_w <= id(oq_power_limit_peak_w);
+    const float peak_limit_w = id(oq_power_limit_peak_w);
+    const bool may_settle =
+        current_power.valid() && std::isfinite(peak_limit_w) && current_power.electrical_w <= peak_limit_w;
     const bool performance_valid = std::isfinite(outside_c) && (model.coupled || std::isfinite(model.outlet[0]) ||
                                                                 (duo && std::isfinite(model.outlet[1])));
 
@@ -341,13 +342,12 @@ class Runtime {
                                        !feedback[1].blocks_dispatch(hp2_candidate.must_stop) && !active_model_missing &&
                                        (model.coupled || any_servable_candidate);
     dispatch_input.pair_context = &model;
-    dispatch_input.confirmed_power = &oq_water_performance::CandidateModel::confirmed_power;
     if (model.coupled) {
       dispatch_input.pair_power = &oq_water_performance::CandidateModel::dispatch;
       dispatch_input.pair_context = &model;
     }
     oq_power_house_dispatch::DispatchTuning dispatch_tuning{
-        id(oq_power_limit_soft_w),        id(oq_power_limit_peak_w),
+        id(oq_power_limit_soft_w),        peak_limit_w,
         config.optimizer_penalty_per_w,   config.topology_power_margin_w,
         config.topology_heat_advantage_w, demand_input.rated_w * config.defrost_comp_min_house_fraction,
         config.defrost_comp_boost_steps,
@@ -543,8 +543,8 @@ class Runtime {
             .set_warmup_power(diagnostics::warmup_log_key(warming, warmup_runtime.intermediate_target(),
                                                           warmup_runtime.offset(), warmup_power.path),
                               warmup_power);
-    const auto dispatch =
-        oq_power_house_dispatch::decide_dispatch(dispatch_input, dispatch_tuning, this->dispatch_state_);
+    const auto dispatch = oq_power_house_dispatch::decide_dispatch(
+        dispatch_input, dispatch_tuning, this->dispatch_state_, &oq_water_performance::CandidateModel::confirmed_power);
     if (log_warmup_power) {
       ESP_LOGI("quatt.warmup",
                "power path=%s room=%.2f final=%.2f step=%.2f boost=%.2f effective=%.2f kp=%.0f below=%.2f base=%.0f "

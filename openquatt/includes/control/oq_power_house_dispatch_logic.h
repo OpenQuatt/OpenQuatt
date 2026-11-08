@@ -78,8 +78,8 @@ struct DispatchInput {
   HpInput hp1, hp2;
   std::array<float, 2> (*pair_power)(const void*, int, int) = nullptr;
   const void* pair_context = nullptr;
-  float (*confirmed_power)(const void*, int, int, float) = nullptr;
 };
+using ConfirmedPower = float (*)(const void*, int, int, float);
 
 enum class PerformanceSupplyRoute : uint8_t { NONE = 0, SYSTEM, HP1_OUTLET, HP2_OUTLET };
 
@@ -288,17 +288,18 @@ inline Candidate minimum_active_candidate(const DispatchInput& in, const Dispatc
   return minimum;
 }
 inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tuning, float target_w, int active_count,
-                               float tie_band_w, bool require_confirmed = false) {
+                               float tie_band_w, bool require_confirmed = false,
+                               ConfirmedPower confirmed_power = nullptr) {
   Candidate chosen;
   float best_error_w = INFINITY;
   const auto sufficient = [&](const Candidate& candidate) {
-    if (!require_confirmed || in.confirmed_power == nullptr) return true;
+    if (!require_confirmed || confirmed_power == nullptr) return true;
     const int first = candidate.hp1_level, second = candidate.hp2_level;
     const bool removing = (first == 0 && applied_level(in.hp1) > 0 && !in.hp1.candidate.must_stop) ||
                           (second == 0 && applied_level(in.hp2) > 0 && !in.hp2.candidate.must_stop);
     if (!removing) return true;
     if (in.hp1.defrost || in.hp1.valve_defrost || in.hp2.defrost || in.hp2.valve_defrost) return false;
-    const float confirmed = in.confirmed_power(in.pair_context, first, second, candidate.thermal_w);
+    const float confirmed = confirmed_power(in.pair_context, first, second, candidate.thermal_w);
     return std::isfinite(confirmed) && confirmed >= 0 && confirmed + tie_band_w >= target_w;
   };
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
@@ -330,7 +331,7 @@ inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tu
   return capacity_w;
 }
 inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchTuning& tuning,
-                                        const DispatchState& state) {
+                                        const DispatchState& state, ConfirmedPower confirmed_power = nullptr) {
   DispatchDecision out;
   const bool request_valid = std::isfinite(in.requested_w) && in.requested_w >= 0.0f;
   bool model_available = false;
@@ -412,7 +413,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
     // Do not shed a running peer on temporary startup/oil-return power. When
     // Duo cannot safely run (including a forced stop or peak limit), Single
     // remains available even if it cannot cover the complete heat request.
-    const Candidate single = pick_topology(in, tuning, target_w, 1, tie_band_w, duo.valid);
+    const Candidate single = pick_topology(in, tuning, target_w, 1, tie_band_w, duo.valid, confirmed_power);
     Candidate best;
     const bool have_best = single.valid || duo.valid;
     if (single.valid && duo.valid) {

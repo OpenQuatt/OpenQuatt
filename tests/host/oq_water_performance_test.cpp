@@ -51,7 +51,6 @@ void test_frequency_feedback_changes_duo_selection() {
     in.hp1.candidate = in.hp2.candidate = {2, true, false, false, true};
     in.pair_power = &CandidateModel::dispatch;
     in.pair_context = &model;
-    in.confirmed_power = &CandidateModel::confirmed_power;
     // Isolate the reported low-command combination. No low-frequency exclusion
     // is added to production; the next assertion also checks that 30 Hz survives.
     for (auto* hp : {&in.hp1, &in.hp2}) {
@@ -65,31 +64,31 @@ void test_frequency_feedback_changes_duo_selection() {
     return in;
   };
   const DispatchTuning limits{6000, 6500};
-  const auto before = decide_dispatch(dispatch_input(nominal), limits, {});
+  const auto before = decide_dispatch(dispatch_input(nominal), limits, {}, &CandidateModel::confirmed_power);
   assert(topology(before.hp1_level, before.hp2_level) == 2);
   auto in = dispatch_input(actual);
-  auto after = decide_dispatch(in, limits, {});
+  auto after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.output_valid && topology(after.hp1_level, after.hp2_level) == 1);
   assert(after.hp1_level == 2 || after.hp2_level == 2);
   assert(std::fabs(after.expected_w - single.thermal_w) < 1);
   // One observed 48 Hz unit already covers demand: do not start the idle peer.
   in.hp2.candidate.previous_applied_level = 0;
-  after = decide_dispatch(in, limits, {});
+  after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.hp1_level > 0 && after.hp2_level == 0);
   // Genuine demand still permits Duo; this is feedback, not a topology ban.
   in.requested_w = duo.thermal_w;
-  after = decide_dispatch(in, limits, {});
+  after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.hp1_level > 0 && after.hp2_level > 0);
   // Existing minimum-runtime holds still prevent an early stop.
   in.requested_w = single.thermal_w;
   in.hp2.candidate.previous_applied_level = 2;
   in.hp1.feedback_hold_level = in.hp2.feedback_hold_level = 2;
   in.hp1.stop_inhibited = in.hp2.stop_inhibited = true;
-  after = decide_dispatch(in, limits, {});
+  after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.hp1_level > 0 && after.hp2_level > 0);
   // A safety stop wins even while retained output would cover the heat demand.
   in.hp2.candidate.must_stop = true;
-  after = decide_dispatch(in, limits, {});
+  after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.hp1_level > 0 && after.hp2_level == 0);
   in = dispatch_input(actual);
   in.hp1.candidate.must_stop = true;
@@ -97,11 +96,11 @@ void test_frequency_feedback_changes_duo_selection() {
   oq_compressor_feedback::Snapshot unavailable;
   unavailable.missing = true;
   in.performance_valid = !unavailable.blocks_dispatch(in.hp1.candidate.must_stop);
-  after = decide_dispatch(in, limits, {});
+  after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.hp1_level == 0 && after.hp2_level > 0);
   in.requested_w = 0;
   in.hp1.feedback_hold_level = in.hp2.feedback_hold_level = 2;
-  after = decide_dispatch(in, limits, {});
+  after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.hp1_level == 0 && after.hp2_level == 0);
 }
 void test_feedback_closed_loop() {
@@ -169,7 +168,6 @@ void test_feedback_closed_loop() {
                                      !feedback[1].blocks_dispatch(in.hp2.candidate.must_stop);
               in.pair_power = &CandidateModel::dispatch;
               in.pair_context = &model;
-              in.confirmed_power = &CandidateModel::confirmed_power;
               const auto retained = model.pair(applied[0], applied[1]);
               in.performance_valid &= retained.valid();
               const bool may_settle = retained.valid() && retained.electrical_w <= 6500;
@@ -187,7 +185,7 @@ void test_feedback_closed_loop() {
                                          power.electrical_w, static_cast<uint8_t>(model.hz[hp][level])};
                 }
               }
-              const auto out = decide_dispatch(in, {6000, 6500}, {});
+              const auto out = decide_dispatch(in, {6000, 6500}, {}, &CandidateModel::confirmed_power);
               if (!start_duo || now >= 181000) assert(topology(out.hp1_level, out.hp2_level) == 1);
               for (unsigned hp = 0; hp < 2; ++hp) {
                 const int next = hp == 0 ? out.hp1_level : out.hp2_level;
@@ -239,7 +237,6 @@ void test_temporary_boost_cannot_shed_a_needed_peer() {
     in.hp1.candidate = in.hp2.candidate = {2, true, false, false, true};
     in.pair_power = &CandidateModel::dispatch;
     in.pair_context = &model;
-    in.confirmed_power = &CandidateModel::confirmed_power;
     for (unsigned hp = 0; hp < 2; ++hp) {
       auto& out = hp == 0 ? in.hp1 : in.hp2;
       out.levels[0] = {true, true, true, 0, 0};
@@ -257,7 +254,7 @@ void test_temporary_boost_cannot_shed_a_needed_peer() {
   auto in = input(startup, 4500);
   assert(startup.pair(2, 0).thermal_w > 4500);
   assert(CandidateModel::confirmed_power(&startup, 2, 0) < 4500);
-  auto out = decide_dispatch(in, limits, {});
+  auto out = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(out.hp1_level > 0 && out.hp2_level > 0);
   // Qualifying a normal response before an autonomous stop must not allow a
   // later startup plateau to shed the peer, even with unchanged Heating mode.
@@ -274,50 +271,50 @@ void test_temporary_boost_cannot_shed_a_needed_peer() {
     for (uint32_t now = 181000; now <= 521000; now += 10000) observe(now, 45, true);
     const CandidateModel restart(frequency, 8, 30, 800, {35, 35}, true, false, feedback);
     assert(restart.confirmed_hz[0][2] == 26 && restart.confirmed_hz[1][2] == 26);
-    out = decide_dispatch(input(restart, 4500), limits, {});
+    out = decide_dispatch(input(restart, 4500), limits, {}, &CandidateModel::confirmed_power);
     assert(out.hp1_level > 0 && out.hp2_level > 0);
   }
   observers = original;
   observe(901000, 45, true);
   // Unknown conservative capacity fails closed while a valid Duo can serve.
-  in.confirmed_power = [](const void*, int, int, float) { return NAN; };
-  out = decide_dispatch(in, limits, {});
+  const auto unknown_power = [](const void*, int, int, float) { return NAN; };
+  out = decide_dispatch(in, limits, {}, unknown_power);
   assert(out.hp1_level > 0 && out.hp2_level > 0);
   // An unavailable peer/forced safety stop still permits the remaining HP.
   in.hp2.candidate.must_stop = true;
-  out = decide_dispatch(in, limits, {});
+  out = decide_dispatch(in, limits, {}, unknown_power);
   assert(out.hp1_level > 0 && out.hp2_level == 0);
   in = input(startup, 2000);
-  out = decide_dispatch(in, limits, {});
+  out = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(topology(out.hp1_level, out.hp2_level) == 1);
   // A real peak constraint may require Single despite a thermal deficit.
   in = input(startup, 4500);
   in.hp1.feedback_hold_level = in.hp2.feedback_hold_level = 2;
   const auto one = startup.pair(2, 0), two = startup.pair(2, 2);
   const float peak = (one.electrical_w + two.electrical_w) / 2;
-  out = decide_dispatch(in, {peak, peak}, {});
+  out = decide_dispatch(in, {peak, peak}, {}, &CandidateModel::confirmed_power);
   assert(topology(out.hp1_level, out.hp2_level) == 1);
   // Ordinary operation qualifies before an oil-return boost. Its live output
   // remains visible, but does not replace the normal confirmed capacity.
   for (uint32_t now = 911000; now <= 951000; now += 10000) observe(now, 26, true);
   for (uint32_t now = 961000; now <= 1251000; now += 10000) observe(now, 50, false);
   CandidateModel oil(frequency, 8, 30, 800, {35, 35}, true, false, feedback);
-  out = decide_dispatch(input(oil, 4500), limits, {});
+  out = decide_dispatch(input(oil, 4500), limits, {}, &CandidateModel::confirmed_power);
   assert(out.hp1_level > 0 && out.hp2_level > 0);
   assert(oil.hz[0][2] == 50 && oil.confirmed_hz[0][2] == 26);
   // Persistent 48Hz feedback still permits the requested Duo -> Single fix.
   for (uint32_t now = 1261000; now <= 1311000; now += 10000) observe(now, 48, true);
   CandidateModel fixed(frequency, 8, 30, 800, {35, 35}, true, false, feedback);
-  out = decide_dispatch(input(fixed, 4500), limits, {});
+  out = decide_dispatch(input(fixed, 4500), limits, {}, &CandidateModel::confirmed_power);
   assert(topology(out.hp1_level, out.hp2_level) == 1);
   // Even sufficient normal capacity is not permission to interrupt defrost on
   // either owner. A forced safety stop still has priority over this protection.
   in = input(fixed, 2000);
   in.hp2.defrost = in.hp2.valve_defrost = true;
-  out = decide_dispatch(in, limits, {});
+  out = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(out.hp1_level > 0 && out.hp2_level > 0);
   in.hp2.candidate.must_stop = true;
-  out = decide_dispatch(in, limits, {});
+  out = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(out.hp1_level > 0 && out.hp2_level == 0);
 }
 void test_inactive_outlet_is_not_required() {
@@ -342,7 +339,6 @@ void test_inactive_outlet_is_not_required() {
     in.hp1.candidate = {first, true, false, false, true};
     in.hp2.candidate = {second, true, false, false, true};
     in.pair_context = &model;
-    in.confirmed_power = &CandidateModel::confirmed_power;
     for (unsigned unit = 0; unit < 2; ++unit) {
       auto& dest = unit == 0 ? in.hp1 : in.hp2;
       dest.levels[0] = {true, true, true, 0, 0};
@@ -351,7 +347,7 @@ void test_inactive_outlet_is_not_required() {
         dest.levels[level] = {true, p.valid(), p.valid(), p.thermal_w, p.electrical_w};
       }
     }
-    const auto out = decide_dispatch(in, {6000, 6500}, {});
+    const auto out = decide_dispatch(in, {6000, 6500}, {}, &CandidateModel::confirmed_power);
     assert(out.output_valid && out.hp1_level == (hp == 0 ? 1 : 0) && out.hp2_level == (hp == 1 ? 1 : 0));
     // Coupled predictions still need their real water boundary.
     const CandidateModel coupled(frequency, 8, NAN, 800, outlet, true, false);
@@ -381,7 +377,6 @@ void test_mixed_response_selects_duo_or_single_for_actual_capacity() {
     in.hp1.candidate = in.hp2.candidate = {2, true, false, false, true};
     in.pair_context = &model;
     in.pair_power = &CandidateModel::dispatch;
-    in.confirmed_power = &CandidateModel::confirmed_power;
     for (unsigned hp = 0; hp < 2; ++hp) {
       auto& input = hp == 0 ? in.hp1 : in.hp2;
       input.levels[0] = {true, true, true, 0, 0};
@@ -390,7 +385,7 @@ void test_mixed_response_selects_duo_or_single_for_actual_capacity() {
         input.levels[level] = {true, p.valid(), p.valid(), p.thermal_w, p.electrical_w};
       }
     }
-    const auto out = decide_dispatch(in, {6000, 6500}, {});
+    const auto out = decide_dispatch(in, {6000, 6500}, {}, &CandidateModel::confirmed_power);
     // With a working 20Hz point, Duo20 matches 4.5kW better than Single48.
     // At 5kW the confirmed Single26->48 point is the appropriate selection.
     if (demand == 4500)
@@ -437,7 +432,6 @@ void test_startup_oil_and_restart_closed_loop() {
         in.duo = in.performance_valid = in.lead_hp1 = true;
         in.pair_power = &CandidateModel::dispatch;
         in.pair_context = &model;
-        in.confirmed_power = &CandidateModel::confirmed_power;
         for (unsigned hp = 0; hp < 2; ++hp) {
           auto& input = hp == 0 ? in.hp1 : in.hp2;
           input.candidate = {applied[hp], true, false, false, true};
@@ -452,7 +446,7 @@ void test_startup_oil_and_restart_closed_loop() {
                                    p.thermal_w, p.electrical_w, static_cast<uint8_t>(model.hz[hp][level])};
           }
         }
-        const auto out = decide_dispatch(in, {6000, 6500}, {});
+        const auto out = decide_dispatch(in, {6000, 6500}, {}, &CandidateModel::confirmed_power);
         if (now > 900000 && now < 1000000) {
           assert(topology(out.hp1_level, out.hp2_level) == 1);
           low_single_seen = true;
