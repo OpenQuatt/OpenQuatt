@@ -287,6 +287,8 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 
 Bij beschikbare inlaattemperatuur en flow berekent OpenQuatt het vermogen voor ieder kandidaatpaar met de waterketen HP1 → HP2: de voorspelde uitlaat van HP1 wordt de inlaat van HP2. Dit geldt ook voor Water Temperature Control. Bij ontbrekende watermetingen gebruikt de regeling de eigen verse uitlaattemperatuur van een draaiende ODU, met de bestaande temperatuurreferentie als terugval. Stilstaande ODU's en defrost behouden die bestaande referentie. Alle frequentiegrenzen, stroomlimieten en wachttijden blijven actief; 90 Hz inclusief blijft toegestaan.
 
+De V1/V1.5-kaart van Quatt begint bij 35 °C water. Bij lagere watertemperaturen, zoals bij vloerverwarming, schatte de kaart het stroomverbruik daardoor 10-30 % te hoog. De kaart heeft daarom twee extra punten bij 25 en 30 °C, bepaald op meetdata van 54 V1/V1.5-installaties. Alleen de COP verandert; het thermisch vermogen en alles vanaf 35 °C blijven de waarden van Quatt. De meetdata loopt tot ongeveer 2 °C buiten; bij vorst zijn de nieuwe punten een schatting. Een lagere watertemperatuur geeft nooit een lagere COP dan het punt erboven.
+
 ## Langer doorverwarmen (optioneel)
 
 Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard uit.

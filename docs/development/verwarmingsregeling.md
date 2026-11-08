@@ -127,7 +127,10 @@ is geen beschrijving van een reeds actieve adaptive regelaar.
 De dispatcher vergelijkt toegestane single- en duo-kandidaten. Elektrisch
 ingangsvermogen, thermische dekking, beschikbare HP's, runtimebalans en
 wisselhysterese bepalen samen de keuze. Een kleine berekende winst veroorzaakt
-niet direct een topologiewissel.
+niet direct een topologiewissel. De V1/V1.5-kaart heeft onder Quatts 35 °C-punt
+twee aanvoerpunten (25 en 30 °C) die op vlootdata zijn gefit: de COP-rijen zijn
+nieuw, de P_th-rijen herhalen 35 °C. Per cel daalt de COP niet richting lagere
+aanvoer (25 ≥ 30 ≥ 35 °C). Vanaf 35 °C is de kaart ongewijzigd.
 
 Bij geldige flow en inlaattemperatuur voorspelt het model de waterketen
 HP1 → HP2: de uitlaat van HP1 wordt de inlaat voor HP2. Bij ontbrekende
