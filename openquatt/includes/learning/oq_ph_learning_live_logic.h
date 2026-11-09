@@ -147,11 +147,16 @@ inline PhysicalMeasurement<float> learning_system_flow(const PhysicalMeasurement
                                                        const PhysicalMeasurement<float>& selected,
                                                        oq_sources::LearningSourceRoute route,
                                                        const PhysicalMeasurement<BoilerHeatState>& boiler,
-                                                       uint64_t now_ms, bool pumps_stopped) {
+                                                       uint64_t now_ms, bool pumps_stopped,
+                                                       bool controller_zero_observed) {
   // Stopped ODU pumps alone cannot exclude boiler circulation. Reuse the
   // existing no-boiler contract only for zero flow, never for a missing supply.
-  if (!physical.valid && pumps_stopped && route == oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW &&
-      selected.value == 0.0f && live_measurement_fresh(selected, now_ms) && live_measurement_fresh(boiler, now_ms) &&
+  using Route = oq_sources::LearningSourceRoute;
+  const bool synthesized_zero = route == Route::SYNTHESIZED_ZERO_FLOW && !physical.valid;
+  const bool controller_idle_zero =
+      route == Route::CONTROLLER_FLOW && controller_zero_observed && (!physical.valid || physical.value == 0.0f);
+  if ((synthesized_zero || controller_idle_zero) && pumps_stopped && selected.value == 0.0f &&
+      live_measurement_fresh(selected, now_ms) && live_measurement_fresh(boiler, now_ms) &&
       boiler.value == BoilerHeatState::NO_HEAT)
     return selected;
   return physical;
