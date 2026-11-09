@@ -725,11 +725,11 @@
   };
   export const APP_VIEWS = [
     { id: "overview", labelKey: "navigation.overview", icon: "monitor-dashboard" },
-    { id: "energy", labelKey: "navigation.energy", icon: "zap" },
     { id: "results", labelKey: "navigation.results", icon: "bar-chart", group: "charts" },
     { id: "learning", labelKey: "navigation.learning", icon: "brain" },
     { id: "control", labelKey: "navigation.control", icon: "activity" },
     { id: "diagnosis", labelKey: "navigation.diagnosis", icon: "activity", group: "charts" },
+    { id: "energy", labelKey: "navigation.energy", icon: "zap", group: "charts" },
     { id: "settings", labelKey: "navigation.settings", icon: "settings" },
   ];
   export const APP_VIEW_IDS = new Set(APP_VIEWS.map((view) => view.id));

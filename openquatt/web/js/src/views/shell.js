@@ -45,7 +45,7 @@ export function renderSettingsView() {
     `;
   }
 
-  // Results and Diagnose share the Charts tab, laid out like Settings with their own side navigation.
+  // Results, Diagnose and Energy share the Consumption tab, laid out like Settings with their own side navigation.
   export function renderChartsView() {
     const item = getAppNavItem();
     const buttons = getNavItemViews(item).map((id) => {
@@ -59,7 +59,7 @@ export function renderSettingsView() {
           <nav class="oq-settings-group-nav" aria-label="${escapeHtml(t("navigation.chartsNavLabel"))}">${buttons}</nav>
         </aside>
         <div class="oq-settings-view-main">
-          ${state.appView === "diagnosis" ? renderDiagnosisView() : renderResultsView()}
+          ${state.appView === "energy" ? renderEnergyView() : state.appView === "diagnosis" ? renderDiagnosisView() : renderResultsView()}
         </div>
       </section>
     `;
@@ -93,9 +93,7 @@ export function renderSettingsView() {
       ? renderOverviewView()
       : state.appView === "control"
       ? renderControlReplayView()
-      : state.appView === "energy"
-      ? renderEnergyView()
-      : state.appView === "diagnosis" || state.appView === "results"
+      : state.appView === "energy" || state.appView === "diagnosis" || state.appView === "results"
       ? renderChartsView()
       : state.appView === "learning"
       ? renderLearningView()

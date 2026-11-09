@@ -687,9 +687,17 @@
   line-height: 1.4;
 }
 
-/* Results sits next to the Charts side navigation, so the controls follow the panel width, not the screen. */
+/* Energy and Results sit next to the Consumption side navigation, so their layout follows the panel width, not the screen. */
+.oq-overview-energy,
 .oq-energy-history {
   container-type: inline-size;
+}
+
+@container (max-width: 860px) {
+  .oq-overview-energy-grid,
+  .oq-overview-energy-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @container (max-width: 960px) {
