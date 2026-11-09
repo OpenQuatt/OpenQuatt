@@ -725,7 +725,7 @@
   };
   export const APP_VIEWS = [
     { id: "overview", labelKey: "navigation.overview", icon: "monitor-dashboard" },
-    { id: "energy", labelKey: "navigation.energy", icon: "zap" },
+    { id: "energy", labelKey: "navigation.energy", icon: "zap", group: "charts" },
     { id: "results", labelKey: "navigation.results", icon: "bar-chart", group: "charts" },
     { id: "learning", labelKey: "navigation.learning", icon: "brain" },
     { id: "control", labelKey: "navigation.control", icon: "activity" },
