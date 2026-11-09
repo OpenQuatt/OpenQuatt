@@ -227,7 +227,7 @@ test("kwaliteitsmetadata weigert ontbrekende, ambigue en ongeldige waarden zonde
   }
   const broken = normalizeHouseLearningExport({ ...qualityPayload(), record_quality: [null, null, null] });
   const html = renderHouseLearningChart(broken, {}, { h: 200, t0: 16, referenceRoomC: 20 });
-  assert.match(html, /<dt>Dagmetingen<\/dt><dd>0 /);
+  assert.match(html, /<dt>Leerdagen<\/dt><dd>0 /);
   assert.doesNotMatch(html, /<rect |class="oq-house-learning-chart-line oq-house-learning-chart-line--learned"/);
   assert.match(html, /Geen geladen meetperioden voor modeladvies/);
   assert.doesNotMatch(html, /Nog geen dagmetingen van 24 uur/);
@@ -238,7 +238,7 @@ test("een expliciet nulgewicht telt niet als bruikbaar ook als de server fit_eli
     records: [dailyPayload.records[1]] });
   const html = renderHouseLearningChart(records, {}, { referenceRoomC: 20 });
   assert.match(html, /Meetperioden: 1 bewaard · 0 voor modeladvies/);
-  assert.match(html, /<dt>Dagmetingen<\/dt><dd>0 /);
+  assert.match(html, /<dt>Leerdagen<\/dt><dd>0 /);
   assert.match(html, /Bewaard, niet voor modeladvies/);
 });
 
@@ -383,13 +383,13 @@ test("all-days preview includes the cold checking range without granting advice"
   assert.equal(path.length, 1);
   assert.equal(path[0][1].split(" ")[1], model.x(model.minX).toFixed(1));
   assert.ok(path[0][1].endsWith(`L ${model.x(model.maxX).toFixed(1)} ${model.y(0).toFixed(1)}`));
-  assert.match(nl, /buiten het gemeten bereik doorgetrokken/);
-  assert.match(nl, /alle 21 bruikbare dagmetingen, gewogen naar meetkwaliteit/);
-  assert.match(nl, /Leren: 18 · Controleren: 3/);
+  assert.match(nl, /Buiten het meetbereik is de voorlopige lijn doorgetrokken/);
+  assert.match(nl, /21 bruikbare dagmetingen, gewogen naar meetkwaliteit/);
+  assert.match(nl, /Leerdagen<\/dt><dd>18 <span>\/ 6 nodig/);
   assert.match(nl, /3,6 °C/);
   assert.doesNotMatch(nl, /Geleerde woninglijn beschikbaar/);
   setLocale("en", {persist:false,applyDocument:false,notify:false});
-  assert.match(renderHouseLearningChart([], {}, learned), /all 21 usable daily measurements, weighted by measurement quality/);
+  assert.match(renderHouseLearningChart([], {}, learned), /21 usable daily measurements, weighted by measurement quality/);
   const approved = getHouseLearningChartModel([], {}, {...learned, ready:true});
   assert.equal(approved.h, 213); assert.equal(approved.t0, 17.4);
   assert.equal(getHouseLearningChartModel([], {}, {...learned, preview:null}).learnedValid, false);
