@@ -375,25 +375,47 @@ void daily_without_system_sensor_keeps_hp_measurements() {
 }
 
 void daily_idle_without_boiler_heat_counts_zero_beyond_the_gap_limit() {
+  using Route = oq_sources::LearningSourceRoute;
   const QualityConfig quality;
-  SegmentAccumulator day;
-  assert(observe_source_input(day, system_observation(0, 2), quality).source.measurement_valid);
-  for (uint32_t seconds = 10; seconds <= 180; seconds += 10) {
-    auto raw = system_observation(seconds, 0);
-    raw.flow_lph.value = 0.0f;
-    raw.circuit_flow_lph =
-        learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, raw.boiler_heat,
-                             raw.monotonic_ms, true);
-    const auto result = observe_source_input(day, raw, quality);
-    assert(result.source.measurement_valid && result.source.snapshot.heat_to_water_w == 0.0f);
+  for (const auto route : {Route::SYNTHESIZED_ZERO_FLOW, Route::CONTROLLER_FLOW}) {
+    SegmentAccumulator day;
+    assert(observe_source_input(day, system_observation(0, 2), quality).source.measurement_valid);
+    for (uint32_t seconds = 10; seconds <= 180; seconds += 10) {
+      auto raw = system_observation(seconds, 0);
+      raw.flow_lph.value = 0.0f;
+      PhysicalMeasurement<float> physical;
+      if (route == Route::CONTROLLER_FLOW && seconds <= 45) {
+        // The same zero receipt ages past the 30 s skew limit and then expires.
+        physical = measured(0.0f, 8, PhysicalUnit::SYSTEM, 1000);
+        physical.timing = kHpLearningTiming;
+      }
+      raw.circuit_flow_lph = learning_system_flow(physical, raw.flow_lph, route, raw.boiler_heat, raw.monotonic_ms,
+                                                  true, route == Route::CONTROLLER_FLOW);
+      const auto result = observe_source_input(day, raw, quality);
+      assert(result.source.measurement_valid && result.source.snapshot.heat_to_water_w == 0.0f);
+      assert(day.active && !day.source_gap_pending && day.start_epoch_s == 20000U * 86400U);
+    }
+
+    auto boiler = system_observation(190, 4);
+    boiler.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
+    boiler.hp1.mode.value = boiler.hp2.mode.value = HeatPumpMode::OFF;
+    boiler.hp1.compressor_active.value = boiler.hp2.compressor_active.value = false;
+    boiler.flow_lph.value = 0.0f;  // The displayed flow can lag the physical receipt.
+    const auto physical = boiler.circuit_flow_lph;
+    assert(!learning_system_flow({}, boiler.flow_lph, route, boiler.boiler_heat, boiler.monotonic_ms, true,
+                                 route == Route::CONTROLLER_FLOW)
+                .valid);
+    boiler.circuit_flow_lph =
+        learning_system_flow(physical, boiler.flow_lph, route, boiler.boiler_heat, boiler.monotonic_ms, true, false);
+    const auto result = observe_source_input(day, boiler, quality);
+    assert(result.source.measurement_valid && result.source.snapshot.heat_to_water_w > 0.0f);
     assert(day.active && !day.source_gap_pending && day.start_epoch_s == 20000U * 86400U);
   }
 
   auto raw = system_observation(190, 0);
   raw.flow_lph.value = 0.0f;
   const auto flow = [&](const PhysicalMeasurement<BoilerHeatState>& boiler) {
-    return learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, boiler,
-                                raw.monotonic_ms, true);
+    return learning_system_flow({}, raw.flow_lph, Route::CONTROLLER_FLOW, boiler, raw.monotonic_ms, true, true);
   };
   assert(!flow({}).valid);
   auto boiler = raw.boiler_heat;
@@ -402,11 +424,9 @@ void daily_idle_without_boiler_heat_counts_zero_beyond_the_gap_limit() {
   boiler = raw.boiler_heat;
   boiler.received_monotonic_ms = 1;
   assert(!flow(boiler).valid);
-  assert(!learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::CONTROLLER_FLOW, raw.boiler_heat,
-                               raw.monotonic_ms, true)
+  assert(!learning_system_flow({}, raw.flow_lph, Route::CONTROLLER_FLOW, raw.boiler_heat, raw.monotonic_ms, true, false)
               .valid);
-  assert(!learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW,
-                               raw.boiler_heat, raw.monotonic_ms, false)
+  assert(!learning_system_flow({}, raw.flow_lph, Route::CONTROLLER_FLOW, raw.boiler_heat, raw.monotonic_ms, false, true)
               .valid);
   oq_sources::RawFloatReceipt pump;
   pump.observe(0.0f, raw.monotonic_ms, true);
@@ -421,9 +441,7 @@ void daily_idle_without_boiler_heat_counts_zero_beyond_the_gap_limit() {
   assert(!build_learning_snapshot(raw, quality).measurement_valid);  // No zero shortcut for a lost supply sensor.
   raw = system_observation(200, 0);
   raw.flow_lph.value = 1.0f;
-  assert(!learning_system_flow({}, raw.flow_lph, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW,
-                               raw.boiler_heat, raw.monotonic_ms, true)
-              .valid);
+  assert(!flow(raw.boiler_heat).valid);
 }
 
 void daily_system_heat_limit_is_inclusive_signed_and_separate_from_hp_measurement() {
