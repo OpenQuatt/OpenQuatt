@@ -38,7 +38,7 @@ De web-app heeft vijf hoofdschermen.
 | Scherm | Gebruik |
 |---|---|
 | `Overzicht` | Live zien wat OpenQuatt nu doet en of de belangrijkste waarden logisch zijn. |
-| `Verbruik` | Onder Energie vermogen, energie, COP en EER bekijken. Onder Resultaten opgeslagen energie- en resultaathistorie over een langere periode bekijken. Onder Diagnose live waarden en korte trendhistorie naast elkaar bekijken om gedrag te onderzoeken. |
+| `Verbruik` | Onder Resultaten opgeslagen energie- en resultaathistorie over een langere periode bekijken. Onder Diagnose live waarden en korte trendhistorie naast elkaar bekijken om gedrag te onderzoeken. Onder Energie vermogen, energie, COP en EER bekijken. |
 | `Leren` | Meetvoortgang, dagmetingen en het woningmodel bekijken. |
 | `Beslislog` | Terugzien welke regelbeslissingen OpenQuatt nam en waarom. Deze functie is nog beta. |
 | `Instellingen` | OpenQuatt configureren, bijwerken en beheren. |

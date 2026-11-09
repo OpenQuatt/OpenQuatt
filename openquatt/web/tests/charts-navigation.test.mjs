@@ -42,12 +42,12 @@ beforeEach(() => {
   Object.assign(state, { appView: "overview", appViewGroupLast: {}, entities: {}, drafts: {} });
 });
 
-test("Energy, Results and Diagnose share one Verbruik tab in the top navigation", () => {
+test("Results, Diagnose and Energy share one Verbruik tab in the top navigation", () => {
   assert.deepEqual(APP_NAV_ITEMS.map((item) => item.id), ["overview", "charts", "learning", "control", "settings"]);
-  assert.deepEqual(APP_NAV_ITEMS.find((item) => item.id === "charts").views, ["energy", "results", "diagnosis"]);
+  assert.deepEqual(APP_NAV_ITEMS.find((item) => item.id === "charts").views, ["results", "diagnosis", "energy"]);
   const markup = renderAppNav();
   assert.doesNotMatch(markup, /<span>Energie<\/span>|<span>Resultaten<\/span>|<span>Diagnose<\/span>/);
-  assert.equal(chartsTab(markup), "energy");
+  assert.equal(chartsTab(markup), "results");
 });
 
 test("the Verbruik tab reopens the view used last", () => {
@@ -57,17 +57,15 @@ test("the Verbruik tab reopens the view used last", () => {
   setAppView("overview");
   assert.equal(chartsTab(renderAppNav()), "diagnosis");
 
-  // Without trend history Diagnose disappears, so the tab falls back to Energy.
+  // Without trend history Diagnose disappears, so the tab falls back to Results.
   state.entities.trendHistoryEnabled = { value: false, state: false };
-  assert.equal(chartsTab(renderAppNav()), "energy");
+  assert.equal(chartsTab(renderAppNav()), "results");
 });
 
 test("the side navigation lists Diagnose only while it is available or open", () => {
   state.appView = "results";
   let markup = renderChartsView();
-  assert.match(markup, /data-view-id="energy" aria-pressed="false"/);
-  assert.match(markup, /data-view-id="results" aria-pressed="true"/);
-  assert.match(markup, /data-view-id="diagnosis" aria-pressed="false"/);
+  assert.match(markup, /data-view-id="results" aria-pressed="true"[\s\S]*data-view-id="diagnosis" aria-pressed="false"[\s\S]*data-view-id="energy" aria-pressed="false"/);
 
   state.entities.trendHistoryEnabled = { value: false, state: false };
   markup = renderChartsView();

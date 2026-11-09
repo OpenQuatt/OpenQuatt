@@ -45,7 +45,7 @@ export function renderSettingsView() {
     `;
   }
 
-  // Energy, Results and Diagnose share the Consumption tab, laid out like Settings with their own side navigation.
+  // Results, Diagnose and Energy share the Consumption tab, laid out like Settings with their own side navigation.
   export function renderChartsView() {
     const item = getAppNavItem();
     const buttons = getNavItemViews(item).map((id) => {
