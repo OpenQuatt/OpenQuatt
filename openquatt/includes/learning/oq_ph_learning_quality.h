@@ -83,9 +83,9 @@ inline QualityConfig live_daily_heat_quality(const QualityConfig& hp_quality, bo
                                              bool boiler_off_between_ticks) {
   auto quality = daily_heat_quality(hp_quality, system_heat_enabled);
   if (system_heat_enabled) {
-    constexpr float kAssumedSystemHeatBoundW = 24000.0f;
+    constexpr float kAssumedBoilerHeatBoundW = 24000.0f;
     float bound_w = configured_daily_missing_heat_bound_w(hp_quality);
-    if (!boiler_off_between_ticks) bound_w = fmaxf(bound_w, kAssumedSystemHeatBoundW);
+    if (!boiler_off_between_ticks) bound_w += kAssumedBoilerHeatBoundW;
     quality.max_daily_missing_heat_w = fminf(bound_w, quality.max_abs_heat_w);
   }
   return quality;

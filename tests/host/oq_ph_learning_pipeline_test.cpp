@@ -533,10 +533,12 @@ void daily_boiler_limits_stay_separate_and_preserve_an_open_gap() {
   assert(gap.may_bridge_daily_gap && isnan(gap.snapshot.partial_heat_to_water_w));
   assert(state.batch_accumulator.heat_gap_pending && state.batch_accumulator.gap_heat_bound_floor_w == 6115.28f);
 
-  raw = system_observation(20, 2);
+  raw = system_observation(20, 3);
+  raw.boiler_heat = learning_boiler_status(0x000AU, raw.monotonic_ms, true, true);
   raw.system_supply_c = {};
-  assert(advance(raw).may_bridge_daily_gap);
-  constexpr float wider_bound = 24000.0f;
+  const auto assisted_gap = advance(raw);
+  assert(assisted_gap.may_bridge_daily_gap && isnan(assisted_gap.snapshot.partial_heat_to_water_w));
+  constexpr float wider_bound = 30115.28f;
   assert(state.batch_accumulator.gap_heat_bound_floor_w == wider_bound);
 
   raw = system_observation(30, 2);
