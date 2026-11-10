@@ -92,6 +92,7 @@ Belangrijkste pagina's voor gebruikers:
 - [OpenQuatt Home Assistant](docs/dashboard/README.md) voor dashboards, optionele HA-packages en de companion-repository
 - [Verwarmen en comfort](docs/dagelijks/verwarmen.md) voor de keuze tussen Power House en stooklijnregeling; zie ook [Koelen](docs/dagelijks/koelen.md)
 - [MQTT inputbronnen](docs/mqtt.md) voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden en toestemmingssignalen
+- [E-mailmeldingen](docs/e-mailmeldingen.md) voor een mail bij storingen, via SMTP of een maildienst
 - [Problemen oplossen](docs/problemen-oplossen.md) voor diagnose zonder meteen te gaan tunen
 
 Meer heb je voor normaal gebruik meestal niet nodig.
