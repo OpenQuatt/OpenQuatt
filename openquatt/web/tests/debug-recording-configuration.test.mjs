@@ -8,7 +8,7 @@ const header = await readFile(new URL("../../../components/openquatt_debug_recor
 const powerHouse = await readFile(new URL("../../oq_power_house_strategy.yaml", import.meta.url), "utf8");
 
 test("Toby-context bevat drie instelwaarden, setpoint, comfortband en cyclusdiagnostiek", () => {
-  for (const key of ["phRunExtension", "phRunExtensionStopMargin", "phRunExtensionRestartCooldown"]) {
+  for (const key of ["phRunExtensionStopMargin", "phRunExtensionRestartCooldown"]) {
     assert.ok(DEBUG_CONFIGURATION_KEYS.includes(key), key);
   }
   assert.ok(DEBUG_RECORDING_KEYS.includes("roomSetpoint"));
@@ -25,7 +25,7 @@ test("Toby-context bevat drie instelwaarden, setpoint, comfortband en cyclusdiag
 });
 
 test("configuratieallowlist bevat alleen begrensde veilige number/select/switch-velden", () => {
-  assert.equal(DEBUG_CONFIGURATION_KEYS.length, 16);
+  assert.equal(DEBUG_CONFIGURATION_KEYS.length, 15);
   assert.equal(new Set(DEBUG_CONFIGURATION_KEYS).size, DEBUG_CONFIGURATION_KEYS.length);
   for (const key of DEBUG_CONFIGURATION_KEYS) {
     assert.ok(["number", "select", "switch"].includes(ENTITY_DEFS[key].domain), key);

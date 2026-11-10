@@ -55,11 +55,14 @@ class Runtime {
     return receipt;
   }
 
-  oq_sources::RawFloatReceipt system_flow_receipt(uint64_t now_ms, uint32_t max_age_ms) const {
+  oq_sources::RawFloatReceipt system_flow_receipt(uint64_t now_ms, uint32_t max_age_ms,
+                                                  bool& controller_zero_observed) const {
+    controller_zero_observed = false;
     if (!resolved_flow_.valid ||
-        !oq_sources::same_configuration(resolved_flow_.configuration, flow_configuration_key()) ||
-        flow_route(flow_selection().route) != resolved_flow_.route)
+        !oq_sources::same_configuration(resolved_flow_.configuration, flow_configuration_key()))
       return {};
+    const auto selected = flow_selection();
+    if (flow_route(selected.route) != resolved_flow_.route) return {};
     // Choose the normal flow route, but read the value and time together
     // from the producer instead of re-timestamping the selected display cache.
     oq_sources::RawFloatReceipt receipt;
@@ -68,6 +71,10 @@ class Runtime {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
       case Route::CONTROLLER_FLOW:
         receipt = oq_sources::current_controller_filtered_flow();
+        // The pulse meter publishes zero once after the pulses stop. Keep that
+        // evidence separate from a fresh physical receipt for calorimetry.
+        controller_zero_observed = selected.valid && selected.value == 0.0f && receipt.valid && receipt.value == 0.0f &&
+                                   receipt.received_ms != 0U && receipt.received_ms <= now_ms;
         break;
       case Route::SYNTHESIZED_ZERO_FLOW:
         // With idle ODU pumps, only fresh pulses prove boiler circulation.

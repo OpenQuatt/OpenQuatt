@@ -83,7 +83,8 @@ boven warme grens:         P_room = reactie × (warme grens - kamer)
 `comfort memory` bouwt bij aanhoudende achterstand langzaam op en neemt bij
 herstel af. Daardoor kan dezelfde kamertemperatuur afhankelijk van de
 voorgeschiedenis een andere vraag geven. Het gebruikerssetpoint verandert niet.
-De directe warme correctie begint boven `setpoint + comfort above`.
+Het maximum komt uit `memory_max_c` (0,08–1,0 °C). De directe warme correctie
+begint boven `setpoint + comfort above`.
 
 Voorbeeld zonder comfort memory of verdere begrenzing: modelvraag 2.400 W,
 setpoint 21 °C, ondermarge 0,2 K en reactie 3.000 W/K geven bij 20,7 °C een
@@ -112,11 +113,12 @@ laagste geschikte vermogen vragen terwijl de gewone wattsvraag nog oploopt.
 Kamerherstel kan die minimumondersteuning tot het setpoint voortzetten.
 Flow-, water-, incident- en minimum-uit-tijdguards blijven gelden.
 
-**Langer doorverwarmen** is een aparte, optionele toestandmachine. Een reeds
-bevestigde verwarmingsrun kan bij lage vraag minimumvermogen blijven vragen
-tot zijn comfortstopgrens. Inschakelen terwijl alles stilstaat start geen run.
+**Langer doorverwarmen** is een aparte toestandmachine die altijd actief is. Een
+reeds bevestigde verwarmingsrun kan bij lage vraag minimumvermogen blijven vragen
+tot zijn comfortstopgrens. Een stilstaande warmtepomp wordt niet gestart.
 Waterbegrenzing kan de minimumondersteuning intrekken; een latere herstartintentie
-blijft afhankelijk van de gemeenschappelijke startvoorwaarden.
+blijft afhankelijk van de gemeenschappelijke startvoorwaarden. Na een comfortstop
+en na een gewone stopperiode geldt dezelfde herstarttemperatuur.
 
 **Passief leren** observeert meetdata en past actieve model- of regelparameters
 niet automatisch aan. De [learning-roadmap](power-house-autotuning-development.md)

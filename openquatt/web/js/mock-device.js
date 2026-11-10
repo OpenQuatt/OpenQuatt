@@ -2120,7 +2120,6 @@
     setEntity("sensor", "Controlled warmup effective target", { value: 20.5, uom: "°C" });
     setEntity("sensor", "Controlled warmup status", { value: 0 });
     setEntity("sensor", "Controlled warmup elapsed", { value: 0, uom: "s" });
-    setEntity("switch", "Power House run extension", { value: false, state: false });
     setEntity("text_sensor", "Power House run extension status", { value: "inactive", state: "inactive" });
     setEntity("switch", "Boiler assist enabled", { value: true, state: true });
     setEntity("switch", "Boiler fallback on heat-pump fault", { value: false, state: false });

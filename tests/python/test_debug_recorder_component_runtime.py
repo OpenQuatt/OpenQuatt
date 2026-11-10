@@ -151,8 +151,8 @@ class RecorderComponentRuntimeTest(unittest.TestCase):
                     initial = self.initial(payload)
                     self.assertEqual(initial["timeNowHhmm"], "12:34")
                     self.assertEqual(
-                        json.loads(initial["configurationSnapshot"])["values"]["phRunExtension"],
-                        minutes != 15,
+                        json.loads(initial["configurationSnapshot"])["values"]["phRunExtensionStopMargin"],
+                        0.4 if minutes == 15 else 0.5,
                     )
                 jitter = json.loads(output["jitter"])
                 self.assertEqual([sample[0] for sample in jitter["samples"]], [0, 15, 47, 60])

@@ -137,7 +137,7 @@ test("single and duo current explanations follow available panels in both locale
 
 test("active run extension explains the configured choice and live stop temperature in NL and EN", () => {
   const hp1 = { title: "HP1", keys: { mode: "hp1Mode", freq: "hp1Freq", defrost: "hp1Defrost" } };
-  setup({ hp1Mode: "Heating", strategyActiveCode: 3, phRunExtension: true,
+  setup({ hp1Mode: "Heating", strategyActiveCode: 3,
     phRunExtensionStatus: "extending", phRunExtensionComfortStop: 21.7 });
   for (const locale of ["nl", "en"]) {
     setLocale(locale);
@@ -147,7 +147,6 @@ test("active run extension explains the configured choice and live stop temperat
     assert.match(model.expectation, locale === "nl" ? /21,7 °C/ : /21\.7 °C/);
     assert.match(card(model), /minimumvermogen|minimum output/);
   }
-  state.drafts.phRunExtension = false;
   state.inputDrafts.phRunExtensionComfortStop = "30";
   assert.equal(current([hp1]).primaryReason, "run_extension");
   assert.match(current([hp1]).expectation, /21\.7 °C/);
@@ -160,16 +159,15 @@ test("active run extension explains the configured choice and live stop temperat
   assert.doesNotMatch(unknown.expectation, /NaN|0 °C|undefined/);
   assert.match(unknown.expectation, /configured limit/);
   const hydration = getOverviewLikeHydrationKeys("control", { forceFast: true });
-  for (const key of ["phRunExtension", "phRunExtensionStatus", "phRunExtensionComfortStop"]) {
+  for (const key of ["phRunExtensionStatus", "phRunExtensionComfortStop"]) {
     assert.ok(hydration.includes(key), key);
   }
 });
 
 test("run extension requires confirmed active heating and preserves protection and cooling explanations", () => {
   const hp1 = { title: "HP1", keys: { mode: "hp1Mode", freq: "hp1Freq", defrost: "hp1Defrost" } };
-  const active = { hp1Mode: "Heating", strategyActiveCode: 3, phRunExtension: true, phRunExtensionStatus: "extending" };
+  const active = { hp1Mode: "Heating", strategyActiveCode: 3, phRunExtensionStatus: "extending" };
   for (const patch of [
-    { phRunExtension: false }, { phRunExtension: "nan" }, { phRunExtension: undefined },
     { phRunExtensionStatus: undefined }, { phRunExtensionStatus: "normal" },
     { phRunExtensionStatus: "comfort_stop" }, { phRunExtensionStatus: "blocked" },
     { phRunExtensionStatus: "wait_warm_restart" }, { strategyActiveCode: 2 },
@@ -186,7 +184,7 @@ test("run extension requires confirmed active heating and preserves protection a
 test("run extension preserves duo operation and resumes for the remaining heating pump", () => {
   const hp1 = { title: "HP1", keys: { mode: "hp1Mode", freq: "hp1Freq", defrost: "hp1Defrost" } };
   const hp2 = { title: "HP2", keys: { mode: "hp2Mode", freq: "hp2Freq", defrost: "hp2Defrost" } };
-  setup({ strategyActiveCode: 3, phRunExtension: true, phRunExtensionStatus: "extending" });
+  setup({ strategyActiveCode: 3, phRunExtensionStatus: "extending" });
   for (const locale of ["nl", "en"]) {
     setLocale(locale);
     for (const [first, second] of [["Heating", "Heating"], ["Heating", "Cooling"], ["Cooling", "Heating"]]) {

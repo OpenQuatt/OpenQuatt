@@ -72,16 +72,6 @@ globals:
     restore_value: false
     initial_value: '0'
 
-switch:
-  - platform: template
-    id: ph_run_extension_enabled
-    name: "Power House run extension"
-    icon: mdi:heat-wave
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    entity_category: config
-    disabled_by_default: true
-
 select:
   - platform: template
     id: oq_ph_response_profile
@@ -152,6 +142,19 @@ number:
     restore_value: true
     optimistic: true
     initial_value: 3000
+    entity_category: config
+
+  - platform: template
+    id: ph_memory_max_c
+    name: "Power House integrator memory max"
+    icon: mdi:memory
+    unit_of_measurement: "°C"
+    min_value: 0.1
+    max_value: 1.0
+    step: 0.1
+    restore_value: true
+    optimistic: true
+    initial_value: 0.2
     entity_category: config
 
   - platform: template

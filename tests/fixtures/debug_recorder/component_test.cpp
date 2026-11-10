@@ -98,7 +98,6 @@ struct Environment {
     clock().state = "12:34";
     margin().state = 0.5f;
     cooldown().state = 0.2f;
-    extension().state = true;
   }
   ~Environment() {
     assert(recorder_test::held_mutexes == 0);
@@ -142,7 +141,6 @@ struct Environment {
   text_sensor::TextSensor& clock() { return find(App.text_sensors, "Time now (HH:MM)"); }
   text_sensor::TextSensor& diagnostic() { return find(App.text_sensors, "Low-load dynamic thresholds"); }
   switch_::Switch& flag() { return find(App.switches, "OpenQuatt Enabled"); }
-  switch_::Switch& extension() { return find(App.switches, "Power House run extension"); }
   number::Number& margin() { return find(App.numbers, "Power House run extension stop margin"); }
   number::Number& cooldown() { return find(App.numbers, "Power House run extension restart cooldown"); }
   void tick(Recorder& recorder, uint32_t seconds) {
@@ -357,7 +355,6 @@ void configuration() {
   const uint32_t first = recorder.capture("configurationSnapshot");
   assert(first != Recorder::MISSING_VALUE);
   const auto initial = recorder.text(first);
-  assert(initial.find("\"phRunExtension\":true") != std::string::npos);
   assert(initial.find("\"phRunExtensionStopMargin\":0.5") != std::string::npos);
   assert(initial.find("\"phRunExtensionRestartCooldown\":0.2") != std::string::npos);
 #if OQ_TOPOLOGY_DUO
@@ -367,12 +364,12 @@ void configuration() {
   assert(initial.find("\"unavailable\":[\"hp2ExcludeMinHz\",\"hp2ExcludeMaxHz\"]") != std::string::npos);
 #endif
   recorder.retain(first);
-  env.extension().state = false;
+  env.margin().state = 0.4f;
   const uint32_t second = recorder.capture_configuration_();
   assert(second != first && second != Recorder::MISSING_VALUE);
   recorder.retain(second);
   const auto changed = recorder.text(second);
-  assert(changed.find("\"phRunExtension\":false") != std::string::npos);
+  assert(changed.find("\"phRunExtensionStopMargin\":0.4") != std::string::npos);
   assert(recorder.capture_configuration_() == second && recorder.text(first) == initial);
   env.margin().valid = false;
   const uint32_t third = recorder.capture_configuration_();
@@ -493,7 +490,7 @@ void retention() {
   Recorder recorder;
   recorder.setup();
   for (uint32_t seconds = 0; seconds <= 16 * 3600; seconds += 10) {
-    if (seconds == 15 * 3600) env.extension().state = false;
+    if (seconds == 15 * 3600) env.margin().state = 0.4f;
     env.tick(recorder, seconds);
   }
   assert(!recorder.string_overflow_ && recorder.count_ == recorder.sample_capacity_);
