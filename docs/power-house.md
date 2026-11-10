@@ -32,7 +32,7 @@ Werk je liever direct met een stooklijn en aanvoertemperatuur, dan past [Water T
 
 ## Wat doet het systeem bij te koud, goed of te warm?
 
-`Power House` berekent de warmtevraag uit de woningbehoefte en een kamercorrectie. De gewenste kamertemperatuur is geen automatische uitknop. In **Power House — comfort** staan daarom **Op temperatuur houden** en het optionele **Langer doorverwarmen** apart herkenbaar bij elkaar.
+`Power House` berekent de warmtevraag uit de woningbehoefte en een kamercorrectie. De gewenste kamertemperatuur is geen automatische uitknop. In **Power House — comfort** staan daarom **Op temperatuur houden** en **Langer doorverwarmen** apart herkenbaar bij elkaar.
 
 De vraag blijft in watt behouden tot de keuze van de compressorfrequenties. De elektrische begrenzing kan de vraag verlagen; de performancetabel bepaalt welke toegestane frequentie of Duo-combinatie past.
 
@@ -137,7 +137,7 @@ Die correctie komt boven op de woningbehoefte. Daarna volgen vermogensbegrenzing
 
 Bij aanhoudend te koud zijn bouwt de regeling een kleine herstelcorrectie (*comfort memory*) op. Die verschuift intern de koude correctiegrens omhoog; de ingestelde gewenste temperatuur verandert niet. De eerdere achterstand kan daardoor nog extra opwarming geven als de kamer inmiddels dichter bij het setpoint zit.
 
-`Comfort above` heeft meerdere effecten. Met onder- en bovenmarge begrensd op 0–2 °C is de maximale interne verschuiving `clamp(0,05 + 0,50 × comfort above, 0,08, 0,20) °C`. De opbouw hangt af van de achterstand en duurt bij constante achterstand ongeveer 24–90 minuten tot dit maximum. Afbouw begint boven het midden van `setpoint − comfort below` en `setpoint + comfort above`: op een tempo van het maximum per 40 minuten, of per 12 minuten boven de laatste grens. Een grotere bovenmarge geeft dus niet onbeperkt meer herstelcorrectie en is geen toegestane temperatuuroverschrijding.
+De maximale interne verschuiving stel je apart in met **Power House integrator memory max**, in de web-app **Integrerend bijregelen**: 0,1–1,0 °C, standaard 0,2 °C. De opbouw hangt af van de achterstand en duurt bij constante achterstand ongeveer 24–90 minuten tot dit maximum. Afbouw begint boven het midden van `setpoint − comfort below` en `setpoint + comfort above`: op een tempo van het maximum per 40 minuten, of per 12 minuten boven de laatste grens. `Comfort above` begrenst dit maximum niet meer en is geen toegestane temperatuuroverschrijding.
 
 De directe berekening gebruikt `min(setpoint + memory − comfort below, warme grens)` als koude correctiegrens. Op of boven de warme grens is geen positieve kamercorrectie mogelijk; erboven wordt warmte teruggenomen. De gewenste temperatuur blijft ongewijzigd. Bij ondermarge **0,1 °C** en opgebouwde verschuiving **0,2 °C** kan bij **21,05 °C** en setpoint **21,0 °C** dus nog positieve correctie bestaan. Bij ondermarge **0,2 °C** en hetzelfde maximum is dat boven het setpoint niet mogelijk.
 
@@ -145,7 +145,7 @@ De directe berekening gebruikt `min(setpoint + memory − comfort below, warme g
 
 Na een bevestigde start doordat de kamer onder de koude grens zit, ondersteunt Power House de herstelrun met het laagste geschikte warmtepompvermogen tot de gemeten kamertemperatuur het setpoint bereikt. Bij een setpoint van **20,0 °C** en ondermarge **0,1 °C** kan de startvraag vanaf **19,9 °C** ontstaan; de minimumondersteuning blijft vervolgens ook bij **19,96 °C** actief tot **20,0 °C**.
 
-Daarna neemt de gewone vermogensregeling het over. Het setpoint bereiken is geen harde stop: bij voldoende warmtevraag kan de warmtepomp blijven draaien. Dit kamerherstel werkt ook met **Langer doorverwarmen** uit. Die aparte optie ondersteunt lage warmtevraag tot een hogere stoptemperatuur. Waterbegrenzing en veiligheidsvoorwaarden blijven leidend; een setpointverlaging, ingetrokken warmtetoestemming of ongeldige kamerdata kan het herstel eerder beëindigen.
+Daarna neemt de gewone vermogensregeling het over. Het setpoint bereiken is geen harde stop: bij voldoende warmtevraag kan de warmtepomp blijven draaien. **Langer doorverwarmen** is altijd actief en ondersteunt lage warmtevraag tot een hogere stoptemperatuur. Waterbegrenzing en veiligheidsvoorwaarden blijven leidend; een setpointverlaging, ingetrokken warmtetoestemming of ongeldige kamerdata kan het herstel eerder beëindigen.
 
 #### Rekenvoorbeeld van warmtevraag
 
@@ -164,7 +164,7 @@ Dezelfde actuele kamertemperatuur kan dus een andere vraag geven na een eerdere 
 
 #### Wijziging van de bovenmarge
 
-De warme correctiegrens ligt op `setpoint + comfort above`. Een positieve bovenmarge stelt het begin van de directe negatieve kamercorrectie dus uit, ook als langer doorverwarmen uitstaat. Comfort memory en langer doorverwarmen hebben daarnaast hun eigen voorwaarden; de bovenmarge is geen garantie voor een bepaalde overschrijding.
+De warme correctiegrens ligt op `setpoint + comfort above`. Een positieve bovenmarge stelt het begin van de directe negatieve kamercorrectie dus uit. Comfort memory en langer doorverwarmen hebben daarnaast hun eigen voorwaarden; de bovenmarge is geen garantie voor een bepaalde overschrijding.
 
 ### 3. Reactiesnelheid
 
@@ -248,7 +248,7 @@ Als je `Power House` wilt afstellen, begin dan bijna altijd hier:
 3. `Maximum heating outdoor temperature`
 4. **Afkoeling onder gewenste temperatuur** (`Power House comfort below setpoint`)
 5. **Afremmen boven gewenste temperatuur** (`Power House comfort above setpoint`)
-6. Eventueel **Langer doorverwarmen**, met stopmarge en afkoeling
+6. **Langer doorverwarmen**, met stopmarge en afkoeling
 
 Daarna eventueel:
 
@@ -289,17 +289,17 @@ Bij beschikbare inlaattemperatuur en flow berekent OpenQuatt het vermogen voor i
 
 De V1/V1.5-kaart van Quatt begint bij 35 °C water. Bij lagere watertemperaturen, zoals bij vloerverwarming, schatte de kaart het stroomverbruik daardoor 10-30 % te hoog. De kaart heeft daarom twee extra punten bij 25 en 30 °C, bepaald op meetdata van 54 V1/V1.5-installaties. Alleen de COP verandert; het thermisch vermogen en alles vanaf 35 °C blijven de waarden van Quatt. De meetdata loopt tot ongeveer 2 °C buiten; bij vorst zijn de nieuwe punten een schatting. Een lagere watertemperatuur geeft nooit een lagere COP dan het punt erboven.
 
-## Langer doorverwarmen (optioneel)
+## Langer doorverwarmen
 
-Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard uit.
+Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie is altijd actief.
 
-### Wat gebeurt er wanneer je het aanzet?
+### Wat gebeurt er?
 
-1. De warmtepomp moet eerst vanwege de normale warmtevraag gaan verwarmen. Inschakelen start een stilstaande warmtepomp niet zelfstandig.
+1. De warmtepomp moet eerst vanwege de normale warmtevraag gaan verwarmen. Een stilstaande warmtepomp wordt niet zelfstandig gestart.
 2. Als de woning minder warmte nodig heeft dan het laagste geschikte warmtepompvermogen, mag de run op dat minimumvermogen doorgaan. Dat mag ook wanneer de normale vraag tijdelijk nul is.
 3. Bij **Stopgrens boven gewenste temperatuur** wordt een comfortstop aangevraagd. Dit geldt in de geactiveerde cyclus ook als de gewone vraag nog boven het minimumvermogen ligt. De minimumlooptijd kan de daadwerkelijke stop uitstellen. Restwarmte kan de kamer daarna nog verder opwarmen; dit is geen gegarandeerde maximumtemperatuur.
 4. Daarna wacht de regeling op afkoeling. **Afkoeling na stoppen** wordt gerekend vanaf de geldende stopgrens, niet vanaf een eventuele hogere temperatuurpiek door restwarmte.
-5. Herstart gebeurt alleen als Power House opnieuw warmte vraagt. Wachttijden en beveiligingen kunnen de daadwerkelijke start uitstellen.
+5. Herstart gebeurt alleen als Power House opnieuw warmte vraagt. Dezelfde afkoelgrens geldt na een comfortstop én na een gewone stopperiode. Wachttijden en beveiligingen kunnen de daadwerkelijke start uitstellen.
 
 De laagste geschikte stand kan veranderen met de bedrijfsomstandigheden. OpenQuatt gebruikt voor V2 old en V2 new dezelfde ruimere V2-new-kaart, omdat beide uitvoeringen dezelfde hardware hebben. Daardoor blijft F1 (20 Hz) ook boven 14 °C buiten beschikbaar bij een wateruitlaat onder 49 °C. Vanaf 49 °C wateruitlaat en bij sommige koude bedrijfsomstandigheden begint het bedrijfsgebied bij 30 Hz. Een gebruikersuitsluiting van lage frequenties kan de minimumstand eveneens verhogen. Doorverwarmen op minimumvermogen betekent dus niet altijd F1. De vermogensbalans noemt het verschil tussen huisvraag en totale aanvraag **Vermogensbijsturing**, omdat daar ook opwarmen en langer doorverwarmen in kunnen zitten.
 
@@ -313,11 +313,10 @@ Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd do
 
 | In de web-app | Home Assistant / firmware | Bereik en standaard |
 |---|---|---|
-| Langer doorverwarmen | `Power House run extension` | Aan/uit; standaard uit |
 | Stopgrens boven gewenste temperatuur | `Power House run extension stop margin` | 0,1–1,0 °C boven setpoint; standaard 0,5 °C |
 | Afkoeling na stoppen | `Power House run extension restart cooldown` | 0,1–3,0 °C onder de comfortstop; standaard 0,2 °C |
 
-De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden. In Home Assistant zijn deze extension-entities standaard uitgeschakeld; je kunt ze daar zelf inschakelen. De web-app toont stop- en herstarttemperatuur berekend met de getoonde instellingen. Tijdens bewerken is dat een voorvertoning van je wijziging.
+De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden. In Home Assistant zijn beide extension‑instellingen standaard uitgeschakeld; je kunt ze daar zelf inschakelen. De web-app toont stop- en herstarttemperatuur berekend met de getoonde instellingen. Tijdens bewerken is dat een voorvertoning van je wijziging.
 
 ```text
 stopgrens = setpoint + stopmarge
@@ -351,13 +350,13 @@ De historische namen `Comfort below/above` beschrijven geen symmetrische aan/uit
 
 De stopmarge en herstartafstand horen bij het aparte doorverwarmen-mechanisme. Kleine afkoeling kan passen als je vroeg wilt herstarten; grotere afkoeling geeft opgeslagen warmte meer tijd om af te geven. Er zijn geen aparte regelmodi voor radiatoren, LT-radiatoren en vloerverwarming. Er is geen garantie op lager elektriciteitsverbruik.
 
-### Status, uitschakelen en herstart van de controller
+### Status en herstart van de controller
 
 De actuele status laat zien of de regeling **Normaal verwarmt**, **Doorverwarmt op minimumvermogen**, een **Stop heeft aangevraagd**, **Wacht op afkoeling** of een **Herstart heeft aangevraagd**. De firmwarewaarden blijven `normal`, `extending`, `comfort_stop`, `wait_warm_restart` en `warm_restart`. **Herstart aangevraagd** betekent dat herstart is vrijgegeven, niet dat de compressor al draait. De berekende grenzen in het instellingenblok zijn geen bewijs dat een bestaande aanvraag is ingetrokken.
 
-Uitschakelen van langer doorverwarmen schakelt de gewone verwarming niet uit: de normale Power House-vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
+Langer doorverwarmen staat altijd aan en laat de gewone Power House-vraag intact: die vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
 
-Een verlaging van de gewenste temperatuur kan ook bij een stilstaande warmtepomp de gewone warmtevraag blokkeren tot de nieuwe herstartgrens is bereikt. Een nog niet verwerkte verlaging blijft na tijdelijk ontbrekende inputs gelden; een verlaging die tijdens uitgeschakeld doorverwarmen al is waargenomen, wordt na inschakelen niet opnieuw toegepast.
+Een verlaging van de gewenste temperatuur kan ook bij een stilstaande warmtepomp de gewone warmtevraag blokkeren tot de nieuwe herstartgrens is bereikt. Een nog niet verwerkte verlaging blijft na tijdelijk ontbrekende inputs gelden.
 
 Na reboot of firmware-update blijven de instellingen behouden, maar de historische doorverwarmen-cyclus wordt gewist. Er moet eerst weer een echte verwarmingsrun zijn voordat extension een warme herstart mag vrijgeven. De normale comfortregeling kan ondertussen gewoon warmte vragen.
 

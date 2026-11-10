@@ -89,7 +89,7 @@ struct Simulation {
     if (target.limited) demand_state.comfort_memory_c = 0;
     const oq_power_house::DemandInput demand_input{now, 19.62f,       -10,  18, 10000, room, target.effective_c,
                                                    NAN, water_factor, false};
-    const oq_power_house::DemandTuning tuning{0, 2000, input.comfort_below_c, 0.3f, 5, 2};
+    const oq_power_house::DemandTuning tuning{0, 2000, input.comfort_below_c, 0.3f, 5, 2, NAN};
     const auto demand = oq_power_house::decide_demand(demand_input, tuning, demand_state);
     assert(demand.valid && demand.contributions.modelled_base_w == 0);
     demand_state = demand.next;
@@ -311,7 +311,7 @@ void test_warmup_handoff_to_adjustable_run_extension() {
     assert(sim.compressor);
     extension::State state;
     const extension::Tuning tuning{0.7f, cooldown, sim.input.comfort_below_c};
-    extension::Input in{true, true, true, true, true, 20.0f, 22.0f, sim.requested_w, kMinimumW, 1, 1.0f};
+    extension::Input in{true, true, true, true, 20.0f, 22.0f, sim.requested_w, kMinimumW, 1, 1.0f};
     auto result = extension::evaluate(in, tuning, state);
     state = result.next;
     for (float room : {20.05f, 20.1f, 20.2f, 21.0f}) {

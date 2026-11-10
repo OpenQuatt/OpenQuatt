@@ -10,15 +10,13 @@ using esphome::openquatt_debug_recorder::ConfigurationJsonWriter;
 int main() {
   char buffer[1024]{};
   ConfigurationJsonWriter json(buffer, sizeof(buffer));
-  assert(json.write_literal("{\"phRunExtension\":"));
-  assert(json.write_bool(true));
-  assert(json.write_literal(",\"phRunExtensionStopMargin\":"));
+  assert(json.write_literal("{\"phRunExtensionStopMargin\":"));
   assert(json.write_float(0.5f));
   assert(json.write_literal(",\"phRunExtensionRestartCooldown\":"));
   assert(json.write_float(0.2f));
   assert(json.write_char('}'));
   assert(std::string(buffer, json.size()) ==
-         "{\"phRunExtension\":true,\"phRunExtensionStopMargin\":0.5,\"phRunExtensionRestartCooldown\":0.2}");
+         "{\"phRunExtensionStopMargin\":0.5,\"phRunExtensionRestartCooldown\":0.2}");
 
   char escaped[64]{};
   ConfigurationJsonWriter strings(escaped, sizeof(escaped));
