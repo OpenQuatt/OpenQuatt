@@ -62,7 +62,7 @@ function clock(t) {
 
 test.beforeEach(t => {
   state.appView = "learning";
-  state.learningForecastOpen = false;
+  state.learningPanel = "diagnostics";
   state.nativeOpen = false;
   document.hidden = false;
   state.busyAction = state.houseLearningReset = "";
@@ -149,7 +149,7 @@ for (const [name, invalidate] of [
   ["navigatie", () => { setAppView("settings"); setAppView("learning"); }],
   ["verborgen", () => { document.hidden = true; }],
   ["native", () => { state.nativeOpen = true; }],
-  ["Vooruitblik", () => { state.learningForecastOpen = true; }],
+  ["Vooruitblik", () => { state.learningPanel = "forecast"; }],
   ["write", () => { state.busyAction = "save-maxWater"; }],
   ["reset", () => { state.houseLearningReset = "pending"; }],
   ["onzekere reset", () => { state.houseLearningReset = "uncertain"; }],

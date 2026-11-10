@@ -539,6 +539,14 @@
 .oq-house-learning-chart-wrap { position: relative; }
 .oq-house-learning-chart { display: block; width: 100%; height: auto; overflow: visible; }
 .oq-house-learning-chart-range { fill: var(--oq-helper-sky); opacity: 0.045; }
+.oq-house-learning-chart-band { fill: #16a34a; fill-opacity: 0.18; stroke: #16a34a; stroke-opacity: 0.38; pointer-events: none; }
+.oq-helper-shell--dark .oq-house-learning-chart-band { fill: #4ade80; stroke: #4ade80; }
+.oq-house-learning-chart-panel:has([data-oq-house-learning-band-toggle]:not(:checked))
+  :is(.oq-house-learning-chart-band, .oq-house-learning-chart-band-detail) { display: none; }
+.oq-house-learning-chart-band-note { margin: 0; color: var(--oq-helper-soft); font-size: 0.82rem; }
+.oq-house-learning-chart-estimates { display: flex; flex-wrap: wrap; gap: 12px 32px; margin: 0; color: var(--oq-helper-soft); font-size: 0.82rem; }
+.oq-house-learning-chart-estimates dd { margin: 0; }
+.oq-house-learning-chart-estimates dt + dd { color: var(--oq-helper-ink); font-size: 1.15rem; font-weight: 700; }
 .oq-house-learning-chart-grid { stroke: color-mix(in srgb, var(--oq-helper-line) 86%, transparent); stroke-width: 1; }
 .oq-house-learning-chart-axis, .oq-house-learning-chart-unit { fill: var(--oq-helper-faint); font-family: inherit; font-size: 12px; font-weight: 400; }
 .oq-house-learning-chart-unit { font-size: 11px; }
@@ -556,7 +564,8 @@
 .oq-house-learning-chart-dot { fill: #ea580c; stroke: var(--oq-helper-surface, #fff); stroke-width: 1.5; }
 .oq-house-learning-chart-point:hover .oq-house-learning-chart-dot, .oq-house-learning-chart-point:focus-visible .oq-house-learning-chart-dot { fill: #c2410c; r: 4.5px; }
 .oq-house-learning-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--oq-helper-soft); font-size: 0.82rem; font-weight: 700; }
-.oq-house-learning-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.oq-house-learning-chart-legend :is(span, label) { display: inline-flex; align-items: center; gap: 6px; }
+.oq-house-learning-chart-legend input { margin: 0; accent-color: #15803d; }
 .oq-house-learning-chart-swatch { width: 18px; height: 3px; border-radius: 2px; background: #2563eb; }
 .oq-house-learning-chart-swatch--records { width: 8px; height: 8px; border-radius: 50%; background: #ea580c; }
 .oq-house-learning-chart-swatch--learned { background: #16a34a; }

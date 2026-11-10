@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { setLocale } from "../js/src/i18n/index.js";
 
 globalThis.__OQ_PREVIEW__ = false;
+const { state } = await import("../js/src/core/state.js");
 const { getHouseLearningReadiness, renderHouseLearningReadiness } = await import("../js/src/settings/house-learning-readiness.js");
 const { normalizeHouseLearningExport, renderHouseLearningChart } = await import("../js/src/settings/house-learning-chart.js");
 
@@ -281,4 +282,23 @@ test("bewaarde dagen met onbekende kwaliteit tonen indicatieve balken zonder goe
   assert.match(html, /Spreiding van alle opgeslagen dagen[\s\S]*6 °C <span>\/ 6 °C richtwaarde/);
   assert.doesNotMatch(html, /is-complete|✓/);
   assert.match(renderHouseLearningReadiness([], {}, data.slice(0, 1)), /— <span>\/ 6 °C richtwaarde/);
+});
+
+
+test("beoordeling is standaard ingeklapt met zichtbare aantallen en behoudt een bewuste opening", () => {
+  const previous = state.settingsAdvancedOpen;
+  try {
+    const data = records([4, 4, 7, 7, 10, 10, 8, 9, 10]);
+    for (const locale of ["nl", "en"]) {
+      setLocale(locale, config);
+      state.settingsAdvancedOpen = {};
+      const closed = renderHouseLearningReadiness(data);
+      assert.match(closed, locale === "nl" ? /6 leerdagen · 3 controledagen · 6 °C spreiding/ : /6 training days · 3 checking days · 6 °C spread/);
+      assert.match(closed, /<details[^>]*data-oq-settings-advanced="house-learning-readiness">/);
+      assert.match(closed, locale === "nl" ? />Bekijk beoordeling<\/summary>/ : />View assessment<\/summary>/);
+      state.settingsAdvancedOpen = { "house-learning-readiness": true };
+      assert.match(renderHouseLearningReadiness(data), /<details[^>]*data-oq-settings-advanced="house-learning-readiness" open>/);
+      assert.equal(data.length, 9);
+    }
+  } finally { state.settingsAdvancedOpen = previous; }
 });

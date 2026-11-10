@@ -12,7 +12,7 @@ let lastFetch = -Infinity;
 
 export function shouldRefreshWeatherForecast() {
   return !document.hidden && !state.nativeOpen && state.appView === "learning"
-    && state.learningForecastOpen && hasEntity("weatherLocation") && hasEntity("weatherEnabled");
+    && state.learningPanel === "forecast" && hasEntity("weatherLocation") && hasEntity("weatherEnabled");
 }
 
 export function suspendWeatherForecast() {

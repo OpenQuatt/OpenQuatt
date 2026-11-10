@@ -154,6 +154,7 @@ export function createSettingsState() {
     houseLearningShadowEpoch: 0,
     houseLearningShadowTimer: null,
     houseLearningChart: null,
+    houseLearningChartBandVisible: true,
     houseLearningChartLoading: false,
     houseLearningChartError: "",
     houseLearningChartFetchedAt: 0,
