@@ -17,6 +17,7 @@ import { patchControlledWarmupField, patchRunExtensionThresholds, renderSettings
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
+import { renderSettingsMailSection } from "../features/mail.js";
 import { renderSettingsPrivacySection, renderSettingsPrivacyUnavailable } from "./privacy.js";
 import { getApiSecurityStatusDetail, getApiSecurityStatusLabel, renderSettingsAccessSecuritySection } from "./security.js";
 import { renderSettingsCounterServiceSection, renderSettingsServiceSection } from "./service.js";
@@ -118,6 +119,7 @@ function syncFrequencyRangeControl(control) {
             ? [
                 renderSettingsOpenThermCicSection(),
                 renderSettingsMqttSection(),
+                renderSettingsMailSection(),
                 renderSettingsSensorSelectionSection(),
               ]
             : [

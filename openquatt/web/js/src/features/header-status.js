@@ -11,6 +11,7 @@ import { state } from "../core/state.js";
 import { getDebugRecordingHubStatusLabel, renderDebugRecordingHeaderStatus, renderDebugRecordingModal } from "./debug-recording.js";
 import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel, getRuntimeCounterResetKey } from "./device-context.js";
 import { getFirmwareUpdateEntity, getUpdateStatus, isFirmwareUpdateAvailable } from "./firmware-update.js";
+import { renderMailModal } from "./mail.js";
 import { renderMqttModal, renderMqttSensorsModal } from "./mqtt.js";
 import { renderOduEepromDumpModal } from "./odu-eeprom-dump.js";
 import { renderOduDefrostModal } from "./odu-defrost.js";
@@ -519,6 +520,10 @@ import { render } from "../core/render-scheduler.js";
 
     if (state.systemModal === "mqtt-sensors") {
       return renderMqttSensorsModal();
+    }
+
+    if (state.systemModal === "mail") {
+      return renderMailModal();
     }
 
     if (state.systemModal === "connectivity") {

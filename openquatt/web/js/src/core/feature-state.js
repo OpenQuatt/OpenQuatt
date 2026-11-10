@@ -4,6 +4,7 @@ const stateDomains = {
   debugRecording: (key) => key.startsWith("debugRecording"),
   energyHistory: (key) => key.startsWith("energyHistory"),
   firmware: (key) => key === "updateModalOpen" || key.startsWith("update") || key.startsWith("firmware"),
+  mail: (key) => key.startsWith("mail"),
   mqtt: (key) => key.startsWith("mqtt"),
   webServerLog: (key) => key.startsWith("webServerLog"),
 };
@@ -20,5 +21,6 @@ function updateFeatureState(domain, patch) {
 export const updateDebugRecordingState = (patch) => updateFeatureState("debugRecording", patch);
 export const updateEnergyHistoryState = (patch) => updateFeatureState("energyHistory", patch);
 export const updateFirmwareState = (patch) => updateFeatureState("firmware", patch);
+export const updateMailState = (patch) => updateFeatureState("mail", patch);
 export const updateMqttState = (patch) => updateFeatureState("mqtt", patch);
 export const updateWebServerLogState = (patch) => updateFeatureState("webServerLog", patch);

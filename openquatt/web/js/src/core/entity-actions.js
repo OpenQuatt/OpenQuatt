@@ -20,6 +20,7 @@ import { handleControlReplayAction } from "../features/control-replay-actions.js
 import { handleFirmwareAction } from "../features/firmware-actions.js";
 import { updateFirmwareState, updateEnergyHistoryState } from "./feature-state.js";
 import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "../features/firmware-update.js";
+import { handleMailAction, syncMailDraftFromInput } from "../features/mail-actions.js";
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { setLocale, t } from "../i18n/index.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
@@ -54,6 +55,7 @@ const actionDelegates = [
   handleOduSettingsAction,
   handleSecurityAction,
   handleMqttAction,
+  handleMailAction,
   (action) => handleStorageHistoryAction(action, { triggerNamedButton }),
   handleFirmwareAction,
   handleControlAction,
@@ -307,6 +309,11 @@ function updateFrequencyRangeControl(input) {
     const mqttField = event.target.dataset.oqMqttField;
     if (mqttField) {
       syncMqttDraftFromInput(event.target);
+      return;
+    }
+
+    if (event.target.dataset.oqMailField) {
+      syncMailDraftFromInput(event.target);
       return;
     }
 
