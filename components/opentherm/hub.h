@@ -111,6 +111,7 @@ class OpenthermHub final : public Component {
 
   CallbackManager<void(OpenthermData&)> before_send_callback_;
   CallbackManager<void(OpenthermData&)> before_process_response_callback_;
+  void (*on_missing_response_)() = nullptr;
 
   // Create OpenTherm messages based on the message id
   OpenthermData build_request_(MessageId request_id) const;
@@ -118,7 +119,7 @@ class OpenthermHub final : public Component {
   void handle_protocol_error_();
   void handle_timeout_error_();
   void handle_timer_error_();
-  void stop_opentherm_();
+  void stop_opentherm_(bool response_read = false);
   void activate_priority_sequence_(MessageId first, MessageId second);
   void apply_urgent_priority_();
   void apply_deferred_priority_();
@@ -208,6 +209,7 @@ class OpenthermHub final : public Component {
   bool is_polling_enabled() const { return this->polling_enabled_; }
   void set_no_response_expected(bool expected) { this->no_response_expected_ = expected; }
   bool no_response_expected() const { return this->no_response_expected_; }
+  void set_on_missing_response(void (*callback)()) { this->on_missing_response_ = callback; }
 
   template <typename F>
   void add_on_before_send_callback(F&& callback) {

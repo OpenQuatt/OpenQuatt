@@ -548,11 +548,14 @@ inline bool learning_boiler_off_since_boot(uint32_t output_last_change_ms, bool 
 }
 
 inline bool learning_boiler_off_between_ticks(uint64_t previous_ms, uint64_t now_ms, bool previous_off,
-                                              bool current_off, uint32_t output_last_change_ms) {
+                                              bool current_off, uint32_t output_last_change_ms,
+                                              uint32_t rearm_after_command_ms) {
   if (!previous_off || !current_off || previous_ms == 0 || now_ms <= previous_ms || now_ms - previous_ms > 15000U)
     return false;
-  return (output_last_change_ms == 0 && now_ms <= UINT32_MAX) ||
-         static_cast<uint32_t>(now_ms - output_last_change_ms) > now_ms - previous_ms;
+  const auto before_interval = [previous_ms, now_ms](uint32_t edge_ms) {
+    return (edge_ms == 0 && now_ms <= UINT32_MAX) || static_cast<uint32_t>(now_ms - edge_ms) > now_ms - previous_ms;
+  };
+  return before_interval(output_last_change_ms) && before_interval(rearm_after_command_ms);
 }
 
 inline const QualityConfig& daily_checkpoint_heat_quality(const QualityConfig& hp_quality,

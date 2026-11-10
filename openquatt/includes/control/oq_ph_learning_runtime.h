@@ -807,8 +807,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
 #endif
     state.boiler_off_between_ticks =
-        cv_off_observed && learning_boiler_off_between_ticks(previous_ms, now_ms, previous_off, in.boiler_heat.valid,
-                                                             id(oq_boiler_output_last_change_ms));
+        cv_off_observed &&
+        learning_boiler_off_between_ticks(previous_ms, now_ms, previous_off, in.boiler_heat.valid,
+                                          id(oq_boiler_output_last_change_ms), id(oq_boiler_rearm_after_command_ms));
     if (in.system_heat_enabled) {
       bool pumps_stopped = learning_pump_stopped(oq_sources::hp1.status_2108, now_ms);
 #if OQ_TOPOLOGY_DUO

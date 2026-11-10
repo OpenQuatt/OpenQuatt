@@ -579,7 +579,7 @@ void OpenthermHub::read_response_() {
     return;
   }
 
-  this->stop_opentherm_();
+  this->stop_opentherm_(true);
 
   this->before_process_response_callback_.call(response);
   this->process_response(response);
@@ -588,11 +588,12 @@ void OpenthermHub::read_response_() {
   this->message_iterator_++;
 }
 
-void OpenthermHub::stop_opentherm_() {
+void OpenthermHub::stop_opentherm_(bool response_read) {
   const OperationMode completed_mode = this->opentherm_->get_mode();
   ConversationTiming conversation_timing;
   const bool has_wire_timing = this->opentherm_->stop(conversation_timing);
   const uint32_t processed_us = micros();
+  if (!response_read && this->on_missing_response_ != nullptr) this->on_missing_response_();
 
   this->has_last_wire_response_ = has_wire_timing && conversation_timing.response_captured;
   const bool receive_timed_out = completed_mode == OperationMode::ERROR_TIMEOUT && has_wire_timing &&

@@ -126,6 +126,13 @@ class TelemetryState {
     this->last_request_type_ = message_type;
   }
 
+  void record_missing_response() {
+    if (this->pending_request_ && this->last_request_id_ >= 0 &&
+        field_index_for_message_id(this->last_request_id_) == FIELD_STATUS)
+      this->cv_off_since_ms_ = 0;
+    this->pending_request_ = false;
+  }
+
   void record_response(uint32_t now_ms, uint8_t message_id, uint8_t message_type) {
     this->record_response(now_ms, static_cast<uint64_t>(now_ms), message_id, message_type, 0U, false);
   }

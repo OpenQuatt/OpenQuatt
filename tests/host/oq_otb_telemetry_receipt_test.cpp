@@ -65,7 +65,16 @@ int main() {
   status(15000, 0, oq_otb::MESSAGE_TYPE_DATA_INVALID);
   status(16000, 0);
   assert(state.cv_off_since_ms(16000) == 16000);
+  state.record_request(25, oq_otb::MESSAGE_TYPE_READ_DATA);
+  state.record_missing_response();
+  assert(state.cv_off_since_ms(17000) == 16000);
+  state.record_request(0, oq_otb::MESSAGE_TYPE_READ_DATA);
+  state.record_missing_response();
+  assert(state.cv_off_since_ms(18000) == 0);
+  assert(state.field_is_valid(oq_otb::FIELD_STATUS));
+  status(19000, 0);
+  assert(state.cv_off_since_ms(19000) == 19000);
   state.reset_link_session();
-  assert(state.cv_off_since_ms(16000) == 0);
+  assert(state.cv_off_since_ms(19000) == 0);
   return 0;
 }
