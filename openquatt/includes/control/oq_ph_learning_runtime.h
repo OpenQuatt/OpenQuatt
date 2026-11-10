@@ -736,9 +736,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         daily_system_heat_enabled(id(oq_aux_heat_source_present).has_state() && id(oq_aux_heat_source_present).state,
                                   state.system_supply_observed, supply, now_ms);
     state.daily_quality = daily_heat_quality(state.config.quality, in.system_heat_enabled);
+    bool controller_zero_observed = false;
     if (in.system_heat_enabled) {
       const auto& sources = oq_sensor_source::runtime();
-      const auto flow = sources.system_flow_receipt(now_ms, kHpLearningTiming.max_age_ms);
+      const auto flow = sources.system_flow_receipt(now_ms, kHpLearningTiming.max_age_ms, controller_zero_observed);
       in.circuit_flow_lph = receipt_measurement(
           flow, flow.value,
           {PhysicalSourceKind::DIRECT_SENSOR, static_cast<uint32_t>(state.sources[3].route), PhysicalUnit::SYSTEM},
@@ -794,7 +795,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
       pumps_stopped = pumps_stopped && learning_pump_stopped(oq_sources::hp2.status_2108, now_ms);
 #endif
       in.circuit_flow_lph = learning_system_flow(in.circuit_flow_lph, in.flow_lph, state.sources[3].route,
-                                                 in.boiler_heat, now_ms, pumps_stopped);
+                                                 in.boiler_heat, now_ms, pumps_stopped, controller_zero_observed);
     }
     if (boiler_contract.valid && !in.boiler_heat.valid)
       state.boiler_source_status = SnapshotSourceStatus::BOILER_ACTIVE;
