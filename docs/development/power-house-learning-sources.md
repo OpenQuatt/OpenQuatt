@@ -59,12 +59,13 @@ Een gewijzigde aanvoerkalibratie bij het terugzetten van een backup begint een
 nieuwe dagmeting. Afgeronde dagen blijven bewaard.
 Bij actieve systeemmeting accepteert de dagmeting gemeten systeemwarmte tot en
 met ±50 kW. Waarden daarbuiten worden afgekeurd, niet afgeknipt. Deze harde
-bronfout breekt een lopende dagmeting af. Voor ontbrekende warmte gebruikt de
-onzekerheidsberekening 50 kW als ondergrens voor de
-vermogensgrens. Een open meetgat bewaart de hoogste toegepaste grens, ook als de
-keteloptie tussentijds wordt uitgeschakeld. Zo verlaagt een instellingwijziging
-eerder ontstane onzekerheid niet. Voor het accepteren van warmtepompwarmte
-blijft de lagere generatie- en topologiegrens gelden.
+bronfout breekt een lopende dagmeting af. Bij een gewoon meetgat gebruikt de
+onzekerheidsberekening het tabelmaximum voor de warmtepomp als er doorlopend
+bewijs is dat de ketel geen cv-warmte levert. Anders gebruikt ze 24 kW voor het
+hele systeem, of het tabelmaximum als dat hoger is. Dit is een aanname voor
+het onzekerheidsbudget, geen gegarandeerd fysiek maximum. Een open meetgat
+bewaart de hoogste toegepaste grens en waargenomen piek. Voor het accepteren
+van warmtepompwarmte blijft de lagere generatie- en topologiegrens gelden.
 Het ingestelde ketelvermogen is een regelwaarde en bewijst geen maximum voor
 ongemeten ketelwarmte.
 Voor een korte, geverifieerde herstart met geldig CV-uit-bewijs vóór en na het

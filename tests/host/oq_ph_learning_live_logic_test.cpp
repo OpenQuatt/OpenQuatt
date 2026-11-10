@@ -669,6 +669,11 @@ void test_filtered_outside_fault_checks_only_selected_contributors() {
 }  // namespace
 
 int main() {
+  assert(learning_boiler_off_between_ticks(10000, 20000, true, true, 0));
+  assert(!learning_boiler_off_between_ticks(10000, 20000, false, true, 0));
+  assert(!learning_boiler_off_between_ticks(10000, 20000, true, false, 0));
+  assert(!learning_boiler_off_between_ticks(10000, 20000, true, true, 15000));
+  assert(!learning_boiler_off_between_ticks(10000, 26000, true, true, 0));
   test_filtered_outside_fault_checks_only_selected_contributors();
   test_auto_and_flow_keep_invalid_evidence_without_inventing_startup_receipts();
   test_selected_source_adapter_distinguishes_absence_from_received_invalid();
