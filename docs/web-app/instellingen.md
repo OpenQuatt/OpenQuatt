@@ -262,6 +262,8 @@ Wil je externe bronwaarden of toestemmingssignalen via MQTT aanleveren, configur
 
 Zie [Bronnen en integraties](bronnen.md) voor sensorselectie, actieve bronnen en fallback.
 
+Onder **E-mailmeldingen** stel je in dat OpenQuatt een mail stuurt bij storingen en andere meldingen die je kiest, via SMTP of een maildienst zoals Postmark, Mailgun of Lettermint. Zie [E-mailmeldingen](../e-mailmeldingen.md).
+
 ### Service
 
 Hier staan commissioning, tests, kalibratie en andere servicetaken. Gebruik deze groep alleen voor een gerichte controle of afstelling en volg de aanwijzingen in de web-app.

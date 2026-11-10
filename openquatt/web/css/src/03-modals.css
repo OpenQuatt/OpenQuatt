@@ -4,7 +4,9 @@
   inset: 0;
   z-index: 1200;
   display: flex;
-  align-items: center;
+  /* Auto margins on the dialog centre it when it fits. align-items: center would push
+     the top of a taller dialog above the scroll origin, where it cannot be reached. */
+  align-items: flex-start;
   justify-content: center;
   padding: 24px;
   background: rgba(15, 23, 42, 0.42);
@@ -14,6 +16,10 @@
   scrollbar-gutter: stable;
   overflow-anchor: none;
   -webkit-overflow-scrolling: touch;
+}
+
+.oq-helper-modal-backdrop:not(.oq-helper-modal-backdrop--quickstart) > * {
+  margin-block: auto;
 }
 
 .oq-helper-modal-backdrop--loading {

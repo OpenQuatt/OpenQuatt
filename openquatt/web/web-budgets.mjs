@@ -70,7 +70,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // A change-log link in the settings toast and stacked toasts (up to three, fanned out on hover,
     // dismissable one by one, undo per toast): +3,790 B raw; 80 B raw headroom.
     // Toasts on Leren and a brain icon for its tab: measured raw 1,464,379 B (Node 24.4.1); 80 B raw headroom.
-    raw: 1_464_459,
+    // E-mail notifications (integrations section, settings modal with provider fields, save/test polling and
+    // copy in both locales): measured raw 1,488,112 B versus dev 1,464,360 B (+23,752 B; ~8 kB of it locale
+    // copy), gzip +6,943 B (+1.68%, within the relative limit; Node 24.4.1); 80 B raw headroom.
+    raw: 1_488_192,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

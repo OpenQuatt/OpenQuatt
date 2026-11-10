@@ -58,6 +58,8 @@ Open de gekozen instelling opnieuw en controleer de getoonde aan/uit-stand. Cont
 
 Zie [Gegevens delen: technische naslag](../gegevens-delen-technisch.md) voor de exacte velden, het installatie-ID, migratie en verzendgedrag van het uurbericht. Zie [MQTT inputbronnen](../mqtt.md) voor het verschil tussen deze centrale verzending en je eigen MQTT-koppeling.
 
+[E-mailmeldingen](../e-mailmeldingen.md) staan los van gegevens delen: die gaan alleen naar de maildienst en ontvangers die je zelf instelt.
+
 De popupstatus gebruikt één bit in het bestaande 8-byte NVS-record van de
 prestatiedatakeuze, zonder extra NVS-key. Eén interne statusentiteit maakt dit
 uitleesbaar. Bij upgrade blijft de bestaande toestemming behouden; bestaande

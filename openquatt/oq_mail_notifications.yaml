@@ -1,0 +1,20 @@
+# ==============================================================================
+# OpenQuatt - E-mail Notifications
+# ==============================================================================
+# Optional outbound e-mail for selected incidents and system events. Stays off
+# until a provider is configured in the web app (/openquatt/mail/*). Uses its
+# own NVS record and the shared HTTPS slot; it never writes control state.
+# ==============================================================================
+
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_mail_notify]
+
+openquatt_mail_notify:
+  id: oq_mail_notify
+  decision_log: oq_decision_log
+  web_auth: oq_web_auth_store
+  clock: oq_time
+  pause_sensor: oq_runtime_polling_paused

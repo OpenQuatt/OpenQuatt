@@ -184,6 +184,27 @@
       lastHeatingEnableAt: Date.now() - 28000,
       lastCoolingEnableAt: Date.now() - 54000,
     },
+    mail: {
+      enabled: false,
+      provider: "none",
+      smtpHost: "",
+      smtpPort: 465,
+      username: "",
+      secretSet: false,
+      domain: "",
+      from: "",
+      recipients: "",
+      kinds: ["hp_fault", "hp_link_loss", "hp_start_stop", "boiler_fallback", "controller_restart"],
+      recovery: true,
+      csrfToken: "",
+      saveRevision: 0,
+      saveDoneAt: 0,
+      pendingConfig: null,
+      testId: 0,
+      testDoneAt: 0,
+      lastEpoch: 0,
+      sent24h: 0,
+    },
     trendFlashWrites: 437,
     trendFlashStoredKiB: 182.5,
     trendFlashOldestAt: Date.now() - Math.round(18.4 * 24 * 60 * 60 * 1000),
@@ -959,6 +980,10 @@
 
   function refreshMqttToken() {
     state.mqtt.csrfToken = generateAuthToken();
+  }
+
+  function refreshMailToken() {
+    state.mail.csrfToken = generateAuthToken();
   }
 
   function getAuthStatusPayload() {
@@ -1774,6 +1799,128 @@
       accept_retained: acceptRetained,
       connected: Boolean(state.mqtt.enabled && state.mqtt.connected),
     });
+  }
+
+  const MOCK_MAIL_KINDS = ["hp_fault", "hp_warning", "hp_link_loss", "hp_start_stop", "boiler_fallback", "frost_protection", "compressor_cycling", "controller_restart"];
+  const MOCK_MAIL_PROVIDERS = ["none", "smtp", "postmark", "mailgun_eu", "mailgun_us", "lettermint", "resend", "brevo"];
+  const MOCK_MAIL_ADDRESS = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]+$/;
+
+  function isMockMailConfigured(mail) {
+    const recipients = String(mail.recipients || "").split(",").map((entry) => entry.trim()).filter(Boolean);
+    if (mail.provider === "none" || !MOCK_MAIL_ADDRESS.test(mail.from) || !recipients.length) return false;
+    if (mail.provider === "smtp") return Boolean(mail.smtpHost) && (!mail.username || mail.secretSet);
+    if (mail.provider.startsWith("mailgun") && !mail.domain) return false;
+    return Boolean(mail.secretSet);
+  }
+
+  function settleMockMail() {
+    const mail = state.mail;
+    if (mail.pendingConfig && Date.now() >= mail.saveDoneAt) {
+      Object.assign(mail, mail.pendingConfig);
+      mail.pendingConfig = null;
+    }
+    if (mail.testDoneAt && Date.now() >= mail.testDoneAt) {
+      mail.testDoneAt = 0;
+      mail.lastEpoch = Math.floor(Date.now() / 1000);
+      mail.sent24h += 1;
+    }
+  }
+
+  function getMailStatusPayload() {
+    settleMockMail();
+    const mail = state.mail;
+    const kinds = {};
+    MOCK_MAIL_KINDS.forEach((kind) => {
+      kinds[kind] = mail.kinds.includes(kind);
+    });
+    return {
+      enabled: Boolean(mail.enabled),
+      configured: isMockMailConfigured(mail),
+      provider: mail.provider,
+      smtp_host: mail.smtpHost,
+      smtp_port: mail.smtpPort,
+      username: mail.username,
+      secret_set: Boolean(mail.secretSet),
+      domain: mail.domain,
+      from: mail.from,
+      recipients: mail.recipients,
+      kinds,
+      recovery: Boolean(mail.recovery),
+      save: { revision: mail.saveRevision, state: mail.pendingConfig ? "pending" : (mail.saveRevision ? "stored" : "idle"), error: "none" },
+      test: { id: mail.testId, state: mail.testDoneAt ? "sending" : (mail.testId ? "sent" : "idle"), error: "none", code: 0 },
+      last: { state: mail.lastEpoch ? "sent" : "none", epoch: mail.lastEpoch, error: "none", code: 0 },
+      queued: 0,
+      sent_24h: mail.sent24h,
+      daily_limit: 24,
+      csrf_token: mail.csrfToken,
+    };
+  }
+
+  function handleMailSave(init) {
+    const params = parseAuthFormBody(init);
+    if (params.get("csrf_token") !== state.mail.csrfToken) {
+      return makeAuthResponse(403, { ok: false, error: "forbidden" });
+    }
+    settleMockMail();
+    if (state.mail.pendingConfig) {
+      return makeAuthResponse(503, { ok: false, error: "busy" });
+    }
+    const provider = String(params.get("provider") || "none");
+    if (!MOCK_MAIL_PROVIDERS.includes(provider)) {
+      return makeAuthResponse(409, { ok: false, error: "invalid_provider" });
+    }
+    const kinds = String(params.get("kinds") || "").split(",").filter(Boolean);
+    if (kinds.some((kind) => !MOCK_MAIL_KINDS.includes(kind))) {
+      return makeAuthResponse(409, { ok: false, error: "invalid_kinds" });
+    }
+    const secret = String(params.get("secret") || "");
+    const recipients = String(params.get("recipients") || "").split(",").map((entry) => entry.trim()).filter(Boolean);
+    if (recipients.length > 5) {
+      return makeAuthResponse(409, { ok: false, error: "too_many_recipients" });
+    }
+    if (recipients.some((address) => !MOCK_MAIL_ADDRESS.test(address))) {
+      return makeAuthResponse(409, { ok: false, error: "invalid_recipients" });
+    }
+    const next = {
+      enabled: String(params.get("enabled") || "") === "true",
+      provider,
+      smtpHost: String(params.get("smtp_host") || ""),
+      smtpPort: Number(params.get("smtp_port") || 465) || 465,
+      username: String(params.get("username") || ""),
+      secretSet: String(params.get("clear_secret") || "") === "true" ? false : (Boolean(secret) || state.mail.secretSet),
+      domain: String(params.get("domain") || ""),
+      from: String(params.get("from") || ""),
+      recipients: recipients.join(", "),
+      kinds,
+      recovery: String(params.get("recovery") || "") === "true",
+    };
+    if (next.enabled && !isMockMailConfigured({ ...state.mail, ...next })) {
+      return makeAuthResponse(409, { ok: false, error: next.provider === "none" ? "invalid_provider" : "missing_secret" });
+    }
+    state.mail.saveRevision += 1;
+    state.mail.pendingConfig = next;
+    state.mail.saveDoneAt = Date.now() + 700;
+    return makeAuthResponse(202, { ok: true, revision: state.mail.saveRevision });
+  }
+
+  function handleMailTest(init) {
+    const params = parseAuthFormBody(init);
+    if (params.get("csrf_token") !== state.mail.csrfToken) {
+      return makeAuthResponse(403, { ok: false, error: "forbidden" });
+    }
+    settleMockMail();
+    if (state.mail.pendingConfig) {
+      return makeAuthResponse(409, { ok: false, error: "save_pending" });
+    }
+    if (!isMockMailConfigured(state.mail)) {
+      return makeAuthResponse(409, { ok: false, error: "not_configured" });
+    }
+    if (state.mail.testDoneAt) {
+      return makeAuthResponse(409, { ok: false, error: "test_busy" });
+    }
+    state.mail.testId += 1;
+    state.mail.testDoneAt = Date.now() + 2500;
+    return makeAuthResponse(202, { ok: true, test_id: state.mail.testId });
   }
 
   function getMockReleaseUrl(channel) {
@@ -6097,6 +6244,15 @@
       if (url.pathname === "/mqtt/input/retained/save" && method === "POST") {
         return handleMqttInputRetainedSave(init || {});
       }
+      if (url.pathname === "/openquatt/mail/status" && method === "GET") {
+        return makeAuthResponse(200, getMailStatusPayload());
+      }
+      if (url.pathname === "/openquatt/mail/save" && method === "POST") {
+        return handleMailSave(init || {});
+      }
+      if (url.pathname === "/openquatt/mail/test" && method === "POST") {
+        return handleMailTest(init || {});
+      }
       if (url.pathname.endsWith("/openquatt/logs/recent") && String(init?.method || "GET").toUpperCase() === "GET") {
         return mockResponse(200, {
           enabled: true,
@@ -6606,6 +6762,7 @@
   initializeIncidentScenarioFromUrl();
   refreshAuthToken();
   refreshMqttToken();
+  refreshMailToken();
   setInstallationMode(state.installation);
   applyScenario(state.scenario);
   applyOduWriteTestState();

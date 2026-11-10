@@ -24,6 +24,7 @@ import { refreshEnergyHistoryData, refreshSettingsStorageState, refreshTrendHist
 import { patchControlReplayDom, patchDiagnosisDom, patchEnergyDom, patchLearningDom, patchOverviewDom, patchResultsDom } from "./view-patch-controls.js";
 import { clearWebServerLogOutput, closeWebServerLogStream, resetWebServerLogRecoveryState } from "./webserver-log-controls.js";
 import { getMqttSensorsModalRenderSignature, refreshMqttStatus, shouldRefreshMqttStatusForCurrentSurface } from "../features/mqtt-actions.js";
+import { refreshMailStatus, shouldRefreshMailStatusForCurrentSurface } from "../features/mail-actions.js";
 import { refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
 import { refreshOduEepromDumpStatuses, shouldRefreshOduEepromDumpSurface } from "../features/odu-eeprom-dump.js";
 import { refreshOduDefrostStatuses, shouldRefreshOduDefrostSurface } from "../features/odu-defrost.js";
@@ -1442,6 +1443,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
       const mqttChanged = shouldDeferSupplementary || !shouldRefreshMqttStatusForCurrentSurface()
         ? false
         : await refreshMqttStatus({ force: state.systemModal === "mqtt-sensors" });
+      const mailChanged = shouldDeferSupplementary || !shouldRefreshMailStatusForCurrentSurface()
+        ? false
+        : await refreshMailStatus();
       if (!shouldDeferSupplementary && shouldRefreshOduEepromDumpSurface()) {
         await refreshOduEepromDumpStatuses();
       }
@@ -1522,6 +1526,10 @@ import { fetchWithTimeout } from "./browser-utils.js";
         return;
       }
       if (mqttChanged && state.appView === "settings") {
+        render();
+        return;
+      }
+      if (mailChanged && state.appView === "settings") {
         render();
         return;
       }

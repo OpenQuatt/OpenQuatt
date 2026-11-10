@@ -768,6 +768,44 @@
   grid-column: span 2;
 }
 
+.oq-settings-mail-kinds {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.oq-settings-mail-kinds legend {
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--oq-helper-modal-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.oq-settings-mail-kind {
+  align-items: flex-start;
+}
+
+.oq-settings-mail-kind small {
+  font-weight: 500;
+}
+
+.oq-settings-mail-test-row,
+.oq-settings-mail-wide {
+  grid-column: 1 / -1;
+}
+
+.oq-settings-mail-test-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 @media (max-width: 720px) {
   .oq-settings-mqtt-form-grid {
     grid-template-columns: minmax(0, 1fr);

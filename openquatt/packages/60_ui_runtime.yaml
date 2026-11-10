@@ -5,3 +5,4 @@ packages:
   oq_setup_status: !include ../oq_setup_status.yaml
   oq_webserver: !include ../oq_webserver.yaml
   oq_web_access: !include ../oq_web_access.yaml
+  oq_mail_notifications: !include ../oq_mail_notifications.yaml

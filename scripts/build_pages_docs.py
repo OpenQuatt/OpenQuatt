@@ -75,6 +75,7 @@ PAGES = [
     Page(PurePosixPath("docs/crash-telemetry.md"), PurePosixPath("crash-telemetry.html"), "Crashtelemetrie", "Naslag", "Welke begrensde technische crashinformatie OpenQuatt met toestemming via MQTT verstuurt."),
     Page(PurePosixPath("docs/bodemplaatverwarming.md"), PurePosixPath("bodemplaatverwarming.html"), "Bodemplaatverwarming", "Naslag", "Regelmethoden, generatieverschillen en opgeslagen profielen per buitenunit."),
     Page(PurePosixPath("docs/api-input.md"), PurePosixPath("api-input.html"), "API inputbronnen", "Docs", "Lokale HTTP-endpoints voor externe bronwaarden en toestemmingssignalen."),
+    Page(PurePosixPath("docs/e-mailmeldingen.md"), PurePosixPath("e-mailmeldingen.html"), "E-mailmeldingen", "Handleiding", "Een e-mail bij storingen en andere meldingen, via SMTP of een maildienst."),
     Page(PurePosixPath("docs/problemen-oplossen.md"), PurePosixPath("problemen-oplossen.html"), "Problemen oplossen", "Handleiding", "Rustige diagnosevolgorde bij installatie- en regelproblemen."),
     Page(PurePosixPath("docs/power-house.md"), PurePosixPath("power-house.html"), "Power House", "Docs", "Uitleg van huismodel, comfortlogica en Single/Duo-gedrag."),
     Page(PurePosixPath("docs/water-temperature-control.md"), PurePosixPath("water-temperature-control.html"), "Water Temperature Control", "Docs", "Uitleg van stooklijn, PID en Single/Duo-gedrag in curve-modus."),
@@ -89,7 +90,7 @@ PAGE_BY_SOURCE = {page.source: page for page in PAGES}
 SIDEBAR_GROUPS = [
     ("Aan de slag", "", [PurePosixPath("README.md"), PurePosixPath("docs/q-edition.md"), PurePosixPath("docs/web-app/quick-start.md")]),
     ("Dagelijks gebruik", "", [PurePosixPath("docs/dagelijks/controleren.md"), PurePosixPath("docs/dagelijks/verwarmen.md"), PurePosixPath("docs/dagelijks/koelen.md")]),
-    ("Web-app", "", [PurePosixPath("docs/web-app.md"), PurePosixPath("docs/web-app/instellingen.md"), PurePosixPath("docs/web-app/leren.md"), PurePosixPath("docs/web-app/bronnen.md"), PurePosixPath("docs/web-app/energie.md"), PurePosixPath("docs/web-app/privacy.md")]),
+    ("Web-app", "", [PurePosixPath("docs/web-app.md"), PurePosixPath("docs/web-app/instellingen.md"), PurePosixPath("docs/web-app/leren.md"), PurePosixPath("docs/web-app/bronnen.md"), PurePosixPath("docs/e-mailmeldingen.md"), PurePosixPath("docs/web-app/energie.md"), PurePosixPath("docs/web-app/privacy.md")]),
     ("Home Assistant", "", [PurePosixPath("docs/dashboard/README.md"), PurePosixPath("docs/dashboard/koppelen.md"), PurePosixPath("docs/dashboard/installation.md"), PurePosixPath("docs/dashboard/dashboard.md"), PurePosixPath("docs/dashboard/dynamic-sources.md"), PurePosixPath("docs/dashboard/cooling.md")]),
     ("Homey", "", [PurePosixPath("docs/homey.md")]),
     ("Onderhoud en problemen", "", [PurePosixPath("docs/problemen-oplossen.md"), PurePosixPath("docs/web-app/diagnose.md"), PurePosixPath("docs/web-app/onderhoud.md"), PurePosixPath("docs/web-app/herstel.md")]),
