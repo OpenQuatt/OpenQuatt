@@ -38,7 +38,8 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
   const canShow = enabled && !changing && weatherScenarioCanDisplay(data);
   const issuedValid = Number.isFinite(issued) && issued > 0 && issued <= now;
   const current = weatherForecastIsCurrent(data);
-  const status = scenario?.valid ? "ready" : scenario?.reason || String(getEntityValue("weatherStatus") || "");
+  const entityStatus = String(getEntityValue("weatherStatus") || "");
+  const status = statusOnly ? entityStatus : scenario?.valid ? "ready" : scenario?.reason || entityStatus;
   const horizons = HORIZONS.map((seconds, index) => {
     const target = issued + seconds;
     const value = scenario?.temperature_c[index];
@@ -48,7 +49,7 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
   const cached = available && !current;
   let gapKey = "";
   const consent = state.entities.weatherStatus?.consent_state;
-  if (getEntityValue("weatherStatus") === "psram_allocation_failed") gapKey = "weather.status.memory";
+  if (entityStatus === "psram_allocation_failed") gapKey = "weather.status.memory";
   else if (consent === "failed") gapKey = "weather.status.consentFailed";
   else if (consent === "pending") gapKey = "weather.status.consentSaving";
   else if (state.weatherOptOutUnconfirmed) gapKey = "weather.switchUnconfirmed";
@@ -56,11 +57,11 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
   else if (changing) gapKey = "weather.status.saving";
   else if (!String(getEntityValue("weatherLocation") || "").trim()) gapKey = "weather.status.locationRequired";
   else if (getEntityValue("houseLearningEnabled") !== true) gapKey = "weather.status.learningRequired";
-  else if (!available) {
-    if (state.weatherForecastError === "unsupported") gapKey = "weather.graphUnsupported";
+  else if (statusOnly || !available) {
+    if (!statusOnly && state.weatherForecastError === "unsupported") gapKey = "weather.graphUnsupported";
     else if (NETWORK_STATES.includes(status)) gapKey = "learningWorkspace.forecast.network";
     else if (Object.hasOwn(STATUS_KEYS, status)) gapKey = STATUS_KEYS[status];
-    else gapKey = status && status !== "ready" ? "weather.status.unknown" : "learningWorkspace.forecast.newCalculation";
+    else gapKey = status && status !== "ready" && status !== "observing" ? "weather.status.unknown" : "learningWorkspace.forecast.newCalculation";
   }
   if (statusOnly) {
     return gapKey && gapKey !== "learningWorkspace.forecast.newCalculation"

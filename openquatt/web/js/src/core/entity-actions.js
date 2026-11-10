@@ -453,8 +453,9 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
-    if (event.target.hasAttribute?.("data-oq-house-learning-band-toggle")) {
-      state.houseLearningChartBandVisible = event.target.checked;
+    if (event.target.hasAttribute?.("data-oq-house-learning-band-mode")) {
+      state.houseLearningChartBandMode = event.target.value;
+      render();
       return;
     }
     if (event.target.dataset.oqOduDefrostHp) {

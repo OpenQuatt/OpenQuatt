@@ -65,6 +65,18 @@ test("older restored issues stay hidden while the weather is still usable", () =
   assert.throws(() => normalizeWeatherForecast(p), /weather-scenario-format/);
 });
 
+test("weather settings show current errors despite a cached scenario", () => {
+  state.weatherForecast = normalizeWeatherForecast(payload());
+  state.learningPanel = "configuration";
+  state.entities.weatherStatus = entity("dns_failed");
+  assert.match(renderForecastProgress({ statusOnly: true }), /Nieuwe weergegevens ophalen lukt niet/);
+  state.entities.weatherLocation = entity("Utrecht");
+  state.entities.weatherStatus = entity("location_ambiguous");
+  assert.match(renderForecastProgress({ statusOnly: true }), /Meerdere plaatsen gevonden/);
+  state.entities.weatherStatus = entity("observing");
+  assert.equal(renderForecastProgress({ statusOnly: true }), "");
+});
+
 test("older forecast responses show weather without claiming room estimates", async () => {
   const legacy = payload(); delete legacy.scenario;
   state.weatherForecast = normalizeWeatherForecast(legacy);

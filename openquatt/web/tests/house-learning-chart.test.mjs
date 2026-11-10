@@ -395,7 +395,7 @@ test("all-days preview includes the cold checking range without granting advice"
   assert.equal(getHouseLearningChartModel([], {}, {...learned, preview:null}).learnedValid, false);
 });
 
-test("de band gebruikt de gemelde leerprefix en waaiert aan beide kanten uit", () => {
+test("zonder variatie in de herberekende lijn blijft de gemeten spreiding binnen het leerbereik", () => {
   const records = [3, 4, 5, 6, 7, 8, 1, 12, 14].map((outsideC, index) => ({
     startEpoch: 86400 * (20000 + index), endEpoch: 86400 * (20001 + index),
     outsideC, heatW: index < 6 ? 200 * (17.8 - outsideC) + 150 : 9000,
@@ -403,29 +403,78 @@ test("de band gebruikt de gemelde leerprefix en waaiert aan beide kanten uit", (
   }));
   const learned = { ready: true, h: 200, t0: 17.8, referenceRoomC: 20, recordCount: records.length,
     fit: { trainCount: 6, checkCount: 3, trainDays: 6, checkDays: 3, minC: 3, maxC: 8, p10: 3, p90: 8 } };
-  const { band, axisMaxY } = getHouseLearningChartModel(records, {}, learned);
+  const { bands: { spread: band, sensitivity }, axisMaxY, x } = getHouseLearningChartModel(records, {}, learned);
+  assert.equal(sensitivity, null);
   assert.equal(band.count, 6);
-  assert.equal(band.margin, 150);
-  assert.ok(band.bounds(-10).high - 200 * (17.8 + 10) > band.margin);
-  assert.ok(band.bounds(20).high > band.bounds(17.8).high);
-  assert.equal(band.bounds(17.8).low, 0);
+  assert.deepEqual(band.points.map(point => point.temperature), [3, 8]);
+  assert.ok(band.points.every(point => Math.abs(point.high - point.low - 300) < 1e-9));
   assert.ok(axisMaxY >= Math.max(...band.points.map(point => point.high)));
-  const html = renderHouseLearningChart(records, {}, learned, false);
-  assert.equal((html.match(/<polygon /g) || []).length, 1);
-  assert.match(html, /Bij 17,8 °C<\/dt>\s*<dd>0 kW/);
-  assert.doesNotMatch(html, /data-oq-house-learning-band-toggle checked/);
+  const html = renderHouseLearningChart(records, {}, learned);
+  const polygons = [...html.matchAll(/<polygon class="oq-house-learning-chart-band" points="([^"]+)"/g)];
+  assert.equal(polygons.length, 1);
+  assert.deepEqual(polygons[0][1].split(" ").map(point => point.split(",")[0]), [3, 8, 8, 3].map(value => x(value).toFixed(1)));
+  assert.equal((html.match(/oq-house-learning-chart-line--learned-dashed/g) || []).length, 2);
+  assert.match(html, /6 van de 6 leerdagen liggen binnen de band/);
+  assert.match(html, /Gemeten bereik 3–8 °C/);
+  assert.match(html, /0 kW vanaf 17,8 °C/);
+  assert.doesNotMatch(html, /Onzekerheid woninglijn/);
 
   const provisional = { ...learned, ready: false, preview: { h: 200, t0: 17.8, count: 9, days: 9, minC: 1, maxC: 14 } };
-  assert.equal(getHouseLearningChartModel(records, {}, provisional).band.count, 9);
+  assert.equal(getHouseLearningChartModel(records, {}, provisional).bands.min, 1);
   for (const mismatch of [
     { ...learned, recordCount: 10 },
     { ...learned, fit: { ...learned.fit, minC: 1 } },
     { ...provisional, preview: { ...provisional.preview, count: 8 } },
-  ]) assert.doesNotMatch(renderHouseLearningChart(records, {}, mismatch), /<polygon|Band rond de lijn/);
+  ]) assert.doesNotMatch(renderHouseLearningChart(records, {}, mismatch), /<polygon|Meetspreiding/);
   const incomplete = records.map((record, index) => index === 0 ? { ...record, quality: undefined } : record);
-  assert.doesNotMatch(renderHouseLearningChart(incomplete, {}, learned), /<polygon|Band rond de lijn/);
+  assert.doesNotMatch(renderHouseLearningChart(incomplete, {}, learned), /<polygon|Meetspreiding/);
 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
-  assert.match(renderHouseLearningChart(records, {}, learned), /Band around the curve/);
-  assert.match(renderHouseLearningChart(records, {}, learned), /At 17\.8 °C<\/dt>\s*<dd>0 kW/);
+  assert.match(renderHouseLearningChart(records, {}, learned), /Measurement spread/);
+  assert.match(renderHouseLearningChart(records, {}, learned), /0 kW from 17\.8 °C/);
+});
+
+test("de band volgt herberekeningen tot −10 °C en geeft een apart bereik voor het nulpunt", () => {
+  const records = [4, 5, 6, 8, 10, 12, 0, 1, 2].map((outsideC, index) => ({
+    startEpoch: 86400 * (20000 + index), endEpoch: 86400 * (20001 + index), outsideC,
+    heatW: 200 * (18 - outsideC) + [450, -200, 80, 120, -120, 80, 5000, 7000, 9000][index],
+    recordKind: 1, quality: { valid: true, fitEligible: true, fitWeightBp: 10000 },
+  }));
+  const learned = { ready: true, h: 200, t0: 18, referenceRoomC: 20, recordCount: records.length,
+    fit: { trainCount: 6, checkCount: 3, trainDays: 6, checkDays: 3, minC: 4, maxC: 12, p10: 4, p90: 12 } };
+  const { bands: { sensitivity: band, spread } } = getHouseLearningChartModel(records, {}, learned);
+  const cold = band.points[0];
+  const measured = band.points.find(point => point.temperature === 8);
+  assert.equal(cold.temperature, -10);
+  assert.equal(band.points.at(-1).temperature, 20);
+  assert.ok(cold.low < 5600 && cold.high > 5600);
+  assert.ok(cold.high - cold.low > measured.high - measured.low);
+  assert.ok(band.zeroLow < 18 && band.zeroHigh > 18);
+  assert.equal(band.points.find(point => point.temperature === band.zeroHigh).high, 0);
+  const changedChecks = records.map((record, index) => index < 6 ? record : { ...record, heatW: -1000 });
+  assert.deepEqual(getHouseLearningChartModel(changedChecks, {}, learned).bands.sensitivity, band);
+
+  const defaultHtml = renderHouseLearningChart(records, {}, learned);
+  assert.match(defaultHtml, /value="spread" selected>Meetspreiding/);
+  assert.equal(spread.covered, 6);
+  assert.deepEqual(spread.points.map(point => point.temperature), [4, 12]);
+  assert.equal((defaultHtml.match(/<polygon /g) || []).length, 1);
+  assert.doesNotMatch(defaultHtml, /Nieuwe metingen kunnen de lijn verder verschuiven/);
+
+  const html = renderHouseLearningChart(records, {}, learned, "sensitivity");
+  assert.equal((html.match(/<polygon /g) || []).length, 1);
+  assert.match(html, /value="sensitivity" selected>Onzekerheid woninglijn/);
+  assert.match(html, /Modelband [\d,]+–[\d,]+ kW/);
+  assert.match(html, /0 kW vanaf 18 °C<\/dd><dd>Modelband [\d,]+–[\d,]+ °C/);
+  assert.match(html, /Nieuwe metingen kunnen de lijn verder verschuiven/);
+  assert.doesNotMatch(renderHouseLearningChart(records, {}, learned, "off"), /<polygon/);
+
+  const unstable = records.slice(0, 6).map((record, index) => ({
+    ...record, outsideC: 4 + index, heatW: 200 * (18 - 4 - index) + (index === 0 ? 1399 : 0),
+  }));
+  const preview = { ...learned, ready: false, recordCount: 6,
+    preview: { h: 200, t0: 18, count: 6, days: 6, minC: 4, maxC: 9 } };
+  const unstableBands = getHouseLearningChartModel(unstable, {}, preview).bands;
+  assert.equal(unstableBands.sensitivity, null);
+  assert.equal(unstableBands.spread.covered, 6);
 });

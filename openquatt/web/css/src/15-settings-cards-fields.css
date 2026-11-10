@@ -541,8 +541,6 @@
 .oq-house-learning-chart-range { fill: var(--oq-helper-sky); opacity: 0.045; }
 .oq-house-learning-chart-band { fill: #16a34a; fill-opacity: 0.18; stroke: #16a34a; stroke-opacity: 0.38; pointer-events: none; }
 .oq-helper-shell--dark .oq-house-learning-chart-band { fill: #4ade80; stroke: #4ade80; }
-.oq-house-learning-chart-panel:has([data-oq-house-learning-band-toggle]:not(:checked))
-  :is(.oq-house-learning-chart-band, .oq-house-learning-chart-band-detail) { display: none; }
 .oq-house-learning-chart-band-note { margin: 0; color: var(--oq-helper-soft); font-size: 0.82rem; }
 .oq-house-learning-chart-estimates { display: flex; flex-wrap: wrap; gap: 12px 32px; margin: 0; color: var(--oq-helper-soft); font-size: 0.82rem; }
 .oq-house-learning-chart-estimates dd { margin: 0; }
@@ -565,7 +563,7 @@
 .oq-house-learning-chart-point:hover .oq-house-learning-chart-dot, .oq-house-learning-chart-point:focus-visible .oq-house-learning-chart-dot { fill: #c2410c; r: 4.5px; }
 .oq-house-learning-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--oq-helper-soft); font-size: 0.82rem; font-weight: 700; }
 .oq-house-learning-chart-legend :is(span, label) { display: inline-flex; align-items: center; gap: 6px; }
-.oq-house-learning-chart-legend input { margin: 0; accent-color: #15803d; }
+.oq-house-learning-chart-legend select { max-width: 100%; padding: 4px 6px; border: 1px solid var(--oq-helper-line); border-radius: 6px; background: var(--oq-helper-surface); color: var(--oq-helper-ink); font: inherit; }
 .oq-house-learning-chart-swatch { width: 18px; height: 3px; border-radius: 2px; background: #2563eb; }
 .oq-house-learning-chart-swatch--records { width: 8px; height: 8px; border-radius: 50%; background: #ea580c; }
 .oq-house-learning-chart-swatch--learned { background: #16a34a; }
