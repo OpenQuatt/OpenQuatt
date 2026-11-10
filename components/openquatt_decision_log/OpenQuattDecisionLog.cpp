@@ -387,6 +387,19 @@ void OpenQuattDecisionLog::emit(uint8_t event_type, uint8_t subject, uint8_t rea
   if (recorded && urgent_event_(event)) {
     this->request_urgent_flush_(event.seq);
   }
+
+  for (size_t index = 0; index < this->event_listener_count_; ++index) {
+    this->event_listeners_[index].listener(this->event_listeners_[index].context, event);
+  }
+}
+
+bool OpenQuattDecisionLog::add_event_listener(EventListener listener, void* context) {
+  if (listener == nullptr || this->event_listener_count_ >= MAX_EVENT_LISTENERS) {
+    return false;
+  }
+  this->event_listeners_[this->event_listener_count_] = {listener, context};
+  ++this->event_listener_count_;
+  return true;
 }
 
 bool OpenQuattDecisionLog::urgent_event_(const DecisionEvent& event) {

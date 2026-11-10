@@ -36,6 +36,8 @@ CUSTOM_PREFERENCE_LAYOUTS = (
     ("openquatt_debug_recorder", 2, 1),
     ("openquatt_odu_settings", 16, 1),
     ("openquatt_odu_defrost", 16, 2),
+    ("openquatt_mail_notify", 764, 1),
+    ("openquatt_mail_notify", 108, 1),  # Persisted daily send budget.
 )
 PHY_CALIBRATION_BYTES = 1904  # esp_phy_calibration_data_t, ESP-IDF 5.5.5.
 
@@ -134,7 +136,7 @@ def estimate_custom_preferences(config: Any) -> dict[str, int]:
     for component, payload_bytes, blobs_per_instance in CUSTOM_PREFERENCE_LAYOUTS:
         count = component_instances(config, component)
         if count:
-            entries[component] = count * blobs_per_instance * blob_entries(payload_bytes)
+            entries[component] = entries.get(component, 0) + count * blobs_per_instance * blob_entries(payload_bytes)
     if component_instances(config, "openquatt_incident_manager"):
         # Restart handoff lives in its own namespace, separate from the three
         # incident reset records in the ESPHome namespace.

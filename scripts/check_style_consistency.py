@@ -229,6 +229,7 @@ NESTED_KEY_ORDER_RULES = {
         "oq_setup_status",
         "oq_webserver",
         "oq_web_access",
+        "oq_mail_notifications",
     ),
     ("openquatt/packages/90_heatpump1.yaml", "packages"): (
         "heatpump1",

@@ -240,7 +240,21 @@ class OpenQuattDecisionLog : public Component {
   bool force_flush();
   bool clear_flash_history();
 
+  // Listeners run synchronously in the emitter's context after the event has
+  // been recorded, also when the ring could not store it. They must be short,
+  // bounded and non-blocking. Register during setup() only.
+  using EventListener = void (*)(void* context, const DecisionEvent& event);
+  bool add_event_listener(EventListener listener, void* context);
+
  protected:
+  static constexpr size_t MAX_EVENT_LISTENERS = 2;
+  struct EventListenerSlot {
+    EventListener listener{nullptr};
+    void* context{nullptr};
+  };
+  EventListenerSlot event_listeners_[MAX_EVENT_LISTENERS]{};
+  size_t event_listener_count_{0};
+
   static constexpr uint32_t FLASH_TAG_MAGIC = 0x4F444C47;  // "ODLG"
   static constexpr uint16_t FLASH_TAG_VERSION = 2;
   static constexpr size_t FLASH_PARTITION_OFFSET = OpenQuattFlashLayout::DECISION_LOG_OFFSET;
