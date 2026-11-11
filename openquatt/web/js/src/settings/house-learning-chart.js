@@ -74,27 +74,42 @@ export function normalizeHouseLearningExport(payload = {}) {
 function ciSvg(model, learned, fitRecords) {
   const line = learned?.ready === true ? learned : learned?.preview;
   const hasCov = line?.h > 0 && Number.isFinite(line.t0) && line.cov00 >= 0 && Number.isFinite(line.cov01) && line.cov11 >= 0;
-  let localFit = null;
-  if (!hasCov && fitRecords?.length >= 2) {;
-    let s1 = 0, st = 0, stt = 0, sy = 0, sty = 0, n = 0;;
-    for (const r of fitRecords) { if (!Number.isFinite(r.outsideC) || !Number.isFinite(r.heatW)) continue; n++; s1 += 1; st += r.outsideC; stt += r.outsideC * r.outsideC; sy += r.heatW; sty += r.outsideC * r.heatW; }
+  let localFit = null, fanFit = null;
+  if (!hasCov && fitRecords?.length >= 1) {
+    let s1 = 0, st = 0, stt = 0, sy = 0, sty = 0, n = 0, minT = Infinity, maxT = -Infinity;
+    for (const r of fitRecords) {
+      if (!Number.isFinite(r.outsideC) || !Number.isFinite(r.heatW)) continue;
+      n++; s1 += 1; st += r.outsideC; stt += r.outsideC * r.outsideC; sy += r.heatW; sty += r.outsideC * r.heatW;
+      if (r.outsideC < minT) minT = r.outsideC; if (r.outsideC > maxT) maxT = r.outsideC;
+    }
     const det = s1 * stt - st * st;
-    if (n >= 2 && det > 1e-6) {
+    if (n >= 2 && (maxT - minT) >= 4 && det > 1e-6) {
       const b0 = (stt * sy - st * sty) / det, b1 = (s1 * sty - st * sy) / det;
-      let rss = 0; for (const r of fitRecords) { const e = b0 + b1 * r.outsideC - r.heatW; rss += e * e; }
-      const s2 = n > 2 ? rss / (n - 2) : Math.max(25000, rss);
-      localFit = { b0, b1, cov00: s2 * stt / det, cov01: -s2 * st / det, cov11: s2 * s1 / det };
+      if (b1 < 0) {
+        let rss = 0; for (const r of fitRecords) { const e = b0 + b1 * r.outsideC - r.heatW; rss += e * e; }
+        const s2 = n > 2 ? rss / (n - 2) : Math.max(25000, rss);
+        localFit = { b0, b1, cov00: s2 * stt / det, cov01: -s2 * st / det, cov11: s2 * s1 / det };
+      }
+    }
+    if (!localFit && n >= 1 && model.configuredValid) {
+      const meanT = st / n, meanW = sy / n;
+      if (meanW > 0 && model.zeroC > meanT) {
+        const h = meanW / (model.zeroC - meanT);
+        let ssw = 0; for (const r of fitRecords) { const d = r.heatW - meanW; ssw += d * d; }
+        const baseMargin = n > 1 ? Math.max(450, 2.5 * Math.sqrt(ssw / (n - 1))) : Math.max(450, 0.25 * meanW);
+        const slopeMargin = Math.max(30, 0.30 * h);
+        fanFit = { h, zeroC: model.zeroC, meanT, baseMargin, slopeMargin };
+      }
     }
   }
-  const singleGrad = !hasCov && !localFit && fitRecords?.length >= 1 && model.configuredValid && fitRecords[0].heatW > 0 && model.zeroC > fitRecords[0].outsideC
-    ? fitRecords[0].heatW / (model.zeroC - fitRecords[0].outsideC) : null;
-  if (!hasCov && !localFit && !(singleGrad > 0)) return "";
+  if (!hasCov && !localFit && !fanFit) return "";
   let upper = "", lower = "";
   const yMin = Math.max(0, model.axisMinY), yMax = model.axisMaxY;
   for (let t = model.minX; t <= model.maxX; t += 0.5) {
-    const y = hasCov ? line.h * (line.t0 - t) : localFit ? localFit.b0 + localFit.b1 * t : singleGrad * (model.zeroC - t);
+    const y = hasCov ? line.h * (line.t0 - t) : localFit ? localFit.b0 + localFit.b1 * t : fanFit.h * Math.max(0, fanFit.zeroC - t);
     const c = hasCov ? line : localFit;
-    const margin = c ? 1.96 * Math.sqrt(Math.max(0, c.cov00 - 2 * c.cov01 * t + c.cov11 * t * t)) : 0.35 * Math.abs(y);
+    const rawMargin = c ? 1.96 * Math.sqrt(Math.max(0, c.cov00 - 2 * c.cov01 * t + c.cov11 * t * t)) : fanFit.baseMargin + fanFit.slopeMargin * Math.abs(t - fanFit.meanT);
+    const margin = !c && t > fanFit.zeroC ? Math.max(0, rawMargin * Math.max(0, 1 - (t - fanFit.zeroC) / 2)) : rawMargin;
     const x = model.x(t).toFixed(1);
     upper += (upper ? " L " : "M ") + x + " " + model.y(clamp(y + margin, yMin, yMax)).toFixed(1);
     lower = "L " + x + " " + model.y(clamp(y - margin, yMin, yMax)).toFixed(1) + (lower ? " " + lower : "");
