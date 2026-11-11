@@ -252,8 +252,7 @@ inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_
     }
     const double det = last_aa * last_bb - last_ab * last_ab;
     if (det > 1e-9 && weight_sum > 0.0 && active_records > 2) {
-      const double s2 =
-          (rss / weight_sum) * (static_cast<double>(active_records) / (static_cast<double>(active_records) - 2.0));
+      const double s2 = rss / static_cast<double>(active_records - 2);
       *cov_00 = static_cast<float>(s2 * last_bb / det);
       *cov_01 = static_cast<float>(s2 * last_ab / det);
       *cov_11 = static_cast<float>(s2 * last_aa / det);
@@ -571,7 +570,7 @@ inline LearningStatus begin_advice_fit(const SegmentRecord* records, size_t reco
   return LearningStatus::FIT_IN_PROGRESS;
 }
 
-// Each call performs at most one Huber fit: at most
+// Each call performs at most one Huber fit : at most
 // kMaxRecordsVisitedPerHuberFit record visits. Preparation is separate and bounded
 // by kMaxPreparationSortComparisons; holdout finalization visits at most kMaxSegmentRecords records.
 inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {

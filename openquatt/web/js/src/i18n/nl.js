@@ -575,6 +575,7 @@ export default {
       legendLearnedProvisional: "Geleerde woninglijn · voorlopig",
       estimateAt: "Bij {temperature} °C",
       legendInterval: "Geleerde woninglijn (95% Interval)",
+      legendUncertainty: "Onzekerheidsband",
       ariaLabel: "Woninglijn, dagmetingen en bewaarde oude meetperioden",
       outsideTemperatureAxis: "Buitentemperatuur (°C)",
     },

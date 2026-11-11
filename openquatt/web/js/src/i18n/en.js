@@ -574,6 +574,7 @@ export default {
       legendLearnedProvisional: "Learned heat demand curve · provisional",
       estimateAt: "At {temperature} °C",
       legendInterval: "Learned heat demand curve (95% Interval)",
+      legendUncertainty: "Uncertainty band",
       ariaLabel: "Heat demand curve, daily measurements and stored old measurement periods",
       outsideTemperatureAxis: "Outside temperature (°C)",
     },

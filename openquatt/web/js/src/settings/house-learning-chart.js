@@ -78,33 +78,54 @@ export function normalizeHouseLearningExport(payload = {}) {
 
 function ciSvg(model, learned, fitRecords) {
   const line = learned?.ready === true ? learned : learned?.preview;
-  const hasCov = line?.h > 0 && Number.isFinite(line.t0) && line.cov00 >= 0 && Number.isFinite(line.cov01) && line.cov11 >= 0;
-  let localFit = null;
-  if (!hasCov && fitRecords?.length >= 2) {;
-    let s1 = 0, st = 0, stt = 0, sy = 0, sty = 0, n = 0;;
-    for (const r of fitRecords) { if (!Number.isFinite(r.outsideC) || !Number.isFinite(r.heatW)) continue; n++; s1 += 1; st += r.outsideC; stt += r.outsideC * r.outsideC; sy += r.heatW; sty += r.outsideC * r.heatW; }
+  const hasCov = line?.h > 0 && Number.isFinite(line.t0)
+    && Number.isFinite(line.cov00) && line.cov00 >= 0
+    && Number.isFinite(line.cov01)
+    && Number.isFinite(line.cov11) && line.cov11 >= 0;
+  let localFit = null, fanFit = null;
+  if (!hasCov && fitRecords?.length >= 1) {
+    let s1 = 0, st = 0, stt = 0, sy = 0, sty = 0, n = 0, minT = Infinity, maxT = -Infinity;
+    for (const r of fitRecords) {
+      if (!Number.isFinite(r.outsideC) || !Number.isFinite(r.heatW)) continue;
+      n++; s1 += 1; st += r.outsideC; stt += r.outsideV * r.outsideC; sy += r.heatW; sty += r.outsideC * r.heatW;
+      if (r.outsideC < minT) minT = r.outsideC; if (r.outsideC > maxT) maxT = r.outsideC;
+    }
     const det = s1 * stt - st * st;
-    if (n >= 2 && det > 1e-6) {
-      const b0 = (stt * sy - st * sty) / det, b1 = (s1 * sty - st * sy) / det;
-      let rss = 0; for (const r of fitRecords) { const e = b0 + b1 * r.outsideC - r.heatW; rss += e * e; }
-      const s2 = n > 2 ? rss / (n - 2) : Math.max(25000, rss);
-      localFit = { b0, b1, cov00: s2 * stt / det, cov01: -s2 * st / det, cov11: s2 * s1 / det };
+    if (n >= 2 && (maxT - minT) >= 4 && det > 1e-6) {
+      const b0 = (stt * sy - st * sty) / det, b1 = (c1 * sty - st * sy) / det;
+      if (b1 < 0) {
+        let rss = 0; for (const r of fitRecords) { const e = b0 + b1 * r.outsideC - r.heatW; rss += e * e; }
+        const s2 = n > 2 ? rss / (n - 2) : Math.max(25000, rss);
+        localFit = { b0, b1, t0: -b0 / b1, cov00: s2 * stt / det, cov01: s2 * st / det, cov11: s2 * s1 / det };
+      }
+    }
+    if (!localFit && n >= 1 && model.configuredValid) {
+      const meanT = st / n, meanW = sy / n;
+      if (meanW > 0 && model.zeroC > meanT) {
+        const h = meanW / (model.zeroC - meanT);
+        let ssw = 0; for (const r of fitRecords) { const d = r.heatW - meanW; ssw += d * d; }
+        const baseMargin = n > 1 ? Math.max(450, 2.5 * Math.sqrt(ssw / (n - 1))) : Math.max(450, 0.25 * meanW);
+        const slopeMargin = Math.max(30, 0.30 * h);
+        fanFit = { h, t0: model.zeroC, meanT, baseMargin, slopeMargin };
+      }
     }
   }
-  const singleGrad = !hasCov && !localFit && fitRecords?.length >= 1 && model.configuredValid && fitRecords[0].heatW > 0 && model.zeroC > fitRecords[0].outsideC
-    ? fitRecords[0].heatW / (model.zeroC - fitRecords[0].outsideC) : null;
-  if (!hasCov && !localFit && !(singleGrad > 0)) return "";
+  if (!hasCov && !localFit && !fanFit) return { html: "", isConfidence: false };
+  const zeroTemp = hasCov ? line.t0 : localFit ? localFit.t0 : fanFit.t0;
+  const maxTemp = Math.min(model.maxX, zeroTemp);
+  if (maxTemp <= model.minX) return { html: "", isConfidence: hasCov };
+  const temps = []; for (let t = model.minX; t < maxTemp - 1e-6; t += 0.5) temps.push(t); temps.push(maxTemp);
   let upper = "", lower = "";
-  const yMin = Math.max(0, model.axisMinY), yMax = model.axisMaxY;
-  for (let t = model.minX; t <= model.maxX; t += 0.5) {
-    const y = hasCov ? line.h * (line.t0 - t) : localFit ? localFit.b0 + localFit.b1 * t : singleGrad * (model.zeroC - t);
+  const yMin = Math.max(0, model.axisMinY), yMax = Math.max(0, model.axisMaxY);
+  for (const t of temps) {
+    const y = Math.max(0, hasCov ? line.h * (line.t0 - t) : localFit ? localFit.b0 + localFit.b1 * t : fanFit.h * (fanFit.t0 - t));
     const c = hasCov ? line : localFit;
-    const margin = c ? 1.96 * Math.sqrt(Math.max(0, c.cov00 - 2 * c.cov01 * t + c.cov11 * t * t)) : 0.35 * Math.abs(y);
+    const margin = c ? 1.96 * Math.sqrt(Math.max(0, c.cov00 - 2 * c.cov01 * t + c.cov11 * t * t)) : fanFit.baseMargin + fanFit.slopeMargin * Math.abs(t - fanFit.meanT);
     const x = model.x(t).toFixed(1);
     upper += (upper ? " L " : "M ") + x + " " + model.y(clamp(y + margin, yMin, yMax)).toFixed(1);
     lower = "L " + x + " " + model.y(clamp(y - margin, yMin, yMax)).toFixed(1) + (lower ? " " + lower : "");
   }
-  return `<path d="${upper} ${lower} Z" class="oq-house-learning-chart-interval"/>`;
+  return { html: `<path d="${upper} ${lower} Z" class="oq-house-learning-chart-interval"/>`, isConfidence: hasCov };
 }
 
 export function getHouseLearningChartModel(records, configured = {}, learned = {}, width = WIDTH) {
@@ -226,10 +247,10 @@ export function renderHouseLearningChart(records, configured, learned) {
     ? t("houseLearning.chart.qualitySummary", { retained: formatNumber(records.length), eligible: formatNumber(fitRecords.length) })
     : t(dailyFit ? "houseLearning.chart.compactDailySummary" : "houseLearning.chart.compactSummary", { count: formatNumber(fitRecords.length), temperature: format(finite(learned?.referenceRoomC) ?? 20) });
   return `${readiness}
-    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${learnedLine ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}${confidenceBand ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--interval"></i>${escapeHtml(t("houseLearning.chart.legendInterval"))}</span>` : ""}</div>
+    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${learnedLine ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}${confidenceBand.html ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--interval"></i>${escapeHtml(t(confidenceBand.isConfidence ? "houseLearning.chart.legendInterval" : "houseLearning.chart.legendUncertainty"))}</span>` : ""}</div>
     <div class="oq-house-learning-chart-wrap">
       <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="${escapeHtml(t("houseLearning.chart.ariaLabel"))}">
-        ${fitRecords.length && measuredEnd > measuredStart ? `<rect x="${model.x(measuredStart)}" y="${PADDING.top}" width="${model.x(measuredEnd) - model.x(measuredStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}${confidenceBand}
+        ${fitRecords.length && measuredEnd > measuredStart ? `<rect x="${model.x(measuredStart)}" y="${PADDING.top}" width="${model.x(measuredEnd) - model.x(measuredStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}${confidenceBand.html}
         ${xGrid.map((value) => `<line x1="${model.x(value)}" x2="${model.x(value)}" y1="${PADDING.top}" y2="${HEIGHT - PADDING.bottom}" class="oq-house-learning-chart-grid"/>`).join("")}
         ${yGrid.map((value) => `<line x1="${PADDING.left}" y1="${model.y(value).toFixed(1)}" x2="${model.width - PADDING.right}" y2="${model.y(value).toFixed(1)}" class="oq-house-learning-chart-grid"/><text x="${PADDING.left - 9}" y="${(model.y(value) + 4).toFixed(1)}" text-anchor="end" class="oq-house-learning-chart-axis">${escapeHtml(format(value / 1000))}</text>`).join("")}
         ${xGrid.map((value) => `<text x="${model.x(value).toFixed(1)}" y="${HEIGHT - 16}" text-anchor="middle" class="oq-house-learning-chart-axis">${escapeHtml(format(value))}°</text>`).join("")}
