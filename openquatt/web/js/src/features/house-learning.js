@@ -132,16 +132,20 @@ export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = pe
     batchFit: validCounts && validRanges ? {
       trainCount: fit.train_segments, checkCount: fit.holdout_segments,
       trainDays: fit.train_days, checkDays: fit.holdout_days,
-      p10: fit.train_p10_c, p90: fit.train_p90_c, minC: fit.train_min_c, maxC: fit.train_max_c,
+      p10: fit.train_p10_c, p90: fit.train_p90_c, minC: fit.train_min_c, maxC: fit.train_max_c, ...(Object.hasOwn(fit, "cov_00") ? { cov00: numberOrNull(fit.cov_00), cov01: numberOrNull(fit.cov_01), cov11: numberOrNull(fit.cov_11) } : {}),
     } : null,
     // Undefined means older firmware. Null means a present but unusable preview.
     batchPreview: Object.hasOwn(payload, "batch_preview") ? validPreview ? {
       h: preview.h, t0: preview.t0, count: preview.segments, days: preview.days,
       minC: preview.min_c, maxC: preview.max_c,
+      ...(Object.hasOwn(preview, "cov_00") ? { cov00: numberOrNull(preview.cov_00), cov01: numberOrNull(preview.cov_01), cov11: numberOrNull(preview.cov_11) } : {}),
     } : null : undefined,
     adviceReady: payload.advice_ready === true,
     hBatch: numberOrNull(payload.h_batch),
     t0Batch: numberOrNull(payload.t0_batch),
+    cov00: numberOrNull(payload.cov_00),
+    cov01: numberOrNull(payload.cov_01),
+    cov11: numberOrNull(payload.cov_11),
     uRls: numberOrNull(payload.u_rls),
     cRlsWhPerK: numberOrNull(payload.c_rls_wh_per_k),
     capacityValidated: payload.capacity_validated === true,

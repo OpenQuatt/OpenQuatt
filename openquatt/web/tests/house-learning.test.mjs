@@ -1651,3 +1651,16 @@ test("RLS-fitgereedheid vervangt geen onafhankelijke warmteopslagvalidatie", () 
     assert.match(thermal, capacity_validated ? /Modelstatus · Beoordeeld/ : /Modelstatus · Voorlopige schatting/);
   }
 });
+
+test('95% confidence band renders for ready fit, 2-day preview and 1-point fan', async function () { const { renderHouseLearningChart } = await import("../js/src/settings/house-learning-chart.js"); const conf = { coldC: -10, zeroC: 20, ratedW: 6000 };
+  const ready = normalizeHouseLearningStatus(statusPayload({ h_batch: 200, t0_batch: 18, batch_advice_ready: true, batch_fit: { metadata_prepared: true, train_segments: 18, holdout_segments: 3, train_days: 18, holdout_days: 3, train_p10_c: 4, train_p90_c: 12, train_min_c: 2, train_max_c: 14, cov_00: 10000, cov_01: -500, cov_11: 30 } }));
+  const readyHtml = renderHouseLearningChart([], conf, { h: ready.hBatch, t0: ready.t0Batch, cov00: ready.batchFit.cov00, cov01: ready.batchFit.cov01, cov11: ready.batchFit.cov11, ready: true });
+  assert.match(readyHtml, /oq-house-learning-chart-interval/);
+  assert.match(readyHtml, /oq-house-learning-chart-line--learned/);
+  const earlyRecords = [{ outsideC: 4, heatW: 3200, recordKind: 1, startEpoch: 1, endEpoch: 2 }, { outsideC: 10, heatW: 2000, recordKind: 1, startEpoch: 3, endEpoch: 4 }];
+  const earlyHtml = renderHouseLearningChart(earlyRecords, conf, { ready: false });
+  assert.match(earlyHtml, /oq-house-learning-chart-interval/);
+  assert.doesNotMatch(earlyHtml, /oq-house-learning-chart-line--learned/);
+  const onePt = renderHouseLearningChart([{ outsideC: 8, heatW: 2400, recordKind: 1, startEpoch: 1, endEpoch: 2 }], conf, { ready: false });
+  assert.match(onePt, /oq-house-learning-chart-interval/);
+});

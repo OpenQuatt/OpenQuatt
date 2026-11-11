@@ -106,6 +106,7 @@ function learningStatusPending(status = state.houseLearningStatus) {
 
 function houseLearningLine(status = state.houseLearningStatus) {
   return { h: status?.hBatch, t0: status?.t0Batch,
+    cov00: status?.batchFit?.cov00 ?? status?.cov00, cov01: status?.batchFit?.cov01 ?? status?.cov01, cov11: status?.batchFit?.cov11 ?? status?.cov11,
     ready: canAssessModel(status) && !learningStatusPending(status) && status.batchAdviceReady,
     referenceRoomC: status?.referenceRoomC, batchStatus: status?.batchStatus,
     fit: status?.batchFit, preview: status?.batchPreview };

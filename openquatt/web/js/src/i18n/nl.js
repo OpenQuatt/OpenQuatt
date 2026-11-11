@@ -514,6 +514,7 @@ export default {
       legendRecords: "Meetpunten",
       legendLearned: "Geleerde woninglijn",
       legendLearnedProvisional: "Geleerde woninglijn · voorlopig",
+      legendInterval: "Geleerde woninglijn (95% Interval)",
       ariaLabel: "Woninglijn, dagmetingen en bewaarde oude meetperioden",
       outsideTemperatureAxis: "Buitentemperatuur (°C)",
     },

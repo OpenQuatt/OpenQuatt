@@ -43,6 +43,9 @@ struct PreviewLine {
   uint8_t days = 0;
   float min_c = NAN;
   float max_c = NAN;
+  float cov_00 = NAN;
+  float cov_01 = NAN;
+  float cov_11 = NAN;
 };
 
 struct AdviceResult {
@@ -89,6 +92,9 @@ struct AdviceResult {
   float lodo_zero_power_max_c = NAN;
   float max_abs_room_trend_k_per_h = NAN;
   float max_abs_room_trend_per_heat_k_per_h_w = NAN;
+  float candidate_cov_00 = NAN;
+  float candidate_cov_01 = NAN;
+  float candidate_cov_11 = NAN;
 };
 
 enum class FitPhase : uint8_t { IDLE = 0, FIT_PREVIEW, FIT_BASE, FIT_LODO, FINALIZE, DONE };
@@ -171,7 +177,8 @@ inline double record_base_weight(const AdviceFitWorkspace& workspace, size_t ind
 // For a fixed set of temperatures below T0 this is linear in H*T0 and H.
 // Re-evaluate that set on each of the existing bounded Huber passes.
 inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_index, HouseLine& output,
-                           bool preview = false) {
+                           bool preview = false, float* cov_00 = nullptr, float* cov_01 = nullptr,
+                           float* cov_11 = nullptr) {
   HouseLine current;
   for (uint8_t pass = 0; pass < workspace.config.huber_passes; ++pass) {
     double aa = 0.0, ab = 0.0, bb = 0.0, ay = 0.0, by = 0.0;
@@ -210,6 +217,47 @@ inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_
     if (!(heat_loss > 0.0) || !isfinite(heat_loss) || !isfinite(intercept)) return false;
     current = {static_cast<float>(heat_loss), static_cast<float>(intercept / heat_loss)};
     if (!valid_house_line(current)) return false;
+  }
+  if (cov_00 != nullptr && cov_01 != nullptr && cov_11 != nullptr) {
+    double last_aa = 0.0, last_ab = 0.0, last_bb = 0.0, rss = 0.0, weight_sum = 0.0;
+    size_t active_records = 0;
+    const size_t count = preview ? workspace.input_record_count : workspace.train_count;
+    for (size_t index = 0; index < count; ++index) {
+      if (preview ? workspace.preview_day_record_counts[index] == 0
+                  : workspace.record_day_index[index] == omitted_day_index)
+        continue;
+      const SegmentRecord& record = preview ? workspace.records[index] : fit_record(workspace, index);
+      const float correction = effective_outside_c(record) - profile_mean_c(record);
+      double a = 0.0, b = 0.0;
+      for (size_t point = 0; point < kDailyTemperatureProfileSize; ++point) {
+        const double temperature = profile_temperature_c(record, point, correction);
+        if (temperature < current.zero_power_temp_c) {
+          a += 1.0 / kDailyTemperatureProfileSize;
+          b += temperature / kDailyTemperatureProfileSize;
+        }
+      }
+      double weight = preview ? daily_record_quality_weight(record, workspace.quality_config) /
+                                    workspace.preview_day_record_counts[index]
+                              : record_base_weight(workspace, index);
+      const double residual = record_house_line_power_w(current, record) - record.mean_heat_w;
+      if (fabs(residual) > workspace.config.huber_delta_w) weight *= workspace.config.huber_delta_w / fabs(residual);
+      last_aa += weight * a * a;
+      last_ab += weight * a * b;
+      last_bb += weight * b * b;
+      rss += weight * residual * residual;
+      if (weight > 0.0) {
+        weight_sum += weight;
+        ++active_records;
+      }
+    }
+    const double det = last_aa * last_bb - last_ab * last_ab;
+    if (det > 1e-9 && weight_sum > 0.0 && active_records > 2) {
+      const double s2 =
+          (rss / weight_sum) * (static_cast<double>(active_records) / (static_cast<double>(active_records) - 2.0));
+      *cov_00 = static_cast<float>(s2 * last_bb / det);
+      *cov_01 = static_cast<float>(s2 * last_ab / det);
+      *cov_11 = static_cast<float>(s2 * last_aa / det);
+    }
   }
   output = current;
   return true;
@@ -531,10 +579,10 @@ inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
   if (workspace.phase == FitPhase::IDLE) return LearningStatus::INVALID_CONFIGURATION;
   if (workspace.phase == FitPhase::FIT_PREVIEW) {
     auto& preview = workspace.result.preview;
-    preview.available = preview.segments >= workspace.config.min_train_segments &&
-                        preview.days >= workspace.config.min_train_days &&
-                        detail::fit_huber_line(workspace, -1, preview.line, true) &&
-                        detail::plausible_line(preview.line, workspace.config);
+    preview.available =
+        preview.segments >= workspace.config.min_train_segments && preview.days >= workspace.config.min_train_days &&
+        detail::fit_huber_line(workspace, -1, preview.line, true, &preview.cov_00, &preview.cov_01, &preview.cov_11) &&
+        detail::plausible_line(preview.line, workspace.config);
     if (workspace.preparation_status != LearningStatus::OK) {
       workspace.result.status = workspace.preparation_status;
       workspace.phase = FitPhase::DONE;
@@ -551,7 +599,8 @@ inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
       workspace.phase = FitPhase::DONE;
       return workspace.result.status;
     }
-    if (!detail::fit_huber_line(workspace, -1, workspace.result.candidate)) {
+    if (!detail::fit_huber_line(workspace, -1, workspace.result.candidate, false, &workspace.result.candidate_cov_00,
+                                &workspace.result.candidate_cov_01, &workspace.result.candidate_cov_11)) {
       workspace.result.status = LearningStatus::FIT_FAILED;
       workspace.phase = FitPhase::DONE;
       return workspace.result.status;

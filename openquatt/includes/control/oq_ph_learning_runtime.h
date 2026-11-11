@@ -1172,6 +1172,12 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.number(summary.batch.train_min_c);
     json.add(",\"train_max_c\":");
     json.number(summary.batch.train_max_c);
+    json.add(",\"cov_00\":");
+    json.number(summary.batch.candidate_available ? summary.batch.candidate_cov_00 : NAN);
+    json.add(",\"cov_01\":");
+    json.number(summary.batch.candidate_available ? summary.batch.candidate_cov_01 : NAN);
+    json.add(",\"cov_11\":");
+    json.number(summary.batch.candidate_available ? summary.batch.candidate_cov_11 : NAN);
     json.add("}");
     const auto& preview = summary.batch.preview;
     json.add(",\"batch_preview\":{\"h\":");
@@ -1183,6 +1189,12 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.number(preview.min_c);
     json.add(",\"max_c\":");
     json.number(preview.max_c);
+    json.add(",\"cov_00\":");
+    json.number(preview.available ? preview.cov_00 : NAN);
+    json.add(",\"cov_01\":");
+    json.number(preview.available ? preview.cov_01 : NAN);
+    json.add(",\"cov_11\":");
+    json.number(preview.available ? preview.cov_11 : NAN);
     json.add("}");
     json.add(",\"u_rls\":");
     json.number(summary.thermal.accepted_samples > 0 ? summary.thermal.heat_loss_w_per_k : NAN);

@@ -310,11 +310,22 @@ int main() {
   summary.batch.metadata_prepared = true;
   summary.batch.train_segments = summary.batch.train_days = 18;
   summary.batch.holdout_segments = summary.batch.holdout_days = 3;
-  summary.batch.preview = {true, {211.25f, 17.125f}, 21, 21, 1.97f, 12.34f};
+  summary.batch.preview = {true,
+                           {211.25f, 17.125f},
+                           21,
+                           21,
+                           1.97f,
+                           12.34f,
+                           -std::numeric_limits<float>::max(),
+                           -std::numeric_limits<float>::max(),
+                           -std::numeric_limits<float>::max()};
   summary.batch.train_min_c = 7.55f;
   summary.batch.train_max_c = 12.34f;
   summary.batch.train_p10_c = 8.28f;
   summary.batch.train_p90_c = 11.88f;
+  summary.batch.candidate_cov_00 = -std::numeric_limits<float>::max();
+  summary.batch.candidate_cov_01 = -std::numeric_limits<float>::max();
+  summary.batch.candidate_cov_11 = -std::numeric_limits<float>::max();
   summary.batch.candidate.heat_loss_w_per_k = summary.batch.candidate.zero_power_temp_c =
       -std::numeric_limits<float>::max();
   summary.thermal.heat_loss_w_per_k = summary.thermal.thermal_capacity_wh_per_k = -std::numeric_limits<float>::max();
