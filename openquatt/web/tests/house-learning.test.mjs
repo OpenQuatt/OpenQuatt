@@ -54,7 +54,6 @@ test.afterEach(() => {
   state.houseLearningFetchPromise = null;
   state.houseLearningRequestId = 0;
   state.houseLearningChart = null;
-  state.houseLearningChartFit = null;
   state.houseLearningChartLoading = false;
   state.houseLearningChartError = "";
   state.houseLearningChartFetchedAt = 0;
@@ -923,40 +922,6 @@ test("de compacte leerschakelaar behoudt de bestaande loading- en schrijfgates",
     state.loadingEntities = loadingBefore;
     state.busyAction = "";
   }
-});
-
-test("een nieuwe fit met gelijk aantal meetpunten gebruikt geen band uit een oude export", async () => {
-  state.appView = "learning";
-  state.entities = { houseLearningEnabled: switchEntity(true) };
-  state.houseLearningEndpointAvailable = true;
-  const status = statusPayload({ enabled: true, records: 6, context_revision: 8, reference_room_c: 20,
-    batch_preview: { h: 200, t0: 18, segments: 6, days: 6, min_c: 4, max_c: 9 } });
-  state.houseLearningStatus = normalizeHouseLearningStatus(status);
-  const exportPayload = {
-    schema: 1, mode: "passive", collection_state: { context_revision: 8 },
-    record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "effective_outside_c", "mean_heat_w", "record_kind"],
-    records: Array.from({ length: 6 }, (_, index) => [(20000 + index) * 86400, (20001 + index) * 86400,
-      4 + index, 4 + index, 2900 - 210 * index, 1]),
-    record_quality_policy: 1,
-    record_quality_columns: ["heat_coverage_bp", "temperature_coverage_bp", "heat_uncertainty_mean_w", "fit_eligible", "fit_weight_bp"],
-    record_quality: Array.from({ length: 6 }, () => [10000, 10000, 0, true, 10000]),
-  };
-  const reply = body => ({ ok: true, status: 200, json: async () => body });
-  globalThis.fetch = async () => reply(exportPayload);
-  assert.equal(await loadHouseLearningChart(), true);
-  assert.match(renderHouseLearningSettings(), /<polygon/);
-
-  globalThis.fetch = async () => reply({ ...status, batch_preview: { ...status.batch_preview, h: 210 } });
-  assert.equal(await refreshHouseLearningStatus({ force: true }), true);
-  assert.doesNotMatch(renderHouseLearningSettings(), /<polygon/);
-  assert.equal(state.houseLearningChart.length, 6);
-
-  globalThis.fetch = async () => reply({ ...exportPayload, collection_state: { context_revision: 7 } });
-  assert.equal(await loadHouseLearningChart(), true);
-  assert.doesNotMatch(renderHouseLearningSettings(), /<polygon/);
-  globalThis.fetch = async () => reply(exportPayload);
-  assert.equal(await loadHouseLearningChart(), true);
-  assert.match(renderHouseLearningSettings(), /<polygon/);
 });
 
 test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigde polls te renderen", () => {

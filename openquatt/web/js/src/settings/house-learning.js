@@ -6,7 +6,7 @@ import { formatDateTime, formatNumber, getIntlLocale, getLocale, t } from "../i1
 import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
 import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsInfoToggle, renderSettingsSystemRow } from "./controls.js";
-import { configuredLinePowerAt, houseLearningFitKey, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
+import { configuredLinePowerAt, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
 import { selectDisplayedHouseLine } from "./house-learning-readiness.js";
 import { getSettingsSwitchModel } from "./field-models.js";
 
@@ -109,7 +109,6 @@ function houseLearningLine(status = state.houseLearningStatus) {
   return { h: status?.hBatch, t0: status?.t0Batch,
     ready: canAssessModel(status) && !learningStatusPending(status) && status.batchAdviceReady,
     referenceRoomC: status?.referenceRoomC, batchStatus: status?.batchStatus,
-    recordCount: state.houseLearningChartFit === houseLearningFitKey(status) ? status?.records : undefined,
     fit: status?.batchFit, preview: status?.batchPreview };
 }
 
@@ -428,7 +427,7 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
 
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
-    state.houseLearningChartLoading, state.houseLearningChartError, state.houseLearningChartBandMode,
+    state.houseLearningChartLoading, state.houseLearningChartError,
     Boolean(state.settingsAdvancedOpen?.["house-learning-readiness"]),
     state.houseLearningStatus?.records === 0 && state.houseLearningStatus.journalStatus === "cleared",
     houseLearningLine(),
@@ -452,7 +451,6 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
     records,
     { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
     houseLearningLine(),
-    state.houseLearningChartBandMode,
   ) : "";
   return `<div class="oq-settings-section-head">
     <div class="oq-house-learning-heading"><h3>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h3><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t("houseLearning.chart.refresh"))}</button></div>
@@ -502,7 +500,6 @@ function patchLearningMarkup(node, markup) {
   const control = focused && active.dataset?.controlKey;
   const info = focused && active.dataset?.infoId;
   const action = focused && active.dataset?.oqAction;
-  const bandControl = focused && active.hasAttribute?.("data-oq-house-learning-band-mode");
   const selector = control === "houseLearningEnabled" ? '[data-control-key="houseLearningEnabled"]'
     : ["house-learning-window", "house-learning-readiness", "house-learning-thermal", "house-learning-chart", "house-learning-shadow"].includes(info)
     ? `[data-info-id="${info}"]`
@@ -512,9 +509,7 @@ function patchLearningMarkup(node, markup) {
   const point = focused && active.dataset?.oqHouseLearningTip;
   node.innerHTML = markup;
   learningMarkup.set(node, markup);
-  if (bandControl) {
-    (node.querySelector("[data-oq-house-learning-band-mode]") || node.querySelector('[data-oq-action="load-house-learning-chart"]'))?.focus({ preventScroll: true });
-  } else if (point) {
+  if (point) {
     const replacement = [...node.querySelectorAll("[data-oq-house-learning-tip]")]
       .find(candidate => candidate.dataset.oqHouseLearningTip === point);
     (replacement || node.querySelector('[data-oq-action="load-house-learning-chart"]'))?.focus({ preventScroll: true });

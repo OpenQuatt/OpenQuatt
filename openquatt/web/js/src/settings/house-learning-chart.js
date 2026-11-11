@@ -50,41 +50,6 @@ function recordQualities(payload) {
 const usableForChartModel = record => record.quality === undefined
   || record.quality?.valid && record.quality.fitEligible && record.quality.fitWeightBp > 0;
 
-export function houseLearningFitKey(status) {
-  return status && JSON.stringify([status.contextRevision, status.records, status.batchAdviceReady,
-    status.hBatch, status.t0Batch, status.batchFit, status.batchPreview]);
-}
-
-function getHouseLearningSpread(records, learned, fit) {
-  const source = fit.ready ? learned.fit : learned.preview;
-  const count = fit.ready ? source?.trainCount : source?.count;
-  if (!Number.isInteger(count) || count < 6 || records.length !== learned.recordCount
-    || records.some((record, index) => !record.quality?.valid || (index > 0 && records[index - 1].endEpoch > record.startEpoch))) return null;
-  const eligible = records.filter(record => record.recordKind === 1 && usableForChartModel(record));
-  // A checked fit uses the chronological training prefix reported by the
-  // controller. The provisional fit uses all eligible days.
-  if (fit.ready ? count + source.checkCount > eligible.length : count !== eligible.length) return null;
-  const training = eligible.slice(0, count);
-  const temperatures = training.map(record => record.outsideC);
-  const min = Math.min(...temperatures);
-  const max = Math.max(...temperatures);
-  if (min !== source.minC || max !== source.maxC || min >= max) return null;
-  const errors = training.map(record => Math.abs(learnedLinePowerAt(fit, record.outsideC) - record.heatW))
-    .sort((a, b) => a - b);
-  const margin = errors[Math.ceil(0.95 * count) - 1];
-  const start = Math.max(min, MIN_X);
-  const end = Math.min(max, MAX_X);
-  if (!Number.isFinite(margin) || margin <= 0 || start >= end) return null;
-  const floor = Math.min(0, ...training.map(record => record.heatW));
-  const positions = [start, fit.t0 - Math.max(0, margin + floor) / fit.h, fit.t0, end]
-    .filter(temperature => temperature >= start && temperature <= end);
-  const points = [...new Set(positions)].map(temperature => {
-    const power = learnedLinePowerAt(fit, temperature);
-    return { temperature, low: Math.max(floor, power - margin), high: power + margin };
-  });
-  return { min, max, count, covered: errors.filter(error => error <= margin).length, points };
-}
-
 export function normalizeHouseLearningExport(payload = {}) {
   if (Number(payload.schema) !== 1 || payload.mode !== "passive" || !Array.isArray(payload.record_columns) || !Array.isArray(payload.records)) {
     throw translatedError("houseLearning.errors.unknownExportFormat");
@@ -119,11 +84,9 @@ export function getHouseLearningChartModel(records, configured = {}, learned = {
   const learnedValid = fit.h != null && fit.t0 != null && fit.h > 0;
   const minX = MIN_X;
   const maxX = MAX_X;
-  const spread = learnedValid ? getHouseLearningSpread(records, learned, fit) : null;
   const learnedPower = (temperature) => learnedValid ? learnedLinePowerAt(fit, temperature) : 0;
   const configuredPowerAtMin = configuredValid ? configuredLinePowerAt(config, minX) : 0;
-  const maxY = Math.max(500, ...records.map((record) => record.heatW), configuredPowerAtMin, learnedPower(minX), learnedPower(maxX),
-    ...(spread?.points.map(point => point.high) ?? []));
+  const maxY = Math.max(500, ...records.map((record) => record.heatW), configuredPowerAtMin, learnedPower(minX), learnedPower(maxX));
   const minY = Math.min(0, ...records.map((record) => record.heatW));
   const yStep = Math.max(500, Math.ceil(Math.max(maxY, -minY) / 5000) * 1000);
   const axisMinY = Math.floor(minY / yStep) * yStep;
@@ -132,7 +95,7 @@ export function getHouseLearningChartModel(records, configured = {}, learned = {
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
   const x = (temperature) => PADDING.left + ((temperature - minX) / Math.max(1, maxX - minX)) * plotWidth;
   const y = (power) => PADDING.top + (1 - clamp((power - axisMinY) / (axisMaxY - axisMinY), 0, 1)) * plotHeight;
-  return { width, ...config, ...fit, spread, configuredValid, learnedValid, minX, maxX, axisMinY, axisMaxY, yStep, x, y, plotWidth, plotHeight };
+  return { width, ...config, ...fit, configuredValid, learnedValid, minX, maxX, axisMinY, axisMaxY, yStep, x, y, plotWidth, plotHeight };
 }
 
 function pathFor(model, from, to, power, zeroC) {
@@ -179,7 +142,7 @@ function renderLineEstimates(model) {
   }).join("")}</dl>`;
 }
 
-export function renderHouseLearningChart(records, configured, learned, preferredBand = "spread") {
+export function renderHouseLearningChart(records, configured, learned) {
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH);
   const dailyFit = records.some((record) => record.referenceRoomC != null) || finite(learned?.referenceRoomC) != null;
@@ -195,12 +158,12 @@ export function renderHouseLearningChart(records, configured, learned, preferred
   const configuredPower = (temperature) => configuredLinePowerAt(model, temperature);
   const learnedPower = (temperature) => learnedLinePowerAt(model, temperature);
   const previewRange = learned?.preview !== undefined ? learned.preview : learned?.fit;
-  const rangeMin = model.spread?.min ?? (!model.ready ? finite(previewRange?.minC) : measuredMin);
-  const rangeMax = model.spread?.max ?? (!model.ready ? finite(previewRange?.maxC) : measuredMax);
+  const rangeMin = model.ready ? finite(learned?.fit?.minC) ?? measuredMin : finite(previewRange?.minC);
+  const rangeMax = model.ready ? finite(learned?.fit?.maxC) ?? measuredMax : finite(previewRange?.maxC);
   const learnedStart = rangeMin == null ? model.minX : clamp(rangeMin, model.minX, model.maxX);
   const learnedEnd = rangeMax == null ? model.maxX : clamp(rangeMax, model.minX, model.maxX);
-  const measuredStart = model.spread ? learnedStart : measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
-  const measuredEnd = model.spread ? learnedEnd : measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
+  const measuredStart = model.ready ? learnedStart : measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
+  const measuredEnd = model.ready ? learnedEnd : measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
   const learnedRanges = !model.ready
     ? rangeMin != null && rangeMax != null && rangeMax > rangeMin ? [[model.minX, model.maxX, true]] : []
     : fitRecords.length && learnedEnd > learnedStart
@@ -208,10 +171,6 @@ export function renderHouseLearningChart(records, configured, learned, preferred
     : [[model.minX, model.maxX, true]];
   const learnedLine = model.learnedValid ? learnedRanges.filter(([from, to]) => to > from).map(([from, to, dashed]) =>
     `<path d="${pathFor(model, from, to, learnedPower, model.t0)}" class="oq-house-learning-chart-line ${dashed ? "oq-house-learning-chart-line--learned-dashed" : "oq-house-learning-chart-line--learned"}"/>`).join("") : "";
-  const bandPoints = (points, edge) => points.map(point => `${model.x(point.temperature).toFixed(1)},${model.y(point[edge]).toFixed(1)}`).join(" ");
-  const spread = learnedLine ? model.spread : null;
-  const showSpread = preferredBand !== "off";
-  const band = showSpread ? spread : null;
   const visibleRecords = records.filter((record) => record.outsideC >= model.minX && record.outsideC <= model.maxX);
   const tooltip = visibleRecords.map((record) => `<g class="oq-house-learning-chart-point" data-oq-house-learning-tip="${escapeHtml(chartTooltip(record))}" tabindex="0" role="button" aria-label="${escapeHtml(chartTooltip(record))}"><title>${escapeHtml(chartTooltip(record))}</title><circle cx="${model.x(record.outsideC).toFixed(1)}" cy="${model.y(record.heatW).toFixed(1)}" r="12" class="oq-house-learning-chart-hit"/><circle cx="${model.x(record.outsideC).toFixed(1)}" cy="${model.y(record.heatW).toFixed(1)}" r="3.2" class="oq-house-learning-chart-dot"/></g>`).join("");
   const legacyRecords = records.filter((record) => record.recordKind === 0);
@@ -235,11 +194,7 @@ export function renderHouseLearningChart(records, configured, learned, preferred
     ? t("houseLearning.chart.qualitySummary", { retained: formatNumber(records.length), eligible: formatNumber(fitRecords.length) })
     : t(dailyFit ? "houseLearning.chart.compactDailySummary" : "houseLearning.chart.compactSummary", { count: formatNumber(fitRecords.length), temperature: format(finite(learned?.referenceRoomC) ?? 20) });
   return `${readiness}
-    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${learnedLine ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}
-      ${spread ? `<label>${escapeHtml(t("houseLearning.chart.bandLabel"))}<select data-oq-house-learning-band-mode>
-        <option value="spread"${showSpread ? " selected" : ""}>${escapeHtml(t("houseLearning.chart.legendBand"))}</option>
-        <option value="off"${showSpread ? "" : " selected"}>${escapeHtml(t("houseLearning.chart.bandOff"))}</option>
-      </select></label>` : ""}</div>
+    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${learnedLine ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}</div>
     <div class="oq-house-learning-chart-wrap">
       <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="${escapeHtml(t("houseLearning.chart.ariaLabel"))}">
         ${fitRecords.length && measuredEnd > measuredStart ? `<rect x="${model.x(measuredStart)}" y="${PADDING.top}" width="${model.x(measuredEnd) - model.x(measuredStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}
@@ -247,16 +202,12 @@ export function renderHouseLearningChart(records, configured, learned, preferred
         ${yGrid.map((value) => `<line x1="${PADDING.left}" y1="${model.y(value).toFixed(1)}" x2="${model.width - PADDING.right}" y2="${model.y(value).toFixed(1)}" class="oq-house-learning-chart-grid"/><text x="${PADDING.left - 9}" y="${(model.y(value) + 4).toFixed(1)}" text-anchor="end" class="oq-house-learning-chart-axis">${escapeHtml(format(value / 1000))}</text>`).join("")}
         ${xGrid.map((value) => `<text x="${model.x(value).toFixed(1)}" y="${HEIGHT - 16}" text-anchor="middle" class="oq-house-learning-chart-axis">${escapeHtml(format(value))}°</text>`).join("")}
         <text x="${PADDING.left}" y="16" class="oq-house-learning-chart-unit">kW</text><text x="${model.width - PADDING.right}" y="${HEIGHT - 3}" text-anchor="end" class="oq-house-learning-chart-unit">${escapeHtml(t("houseLearning.chart.outsideTemperatureAxis"))}</text>
-        ${band ? `<polygon class="oq-house-learning-chart-band" points="${bandPoints(band.points, "high")} ${bandPoints([...band.points].reverse(), "low")}"/>` : ""}
         ${model.configuredValid ? `<path d="${pathFor(model, model.minX, model.maxX, configuredPower, model.zeroC)}" class="oq-house-learning-chart-line oq-house-learning-chart-line--configured"/>` : ""}
         ${learnedLine}
         ${tooltip}
       </svg>
       <div class="oq-house-learning-chart-tooltip" aria-hidden="true"></div>
     </div>
-    ${band ? `<p class="oq-house-learning-chart-band-note">${escapeHtml(t("houseLearning.chart.bandCopy", {
-      covered: formatNumber(band.covered), count: formatNumber(band.count), min: format(band.min, 2), max: format(band.max, 2),
-    }))}</p>` : ""}
     ${learnedLine ? renderLineEstimates(model) : ""}
 
     <div class="oq-house-learning-chart-footer"><span>${escapeHtml(summary)}</span>${renderSettingsInfoToggle("house-learning-chart", t("houseLearning.chart.panelTitle"), notes.join("\n\n"))}</div>

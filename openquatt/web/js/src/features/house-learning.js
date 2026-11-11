@@ -5,7 +5,7 @@ import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
-import { houseLearningFitKey, normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
+import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
 import { t } from "../i18n/index.js";
 
 export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
@@ -151,7 +151,6 @@ export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = pe
     rlsReady: payload.rls_ready === true,
     rlsReadinessReasons: stringList(payload.rls_readiness_reasons),
     tickEpoch: numberOrNull(payload.tick_epoch),
-    contextRevision: countOrNull(payload.context_revision),
     blockedReasons: stringList(payload.blocked_reasons),
     sources: Object.fromEntries(["room", "setpoint", "outside", "flow"].map((key) => [key, source(key)])),
     collection: payload.collection && typeof payload.collection === "object"
@@ -235,7 +234,6 @@ function autoLoadHouseLearningChart() {
 
 export async function loadHouseLearningChart() {
   if (state.houseLearningChartLoading || state.busyAction || state.houseLearningReset === "pending") return false;
-  const fitKey = houseLearningFitKey(state.houseLearningStatus);
   const requestId = Number(state.houseLearningChartRequestId || 0) + 1;
   state.houseLearningChartRequestId = requestId;
   state.houseLearningChartLoading = true;
@@ -254,10 +252,6 @@ export async function loadHouseLearningChart() {
     );
     const records = normalizeHouseLearningExport(payload);
     if (requestId !== state.houseLearningChartRequestId) return false;
-    const status = state.houseLearningStatus;
-    const exportContext = payload.collection_state?.context_revision;
-    state.houseLearningChartFit = fitKey === houseLearningFitKey(status)
-      && (exportContext == null || exportContext === status?.contextRevision) ? fitKey : null;
     state.houseLearningChart = records;
     state.houseLearningChartFetchedAt = Date.now();
     return true;
@@ -367,7 +361,6 @@ export async function refreshHouseLearningStatus(options = {}) {
         // already copied frame. Keep the learning status, fence its live comparison.
         if (shadowEpoch !== state.houseLearningShadowEpoch || state.busyAction
           || ["pending", "uncertain"].includes(state.houseLearningReset)) status.shadow = null;
-        if (state.houseLearningChartFit !== houseLearningFitKey(status)) state.houseLearningChartFit = null;
         state.houseLearningStatus = status;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;

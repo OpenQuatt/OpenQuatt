@@ -84,9 +84,7 @@ als dagmeting. Na goedkeuring is de groene lijn binnen het gemeten bereik
 doorgetrokken en daarbuiten gestippeld. Een voorlopige lijn blijft overal
 gestippeld, ook binnen het gemeten bereik.
 
-Open **Bekijk beoordeling** voor de voortgangsbalken en uitleg. De grafiek toont
-standaard **Meetspreiding**, met het aantal leerdagen binnen de band. Die band
-stopt bij de koudste en warmste leerdag.
+Open **Bekijk beoordeling** voor de voortgangsbalken en uitleg.
 
 Onder de grafiek staan de geschatte warmtevraag bij −10 °C en de
 buitentemperatuur waarbij de geleerde lijn 0 kW bereikt. Buiten het gemeten
