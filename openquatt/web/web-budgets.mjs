@@ -71,9 +71,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // A change-log link in the settings toast and stacked toasts (up to three, fanned out on hover,
     // dismissable one by one, undo per toast): +3,790 B raw; 80 B raw headroom.
     // Toasts on Leren and a brain icon for its tab: measured raw 1,464,379 B (Node 24.4.1); 80 B raw headroom.
-    // Learning workspace, illustrated guide and curve display: +24,051 B raw
-    // versus dev 790c7742 on Node 24.14.1. Leaves 86 B raw headroom.
-    raw: 1_487_010,
+    // Learning workspace, illustrated guide and measurement spread: +22,039 B raw
+    // versus dev 790c7742 on Node 24.14.1. Leaves 88 B raw headroom.
+    raw: 1_485_000,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -100,6 +100,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // dev 43,167 B (+1,638 B, +3.8%; Node 24.4.1); ~180 B gzip and 80 B raw headroom.
   // Charts tab: energy-history controls stack by panel width and the side-navigation column shrinks its
   // content: +161 B CSS raw; preserves the 80 B raw headroom.
-  // Learning workspace and curve display: +2,887 B raw against the same base.
+  // Learning workspace and curve display: +2,934 B raw against the same base.
   { file: "css/openquatt-app.css", raw: 228_853, gzipBaselineCeiling: 44_985 },
 ];

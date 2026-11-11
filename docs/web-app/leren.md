@@ -88,12 +88,9 @@ Open **Bekijk beoordeling** voor de voortgangsbalken en uitleg. De grafiek toont
 standaard **Meetspreiding**, met het aantal leerdagen binnen de band. Die band
 stopt bij de koudste en warmste leerdag.
 
-Kies **Onzekerheid woninglijn** om te zien hoeveel de lijn verschuift als telkens
-één leerdag wegvalt. De webapp gebruikt daarvoor de gewogen daggemiddelden aan
-de verwarmingskant van de lijn. Onder de grafiek staan de geschatte warmtevraag
-bij −10 °C en de buitentemperatuur waarbij de geleerde lijn 0 kW bereikt.
-Bij beide temperaturen staat de berekende band in kW. Buiten het gemeten bereik
-rekent de webapp de lijnen door. Nieuwe metingen kunnen een grotere verschuiving geven.
+Onder de grafiek staan de geschatte warmtevraag bij −10 °C en de
+buitentemperatuur waarbij de geleerde lijn 0 kW bereikt. Buiten het gemeten
+bereik rekent de webapp de lijnen door.
 
 ## Details en leerdata
 
