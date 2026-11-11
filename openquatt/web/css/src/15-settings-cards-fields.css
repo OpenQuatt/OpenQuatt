@@ -542,7 +542,7 @@
 .oq-house-learning-chart-band { fill: #16a34a; fill-opacity: 0.18; stroke: #16a34a; stroke-opacity: 0.38; pointer-events: none; }
 .oq-helper-shell--dark .oq-house-learning-chart-band { fill: #4ade80; stroke: #4ade80; }
 .oq-house-learning-chart-band-note { margin: 0; color: var(--oq-helper-soft); font-size: 0.82rem; }
-.oq-house-learning-chart-estimates { display: flex; flex-wrap: wrap; gap: 12px 32px; margin: 0; color: var(--oq-helper-soft); font-size: 0.82rem; }
+.oq-house-learning-chart-estimates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; max-width: 48rem; margin: 0; color: var(--oq-helper-soft); font-size: 0.82rem; }
 .oq-house-learning-chart-estimates dd { margin: 0; }
 .oq-house-learning-chart-estimates dt + dd { color: var(--oq-helper-ink); font-size: 1.15rem; font-weight: 700; }
 .oq-house-learning-chart-grid { stroke: color-mix(in srgb, var(--oq-helper-line) 86%, transparent); stroke-width: 1; }

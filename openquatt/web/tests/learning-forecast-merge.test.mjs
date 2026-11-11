@@ -27,6 +27,7 @@ test.beforeEach(t => {
   state.busyAction = state.controlError = state.controlNotice = "";
   state.weatherConfigRevision = 0;
   state.weatherOptOutUnconfirmed = false;
+  state.houseLearningEndpointAvailable = state.houseLearningEndpointChecked = state.houseLearningEndpointChecking = false;
   state.learningPanel = "configuration";
   state.loadingEntities = false;
   state.nativeOpen = false;
@@ -198,6 +199,16 @@ test("de Leren-patch bewaart Vooruitblikbediening en toont tegelijk actuele meld
   assert.equal(input.selectionStart, 1);
   assert.equal(input.selectionEnd, 4);
   assert.equal(state.root.scrollTop, 200);
+
+  state.entities.houseLearningEnabled = { value: true, state: "ON" };
+  assert.equal(patchLearningDom(), true, "the weather field remains mounted before the capability check");
+  state.houseLearningEndpointChecked = true;
+  assert.equal(patchLearningDom(), true, "a missing learning endpoint does not require a full render");
+  assert.equal(document.activeElement, input);
+  assert.equal(input.selectionStart, 1);
+  assert.equal(input.selectionEnd, 4);
+  state.houseLearningEndpointAvailable = true;
+  assert.equal(patchLearningDom(), false, "the available learning panel must be mounted");
   delete state.entities.weatherEnabled;
   assert.equal(patchLearningDom(), false, "veranderde tabcapability vereist een structurele render");
 });

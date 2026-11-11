@@ -90,9 +90,10 @@ stopt bij de koudste en warmste leerdag.
 
 Kies **Onzekerheid woninglijn** om te zien hoeveel de lijn verschuift als telkens
 één leerdag wegvalt. De webapp gebruikt daarvoor de gewogen daggemiddelden aan
-de verwarmingskant van de lijn. Onder de grafiek staat de modelband bij −10 °C
-in kW en die van het nulpunt in °C. Buiten het gemeten bereik rekent de webapp de
-lijnen door. Nieuwe metingen kunnen een grotere verschuiving geven.
+de verwarmingskant van de lijn. Onder de grafiek staan de geschatte warmtevraag
+bij −10 °C en de buitentemperatuur waarbij de geleerde lijn 0 kW bereikt.
+Bij beide temperaturen staat de berekende band in kW. Buiten het gemeten bereik
+rekent de webapp de lijnen door. Nieuwe metingen kunnen een grotere verschuiving geven.
 
 ## Details en leerdata
 

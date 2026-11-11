@@ -416,7 +416,8 @@ test("zonder variatie in de herberekende lijn blijft de gemeten spreiding binnen
   assert.equal((html.match(/oq-house-learning-chart-line--learned-dashed/g) || []).length, 2);
   assert.match(html, /6 van de 6 leerdagen liggen binnen de band/);
   assert.match(html, /Gemeten bereik 3–8 °C/);
-  assert.match(html, /0 kW vanaf 17,8 °C/);
+  assert.match(html, /<dt>Bij 17,8 °C<\/dt><dd>0 kW<\/dd><\/div>/);
+  assert.doesNotMatch(html, /Berekende band/);
   assert.doesNotMatch(html, /Onzekerheid woninglijn/);
 
   const provisional = { ...learned, ready: false, preview: { h: 200, t0: 17.8, count: 9, days: 9, minC: 1, maxC: 14 } };
@@ -431,7 +432,7 @@ test("zonder variatie in de herberekende lijn blijft de gemeten spreiding binnen
 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   assert.match(renderHouseLearningChart(records, {}, learned), /Measurement spread/);
-  assert.match(renderHouseLearningChart(records, {}, learned), /0 kW from 17\.8 °C/);
+  assert.match(renderHouseLearningChart(records, {}, learned), /<dt>At 17\.8 °C<\/dt><dd>0 kW<\/dd>/);
 });
 
 test("de band volgt herberekeningen tot −10 °C en geeft een apart bereik voor het nulpunt", () => {
@@ -464,8 +465,10 @@ test("de band volgt herberekeningen tot −10 °C en geeft een apart bereik voor
   const html = renderHouseLearningChart(records, {}, learned, "sensitivity");
   assert.equal((html.match(/<polygon /g) || []).length, 1);
   assert.match(html, /value="sensitivity" selected>Onzekerheid woninglijn/);
-  assert.match(html, /Modelband [\d,]+–[\d,]+ kW/);
-  assert.match(html, /0 kW vanaf 18 °C<\/dd><dd>Modelband [\d,]+–[\d,]+ °C/);
+  assert.equal(band.atZero.low, 0);
+  assert.ok(band.atZero.high > 0);
+  assert.match(html, /<dt>Bij -10 °C<\/dt><dd>5,6 kW<\/dd><dd>Berekende band [\d,]+–[\d,]+ kW/);
+  assert.match(html, /<dt>Bij 18 °C<\/dt><dd>0 kW<\/dd><dd>Berekende band 0–[\d,]+ kW/);
   assert.match(html, /Nieuwe metingen kunnen de lijn verder verschuiven/);
   assert.doesNotMatch(renderHouseLearningChart(records, {}, learned, "off"), /<polygon/);
 

@@ -97,12 +97,13 @@ function houseLineSensitivity(training, fit) {
   const zeroHigh = Math.max(...zeroPoints);
   const temperatures = [...new Set([...Array.from({ length: 61 }, (_, i) => MIN_X + i / 2), ...zeroPoints])]
     .filter(value => value >= MIN_X && value <= MAX_X).sort((a, b) => a - b);
-  const points = temperatures.map(temperature => {
+  const boundsAt = (temperature) => {
     const powers = lines.map(line => learnedLinePowerAt(line, temperature));
     return { temperature, low: Math.min(...powers), high: Math.max(...powers) };
-  });
+  };
+  const points = temperatures.map(boundsAt);
   if (points.some(point => !Number.isFinite(point.high)) || points.every(point => point.high - point.low < 1e-6)) return null;
-  return { points, zeroLow, zeroHigh };
+  return { points, zeroLow, zeroHigh, atZero: boundsAt(fit.t0) };
 }
 
 function houseLearningBands(records, learned, fit) {
@@ -224,14 +225,18 @@ function chartTooltip(record) {
 }
 
 function renderBandEstimates(model) {
-  const power = format(learnedLinePowerAt(model, model.minX) / 1000, 2);
   const band = model.bands.sensitivity;
-  const cold = band?.points[0];
-  const range = (low, high, unit, digits) => `<dd>${escapeHtml(t("houseLearning.chart.sensitivityRange", { low: format(low, digits), high: format(high, digits), unit }))}</dd>`;
-  return `<dl class="oq-house-learning-chart-estimates">
-    <div><dt>${escapeHtml(t("houseLearning.chart.estimateAt", { temperature: format(model.minX) }))}</dt><dd>${escapeHtml(power)} kW</dd>${cold ? range(cold.low / 1000, cold.high / 1000, "kW", 2) : ""}</div>
-    <div><dt>${escapeHtml(t("houseLearning.chart.zeroPoint"))}</dt><dd>${escapeHtml(t("houseLearning.chart.zeroFrom", { temperature: format(model.t0) }))}</dd>${cold ? range(band.zeroLow, band.zeroHigh, "°C", 1) : ""}</div>
-  </dl>`;
+  const estimates = [
+    { temperature: model.minX, power: learnedLinePowerAt(model, model.minX), bounds: band?.points[0] },
+    { temperature: model.t0, power: 0, bounds: band?.atZero },
+  ];
+  return `<dl class="oq-house-learning-chart-estimates">${estimates.map(({ temperature, power, bounds }) => {
+    const label = t("houseLearning.chart.estimateAt", { temperature: format(temperature) });
+    const range = bounds ? t("houseLearning.chart.sensitivityRange", {
+      low: format(bounds.low / 1000, 2), high: format(bounds.high / 1000, 2),
+    }) : "";
+    return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(format(power / 1000, 2))} kW</dd>${range ? `<dd>${escapeHtml(range)}</dd>` : ""}</div>`;
+  }).join("")}</dl>`;
 }
 
 export function renderHouseLearningChart(records, configured, learned, preferredBand = "spread") {

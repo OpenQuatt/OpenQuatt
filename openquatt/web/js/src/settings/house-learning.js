@@ -527,8 +527,8 @@ export function patchHouseLearningSettingsStatus() {
   if (panel && (!hasEntity("houseLearningEnabled") || (!state.houseLearningEndpointAvailable && !initialCapabilityCheck))) {
     return false;
   }
-  const node = panel?.querySelector("[data-oq-house-learning-status]");
-  if (!panel) return false;
+  if (!panel) return state.learningPanel === "configuration" && !state.houseLearningEndpointAvailable;
+  const node = panel.querySelector("[data-oq-house-learning-status]");
   const toggle = panel.querySelector("[data-oq-learning-switch]");
   if (toggle) {
     const model = getSettingsSwitchModel("houseLearningEnabled");
