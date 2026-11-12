@@ -496,7 +496,7 @@ void daily_boiler_limits_stay_separate_and_preserve_an_open_gap() {
   const PassiveContextView context{context_bytes, sizeof(context_bytes), 1};
   PassiveRuntimeStorage state;
   initialize_passive_runtime(state, context, config, true);
-  const auto advance = [&](const LearningSourceInput& raw) {
+  const auto advance = [&](const LearningSourceInput& raw, bool boiler_off = false) {
     const auto batch = build_learning_snapshot(raw, config.quality, SnapshotPurpose::STRUCTURAL_BATCH);
     const auto dynamic = build_learning_snapshot(raw, config.quality, SnapshotPurpose::THERMAL_DYNAMIC);
     PassiveTickInput tick;
@@ -511,7 +511,7 @@ void daily_boiler_limits_stay_separate_and_preserve_an_open_gap() {
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
     tick.dynamic_snapshot = dynamic.snapshot;
-    const auto daily_quality = daily_heat_quality(config.quality, raw.system_heat_enabled);
+    const auto daily_quality = live_daily_heat_quality(config.quality, raw.system_heat_enabled, boiler_off);
     tick_passive_runtime(state, tick, &daily_quality);
     assert(state.config.quality.max_observed_heat_w == config.quality.max_observed_heat_w);
     assert(state.config.quality.max_daily_missing_heat_w == config.quality.max_daily_missing_heat_w);
@@ -528,22 +528,30 @@ void daily_boiler_limits_stay_separate_and_preserve_an_open_gap() {
   raw = system_observation(10, 2);
   raw.hp2.water_out_c.value = 40.0f;
   raw.system_supply_c = {};
-  const auto gap = advance(raw);
+  const auto gap = advance(raw, true);
   assert(gap.status == SnapshotSourceStatus::MISSING_MEASUREMENT && !gap.measurement_valid);
   assert(gap.may_bridge_daily_gap && isnan(gap.snapshot.partial_heat_to_water_w));
-  assert(state.batch_accumulator.heat_gap_pending && state.batch_accumulator.gap_heat_bound_floor_w == 50000.0f);
+  assert(state.batch_accumulator.heat_gap_pending && state.batch_accumulator.gap_heat_bound_floor_w == 6115.28f);
 
-  raw = system_observation(20, 2);
+  raw = system_observation(20, 3);
+  raw.boiler_heat = learning_boiler_status(0x000AU, raw.monotonic_ms, true, true);
+  raw.system_supply_c = {};
+  const auto assisted_gap = advance(raw);
+  assert(assisted_gap.may_bridge_daily_gap && isnan(assisted_gap.snapshot.partial_heat_to_water_w));
+  constexpr float wider_bound = 30115.28f;
+  assert(state.batch_accumulator.gap_heat_bound_floor_w == wider_bound);
+
+  raw = system_observation(30, 2);
   raw.system_heat_enabled = false;
-  const auto recovered = advance(raw);
+  const auto recovered = advance(raw, true);
   const auto& day = state.batch_accumulator;
   assert(recovered.measurement_valid && !day.heat_gap_pending && day.gap_heat_bound_floor_w == 0.0f);
   assert(day.start_epoch_s == system.snapshot.epoch_s);
-  const double expected = daily_gap_uncertainty_ws(50000.0, system.snapshot.heat_to_water_w,
-                                                   recovered.snapshot.heat_to_water_w, 20000U, 0U, 20000U);
+  const double expected = daily_gap_uncertainty_ws(wider_bound, system.snapshot.heat_to_water_w,
+                                                   recovered.snapshot.heat_to_water_w, 30000U, 0U, 30000U);
   assert(fabs(day.missing_energy_uncertainty_ws - expected) < 0.01);
 
-  raw = system_observation(30, 2);
+  raw = system_observation(40, 2);
   raw.system_heat_enabled = false;
   raw.flow_lph = {};
   assert(advance(raw).may_bridge_daily_gap);
