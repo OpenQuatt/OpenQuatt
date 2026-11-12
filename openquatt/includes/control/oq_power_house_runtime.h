@@ -122,6 +122,9 @@ class Runtime {
         this->dispatch_state_, {now_ms, hp1_valve_defrost, hp2_valve_defrost, hp1_oil_return || hp2_oil_return,
                                 id(hp1_last_applied_level), hp2_applied_level});
 
+    const auto frequency = oq_frequency_runtime::capture();
+    const auto feedback = this->observe_compressor_feedback_(frequency, now_ms);
+
     const auto cadence = oq_power_house::decide_cadence(now_ms, id(oq_ph_request_last_loop_ms), config.loop_ms);
     if (config.loop_ms == 0 || (!cadence.due && this->startup_phase_ == oq_power_house::StartupPhase::READY)) return;
 
@@ -218,7 +221,6 @@ class Runtime {
 #endif
     id(oq_last_lead_hp) = lead_is_hp1 ? 1 : 2;
 
-    const auto frequency = oq_frequency_runtime::capture();
     const uint32_t minimum_runtime_ms =
         1000UL * static_cast<uint32_t>(oq_request::minimum_runtime_seconds(
                      id(oq_min_runtime_min).has_state(), id(oq_min_runtime_min).state, config.minimum_runtime_floor_s));
@@ -267,7 +269,14 @@ class Runtime {
          duo && oq_hp_candidate::may_serve_candidate(hp2_candidate)});
     const float supply_c = performance_supply.supply_c;
     const auto model = oq_water_performance::capture(
-        frequency, supply_c, hp1_valve_defrost || hp2_valve_defrost || hp1_defrost_active || hp2_defrost_active);
+        frequency, supply_c, hp1_valve_defrost || hp2_valve_defrost || hp1_defrost_active || hp2_defrost_active,
+        feedback);
+    const int retained_hp1 = hp1_candidate.must_stop ? 0 : hp1_candidate.previous_applied_level;
+    const int retained_hp2 = hp2_candidate.must_stop ? 0 : hp2_candidate.previous_applied_level;
+    const auto current_power = model.pair(retained_hp1, retained_hp2);
+    const float peak_limit_w = id(oq_power_limit_peak_w);
+    const bool may_settle =
+        current_power.valid() && std::isfinite(peak_limit_w) && current_power.electrical_w <= peak_limit_w;
     const bool performance_valid = std::isfinite(outside_c) && (model.coupled || std::isfinite(model.outlet[0]) ||
                                                                 (duo && std::isfinite(model.outlet[1])));
 
@@ -290,6 +299,9 @@ class Runtime {
       const bool boot_hold = id(oq_incident_manager).boot_protection_hold(hp_index, now_ms) && !defrost &&
                              !valve_defrost && !(hp1 ? hp1_oil_return : hp2_oil_return);
       result.fixed_level = pending || boot_hold ? candidate.previous_applied_level : 0;
+      result.feedback_hold_level = feedback[hp1 ? 0 : 1].hold_level(
+          candidate.previous_applied_level, frequency.frequency_allowed(hp1, 2, candidate.previous_applied_level),
+          may_settle);
       result.stop_inhibited =
           candidate.previous_applied_level > 0 && !candidate.must_stop &&
           (pending || boot_hold || oq_request::min_runtime_window_active(now_ms, last_start_ms, minimum_runtime_ms));
@@ -306,8 +318,9 @@ class Runtime {
         if (valve_defrost && std::isfinite(thermal_w)) thermal_w *= defrost_factor;
         const bool thermal_valid = std::isfinite(thermal_w) && thermal_w >= 0.0f;
         const bool electrical_valid = std::isfinite(electrical_w) && electrical_w >= 0.0f;
-        result.levels[level] = {allowed,   thermal_valid, electrical_valid,
-                                thermal_w, electrical_w,  static_cast<uint8_t>(prediction.runtime_frequency_hz)};
+        result.levels[level] = {allowed,          thermal_valid,
+                                electrical_valid, thermal_w,
+                                electrical_w,     static_cast<uint8_t>(std::max(0, model.hz[hp1 ? 0 : 1][level]))};
         bool& model_available = hp1 ? hp1_model_available : hp2_model_available;
         bool& runnable_candidate = hp1 ? hp1_runnable_candidate : hp2_runnable_candidate;
         model_available |= prediction.runtime_frequency_known && power.valid();
@@ -320,20 +333,22 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     build_hp(dispatch_input.hp2, false, hp2_candidate, hp2_defrost_active, hp2_valve_defrost);
 #endif
-    const bool active_model_missing =
-        (hp1_candidate.previous_applied_level > 0 && !hp1_candidate.must_stop && !hp1_model_available) ||
-        (duo && hp2_candidate.previous_applied_level > 0 && !hp2_candidate.must_stop && !hp2_model_available);
+    const bool active_model_missing = (retained_hp1 > 0 && !hp1_model_available) ||
+                                      (duo && retained_hp2 > 0 && !hp2_model_available) ||
+                                      ((retained_hp1 > 0 || retained_hp2 > 0) && !current_power.valid());
     const bool any_servable_candidate =
         (oq_hp_candidate::may_serve_candidate(hp1_candidate) && hp1_runnable_candidate) ||
         (duo && oq_hp_candidate::may_serve_candidate(hp2_candidate) && hp2_runnable_candidate);
-    dispatch_input.performance_valid =
-        performance_valid && (model.coupled || (any_servable_candidate && !active_model_missing));
+    dispatch_input.performance_valid = performance_valid && !feedback[0].blocks_dispatch(hp1_candidate.must_stop) &&
+                                       !feedback[1].blocks_dispatch(hp2_candidate.must_stop) && !active_model_missing &&
+                                       (model.coupled || any_servable_candidate);
+    dispatch_input.pair_context = &model;
     if (model.coupled) {
       dispatch_input.pair_power = &oq_water_performance::CandidateModel::dispatch;
       dispatch_input.pair_context = &model;
     }
     oq_power_house_dispatch::DispatchTuning dispatch_tuning{
-        id(oq_power_limit_soft_w),        id(oq_power_limit_peak_w),
+        id(oq_power_limit_soft_w),        peak_limit_w,
         config.optimizer_penalty_per_w,   config.topology_power_margin_w,
         config.topology_heat_advantage_w, demand_input.rated_w * config.defrost_comp_min_house_fraction,
         config.defrost_comp_boost_steps,
@@ -352,7 +367,6 @@ class Runtime {
           minimum_viable_w = estimate.thermal_w;
           minimum_viable_level = level;
         }
-        break;
       }
     };
     include_minimum(dispatch_input.hp1);
@@ -526,8 +540,8 @@ class Runtime {
             .set_warmup_power(diagnostics::warmup_log_key(warming, warmup_runtime.intermediate_target(),
                                                           warmup_runtime.offset(), warmup_power.path),
                               warmup_power);
-    const auto dispatch =
-        oq_power_house_dispatch::decide_dispatch(dispatch_input, dispatch_tuning, this->dispatch_state_);
+    const auto dispatch = oq_power_house_dispatch::decide_dispatch(
+        dispatch_input, dispatch_tuning, this->dispatch_state_, &oq_water_performance::CandidateModel::confirmed_power);
     if (log_warmup_power) {
       ESP_LOGI("quatt.warmup",
                "power path=%s room=%.2f final=%.2f step=%.2f boost=%.2f effective=%.2f kp=%.0f below=%.2f base=%.0f "
@@ -618,6 +632,7 @@ class Runtime {
     id(oq_debug_recorder).set_warmup_power(0, {});
     this->stop_snapshot_ = {};
     this->dispatch_state_ = {};
+    this->compressor_feedback_ = {};
     this->last_optimizer_reason_.clear();
     this->intent_state_ = {};
     this->demand_state_ = {};
@@ -677,6 +692,77 @@ class Runtime {
   float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
 
  private:
+  std::array<oq_compressor_feedback::Snapshot, 2> observe_compressor_feedback_(
+      const oq_frequency_runtime::Context& frequency, uint32_t now_ms) {
+    const auto capture_feedback = [&](bool hp1, int applied, bool defrost, bool valve_defrost) {
+      const uint64_t receipt_now = oq_sources::monotonic_ms();
+      const auto* receipts = &oq_sources::hp1;
+      bool online = id(hp1_is_online);
+#if OQ_TOPOLOGY_DUO
+      if (!hp1) {
+        receipts = &oq_sources::hp2;
+        online = id(hp2_is_online);
+      }
+#endif
+      const auto& raw = *receipts;
+      const uint8_t hp = hp1 ? 1U : 2U;
+      std::array<uint8_t, oq_compressor_feedback::kLevels> nominal{};
+      for (unsigned level = 1; level < nominal.size(); ++level) {
+        const int hz = frequency.automatic_frequency_hz(hp1, 2, level);
+        nominal[level] = hz > 0 && hz <= 120 ? static_cast<uint8_t>(hz) : 0;
+      }
+      const bool fresh =
+          online && raw.working_mode.fresh(receipt_now, 30000) && raw.compressor_frequency.fresh(receipt_now, 30000);
+      float outlet_offset = id(hp1_water_out_temp_offset).state;
+#if OQ_TOPOLOGY_DUO
+      if (!hp1) outlet_offset = id(hp2_water_out_temp_offset).state;
+#endif
+      const float outlet_c = online && raw.water_out.fresh(receipt_now, 30000) && std::isfinite(outlet_offset)
+                                 ? raw.water_out.value + outlet_offset
+                                 : NAN;
+      const float response_outside_c = raw.outside.fresh(receipt_now, 30000) ? raw.outside.value : NAN;
+      const bool transient = defrost || valve_defrost ||
+                             oq_power_house_dispatch::tail_active(
+                                 hp1 ? this->dispatch_state_.hp1_defrost : this->dispatch_state_.hp2_defrost, now_ms,
+                                 oq_power_house_dispatch::kDefrostHoldMs) ||
+                             oq_power_house_dispatch::tail_active(this->dispatch_state_.oil_return, now_ms,
+                                                                  oq_power_house_dispatch::kOilReturnHoldMs);
+      uint32_t applied_ms = id(hp1_last_level_change_ms);
+      uint32_t started_ms = id(hp1_last_real_heat_start_ms);
+#if OQ_TOPOLOGY_DUO
+      if (!hp1) {
+        applied_ms = id(hp2_last_level_change_ms);
+        started_ms = id(hp2_last_real_heat_start_ms);
+      }
+#endif
+      const bool may_learn = raw.status_2108.fresh(receipt_now, 30000) && raw.status_2119.fresh(receipt_now, 30000) &&
+                             (static_cast<uint16_t>(std::lround(raw.status_2119.value)) & 0x0048U) == 0 && !transient &&
+                             !id(oq_incident_manager).boot_resume_pending(hp, now_ms) &&
+                             !id(oq_incident_manager).boot_protection_hold(hp, now_ms) &&
+                             // session_active spans the entire heating request, including normal running.
+                             !id(oq_cold_start_pending) && !id(oq_cold_start_hp_blocked) &&
+                             !id(oq_cold_start_assist_active) && started_ms > 0 &&
+                             static_cast<uint32_t>(now_ms - started_ms) >= oq_compressor_feedback::kStartupMs;
+      const auto snapshot = this->compressor_feedback_[hp1 ? 0 : 1].observe(
+          nominal, static_cast<uint8_t>(frequency.performance_variant(hp1)),
+          {now_ms, applied, fresh ? static_cast<int>(raw.working_mode.value) : 0, raw.compressor_frequency.value,
+           response_outside_c, outlet_c, fresh, defrost || valve_defrost, may_learn,
+           static_cast<uint32_t>(raw.compressor_frequency.received_ms), applied_ms,
+           fresh ? static_cast<uint32_t>(receipt_now - raw.compressor_frequency.received_ms) : UINT32_MAX});
+      if (snapshot.response_changed)
+        ESP_LOGI("quatt.strategy", "HP%u compressor response confirmed: request %u Hz, measured %u Hz", hp,
+                 snapshot.requested_hz, snapshot.actual_hz);
+      return snapshot;
+    };
+    return {capture_feedback(true, id(hp1_last_applied_level), id(hp1_defrost).state, id(hp1_4_way_valve).state),
+#if OQ_TOPOLOGY_DUO
+            capture_feedback(false, id(hp2_last_applied_level), id(hp2_defrost).state, id(hp2_4_way_valve).state)
+#else
+            {}
+#endif
+    };
+  }
+
   void restore_boot_demand_(const oq_power_house::DemandInput& input, const oq_power_house::DemandTuning& tuning,
                             const TickConfig& config) {
     if (this->boot_demand_checked_) return;
@@ -742,6 +828,7 @@ class Runtime {
   }
 
   oq_power_house_dispatch::DispatchState dispatch_state_;
+  std::array<oq_compressor_feedback::Observer, 2> compressor_feedback_{};
   bool was_warming_ = false;
   oq_heat_intent::State intent_state_;
   oq_power_house::DemandState demand_state_;

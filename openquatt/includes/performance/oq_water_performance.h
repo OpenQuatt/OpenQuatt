@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include "hp_perf_frequency.h"
+#include "../control/oq_compressor_feedback_logic.h"
 
 // Water-side performance model; fixed flow order HP1 -> HP2.
 namespace oq_water_performance {
@@ -87,10 +88,11 @@ struct CandidateModel {
   float outside_c, inlet_c, flow_lph;
   bool coupled, boundary;
   std::array<std::array<int, 21>, 2> hz{};
+  std::array<std::array<uint8_t, 21>, 2> confirmed_hz{};
   std::array<Prediction, 21> upstream{};
   template <typename Frequency>
   CandidateModel(const Frequency& frequency, float outside, float inlet, float flow, std::array<float, 2> own_outlet,
-                 bool use_series, bool cold_start)
+                 bool use_series, bool cold_start, const std::array<oq_compressor_feedback::Snapshot, 2>& feedback = {})
       : variants{frequency.performance_variant(true), frequency.performance_variant(false)},
         outlet(own_outlet),
         outside_c(outside),
@@ -99,8 +101,12 @@ struct CandidateModel {
         coupled(use_series),
         boundary(cold_start) {
     for (int level = 0; level <= 20; ++level) {
-      for (unsigned hp = 0; hp < 2; ++hp)
-        hz[hp][level] = level == 0 ? 0 : frequency.automatic_frequency_hz(hp == 0, 2, level);
+      for (unsigned hp = 0; hp < 2; ++hp) {
+        const int nominal = level == 0 ? 0 : frequency.automatic_frequency_hz(hp == 0, 2, level);
+        hz[hp][level] = level == 0 ? 0 : feedback[hp].frequency(level, nominal);
+        confirmed_hz[hp][level] =
+            nominal > 0 ? static_cast<uint8_t>(feedback[hp].confirmed_frequency(level, nominal)) : 0;
+      }
       if (coupled) upstream[level] = solve(variants[0], hz[0][level], outside_c, inlet_c, flow_lph, boundary);
     }
   }
@@ -113,6 +119,10 @@ struct CandidateModel {
   }
   Prediction pair(int first, int second) const {
     if (first < 0 || first > 20 || second < 0 || second > 20) return {};
+    // An idle unit needs no outlet measurement in the independent model.
+    // In series its inlet/outlet is still needed by the downstream solve.
+    if (!coupled && first == 0 && second > 0) return unit(false, second);
+    if (!coupled && second == 0 && first > 0) return unit(true, first);
     const auto a = unit(true, first);
     const auto b = coupled && a.valid() ? solve(variants[1], hz[1][second], outside_c, a.outlet_c, flow_lph, boundary)
                                         : unit(false, second);
@@ -123,5 +133,32 @@ struct CandidateModel {
     const auto p = static_cast<const CandidateModel*>(context)->pair(first, second);
     return {p.thermal_w, p.electrical_w};
   }
+  static float confirmed_power(const void* context, int first, int second, float live_w = NAN) {
+    if (first < 0 || first > 20 || second < 0 || second > 20) return NAN;
+    const auto& model = *static_cast<const CandidateModel*>(context);
+    // Reuse the already evaluated candidate whenever its frequencies agree.
+    // Extra map solves are only needed for an unconfirmed live override.
+    if (std::isfinite(live_w) && model.confirmed_hz[0][first] == model.hz[0][first] &&
+        model.confirmed_hz[1][second] == model.hz[1][second])
+      return live_w;
+    if (!model.coupled && (first == 0 || second == 0)) {
+      if (first == 0 && second == 0) return 0;
+      const unsigned hp = first > 0 ? 0 : 1;
+      const int level = first > 0 ? first : second;
+      const auto single = observed(model.variants[hp], model.confirmed_hz[hp][level], model.outside_c, model.outlet[hp],
+                                   model.boundary);
+      return single.valid() ? single.thermal_w : NAN;
+    }
+    const auto a = model.coupled ? solve(model.variants[0], model.confirmed_hz[0][first], model.outside_c,
+                                         model.inlet_c, model.flow_lph, model.boundary)
+                                 : observed(model.variants[0], model.confirmed_hz[0][first], model.outside_c,
+                                            model.outlet[0], model.boundary);
+    const auto b = model.coupled && a.valid() ? solve(model.variants[1], model.confirmed_hz[1][second], model.outside_c,
+                                                      a.outlet_c, model.flow_lph, model.boundary)
+                                              : observed(model.variants[1], model.confirmed_hz[1][second],
+                                                         model.outside_c, model.outlet[1], model.boundary);
+    return a.valid() && b.valid() ? a.thermal_w + b.thermal_w : NAN;
+  }
 };
+static_assert(sizeof(CandidateModel) <= 560, "Keep the control-tick model bounded and allocation-free");
 }  // namespace oq_water_performance
