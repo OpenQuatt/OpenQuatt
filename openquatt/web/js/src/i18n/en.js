@@ -513,6 +513,7 @@ export default {
       legendRecords: "Measurement points",
       legendLearned: "Learned heat demand curve",
       legendLearnedProvisional: "Learned heat demand curve · provisional",
+      legendInterval: "Learned heat demand curve (95% Interval)",
       ariaLabel: "Heat demand curve, daily measurements and stored old measurement periods",
       outsideTemperatureAxis: "Outside temperature (°C)",
     },
