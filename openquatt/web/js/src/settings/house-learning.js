@@ -343,9 +343,7 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   }
   if (!status) return state.houseLearningEndpointChecking && !state.houseLearningEndpointChecked
     ? `<p class="oq-settings-action-note" role="status">${escapeHtml(t("houseLearning.status.checkingAvailability"))}</p>`
-    : state.houseLearningStatusError
-    ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>`
-    : "";
+    : renderHouseLearningStatusError();
   const [activityValue, activityNote] = activity(status);
   const invalidSources = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => sourceLabel(key).toLocaleLowerCase(getIntlLocale()));
   const dailyCollection = status.dailyRecordCount != null || status.collection?.batch?.targetSeconds === 86400;
@@ -419,10 +417,16 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     ${measurementProgress(status.collection?.thermal, status)}
     <p class="oq-house-learning-current-note">${escapeHtml(t("learning.modelAssessment", { status: thermalModel }))}</p>
   </div></div>
-  ${status.enabled || status.blockedReasons.includes("runtime_blocked") ? `<p class="oq-house-learning-current-note"><strong>${escapeHtml(activityValue)}</strong> · ${escapeHtml(activityNote)}</p>` : ""}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
+  ${status.enabled || status.blockedReasons.includes("runtime_blocked") ? `<p class="oq-house-learning-current-note"><strong>${escapeHtml(activityValue)}</strong> · ${escapeHtml(activityNote)}</p>` : ""}${renderHouseLearningStatusError()}`;
   if (section === "primary") return primary;
   const secondary = `<section class="oq-house-learning-thermal"><div class="oq-house-learning-section-head"><h5>${escapeHtml(t("houseLearning.cards.heatingCooling"))}</h5>${renderSettingsInfoToggle("house-learning-thermal", t("houseLearning.cards.heatingCooling"), thermalHelp)}</div>${modelNote}<p><strong>${escapeHtml(thermal[1])}</strong> · ${escapeHtml(thermal[2])}</p><div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note]) => renderStatCard({ label, value, note })).join("")}</div></section>`;
   return section === "secondary" ? secondary : primary + secondary + renderHouseLearningTechnical(status, dailyCollection);
+}
+
+function renderHouseLearningStatusError() {
+  return state.houseLearningStatusError
+    ? `<p class="oq-settings-action-note oq-settings-action-note--error" role="alert">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>`
+    : "";
 }
 
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
@@ -470,7 +474,8 @@ export function renderHouseLearningSettings(section = "measurements") {
   const busy = Boolean(state.busyAction) || resetting;
   if (section === "export") return `<div class="oq-learning-download">
     <div><h5>${escapeHtml(t("houseLearning.export.label"))}</h5><p>${escapeHtml(t("houseLearning.export.copy"))}</p></div>
-    <div data-oq-house-learning-actions>${renderHouseLearningDataActions(busy)}</div>
+    <div><div data-oq-house-learning-actions>${renderHouseLearningDataActions(busy)}</div>
+    <div data-oq-house-learning-status-error>${renderHouseLearningStatusError()}</div></div>
   </div>`;
   const learningSwitch = getSettingsSwitchModel("houseLearningEnabled");
   if (section === "configuration") return `<section class="oq-settings-section" data-oq-house-learning>
@@ -545,6 +550,8 @@ export function patchHouseLearningSettingsStatus() {
   if (resetStatus) patchLearningMarkup(resetStatus, state.houseLearningReset ? renderHouseLearningStatusMarkup() : "");
   const actions = state.root.querySelector("[data-oq-house-learning-actions]");
   if (actions) patchLearningMarkup(actions, renderHouseLearningDataActions(state.loadingEntities || Boolean(state.busyAction) || state.houseLearningReset === "pending", actions.dataset.learningActionMode === "reset"));
+  const error = state.root.querySelector("[data-oq-house-learning-status-error]");
+  if (error) patchLearningMarkup(error, renderHouseLearningStatusError());
   const secondary = panel.querySelector("[data-oq-house-learning-secondary]");
   if (secondary) patchLearningMarkup(secondary, renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary"));
   const technical = panel.querySelector("[data-oq-house-learning-technical]");

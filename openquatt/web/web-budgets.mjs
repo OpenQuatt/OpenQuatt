@@ -73,7 +73,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // Toasts on Leren and a brain icon for its tab: measured raw 1,464,379 B (Node 24.4.1); 80 B raw headroom.
     // Learning workspace, illustrated guide and curve display: +19,263 B raw
     // versus dev 790c7742 on Node 24.14.1. Leaves 84 B raw headroom.
-    raw: 1_482_220,
+    // Visible learning download/status errors and stable legacy outlook patches:
+    // +251 B raw / +67 B gzip versus c6837b0 on Node 24.14.1.
+    // Preserve the existing 84 B raw headroom and relative gzip growth limits.
+    raw: 1_482_471,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

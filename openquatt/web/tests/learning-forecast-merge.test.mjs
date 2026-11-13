@@ -290,3 +290,37 @@ test("Vooruitblik wisselt tussen de uitmelding en de prognose zonder fouten te v
   state.entities.weatherEnabled = { value: false, state: "OFF" };
   assert.equal(patchWeatherOutlook(), false);
 });
+
+test("Vooruitblik zonder weerentiteiten behoudt de DOM bij polls en volgt laden en taal", () => {
+  state.appView = "learning";
+  state.learningPanel = "forecast";
+  state.entities = {};
+  state.controlError = state.controlNotice = "";
+  const unavailable = { textContent: "" };
+  const stack = { style: { setProperty() {} }, classList: { toggle() {} },
+    replaceChildren() {}, replaceWith() {}, querySelector: () => null };
+  state.root = { scrollTop: 120, querySelector: selector => ({
+    "[data-oq-feedback-stack]": stack,
+    "[data-oq-weather-unavailable]": unavailable,
+  })[selector] };
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const loading of [true, false]) {
+      state.loadingEntities = loading;
+      const markup = renderLearningView();
+      const message = markup.match(/data-oq-weather-unavailable role="status">([^<]+)<\/p>/)?.[1];
+      assert.ok(message);
+      assert.equal(patchLearningDom(), true);
+      assert.equal(patchLearningDom(), true, "ongewijzigde polls vereisen geen volledige render");
+      assert.equal(unavailable.textContent, message);
+      assert.equal(state.root.scrollTop, 120);
+    }
+  }
+  state.entities.weatherEnabled = { value: true, state: "ON" };
+  state.entities.weatherLocation = { value: "Brummen", state: "Brummen" };
+  assert.equal(patchLearningDom(), false, "beschikbare weerentiteiten vereisen een nieuwe paneelstructuur");
+  state.entities = {};
+  state.root.querySelector = selector => selector === "[data-oq-feedback-stack]" ? stack : null;
+  assert.equal(patchLearningDom(), false, "een ontbrekende uitmelding moet eerst worden gemount");
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
+});

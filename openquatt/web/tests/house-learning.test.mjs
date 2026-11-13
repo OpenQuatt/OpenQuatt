@@ -780,6 +780,50 @@ test("diagnostische export gebruikt de bestaande browserdownload", async () => {
   }
 });
 
+for (const operation of ["export", "status"]) {
+  for (const failure of ["HTTP 500", "timeout"]) {
+    test(`Diagnose toont ${operation}-${failure} bij render en live patches in beide talen`, async t => {
+      state.appView = "learning";
+      state.learningPanel = "diagnostics";
+      state.entities = { houseLearningEnabled: switchEntity(true) };
+      state.houseLearningEndpointAvailable = state.houseLearningEndpointChecked = true;
+      state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+      state.houseLearningReset = "";
+      state.loadingEntities = false;
+      const errorNode = { innerHTML: "" };
+      const panel = { querySelector: () => null };
+      state.root = { querySelector: selector => ({
+        "[data-oq-house-learning]": panel,
+        "[data-oq-house-learning-status-error]": errorNode,
+      })[selector] };
+      if (failure === "timeout") t.mock.method(window, "setTimeout", callback => setTimeout(callback, 0));
+      t.mock.method(globalThis, "fetch", async (_path, { signal }) => failure === "HTTP 500"
+        ? { ok: false, status: 500 }
+        : { ok: true, json: () => new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }) });
+      if (operation === "export") await downloadHouseLearningExport();
+      else await refreshHouseLearningStatus({ force: true });
+      assert.ok(state.houseLearningStatusError);
+      for (const locale of ["nl", "en"]) {
+        setLocale(locale, { persist: false, applyDocument: false, notify: false });
+        const errorText = operation === "export"
+          ? locale === "nl" ? /Leerdata kon niet worden gedownload/ : /Learning data could not be downloaded/
+          : locale === "nl" ? /Leerstatus kon niet worden opgehaald/ : /Learning status could not be retrieved/;
+        const markup = renderLearningView();
+        assert.match(markup, /data-oq-house-learning-status-error><p[^>]*role="alert"/);
+        assert.match(markup, errorText);
+        assert.equal(patchHouseLearningSettingsStatus(), true);
+        assert.match(errorNode.innerHTML, errorText);
+        assert.match(errorNode.innerHTML, failure === "HTTP 500" ? /HTTP 500/ : /reageert niet|did not respond|time-out|timed out/i);
+      }
+      state.houseLearningStatusError = "";
+      patchHouseLearningSettingsStatus();
+      assert.equal(errorNode.innerHTML, "", "herstel wist de fout zonder volledige render");
+    });
+  }
+}
+
 test("stilgevallen exportbody laat de grafiek en download na hun timeout opnieuw toe", async () => {
   const originalTimer = window.setTimeout;
   const originalFetch = globalThis.fetch;

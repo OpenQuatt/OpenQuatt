@@ -19,7 +19,12 @@ export function patchLearningView() {
   if (Boolean(tabs) !== weather) return false;
   if (state.learningPanel === "explanation") return true;
   if (weather && state.learningPanel === "forecast") return patchWeatherOutlook();
-  if (state.learningPanel === "forecast") return false;
+  if (state.learningPanel === "forecast") {
+    const unavailable = state.root.querySelector("[data-oq-weather-unavailable]");
+    if (!unavailable) return false;
+    unavailable.textContent = t(state.loadingEntities ? "common.loading" : "weather.unavailable");
+    return true;
+  }
   if (weather && state.learningPanel === "configuration" && !patchWeatherSettings()) return false;
   return hasEntity("houseLearningEnabled") ? patchHouseLearningSettingsStatus() : true;
 }
@@ -57,7 +62,7 @@ export function renderLearningView() {
     : renderHouseLearningSettings();
   const loading = state.loadingEntities || (hasEntity("houseLearningEnabled") && !state.houseLearningEndpointChecked);
   const statusError = forecast && !weather
-    ? `<p class="oq-settings-action-note" role="status">${escapeHtml(t(state.loadingEntities ? "common.loading" : "weather.unavailable"))}</p>`
+    ? `<p class="oq-settings-action-note" data-oq-weather-unavailable role="status">${escapeHtml(t(state.loadingEntities ? "common.loading" : "weather.unavailable"))}</p>`
     : state.houseLearningStatusError ? renderHouseLearningStatusMarkup() : "";
   return `<section class="oq-settings-view oq-learning-view">
     <aside class="oq-settings-view-aside">
