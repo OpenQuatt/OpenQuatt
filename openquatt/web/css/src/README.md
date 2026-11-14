@@ -21,6 +21,7 @@ Current split:
 - `15-settings-cards-fields.css`: choice cards, backup compare modal, subpanels, mini fields and trend stats
 - `16-settings-storage.css`: storage history summary and storage modal
 - `17-settings-integrations-controls.css`: integrations, source selection, switches, time controls and curve fallbacks
+- `18-learning-explanation.css`: learning guide and its illustrations
 - `20-overview.css`: overview summary, control and temperature styling
 - `21-control-replay.css`: control replay view
 - `30-energy.css`: energy board styling

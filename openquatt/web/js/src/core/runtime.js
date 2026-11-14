@@ -4,7 +4,7 @@ import { syncDocumentTheme } from "./app-shared.js";
 import { getColorSchemeDarkMedia, getReducedMotionMedia, invalidateHouseLearningShadow, resolveOverviewTheme, state } from "./state.js";
 export { DEFAULT_TREND_WINDOW_HOURS, TREND_WINDOW_HOURS_OPTIONS, state } from "./state.js";
 import { handleChange, handleClick, handleFocusChange, handleInput, handleKeyDown, handlePointerDown, handlePointerMove, handlePointerUp, handleSettingsInteractionEnd, handleSettingsInteractionStart, handleWheel } from "./event-handlers.js";
-import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUrlControlReplayTab, getUrlControlReplayWindow, getUrlSettingsGroup, getUrlSystemModal, SYSTEM_RECORDER_MODAL_ID, setAppView, syncUrlAppView } from "./navigation.js";
+import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUrlControlReplayTab, getUrlControlReplayWindow, getUrlLearningPanel, getUrlSettingsGroup, getUrlSystemModal, SYSTEM_RECORDER_MODAL_ID, setAppView, syncUrlAppView } from "./navigation.js";
 import { primeEntities, syncEntities } from "./entity-sync.js";
 import { clearPreparedDebugRecordingCopy, refreshDebugRecordingDeviceStatus } from "../features/debug-recording.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
@@ -182,7 +182,8 @@ import { t } from "../i18n/index.js";
   setEntityPollingControls({ start: startEntityPolling, stop: stopEntityPolling });
 
   export function handleVisibilityChange() {
-    if (document.hidden && state.appView === "learning" && !state.nativeOpen && !state.learningForecastOpen) {
+    if (document.hidden && state.appView === "learning" && !state.nativeOpen && state.learningPanel !== "forecast"
+        && state.learningPanel !== "explanation") {
       invalidateHouseLearningShadow();
       if (!patchLearningDom()) render();
     }
@@ -230,7 +231,10 @@ import { t } from "../i18n/index.js";
     const nextControlReplayTab = nextView === "control" ? (getUrlControlReplayTab() || "status") : state.controlReplayTab;
     const nextControlReplayWindow = nextView === "control" ? (getUrlControlReplayWindow() || "last24") : state.controlReplayWindow;
     const nextControlReplayCustomRange = nextView === "control" ? getUrlControlReplayCustomRange() : null;
+    const nextLearningPanel = nextView === "learning" ? getUrlLearningPanel() : null;
+    const learningPanelChanged = nextLearningPanel !== null && nextLearningPanel !== state.learningPanel;
     if (nextView === state.appView &&
+        !learningPanelChanged &&
         nextSystemModal === (state.systemModal || "") &&
         (nextView !== "settings" || nextSettingsGroup === state.settingsGroup) &&
         (nextView !== "control" || (
@@ -244,8 +248,9 @@ import { t } from "../i18n/index.js";
       return;
     }
 
-    if (state.appView === "learning" && nextView !== "learning") invalidateHouseLearningShadow();
+    if (state.appView === "learning" && (nextView !== "learning" || learningPanelChanged)) invalidateHouseLearningShadow();
     state.appView = nextView;
+    if (learningPanelChanged) state.learningPanel = nextLearningPanel;
     if (nextView === "control") {
       state.controlReplayTab = nextControlReplayTab;
       state.controlReplayWindow = nextControlReplayWindow;
@@ -402,6 +407,7 @@ import { t } from "../i18n/index.js";
       state.controlReplayCustomStart = initialUrlControlReplayCustomRange?.start || "";
       state.controlReplayCustomEnd = initialUrlControlReplayCustomRange?.end || "";
     }
+    if (initialUrlView === "learning") state.learningPanel = getUrlLearningPanel();
     setAppView(initialUrlView, { syncMode: "replace", forceSync: true });
     if (initialUrlSystemModal === SYSTEM_RECORDER_MODAL_ID) {
       setSettingsGroup("system", { syncUrl: false });

@@ -27,7 +27,7 @@ const payload = () => ({ schema: 1, model: "knmi_harmonie_arome_netherlands", co
 test.beforeEach(() => {
   state.root = null; invalidateWeatherForecast(); state.learningDisplayMode = "actual";
   window.location.pathname = "/";
-  state.appView = "learning"; state.learningForecastOpen = true; state.nativeOpen = false; state.busyAction = ""; state.drafts = {};
+  state.appView = "learning"; state.learningPanel = "forecast"; state.nativeOpen = false; state.busyAction = ""; state.drafts = {};
   state.entities = { houseLearningEnabled: entity(true), weatherEnabled: entity(true), weatherLocation: entity("Brummen"), weatherStatus: entity("observing"),
     weatherIssuedEpoch: entity(epoch + 840), weatherTemperature30m: entity(99), weatherTemperature1h: entity(98), weatherTemperature3h: entity(97) };
   state.houseLearningStatus = null; state.houseLearningStatusError = ""; document.hidden = false;
@@ -49,9 +49,9 @@ test("the atomic issue owns all three values and zero-valued frozen context in b
     assert.match(html, /data-quality="provisional"/);
     assert.match(html, locale === "nl" ? /0,0 °C/ : /0\.0 °C/);
     assert.doesNotMatch(html, /99 °C|98 °C|97 °C/);
-    assert.ok(html.includes(t("learningWorkspace.forecast.confirmedContext", { temperature: "0", heat: "0" })));
+    assert.equal((html.match(/data-scenario-horizon=/g) || []).length, 3);
+    assert.ok(html.includes(t("learningWorkspace.forecast.condition")));
     assert.ok(html.includes(t("learningWorkspace.forecast.earlierWeather")));
-    assert.ok(!html.includes(t("learningWorkspace.forecast.unconfirmedContext")));
   }
 });
 
@@ -63,6 +63,18 @@ test("older restored issues stay hidden while the weather is still usable", () =
   assert.match(renderWeatherForecast(), /<figure /);
   p.scenario.restored_model = "true";
   assert.throws(() => normalizeWeatherForecast(p), /weather-scenario-format/);
+});
+
+test("weather settings show current errors despite a cached scenario", () => {
+  state.weatherForecast = normalizeWeatherForecast(payload());
+  state.learningPanel = "configuration";
+  state.entities.weatherStatus = entity("dns_failed");
+  assert.match(renderForecastProgress({ statusOnly: true }), /Nieuwe weergegevens ophalen lukt niet/);
+  state.entities.weatherLocation = entity("Utrecht");
+  state.entities.weatherStatus = entity("location_ambiguous");
+  assert.match(renderForecastProgress({ statusOnly: true }), /Meerdere plaatsen gevonden/);
+  state.entities.weatherStatus = entity("observing");
+  assert.equal(renderForecastProgress({ statusOnly: true }), "");
 });
 
 test("older forecast responses show weather without claiming room estimates", async () => {
@@ -177,7 +189,6 @@ test("a missed fetch keeps all atomic values with an explicit cached label and s
     assert.match(html, /data-scenario-freshness="cached"/);
     assert.ok(html.includes(t("learningWorkspace.forecast.lastReceived")));
     assert.ok(html.includes(t("learningWorkspace.forecast.cachedCopy")));
-    assert.ok(html.includes(t("learningWorkspace.forecast.refreshNeeded")));
     assert.equal((html.match(/<strong>[^<]*°C<\/strong>/g) || []).length, 3);
   }
   mono += 31000; wall += 31000;

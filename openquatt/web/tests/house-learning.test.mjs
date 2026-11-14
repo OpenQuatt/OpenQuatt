@@ -37,6 +37,7 @@ function switchEntity(value = false) {
 }
 
 test.afterEach(() => {
+  state.learningPanel = "measurements";
   invalidateHouseLearningShadow();
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
   document.hidden = false;
@@ -585,7 +586,7 @@ test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
   })));
   assert.match(markup, /Modelstatus[\s\S]*Voorlopige schatting/);
   assert.match(markup, /5 geaccepteerde perioden van 30 minuten/);
-  assert.match(markup, /Perioden voor opwarmen en afkoelen[\s\S]*>5</);
+  assert.match(markup, /Geldige meetperioden[\s\S]*>5</);
   assert.match(markup, /Warmteverlies \(U\)[\s\S]*196,3 W\/K/);
   assert.match(markup, /Warmteopslag \(C\)[\s\S]*4\.803,5 Wh\/K/);
   assert.doesNotMatch(markup, /Nog geen metingen/);
@@ -725,7 +726,7 @@ test("bronroutes en leerwaterwaarden gebruiken bestaande entities", () => {
   assert.match(markup, /0 bij stilstand/);
   assert.match(markup, /0 meetperioden afgerond/);
   state.appView = "learning";
-  for (const key of ["hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut", "houseLearningEnabled", "houseLearningReset", "housePower"]) {
+  for (const key of ["hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut", "houseLearningEnabled", "houseLearningReset", "housePower", "outsideTempSelected"]) {
     assert.ok(getInitialPrimeKeys().includes(key), key);
   }
 });
@@ -779,6 +780,50 @@ test("diagnostische export gebruikt de bestaande browserdownload", async () => {
   }
 });
 
+for (const operation of ["export", "status"]) {
+  for (const failure of ["HTTP 500", "timeout"]) {
+    test(`Diagnose toont ${operation}-${failure} bij render en live patches in beide talen`, async t => {
+      state.appView = "learning";
+      state.learningPanel = "diagnostics";
+      state.entities = { houseLearningEnabled: switchEntity(true) };
+      state.houseLearningEndpointAvailable = state.houseLearningEndpointChecked = true;
+      state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+      state.houseLearningReset = "";
+      state.loadingEntities = false;
+      const errorNode = { innerHTML: "" };
+      const panel = { querySelector: () => null };
+      state.root = { querySelector: selector => ({
+        "[data-oq-house-learning]": panel,
+        "[data-oq-house-learning-status-error]": errorNode,
+      })[selector] };
+      if (failure === "timeout") t.mock.method(window, "setTimeout", callback => setTimeout(callback, 0));
+      t.mock.method(globalThis, "fetch", async (_path, { signal }) => failure === "HTTP 500"
+        ? { ok: false, status: 500 }
+        : { ok: true, json: () => new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }) });
+      if (operation === "export") await downloadHouseLearningExport();
+      else await refreshHouseLearningStatus({ force: true });
+      assert.ok(state.houseLearningStatusError);
+      for (const locale of ["nl", "en"]) {
+        setLocale(locale, { persist: false, applyDocument: false, notify: false });
+        const errorText = operation === "export"
+          ? locale === "nl" ? /Leerdata kon niet worden gedownload/ : /Learning data could not be downloaded/
+          : locale === "nl" ? /Leerstatus kon niet worden opgehaald/ : /Learning status could not be retrieved/;
+        const markup = renderLearningView();
+        assert.match(markup, /data-oq-house-learning-status-error><p[^>]*role="alert"/);
+        assert.match(markup, errorText);
+        assert.equal(patchHouseLearningSettingsStatus(), true);
+        assert.match(errorNode.innerHTML, errorText);
+        assert.match(errorNode.innerHTML, failure === "HTTP 500" ? /HTTP 500/ : /reageert niet|did not respond|time-out|timed out/i);
+      }
+      state.houseLearningStatusError = "";
+      patchHouseLearningSettingsStatus();
+      assert.equal(errorNode.innerHTML, "", "herstel wist de fout zonder volledige render");
+    });
+  }
+}
+
 test("stilgevallen exportbody laat de grafiek en download na hun timeout opnieuw toe", async () => {
   const originalTimer = window.setTimeout;
   const originalFetch = globalThis.fetch;
@@ -815,14 +860,14 @@ test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen
   };
   state.houseLearningChart = [];
   const markup = renderHouseLearningSettings();
-  assert.match(markup, /Passief leren/);
+  assert.match(renderLearningView(), /Huismodel volgen/);
   assert.doesNotMatch(markup, /data-oq-field="houseLearning(?:Hydraulics|Fluid)"/);
   assert.doesNotMatch(markup, /Hydraulische opstelling|Warmtedragende vloeistof/);
   assert.match(renderLearningView(), /Passief leren past je instellingen niet aan/);
   assert.doesNotMatch(markup, /Andere warmtebron|No other heat in CM2|R1-uit is geen bewijs/);
   assert.doesNotMatch(markup, /Meetcontract en grenzen|Calorimetrie gecontroleerd|Onzekerheid warmtevermogen|Maximale meetflow|Temperatuurtolerantie koppelpunt|Grens externe warmtebijdrage/);
-  assert.match(markup, /Nog niet beoordeeld/);
-  assert.match(markup, /data-oq-action="download-house-learning"/);
+  assert.match(renderHouseLearningSettings("diagnostics"), /Nog niet beoordeeld/);
+  assert.match(renderHouseLearningSettings("export"), /data-oq-action="download-house-learning"/);
   assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningEnabled"));
   assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningHydraulics"));
   assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningFluid"));
@@ -842,21 +887,19 @@ test("meetgegevens staan open in een eigen kaart onder het leerpaneel", () => {
   assert.doesNotMatch(waiting, /data-oq-action="load-house-learning-chart"[^>]*aria-expanded/);
   assert.match(waiting, /Woninglijn uit dagmetingen/);
   assert.match(waiting, /role="status">Meetgegevens laden…/);
-  assert.match(waiting, /data-oq-house-learning-secondary[\s\S]*data-oq-action="download-house-learning"/);
+  assert.doesNotMatch(waiting, /data-oq-house-learning-secondary|data-oq-action="download-house-learning"/);
   state.houseLearningChart = [];
   const html = renderHouseLearningSettings();
   assert.doesNotMatch(html, /Meetgegevens laden…/);
   assert.match(html, /<section class="oq-settings-section" data-oq-house-learning-chart-panel[^>]*><div class="oq-settings-section-head">[\s\S]*<h3>Meetgegevens<\/h3><button[^>]*data-oq-action="load-house-learning-chart"[^>]*>Vernieuwen<\/button>/);
-  assert.equal((html.match(/<details\b/g) || []).length, 1);
-  assert.match(html, /data-oq-settings-advanced="house-learning-technical"[\s\S]*Bronnen en technische details/);
-  assert.doesNotMatch(html, /data-oq-settings-advanced="house-learning-model"/);
-  assert.ok(html.indexOf("data-oq-house-learning-status") < html.indexOf("</section>"));
-  assert.ok(html.indexOf("</section>") < html.indexOf("data-oq-house-learning-chart-panel"));
-  assert.ok(html.indexOf("data-oq-house-learning-chart-panel") < html.indexOf("data-oq-house-learning-secondary"));
-  assert.ok(html.indexOf("data-oq-house-learning-secondary") < html.indexOf("<details"));
-  assert.match(html, /role="switch"[\s\S]*data-control-key="houseLearningEnabled"[\s\S]*aria-checked="true"/);
-  assert.match(html, /data-oq-action="download-house-learning"/);
-  assert.match(html, /data-oq-button-key="houseLearningReset"/);
+  assert.doesNotMatch(html, /<details|role="switch"|download-house-learning|houseLearningReset/);
+  const diagnostics = renderHouseLearningSettings("diagnostics");
+  assert.match(diagnostics, /data-oq-house-learning-secondary[\s\S]*Bronnen en technische details/);
+  assert.doesNotMatch(diagnostics, /data-oq-action="download-house-learning"/);
+  assert.doesNotMatch(diagnostics, /data-oq-button-key="houseLearningReset"/);
+  const settings = renderHouseLearningSettings("configuration");
+  assert.match(settings, /role="switch"[\s\S]*data-control-key="houseLearningEnabled"[\s\S]*aria-checked="true"/);
+  assert.match(settings, /data-oq-button-key="houseLearningReset"/);
 });
 
 test("een gewist leerjournaal toont de lege grafiek zonder export te laden", () => {
@@ -877,7 +920,7 @@ test("de oude leerstatus-uitklapper opent de nieuwe technische details niet vanz
   const before = state.settingsAdvancedOpen;
   try {
     state.settingsAdvancedOpen = { "house-learning-details": true };
-    const details = renderHouseLearningSettings().match(/<details\b[^>]*>/)?.[0];
+    const details = renderHouseLearningSettings("diagnostics").match(/<details\b[^>]*>/)?.[0];
     assert.match(details, /house-learning-technical/);
     assert.doesNotMatch(details, /\bopen\b/);
   } finally {
@@ -895,9 +938,8 @@ test("mislukte grafieklading houdt beheer bereikbaar en Vernieuwen probeert opni
   const html = renderHouseLearningSettings();
   assert.match(html, /Meetgegevens niet beschikbaar/);
   assert.doesNotMatch(html, /Meetgegevens laden…/);
-  assert.match(html, /data-oq-house-learning-secondary/);
-  assert.match(html, /data-oq-action="download-house-learning"/);
-  assert.match(html, /data-oq-button-key="houseLearningReset"/);
+  assert.match(renderHouseLearningSettings("export"), /data-oq-action="download-house-learning"/);
+  assert.match(renderHouseLearningSettings("configuration"), /data-oq-button-key="houseLearningReset"/);
   assert.doesNotMatch(html, /oq-house-learning-chart-wrap/);
   let requests = 0;
   globalThis.fetch = async () => { requests += 1; return { ok: true, json: async () => ({ schema: 1, mode: "passive", record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"], records: [] }) }; };
@@ -916,7 +958,7 @@ test("de compacte leerschakelaar behoudt de bestaande loading- en schrijfgates",
     for (const [loading, busy] of [[true, ""], [false, "switch-houseLearningEnabled"], [false, "houseLearningReset"]]) {
       state.loadingEntities = loading;
       state.busyAction = busy;
-      const switchTag = renderHouseLearningSettings().match(/<button\b[^>]*role="switch"[^>]*>/)?.[0];
+      const switchTag = renderHouseLearningSettings("configuration").match(/<button\b[^>]*role="switch"[^>]*>/)?.[0];
       assert.ok(switchTag);
       assert.match(switchTag, /\bdisabled/);
     }
@@ -936,12 +978,13 @@ test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigd
   state.houseLearningEndpointAvailable = true;
   const statusNode = { innerHTML: "" };
   const secondaryNode = { innerHTML: "" };
+  const technicalNode = { innerHTML: "" };
   let signature;
   let writes = 0;
   const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; },
     querySelector: (selector) => selector === "[data-oq-house-learning-secondary]" ? secondaryNode : null };
-  const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : null };
-  state.root = { querySelector: (selector) => selector === "[data-oq-house-learning-chart-panel]" ? chartNode : panel };
+  const panel = { querySelector: (selector) => ({ "[data-oq-house-learning-status]": statusNode, "[data-oq-house-learning-secondary]": secondaryNode, "[data-oq-house-learning-technical]": technicalNode })[selector] };
+  state.root = { querySelector: (selector) => ({ "[data-oq-house-learning-chart-panel]": chartNode, "[data-oq-house-learning]": panel })[selector] };
   patchHouseLearningSettingsStatus();
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 1);
@@ -954,7 +997,8 @@ test("een nieuwe firmware-fitreden vernieuwt de grafiekuitleg zonder ongewijzigd
   assert.equal(writes, 3, "nieuwe firmware-leersplit en bereik vernieuwen de uitleg");
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 3, "een ongewijzigde leersplit behoudt de grafiek en focus");
-  assert.match(secondaryNode.innerHTML, /Bronnen en technische details/);
+  assert.match(secondaryNode.innerHTML, /Opwarmen en afkoelen/);
+  assert.match(technicalNode.innerHTML, /Bronnen en technische details/);
 });
 
 test("mock biedt de capability alleen voor Q-edition", async () => {
@@ -1044,7 +1088,7 @@ test("grafiekpatch behoudt meetpuntfocus bij ongewijzigde data en volgt nieuwe f
     querySelector: () => null,
   };
   const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : null };
-  state.root = { querySelector: (selector) => selector === "[data-oq-house-learning-chart-panel]" ? chartNode : panel };
+  state.root = { querySelector: (selector) => ({ "[data-oq-house-learning-chart-panel]": chartNode, "[data-oq-house-learning]": panel })[selector] };
   patchHouseLearningSettingsStatus();
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 1);
@@ -1052,14 +1096,15 @@ test("grafiekpatch behoudt meetpuntfocus bij ongewijzigde data en volgt nieuwe f
   document.activeElement = point;
   try {
     patchHouseLearningSettingsStatus();
-    assert.equal(pointFocus, 1);
+    assert.equal(pointFocus, 0, "een uitsluitend diagnostische parameter vervangt de grafiek niet");
+    assert.equal(document.activeElement, point);
   } finally {
     document.activeElement = originalActive;
   }
-  assert.equal(writes, 2);
+  assert.equal(writes, 1);
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   patchHouseLearningSettingsStatus();
-  assert.equal(writes, 3, "een localewissel vernieuwt de charttekst");
+  assert.equal(writes, 2, "een localewissel vernieuwt de charttekst");
 });
 
 test("een bestaande grafiekfout wordt na taalwissel opnieuw vertaald", async () => {
@@ -1140,7 +1185,7 @@ test("eerdere onderbreking staat apart van actuele verzameling en geldige bronne
   assert.match(nl, /Laatste onderbroken of afgewezen woninglijnperiode: de kamertemperatuur was niet stabiel genoeg/);
   assert.match(nl, /Actuele status hierboven/);
   assert.doesNotMatch(nl, />Ongeldig</);
-  assert.match(nl, /Perioden voor opwarmen en afkoelen[\s\S]*>362</);
+  assert.match(nl, /Geldige meetperioden[\s\S]*>362</);
   assert.match(nl, /Dagmetingen \(24 uur\)[\s\S]*>0</);
   assert.ok(nl.indexOf("Dagmetingen (24 uur)") < nl.indexOf("Bronnen en technische details"));
   assert.match(nl, /Verwarmingsgrens \(T₀\)[\s\S]*woninglijn nul raakt; geen inschakelgrens/);
@@ -1150,7 +1195,7 @@ test("eerdere onderbreking staat apart van actuele verzameling en geldige bronne
   const en = renderHouseLearningStatusMarkup(status);
   assert.match(en, /Last interrupted or rejected heat demand period: the room temperature was not stable enough/);
   assert.match(en, /Current status above/);
-  assert.match(en, /Heating and cooling periods[\s\S]*>362</);
+  assert.match(en, /Valid measurement periods[\s\S]*>362</);
   assert.match(en, /Daily measurements \(24 hours\)[\s\S]*>0</);
   assert.match(en, /Heating threshold \(T₀\)[\s\S]*curve reaches zero; not the heating switch-on threshold/);
   assert.doesNotMatch(en, /batch |Batch /);
@@ -1417,7 +1462,10 @@ test("geopende meetgegevens verbergen live details bij een afwijkende schakelsta
   const markup = renderLearningView();
   assert.match(markup, /Wacht op de actuele leerstatus/);
   assert.doesNotMatch(markup, /7:30|class="oq-house-learning-thermal"/);
-  assert.match(markup, /Diagnostische leerdata downloaden/);
+  state.learningPanel = "diagnostics";
+  const diagnostic = renderLearningView();
+  assert.match(diagnostic, /Leerdata downloaden/);
+  assert.doesNotMatch(diagnostic, /7:30|class="oq-house-learning-thermal"/);
 });
 
 test("leerschakelaar wacht op verwerking na een eerste oude readback", async () => {
@@ -1510,7 +1558,7 @@ test("een stilvallende readback- of statusbody houdt de leerbediening niet geblo
 
 test("een uitgestelde vergelijkingsbody kan terugnavigatie niet overleven", async () => {
   state.appView = "learning";
-  state.learningForecastOpen = false;
+  state.learningPanel = "measurements";
   state.entities = { houseLearningEnabled: switchEntity(true) };
   const originalFetch = globalThis.fetch;
   const ready = statusPayload({
@@ -1573,21 +1621,56 @@ test("warmtevraag vergelijkt alleen een actuele en goedgekeurde berekening", (te
   }
   const waiting = { ...payload.shadow, available: false, reason: "batch_not_ready", manual_w: null, candidate_w: null, delta_w: null };
   assert.match(render({ batch_advice_ready: false, shadow: waiting }), /zodra de geleerde woninglijn is goedgekeurd/);
-  assert.doesNotMatch(render({ batch_advice_ready: false, shadow: waiting }), /<dl/);
-  assert.doesNotMatch(render({ enabled: false }), /<dl/);
-  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch - 31 }), /<dl/);
-  assert.match(render({ tick_epoch: payload.tick_epoch + 30 }), /<dl/);
-  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch + 31 }), /<dl/);
-  assert.doesNotMatch(render({ shadow_ttl_ms: undefined }), /<dl/);
-  assert.doesNotMatch(render({ shadow_ttl_ms: 30001 }), /<dl/);
+  assert.doesNotMatch(render({ batch_advice_ready: false, shadow: waiting }), /\d W<\/strong>/);
+  assert.doesNotMatch(render({ enabled: false }), /\d W<\/strong>/);
+  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch - 31 }), /\d W<\/strong>/);
+  assert.match(render({ tick_epoch: payload.tick_epoch + 30 }), /\d W<\/strong>/);
+  assert.doesNotMatch(render({ tick_epoch: payload.tick_epoch + 31 }), /\d W<\/strong>/);
+  assert.doesNotMatch(render({ shadow_ttl_ms: undefined }), /\d W<\/strong>/);
+  assert.doesNotMatch(render({ shadow_ttl_ms: 30001 }), /\d W<\/strong>/);
   assert.match(render({ shadow: undefined, shadow_expired: true }), /actuele vergelijking/);
   const expired = normalizeHouseLearningStatus(payload, performance.now() - 10001);
   assert.match(renderHouseLearningShadow(expired), /actuele vergelijking/);
-  assert.doesNotMatch(renderHouseLearningShadow(expired), /<dl/);
+  assert.doesNotMatch(renderHouseLearningShadow(expired), /\d W<\/strong>/);
   state.houseLearningReset = "pending";
   assert.match(render(), /bevestiging van het wissen/);
-  assert.doesNotMatch(render(), /<dl/);
+  assert.doesNotMatch(render(), /\d W<\/strong>/);
   assert.equal(renderHouseLearningShadow(normalizeHouseLearningStatus(statusPayload())), "");
+});
+
+test("buiten het getoetste bereik toont de vergelijking twee lijnschattingen", (testContext) => {
+  state.entities = {
+    houseLearningEnabled: switchEntity(true), outsideTempSelected: { value: 4.3 },
+    houseColdTemp: { value: -10 }, houseOutdoorMax: { value: 16 }, housePower: { value: 7100 },
+  };
+  const drafts = state.drafts;
+  testContext.after(() => { state.drafts = drafts; });
+  state.drafts = { housePower: 10000 };
+  const shadow = {
+    schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+    source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+    available: false, reason: "outside_range", manual_w: null, candidate_w: null, delta_w: null, auto_apply_allowed: false,
+  };
+  const payload = statusPayload({ enabled: true, journal_status: "saved_verified", batch_advice_ready: true,
+    h_batch: 205, t0_batch: 17.7, context_revision: 8, shadow });
+  const render = (overrides = {}) => renderHouseLearningShadow(normalizeHouseLearningStatus({ ...payload, ...overrides }));
+  const html = render();
+  assert.match(html, /Schatting uit de woninglijnen bij 4,3 °C buiten/);
+  assert.match(html, /≈ 3,2 kW/);
+  assert.match(html, /≈ 2,7 kW/);
+  assert.doesNotMatch(html, /Verschil|Laatst berekende basiswarmtevraag/);
+
+  for (const overrides of [
+    { h_batch: null }, { batch_advice_ready: false }, { tick_epoch: payload.tick_epoch - 31 },
+    { sources: { outside: { valid: false } } }, { shadow_expired: true },
+    { shadow: { ...shadow, reason: "external_override" } }, { shadow: { ...shadow, context_revision: 7 } },
+  ]) assert.doesNotMatch(render(overrides), /≈/);
+  state.entities.outsideTempSelected.value = " ";
+  assert.match(render(), /buiten het getoetste bereik/);
+  assert.doesNotMatch(render(), /≈/);
+  state.entities.outsideTempSelected.value = 4.3;
+  state.entities.houseOutdoorMax.value = -10;
+  assert.doesNotMatch(render(), /≈/);
 });
 
 test("display preview is optional and cannot replace the independent advice candidate", () => {
@@ -1649,5 +1732,18 @@ test("RLS-fitgereedheid vervangt geen onafhankelijke warmteopslagvalidatie", () 
     const html = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...raw, capacity_validated }), "primary");
     const thermal = html.slice(html.indexOf("Opwarmen en afkoelen"));
     assert.match(thermal, capacity_validated ? /Modelstatus · Beoordeeld/ : /Modelstatus · Voorlopige schatting/);
+  }
+});
+
+
+test("verplaatste instellingen en diagnose behouden onzekere resetmeldingen", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true), houseLearningReset: {} };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningReset = "uncertain";
+  state.houseLearningResetError = "Wissen is niet bevestigd.";
+  for (const section of ["configuration", "diagnostics"]) {
+    const html = renderHouseLearningSettings(section);
+    assert.match(html, /role="alert">Wissen is niet bevestigd/);
+    assert.doesNotMatch(html, /class="oq-house-learning-thermal"/);
   }
 });

@@ -113,6 +113,31 @@ export function getUrlAppView() {
   }
 }
 
+const LEARNING_PANELS = ["explanation", "measurements", "forecast", "configuration", "diagnostics"];
+
+export function isLearningPanel(panel) {
+  return LEARNING_PANELS.includes(panel);
+}
+
+export function getUrlLearningPanel() {
+  const params = new URLSearchParams(window.location.search);
+  const section = normalizeUrlToken(params.get("section"));
+  return isLearningPanel(section) ? section : "measurements";
+}
+
+function setUrlLearningSection(params, panel) {
+  if (panel === "measurements") params.delete("section");
+  else params.set("section", panel);
+  params.delete("group");
+}
+
+export function getLearningPanelHref(panel) {
+  const params = new URLSearchParams(globalThis.window?.location?.search);
+  params.set("view", "learning");
+  setUrlLearningSection(params, panel);
+  return "?" + params.toString();
+}
+
 export function getUrlControlReplayTab() {
   try {
     const url = new URL(window.location.href);
@@ -229,6 +254,8 @@ export function syncUrlAppView(mode = "replace") {
       const group = SETTINGS_GROUP_IDS.has(state.settingsGroup) ? state.settingsGroup : SETTINGS_GROUPS[0].id;
       url.searchParams.set("section", group);
       url.searchParams.delete("group");
+    } else if (normalized === "learning") {
+      setUrlLearningSection(url.searchParams, state.learningPanel);
     } else {
       url.searchParams.delete("section");
       url.searchParams.delete("group");

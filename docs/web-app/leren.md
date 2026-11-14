@@ -2,10 +2,16 @@
 
 Open **Leren** om de meetvoortgang, de woninglijn en het model voor opwarmen en
 afkoelen te bekijken. Op ondersteunde Heatpump Controller Q Single en Duo gebruik
-je hier ook de schakelaar **Passief leren**. Het leren verandert je instellingen
+je onder **Leren → Instellingen** ook de schakelaar **Passief leren**. Het leren verandert je instellingen
 niet. **Passief leren** staat standaard aan. De gekozen stand blijft bewaard bij
 een herstart of firmware-update, ook als je leren bewust uitschakelt. Bij de eerste
 update vanaf de eerdere versie die altijd uit startte, wordt leren ingeschakeld.
+
+- **Uitleg** laat met illustraties zien wat OpenQuatt meet, wat het leert en hoe Vooruitblik rekent.
+- **Leren** toont de meetvoortgang, dagmetingen en woninglijn.
+- **Vooruitblik** toont het temperatuurscenario en de weersverwachting.
+- **Instellingen** groepeert passief leren, leerdata wissen en de weerinstellingen.
+- **Diagnose en data** toont modelwaarden, broninformatie, warmtevraag en de export van leerdata.
 
 ## Twee meetperioden
 
@@ -78,15 +84,21 @@ als dagmeting. Na goedkeuring is de groene lijn binnen het gemeten bereik
 doorgetrokken en daarbuiten gestippeld. Een voorlopige lijn blijft overal
 gestippeld, ook binnen het gemeten bereik.
 
+Open **Bekijk beoordeling** voor de voortgangsbalken en uitleg.
+
+Onder de grafiek staan de geschatte warmtevraag bij −10 °C en de
+buitentemperatuur waarbij de geleerde lijn 0 kW bereikt. Buiten het gemeten
+bereik rekent de webapp de lijnen door.
+
 ## Details en leerdata
 
-Onder **Bronnen en technische details** vind je de bronstatus, watertemperaturen
+Onder **Diagnose en data → Bronnen en technische details** vind je de bronstatus, watertemperaturen
 en modelwaarden. Bij de woninglijn geeft `H` aan hoeveel extra vermogen per
 graad kouder nodig is. `T₀` is de buitentemperatuur waarbij de geschatte
 warmtevraag nul wordt. De regeling gebruikt die waarde niet als schakelgrens.
 
-Via **Diagnostische leerdata downloaden** bewaar je een lokale JSON-export.
-**Leerdata wissen** pauzeert het leren en wist de leerhistorie. Bij een fysieke
+Via **Diagnose en data → Leerdata downloaden** bewaar je een lokale JSON-export.
+**Instellingen → Leerdata wissen** pauzeert het leren en wist de leerhistorie. Bij een fysieke
 ombouw van Single naar Duo of omgekeerd wis je de leerdata voordat je de
 nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet.
 Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van
@@ -97,8 +109,8 @@ passief leren gedeeld.
 
 De standaardfirmware voor Heatpump Controller Q Single en Duo bevat
 **Vooruitblik** onder **Leren**. Op een telefoon staat die
-navigatie bovenaan. Vul een Nederlandse plaatsnaam, postcode of
-coördinaten in en zet **Weersverwachting gebruiken** aan. De controller stuurt
+navigatie bovenaan. Vul onder **Leren → Instellingen** een Nederlandse plaatsnaam,
+postcode of coördinaten in en zet **Weersverwachting gebruiken** aan. De controller stuurt
 de locatie naar Open-Meteo om de plaats en de KNMI-weersverwachting op te halen.
 Locatie en toestemming blijven lokaal op de controller bewaard en staan buiten
 de instellingenback-up. De controller stopt het ophalen zodra je de functie
@@ -131,14 +143,16 @@ tijdstip is verstreken.
 
 ## Warmtevraag vergelijken
 
-Bij een goedgekeurde geleerde woninglijn toont **Warmtevraag vergelijken** hoeveel
+Bij een goedgekeurde geleerde woninglijn toont **Diagnose en data → Warmtevraag vergelijken** hoeveel
 basiswarmte Power House met de ingestelde en met de geleerde lijn zou vragen.
 Beide berekeningen gebruiken hetzelfde rekenmoment, dezelfde metingen en
 dezelfde toestand van de regeling. Het verschil is de geleerde vraag min de
 ingestelde vraag, in watt.
 
-De vergelijking verschijnt binnen het temperatuurbereik waarin de geleerde lijn
-is getoetst. Tijdens bijvoorbeeld opwarmen, externe warmtevraag of service
+Binnen het getoetste temperatuurbereik toont het scherm de vergelijking van
+de regelaar. Als de buitentemperatuur daarbuiten valt en de model- en
+meetgegevens geldig zijn, toont het scherm een schatting uit beide woninglijnen
+bij de laatst ontvangen buitentemperatuur. Tijdens opwarmen, externe warmtevraag of service
 laat het scherm zien waarom de waarden tijdelijk wegvallen. Starten, stoppen
 en verdelen volgen daarna hun eigen regels. De vergelijking past de woninglijn
 of de aansturing niet aan.

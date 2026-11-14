@@ -1,6 +1,6 @@
 import { escapeHtml } from "../core/html.js";
 import { formatNumber, t } from "../i18n/index.js";
-import { renderSettingsInfoToggle } from "./controls.js";
+import { renderSettingsAdvancedDisclosure, renderSettingsInfoToggle } from "./controls.js";
 
 // Current firmware defaults in oq_ph_learning_fit.h. This explains the loaded
 // measurements; it does not run the fit or grant permission to apply a model.
@@ -57,6 +57,14 @@ const BATCH_REASON_KEYS = {
   unstable_fit: "houseLearning.readiness.fitUnstable",
   no_holdout_improvement: "houseLearning.readiness.noImprovement",
 };
+
+function renderReadinessCard(title, compact, body, info = "") {
+  return `<section class="oq-house-learning-readiness" aria-label="${escapeHtml(t("houseLearning.readiness.label"))}">
+    <div class="oq-house-learning-readiness-head"><h5>${escapeHtml(title)}</h5>${info}</div>
+    <p>${escapeHtml(compact)}</p>
+    ${renderSettingsAdvancedDisclosure("house-learning-readiness", t("houseLearning.readiness.details"), "", body)}
+  </section>`;
+}
 
 export function renderHouseLearningReadiness(records, learned = {}, observedRecords = records) {
   let progress = getHouseLearningReadiness(records);
@@ -117,8 +125,9 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
     const requiredDays = TRAIN_DAYS + CHECK_DAYS;
     const serverCopy = reasonKey ? t(reasonKey) : available
       ? learned.ready ? t("houseLearning.readiness.readyCopy") : previewCopy : "";
-    return `<section class="oq-house-learning-readiness" aria-label="${escapeHtml(t("houseLearning.readiness.label"))}">
-      <div class="oq-house-learning-readiness-head"><h5>${escapeHtml(title)}</h5></div>
+    return renderReadinessCard(title, t("houseLearning.readiness.compactObserved", {
+      days: number(observedDays.length), known: number(knownCount), spread: observedSpread == null ? "—" : `${number(observedSpread)} °C`,
+    }), `
       ${serverCopy ? `<p>${escapeHtml(serverCopy)}</p>` : ""}
       <p>${escapeHtml(t("houseLearning.readiness.qualitySplit", { count: number(knownCount) }))}</p>
       <p>${escapeHtml(t("learning.observedCopy"))}</p>
@@ -128,15 +137,16 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
         ${metric(t("learning.observedSpread"), observedSpread == null ? "—" : `${number(observedSpread)} °C`, t("learning.observedSpreadTarget", { value: number(REQUIRED_SPREAD_C) }),
           false, "", observedSpread == null ? "" : t("learning.observedRange", { low: number(p10), high: number(p90) }), (observedSpread ?? 0) / REQUIRED_SPREAD_C)}
       </dl>
-    </section>`;
+    `);
   }
   const missingTrain = Math.max(0, TRAIN_DAYS - progress.trainCount);
   const missingChecks = Math.max(0, CHECK_DAYS - progress.checkCount);
   const trainState = t(missingTrain === 1 ? "houseLearning.readiness.missingTrainingDay" : missingTrain ? "houseLearning.readiness.missingTrainingDays" : "houseLearning.readiness.sufficient", { count: number(missingTrain) });
   const checkState = t(missingChecks === 1 ? "houseLearning.readiness.missingCheckingDay" : missingChecks ? "houseLearning.readiness.missingCheckingDays" : "houseLearning.readiness.sufficient", { count: number(missingChecks) });
   const spreadState = t(progress.spread == null ? "houseLearning.readiness.notAvailable" : progress.missingSpread > 0 ? "houseLearning.readiness.missingSpread" : "houseLearning.readiness.sufficient", { value: number(progress.missingSpread ?? 0) });
-  return `<section class="oq-house-learning-readiness" aria-label="${escapeHtml(t("houseLearning.readiness.label"))}">
-    <div class="oq-house-learning-readiness-head"><h5>${escapeHtml(title)}</h5>${renderSettingsInfoToggle("house-learning-readiness", t("houseLearning.readiness.label"), help)}</div>
+  return renderReadinessCard(title, t("houseLearning.readiness.compact", {
+    train: number(progress.trainCount), checks: number(progress.checkCount), spread: progress.spread == null ? "—" : `${number(progress.spread)} °C`,
+  }), `
     <p>${escapeHtml(copy)}</p>
     <dl class="oq-house-learning-readiness-metrics">
       ${metric(t("houseLearning.readiness.trainingDays"), number(progress.trainCount), t("houseLearning.readiness.requiredDays", { count: number(TRAIN_DAYS) }), !missingTrain, trainState,
@@ -146,5 +156,5 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
       ${metric(t("houseLearning.readiness.spread"), progress.spread == null ? "—" : `${number(progress.spread)} °C`, t("houseLearning.readiness.requiredSpread", { value: number(REQUIRED_SPREAD_C) }), progress.spread != null && !progress.missingSpread, spreadState,
         progress.p10 == null ? t("houseLearning.readiness.waitTrainDays") : t("houseLearning.readiness.range", { low: number(progress.p10), high: number(progress.p90), count: number(progress.trainCount) }), (progress.spread ?? 0) / REQUIRED_SPREAD_C)}
     </dl>
-  </section>`;
+  `, renderSettingsInfoToggle("house-learning-readiness", t("houseLearning.readiness.label"), help));
 }

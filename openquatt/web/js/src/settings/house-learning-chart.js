@@ -8,9 +8,14 @@ const QUALITY_COLUMNS = ["heat_coverage_bp", "temperature_coverage_bp", "heat_un
 const WIDTH = 720;
 const HEIGHT = 320;
 const PADDING = { top: 26, right: 24, bottom: 42, left: 52 };
+const MIN_X = -10;
+const MAX_X = 20;
 
 const finite = (value) => Number.isFinite(value) ? value : null;
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+export const configuredLinePowerAt = ({ coldC, zeroC, ratedW }, outsideC) =>
+  Math.max(0, ratedW * ((zeroC - outsideC) / (zeroC - coldC)));
+export const learnedLinePowerAt = ({ h, t0 }, outsideC) => Math.max(0, h * (t0 - outsideC));
 const translatedError = (translationKey) => Object.assign(new Error(t(translationKey)), { translationKey });
 const format = (value, digits = 1) => formatNumber(value, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 const formatRecordDate = (epoch) => formatDateTime(epoch * 1000, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -77,10 +82,10 @@ export function getHouseLearningChartModel(records, configured = {}, learned = {
   const fit = { h: finite(line.h), t0: finite(line.t0), ready: learned.ready === true };
   const configuredValid = config.coldC != null && config.zeroC != null && config.ratedW != null && config.zeroC > config.coldC && config.ratedW > 0;
   const learnedValid = fit.h != null && fit.t0 != null && fit.h > 0;
-  const minX = -10;
-  const maxX = 20;
-  const learnedPower = (temperature) => learnedValid ? Math.max(0, fit.h * (fit.t0 - temperature)) : 0;
-  const configuredPowerAtMin = configuredValid ? Math.max(0, config.ratedW * ((config.zeroC - minX) / (config.zeroC - config.coldC))) : 0;
+  const minX = MIN_X;
+  const maxX = MAX_X;
+  const learnedPower = (temperature) => learnedValid ? learnedLinePowerAt(fit, temperature) : 0;
+  const configuredPowerAtMin = configuredValid ? configuredLinePowerAt(config, minX) : 0;
   const maxY = Math.max(500, ...records.map((record) => record.heatW), configuredPowerAtMin, learnedPower(minX), learnedPower(maxX));
   const minY = Math.min(0, ...records.map((record) => record.heatW));
   const yStep = Math.max(500, Math.ceil(Math.max(maxY, -minY) / 5000) * 1000);
@@ -126,6 +131,17 @@ function chartTooltip(record) {
   ].filter(Boolean).join("\n");
 }
 
+function renderLineEstimates(model) {
+  const estimates = [
+    { temperature: model.minX, power: learnedLinePowerAt(model, model.minX) },
+    { temperature: model.t0, power: 0 },
+  ];
+  return `<dl class="oq-house-learning-chart-estimates">${estimates.map(({ temperature, power }) => {
+    const label = t("houseLearning.chart.estimateAt", { temperature: format(temperature) });
+    return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(format(power / 1000, 2))} kW</dd></div>`;
+  }).join("")}</dl>`;
+}
+
 export function renderHouseLearningChart(records, configured, learned) {
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH);
@@ -139,17 +155,15 @@ export function renderHouseLearningChart(records, configured, learned) {
   const measuredMax = fitRecords.length ? Math.max(...fitRecords.map((record) => record.outsideC)) : null;
   const yGrid = Array.from({ length: Math.round((model.axisMaxY - model.axisMinY) / model.yStep) + 1 }, (_, index) => model.axisMinY + index * model.yStep);
   const xGrid = compact ? [-10, 0, 10, 20] : [-10, -5, 0, 5, 10, 15, 20];
-  const configuredPower = (temperature) => model.configuredValid
-    ? Math.max(0, model.ratedW * ((model.zeroC - temperature) / (model.zeroC - model.coldC)))
-    : 0;
-  const learnedPower = (temperature) => Math.max(0, model.h * (model.t0 - temperature));
+  const configuredPower = (temperature) => configuredLinePowerAt(model, temperature);
+  const learnedPower = (temperature) => learnedLinePowerAt(model, temperature);
   const previewRange = learned?.preview !== undefined ? learned.preview : learned?.fit;
-  const rangeMin = !model.ready ? finite(previewRange?.minC) : measuredMin;
-  const rangeMax = !model.ready ? finite(previewRange?.maxC) : measuredMax;
+  const rangeMin = model.ready ? finite(learned?.fit?.minC) ?? measuredMin : finite(previewRange?.minC);
+  const rangeMax = model.ready ? finite(learned?.fit?.maxC) ?? measuredMax : finite(previewRange?.maxC);
   const learnedStart = rangeMin == null ? model.minX : clamp(rangeMin, model.minX, model.maxX);
   const learnedEnd = rangeMax == null ? model.maxX : clamp(rangeMax, model.minX, model.maxX);
-  const measuredStart = measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
-  const measuredEnd = measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
+  const measuredStart = model.ready ? learnedStart : measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
+  const measuredEnd = model.ready ? learnedEnd : measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
   const learnedRanges = !model.ready
     ? rangeMin != null && rangeMax != null && rangeMax > rangeMin ? [[model.minX, model.maxX, true]] : []
     : fitRecords.length && learnedEnd > learnedStart
@@ -194,6 +208,7 @@ export function renderHouseLearningChart(records, configured, learned) {
       </svg>
       <div class="oq-house-learning-chart-tooltip" aria-hidden="true"></div>
     </div>
+    ${learnedLine ? renderLineEstimates(model) : ""}
 
     <div class="oq-house-learning-chart-footer"><span>${escapeHtml(summary)}</span>${renderSettingsInfoToggle("house-learning-chart", t("houseLearning.chart.panelTitle"), notes.join("\n\n"))}</div>
   `;
