@@ -2901,10 +2901,10 @@ export default {
     decisionLogClearConfirm: "Clear decision log history?\n\nAll saved events will be deleted. The current decision log remains available.",
     decisionLogCleared: "Decision log history cleared.",
     decisionLogClearFailed: "Decision log history could not be cleared",
-    energySaved: "Energy history saved.",
+    energySaved: "Energy history save requested.",
     energySaveFailed: "Energy history could not be saved",
     energyClearConfirm: "Clear energy history?\n\nAll saved daily totals will be deleted. This does not affect the operation of your heat pump.",
-    energyCleared: "Energy history cleared.",
+    energyCleared: "Energy history clear requested.",
     energyClearFailed: "Energy history could not be cleared",
   },
   backupSections: {

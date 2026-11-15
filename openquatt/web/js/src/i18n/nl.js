@@ -2901,10 +2901,10 @@ export default {
     decisionLogClearConfirm: "Beslisloghistorie wissen?\n\nAlle bewaarde gebeurtenissen worden verwijderd. De actuele beslislog blijft beschikbaar.",
     decisionLogCleared: "Beslisloghistorie is gewist.",
     decisionLogClearFailed: "Beslisloghistorie kon niet worden gewist",
-    energySaved: "Energiehistorie is opgeslagen.",
+    energySaved: "Opslaan van energiehistorie aangevraagd.",
     energySaveFailed: "Energiehistorie kon niet worden opgeslagen",
     energyClearConfirm: "Energiehistorie wissen?\n\nAlle bewaarde dagtotalen worden verwijderd. Dit heeft geen invloed op de werking van je warmtepomp.",
-    energyCleared: "Energiehistorie is gewist.",
+    energyCleared: "Wissen van energiehistorie aangevraagd.",
     energyClearFailed: "Energiehistorie kon niet worden gewist",
   },
   backupSections: {

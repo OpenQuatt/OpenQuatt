@@ -23,10 +23,14 @@ namespace {
 
 class HourStateLock {
  public:
-  explicit HourStateLock(SemaphoreHandle_t mutex) : mutex_(mutex) {
-    xSemaphoreTakeRecursive(this->mutex_, portMAX_DELAY);
+  explicit HourStateLock(SemaphoreHandle_t mutex, TickType_t timeout = portMAX_DELAY)
+      : mutex_(xSemaphoreTake(mutex, timeout) == pdTRUE ? mutex : nullptr) {}
+  ~HourStateLock() {
+    if (this->mutex_ != nullptr) {
+      xSemaphoreGive(this->mutex_);
+    }
   }
-  ~HourStateLock() { xSemaphoreGiveRecursive(this->mutex_); }
+  explicit operator bool() const { return this->mutex_ != nullptr; }
   HourStateLock(const HourStateLock&) = delete;
   HourStateLock& operator=(const HourStateLock&) = delete;
 
@@ -314,7 +318,7 @@ class OpenQuattEnergyHistoryRequestHandler : public AsyncWebHandler {
 };
 
 void OpenQuattEnergyHistory::setup() {
-  this->hour_state_mutex_ = xSemaphoreCreateRecursiveMutexStatic(&this->hour_state_mutex_storage_);
+  this->hour_state_mutex_ = xSemaphoreCreateMutexStatic(&this->hour_state_mutex_storage_);
   if (this->hour_state_mutex_ == nullptr) {
     ESP_LOGE(TAG, "Could not initialize the energy history mutex");
     this->mark_failed();
@@ -362,7 +366,7 @@ void OpenQuattEnergyHistory::setup() {
   web_server_base::global_web_server_base->add_handler(new OpenQuattEnergyHistoryRequestHandler(this));
 }
 
-void OpenQuattEnergyHistory::loop() {}
+void OpenQuattEnergyHistory::loop() { this->service_pending_history_(); }
 
 void OpenQuattEnergyHistory::rotate_csrf_token_() {
   std::array<uint8_t, 32> token_bytes{};
@@ -371,13 +375,27 @@ void OpenQuattEnergyHistory::rotate_csrf_token_() {
 }
 
 void OpenQuattEnergyHistory::on_shutdown() {
-  if (this->enabled_() && this->has_current_day_ && record_has_values_(this->current_values_)) {
-    this->write_record_(this->active_date_key_, this->current_values_, true);
-    this->write_hour_day_record_(this->active_date_key_, true);
+  if (!this->runtime_storage_ready()) {
+    return;
   }
+  const HourStateLock lock(this->hour_state_mutex_, 0);
+  if (!lock) {
+    ESP_LOGW(TAG, "Energy history busy at shutdown; could not flush pending samples");
+    return;
+  }
+  this->flush_requested_ = true;
+  this->process_pending_history_locked_();
 }
 
 bool OpenQuattEnergyHistory::force_flush() {
+  if (!this->runtime_storage_ready()) {
+    return false;
+  }
+  this->flush_requested_ = true;
+  return this->service_pending_history_();
+}
+
+bool OpenQuattEnergyHistory::flush_current_day_locked_() {
   if (!this->enabled_() || !this->has_current_day_ || !record_has_values_(this->current_values_)) {
     return false;
   }
@@ -390,9 +408,43 @@ void OpenQuattEnergyHistory::refresh_hourly_retention() {
   if (!this->runtime_storage_ready()) {
     return;
   }
-  const HourStateLock lock(this->hour_state_mutex_);
-  this->configure_hour_flash_window_();
-  this->scan_hour_archive_();
+  this->retention_refresh_requested_ = true;
+  this->service_pending_history_();
+}
+
+bool OpenQuattEnergyHistory::service_pending_history_() {
+  const bool can_apply_samples = this->pending_sample_count_ > 0 && this->enabled_();
+  if (!can_apply_samples && !this->clear_requested_ && !this->retention_refresh_requested_ && !this->flush_requested_) {
+    return false;
+  }
+  // HTTP imports can hold the mutex across a flash erase and archive scan.
+  const HourStateLock lock(this->hour_state_mutex_, 0);
+  return lock && this->process_pending_history_locked_();
+}
+
+bool OpenQuattEnergyHistory::process_pending_history_locked_() {
+  if (this->clear_requested_) {
+    this->clear_requested_ = false;
+    this->clear_history_locked_();
+  }
+  if (this->retention_refresh_requested_) {
+    this->retention_refresh_requested_ = false;
+    this->configure_hour_flash_window_();
+    this->scan_hour_archive_();
+  }
+  // Keep queued samples while disabled: rollover would otherwise advance the
+  // active date while flash writers reject the old day's snapshot.
+  if (this->enabled_()) {
+    for (size_t i = 0; i < this->pending_sample_count_; ++i) {
+      this->apply_sample_locked_(this->state_()->pending_samples[i]);
+    }
+    this->pending_sample_count_ = 0;
+  }
+  if (!this->flush_requested_) {
+    return false;
+  }
+  this->flush_requested_ = false;
+  return this->flush_current_day_locked_();
 }
 
 void OpenQuattEnergyHistory::dump_config() {
@@ -404,6 +456,13 @@ void OpenQuattEnergyHistory::dump_config() {
   ESP_LOGCONFIG(TAG, "  Flash partition: %s", this->is_partition_ready_() ? "configured" : "<missing>");
   ESP_LOGCONFIG(TAG, "  Flash window: %u KiB / %u slots", static_cast<unsigned>(this->flash_total_bytes_ / 1024U),
                 static_cast<unsigned>(this->flash_slot_count_));
+  if (!this->runtime_storage_ready()) {
+    return;
+  }
+  const HourStateLock lock(this->hour_state_mutex_, 0);
+  if (!lock) {
+    return;
+  }
   ESP_LOGCONFIG(TAG, "  Hour detail window: %u KiB / %u days / requested %u days",
                 static_cast<unsigned>(this->hour_flash_total_bytes_ / 1024U),
                 static_cast<unsigned>(this->hour_flash_slot_count_),
@@ -433,22 +492,6 @@ uint64_t OpenQuattEnergyHistory::current_time_ms_() const {
     return static_cast<uint64_t>(now.timestamp) * 1000ULL;
   }
   return static_cast<uint64_t>(millis());
-}
-
-uint32_t OpenQuattEnergyHistory::get_current_date_key_() const {
-  if (!this->time_is_valid_()) {
-    return 0;
-  }
-  const auto now = this->clock_->now();
-  return (static_cast<uint32_t>(now.year) * 10000U) + (static_cast<uint32_t>(now.month) * 100U) +
-         static_cast<uint32_t>(now.day_of_month);
-}
-
-uint8_t OpenQuattEnergyHistory::get_current_hour_() const {
-  if (!this->time_is_valid_()) {
-    return 0;
-  }
-  return static_cast<uint8_t>(this->clock_->now().hour);
 }
 
 bool OpenQuattEnergyHistory::is_partition_ready_() const {
@@ -758,6 +801,9 @@ bool OpenQuattEnergyHistory::read_hour_day_record_(uint32_t slot_index, EnergyHi
 
 bool OpenQuattEnergyHistory::read_http_hour_day_record_(uint32_t slot_index) {
   const HourStateLock lock(this->hour_state_mutex_);
+  if (!lock) {
+    return false;
+  }
   auto& buffer = this->hour_flash_record_buffer_;
   if (!this->read_hour_day_record_(slot_index, &buffer) || !this->hour_day_record_valid_(buffer)) {
     return false;
@@ -768,7 +814,7 @@ bool OpenQuattEnergyHistory::read_http_hour_day_record_(uint32_t slot_index) {
 
 OpenQuattEnergyHistory::EnergyHistoryHourRecord OpenQuattEnergyHistory::copy_live_hour_record_(size_t slot_index) {
   const HourStateLock lock(this->hour_state_mutex_);
-  return this->state_()->hour_records[slot_index];
+  return lock ? this->state_()->hour_records[slot_index] : EnergyHistoryHourRecord{};
 }
 
 bool OpenQuattEnergyHistory::hour_day_record_valid_(const EnergyHistoryHourDayRecord& record) const {
@@ -839,7 +885,6 @@ bool OpenQuattEnergyHistory::scan_hour_archive_() {
   if (!this->runtime_storage_ready()) {
     return false;
   }
-  const HourStateLock lock(this->hour_state_mutex_);
   std::memset(this->state_()->stored_hour_day_bitmap, 0, sizeof(this->state_()->stored_hour_day_bitmap));
   if (!this->is_hour_partition_ready_()) {
     this->hour_flash_record_count_ = 0;
@@ -977,7 +1022,6 @@ bool OpenQuattEnergyHistory::write_hour_day_record_(uint32_t date_key, bool part
   if (!this->runtime_storage_ready()) {
     return false;
   }
-  const HourStateLock lock(this->hour_state_mutex_);
   if (!this->enabled_() || !this->is_hour_partition_ready_() || !this->time_is_valid_() || date_key == 0U) {
     return false;
   }
@@ -1037,8 +1081,8 @@ bool OpenQuattEnergyHistory::write_hour_day_import_record_(uint32_t date_key, ui
     return false;
   }
   const HourStateLock lock(this->hour_state_mutex_);
-  if (!this->is_hour_partition_ready_() || !this->time_is_valid_() || !date_key_valid_(date_key) || hour_mask == 0U ||
-      hours == nullptr) {
+  if (!lock || !this->is_hour_partition_ready_() || !this->time_is_valid_() || !date_key_valid_(date_key) ||
+      hour_mask == 0U || hours == nullptr) {
     return false;
   }
 
@@ -1122,7 +1166,6 @@ void OpenQuattEnergyHistory::restore_current_day_hours_(uint32_t date_key, uint8
     return;
   }
 
-  const HourStateLock lock(this->hour_state_mutex_);
   EnergyHistoryValues restored[24];
   uint32_t restored_sequences[24]{};
   bool restored_hours[24]{};
@@ -1229,7 +1272,6 @@ uint32_t OpenQuattEnergyHistory::get_hour_record_count_() const {
   if (!this->runtime_storage_ready()) {
     return 0;
   }
-  const HourStateLock lock(this->hour_state_mutex_);
   uint32_t count = 0;
   for (const auto& record : this->state_()->hour_records) {
     if (record.valid && record_has_values_(record.values)) {
@@ -1247,7 +1289,6 @@ void OpenQuattEnergyHistory::clear_hour_records_() {
   this->next_hour_sequence_ = 0;
   this->has_last_hour_sample_ = false;
   this->last_hour_sample_date_key_ = 0;
-  this->last_hour_sample_hour_ = 0;
   this->last_hour_sample_values_ =
       EnergyHistoryValues{UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
 }
@@ -1256,24 +1297,37 @@ void OpenQuattEnergyHistory::capture_day_totals(float electrical_input_kwh, floa
                                                 float cooling_input_kwh, float heatpump_heat_output_kwh,
                                                 float heatpump_cooling_output_kwh, float boiler_heat_output_kwh,
                                                 float system_heat_output_kwh) {
-  if (!this->runtime_storage_ready() || !this->enabled_() || !this->time_is_valid_()) {
+  if (!this->runtime_storage_ready() || !this->enabled_() || this->clock_ == nullptr) {
     return;
   }
-
-  const HourStateLock lock(this->hour_state_mutex_);
-  const uint32_t date_key = this->get_current_date_key_();
-  if (date_key == 0) {
+  const auto now = this->clock_->now();
+  if (!now.is_valid()) {
     return;
   }
-
-  const EnergyHistoryValues values =
+  const uint32_t date_key = (static_cast<uint32_t>(now.year) * 10000U) + (static_cast<uint32_t>(now.month) * 100U) +
+                            static_cast<uint32_t>(now.day_of_month);
+  const auto values =
       this->pack_values_(electrical_input_kwh, heating_input_kwh, cooling_input_kwh, heatpump_heat_output_kwh,
                          heatpump_cooling_output_kwh, boiler_heat_output_kwh, system_heat_output_kwh);
   if (!record_has_values_(values)) {
     return;
   }
 
-  const uint8_t hour = this->get_current_hour_();
+  auto* pending = this->state_()->pending_samples;
+  if (this->pending_sample_count_ == PENDING_SAMPLE_CAPACITY) {
+    // A prolonged import must not create an unbounded queue in the control loop.
+    ESP_LOGW(TAG, "Energy history queue full; dropping oldest pending sample");
+    std::memmove(pending, pending + 1, (PENDING_SAMPLE_CAPACITY - 1) * sizeof(*pending));
+    --this->pending_sample_count_;
+  }
+  pending[this->pending_sample_count_++] = PendingSample{date_key, static_cast<uint8_t>(now.hour), values};
+  this->service_pending_history_();
+}
+
+void OpenQuattEnergyHistory::apply_sample_locked_(const PendingSample& sample) {
+  const uint32_t date_key = sample.date_key;
+  const uint8_t hour = sample.hour;
+  const auto& values = sample.values;
   const bool starts_new_day_or_boot = !this->has_last_hour_sample_ || this->last_hour_sample_date_key_ != date_key;
   if (starts_new_day_or_boot) {
     this->restore_current_day_hours_(date_key, hour, values, !this->has_last_hour_sample_);
@@ -1290,7 +1344,6 @@ void OpenQuattEnergyHistory::capture_day_totals(float electrical_input_kwh, floa
   this->current_values_ = values;
   this->has_current_day_ = true;
   this->last_hour_sample_date_key_ = date_key;
-  this->last_hour_sample_hour_ = hour;
   this->last_hour_sample_values_ = values;
   this->has_last_hour_sample_ = true;
 }
@@ -1299,7 +1352,13 @@ void OpenQuattEnergyHistory::clear_history() {
   if (!this->is_partition_ready_()) {
     return;
   }
-  const HourStateLock lock(this->hour_state_mutex_);
+  this->pending_sample_count_ = 0;
+  this->flush_requested_ = false;
+  this->clear_requested_ = true;
+  this->service_pending_history_();
+}
+
+void OpenQuattEnergyHistory::clear_history_locked_() {
   const esp_err_t erase_result =
       esp_partition_erase_range(this->flash_partition_, BASE_OFFSET, this->flash_total_bytes_);
   if (erase_result != ESP_OK) {
@@ -1523,7 +1582,10 @@ std::string OpenQuattEnergyHistory::import_history_records(const std::string& re
     this->scan_archive_();
   }
   if (hour_written > 0U) {
-    this->scan_hour_archive_();
+    const HourStateLock lock(this->hour_state_mutex_);
+    if (lock) {
+      this->scan_hour_archive_();
+    }
   }
 
   char response[192];
@@ -1758,7 +1820,11 @@ void OpenQuattEnergyHistory::write_history(httpd_req_t* req) {
   if (!writer.begin_response("text/plain; charset=utf-8")) {
     return;
   }
-  const uint32_t hour_count = this->get_hour_record_count_();
+  uint32_t hour_count;
+  {
+    const HourStateLock lock(this->hour_state_mutex_);
+    hour_count = lock ? this->get_hour_record_count_() : 0U;
+  }
   if (!writer.printf("@schema|3\n") || !writer.printf("@enabled|%u\n", this->enabled_() ? 1U : 0U) ||
       !writer.printf("@csrf|%s\n", this->csrf_token_.c_str()) ||
       !writer.printf("@now|%llu\n", static_cast<unsigned long long>(this->current_time_ms_())) ||
