@@ -253,6 +253,9 @@ oq_boiler_relay_target_start_delta_c: "2.0"           # R1 energises once supply
 oq_boiler_relay_target_stop_delta_c: "0.5"            # R1 releases once supply recovered to within this of the requested boiler target [K]; must stay below the start delta.
 oq_boiler_defrost_assist_max_s: "900"                 # Hard bound on one optional defrost-assist boiler session [s].
 oq_boiler_defrost_assist_margin_c: "3.0"              # Defrost-assist boiler target above the pre-defrost supply [K]; kept below the water-limit soft band.
+oq_boiler_defrost_assist_confirm_s: "10"              # A defrost report must persist this long before an assist session starts [s].
+oq_boiler_defrost_assist_min_run_s: "60"              # Minimum run of a started assist session, also if the report clears earlier [s].
+oq_boiler_defrost_assist_rearm_s: "120"               # Clear time after a session before a new assist session may start [s].
 oq_boiler_otb_min_on_s: "30"                          # OpenTherm minimum requested on-time [s]; safety trips override it.
 oq_boiler_otb_min_off_s: "120"                        # OpenTherm minimum requested off-time [s].
 oq_otb_supported: "false"                             # Compile-time availability of the boiler OpenTherm master transport.

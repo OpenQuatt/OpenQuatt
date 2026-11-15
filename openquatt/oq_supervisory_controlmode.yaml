@@ -716,4 +716,7 @@ interval:
               ${oq_sticky_pwm},
               ${oq_boiler_defrost_assist_max_s},
               ${oq_boiler_defrost_assist_margin_c},
+              ${oq_boiler_defrost_assist_confirm_s},
+              ${oq_boiler_defrost_assist_min_run_s},
+              ${oq_boiler_defrost_assist_rearm_s},
           });

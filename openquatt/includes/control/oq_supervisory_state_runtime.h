@@ -68,6 +68,9 @@ struct TickConfig {
   float sticky_pwm;
   uint32_t boiler_defrost_assist_max_s;
   float boiler_defrost_assist_margin_c;
+  uint32_t boiler_defrost_assist_confirm_s;
+  uint32_t boiler_defrost_assist_min_run_s;
+  uint32_t boiler_defrost_assist_rearm_s;
 };
 
 class Runtime {
@@ -498,7 +501,10 @@ class Runtime {
          heating_req && heat_pump_heating_mode, any_hp_defrost_reported,
          !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state},
         this->defrost_assist_state_,
-        {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s), tick.boiler_defrost_assist_margin_c});
+        {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s), tick.boiler_defrost_assist_margin_c,
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_confirm_s),
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_min_run_s),
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_rearm_s)});
     this->defrost_assist_state_ = defrost_assist.state;
     const bool defrost_assist_requested = defrost_assist.requested;
     id(oq_defrost_assist_target_c) = defrost_assist.target_c;
@@ -878,8 +884,10 @@ class Runtime {
             } else if (defrost_assist_available && desired_local == 2 &&
                        (cm_now == 2 || defrost_assist_owned || (cm_now == 3 && !boiler_assist_available))) {
               // The defrost dip is immediate, so the normal promotion delay
-              // does not apply. A CM3 that normal assist already owns is left
-              // to the normal logic below.
+              // does not apply. The assist session carries its own
+              // anti-cycling instead (confirm, minimum run and rearm time in
+              // oq_boiler_defrost_assist). A CM3 that normal assist already
+              // owns is left to the normal logic below.
               desired_local = 3;
               id(oq_defrost_assist_active) = true;
               id(oq_cm3_need_since_ms) = 0;

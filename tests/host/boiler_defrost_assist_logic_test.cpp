@@ -12,7 +12,10 @@ using oq_boiler_defrost_assist::Input;
 using oq_boiler_defrost_assist::Output;
 using oq_boiler_defrost_assist::State;
 
-constexpr Config kConfig{900000UL, 3.0f};
+// Timing-free policy for the session rules; the anti-cycling timers have their
+// own cases below with kTimed.
+constexpr Config kConfig{900000UL, 3.0f, 0UL, 0UL, 0UL};
+constexpr Config kTimed{900000UL, 3.0f, 10000UL, 60000UL, 120000UL};
 
 Input heating(uint32_t now_ms, float supply_c, bool defrost) {
   Input in;
@@ -66,7 +69,7 @@ void test_defrost_starts_assist_at_the_pre_defrost_supply() {
 
 void test_unusable_margin_never_raises_the_target() {
   for (const float margin_c : {0.0f, -2.0f, NAN, INFINITY}) {
-    const Config config{900000UL, margin_c};
+    const Config config{900000UL, margin_c, 0UL, 0UL, 0UL};
     const auto out = oq_boiler_defrost_assist::update(heating(6000U, 30.0f, true), primed(36.0f), config);
     assert(out.requested);
     assert(out.target_c == 36.0f);
@@ -197,7 +200,132 @@ void test_defrost_end_releases_and_resumes_tracking() {
   assert(out.released);
   assert(!out.expired_now);
   assert(isnan(out.target_c));
+  // The reference resumes once the session has been rearmed.
+  assert(out.state.reference_supply_c == 36.0f);
+  out = oq_boiler_defrost_assist::update(heating(16000U, 33.0f, false), out.state, kConfig);
   assert(out.state.reference_supply_c == 33.0f);
+}
+
+// Steps the policy every 5 s, like the supervisory loop, and counts starts.
+struct Run {
+  State state;
+  uint32_t now_ms = 0;
+  int starts = 0;
+  uint32_t last_start_ms = 0;
+  uint32_t shortest_start_gap_ms = UINT32_MAX;
+  uint32_t shortest_session_ms = UINT32_MAX;
+
+  Output step(bool defrost, float supply_c) {
+    now_ms += 5000U;
+    const Output out = oq_boiler_defrost_assist::update(heating(now_ms, supply_c, defrost), state, kTimed);
+    if (out.started) {
+      if (starts > 0 && now_ms - last_start_ms < shortest_start_gap_ms) shortest_start_gap_ms = now_ms - last_start_ms;
+      last_start_ms = now_ms;
+      ++starts;
+    }
+    if (out.released && now_ms - last_start_ms < shortest_session_ms) shortest_session_ms = now_ms - last_start_ms;
+    state = out.state;
+    return out;
+  }
+};
+
+void test_a_single_sample_report_does_not_start_a_session() {
+  Run run;
+  run.step(false, 36.0f);
+  // One 5 s sample with the bit set, then clear again.
+  assert(!run.step(true, 36.0f).requested);
+  assert(!run.step(false, 36.0f).requested);
+  // A report that persists for the confirm time does start.
+  assert(!run.step(true, 36.0f).requested);
+  assert(!run.step(true, 35.0f).requested);
+  const auto out = run.step(true, 33.0f);
+  assert(out.requested);
+  assert(out.started);
+  assert(out.target_c == 39.0f);
+}
+
+void test_started_session_runs_its_minimum_time() {
+  Run run;
+  run.step(false, 36.0f);
+  run.step(true, 36.0f);
+  run.step(true, 35.0f);
+  assert(run.step(true, 33.0f).started);
+  const uint32_t started_ms = run.now_ms;
+  // The report clears 5 s into the session; the session is held.
+  while (run.now_ms - started_ms < 55000U) {
+    const auto out = run.step(false, 37.0f);
+    assert(out.requested);
+    assert(!out.released);
+  }
+  const auto out = run.step(false, 37.0f);
+  assert(!out.requested);
+  assert(out.released);
+  assert(run.now_ms - started_ms == 60000U);
+}
+
+void test_losing_permission_overrides_the_minimum_time() {
+  Run run;
+  run.step(false, 36.0f);
+  run.step(true, 36.0f);
+  run.step(true, 35.0f);
+  assert(run.step(true, 33.0f).started);
+  run.now_ms += 5000U;
+  auto in = heating(run.now_ms, 33.0f, true);
+  in.enabled = false;
+  const auto out = oq_boiler_defrost_assist::update(in, run.state, kTimed);
+  assert(!out.requested);
+  assert(out.released);
+}
+
+void test_flickering_report_cannot_cycle_the_session() {
+  // The defrost bit toggles in several fast patterns for an hour each. The
+  // normal CM2/CM3 timers are bypassed, so the session itself must bound the
+  // cycling: every session lasts at least the minimum run, and two starts are
+  // at least minimum run plus rearm time apart.
+  const int patterns[][2] = {{1, 1}, {2, 1}, {3, 1}, {3, 3}, {4, 2}, {6, 6}, {3, 24}, {12, 26}};
+  for (const auto& pattern : patterns) {
+    Run run;
+    run.step(false, 36.0f);
+    for (int tick = 0; tick < 720; ++tick) {
+      const bool defrost = tick % (pattern[0] + pattern[1]) < pattern[0];
+      run.step(defrost, defrost ? 30.0f : 36.0f);
+    }
+    if (run.starts > 0) assert(run.shortest_session_ms >= 60000U);
+    if (run.starts > 1) assert(run.shortest_start_gap_ms >= 180000U);
+    assert(run.starts <= 20);
+  }
+
+  // A bit that flickers faster than the rearm time gets one session at most.
+  Run fast;
+  fast.step(false, 36.0f);
+  for (int tick = 0; tick < 720; ++tick) fast.step(tick % 4 < 3, 30.0f);
+  assert(fast.starts == 1);
+
+  // A bit that never holds for the confirm time gets none.
+  Run glitch;
+  glitch.step(false, 36.0f);
+  for (int tick = 0; tick < 720; ++tick) glitch.step(tick % 2 == 0, 30.0f);
+  assert(glitch.starts == 0);
+}
+
+void test_assist_heat_does_not_raise_the_next_reference() {
+  // Boiler heat still in the water after a session must not become the
+  // reference of the next defrost, or the target would ratchet up.
+  Run run;
+  run.step(false, 36.0f);
+  run.step(true, 36.0f);
+  run.step(true, 35.0f);
+  assert(run.step(true, 33.0f).started);
+  for (int tick = 0; tick < 30; ++tick) run.step(true, 38.5f);
+  // Defrost over; supply still lifted by the boiler during hold and rearm.
+  for (int tick = 0; tick < 23; ++tick) {
+    run.step(false, 38.5f);
+    assert(run.state.reference_supply_c == 36.0f);
+  }
+  // Rearmed: the reference follows the heat-pump supply again.
+  run.step(false, 35.5f);
+  run.step(false, 35.5f);
+  assert(run.state.reference_supply_c == 35.5f);
 }
 
 void test_maximum_duration_releases_until_the_defrost_clears() {
@@ -252,6 +380,11 @@ int main() {
   test_reference_is_dropped_outside_heating();
   test_losing_heating_ownership_releases();
   test_defrost_end_releases_and_resumes_tracking();
+  test_a_single_sample_report_does_not_start_a_session();
+  test_started_session_runs_its_minimum_time();
+  test_losing_permission_overrides_the_minimum_time();
+  test_flickering_report_cannot_cycle_the_session();
+  test_assist_heat_does_not_raise_the_next_reference();
   test_maximum_duration_releases_until_the_defrost_clears();
   test_duration_survives_millis_wraparound();
   return 0;

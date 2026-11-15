@@ -150,6 +150,16 @@ class BoilerRuntimeContractTest(unittest.TestCase):
         self.assertIn("id(oq_defrost_assist_active) && current_cm_code == 3 ? 2 : current_cm_code);",
                       SUPERVISORY_RUNTIME)
         self.assertIn("bool session_closed = false;", DEFROST_ASSIST_LOGIC)
+        # De sessie omzeilt de normale CM2/CM3-timers en heeft daarom eigen
+        # anti-pendelgrenzen.
+        for substitution, default in (
+            ('oq_boiler_defrost_assist_confirm_s: "10"', "uint32_t confirm_ms = 10000UL;"),
+            ('oq_boiler_defrost_assist_min_run_s: "60"', "uint32_t minimum_ms = 60000UL;"),
+            ('oq_boiler_defrost_assist_rearm_s: "120"', "uint32_t rearm_ms = 120000UL;"),
+        ):
+            self.assertIn(substitution, SUBSTITUTIONS)
+            self.assertIn(default, DEFROST_ASSIST_LOGIC)
+            self.assertIn("${" + substitution.split(":")[0] + "},", SUPERVISORY_YAML)
         # De eigenaarsvlag overleeft CM3 nooit.
         self.assertIn("if (desired != 3) id(oq_defrost_assist_active) = false;", SUPERVISORY_RUNTIME)
 
