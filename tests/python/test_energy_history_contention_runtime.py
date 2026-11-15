@@ -14,7 +14,7 @@ class EnergyHistoryContentionRuntimeTest(unittest.TestCase):
     def test_control_loop_retries_without_moving_samples_across_boundaries(self):
         header = COMPONENT.with_suffix(".h").read_text()
         source = COMPONENT.with_suffix(".cpp").read_text()
-        lock = source[source.index("class HourStateLock {"):source.index("static std::string base64_encode_bytes_")]
+        lock = source[source.index("constexpr uint32_t SHUTDOWN_LOCK_TIMEOUT_MS"):source.index("static std::string base64_encode_bytes_")]
         records = header[header.index("  struct __attribute__((packed)) EnergyHistoryValues"):
                          header.index("  struct ExternalState {")]
         methods = (

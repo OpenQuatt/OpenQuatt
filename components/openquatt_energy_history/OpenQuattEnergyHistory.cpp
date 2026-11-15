@@ -11,7 +11,9 @@
 #include <cstring>
 
 #include "esp_random.h"
+#include "esp_system.h"
 #include "lwip/sockets.h"
+#include "nvs.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -20,6 +22,38 @@ namespace openquatt_energy_history {
 static const char* const TAG = "openquatt.energy_history";
 
 namespace {
+
+constexpr uint32_t SHUTDOWN_LOCK_TIMEOUT_MS = 200U;
+// The NVS key is stable across OTA images regardless of their linker layout.
+constexpr char SHUTDOWN_NAMESPACE[] = "oq_energy";
+constexpr char CLEAN_SHUTDOWN_KEY[] = "clean_shutdown";
+constexpr uint8_t CLEAN_SHUTDOWN_VERSION = 1U;
+
+bool consume_clean_shutdown_marker(bool& stale_marker) {
+  stale_marker = true;
+  nvs_handle_t handle;
+  if (nvs_open(SHUTDOWN_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+    return false;
+  }
+  uint8_t marker = 0;
+  const bool read = nvs_get_u8(handle, CLEAN_SHUTDOWN_KEY, &marker) == ESP_OK;
+  const esp_err_t erase_result = nvs_erase_key(handle, CLEAN_SHUTDOWN_KEY);
+  const bool erased = erase_result == ESP_OK && nvs_commit(handle) == ESP_OK;
+  nvs_close(handle);
+  stale_marker = !erased && erase_result != ESP_ERR_NVS_NOT_FOUND;
+  return read && erased && marker == CLEAN_SHUTDOWN_VERSION && esp_reset_reason() == ESP_RST_SW;
+}
+
+bool save_clean_shutdown_marker() {
+  nvs_handle_t handle;
+  if (nvs_open(SHUTDOWN_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+    return false;
+  }
+  const bool saved =
+      nvs_set_u8(handle, CLEAN_SHUTDOWN_KEY, CLEAN_SHUTDOWN_VERSION) == ESP_OK && nvs_commit(handle) == ESP_OK;
+  nvs_close(handle);
+  return saved;
+}
 
 class HourStateLock {
  public:
@@ -315,6 +349,7 @@ class OpenQuattEnergyHistoryRequestHandler : public AsyncWebHandler {
 };
 
 void OpenQuattEnergyHistory::setup() {
+  this->mark_boot_recovery_ = !consume_clean_shutdown_marker(this->stale_shutdown_marker_);
   this->hour_state_mutex_ = xSemaphoreCreateMutexStatic(&this->hour_state_mutex_storage_);
   if (this->hour_state_mutex_ == nullptr) {
     ESP_LOGE(TAG, "Could not initialize the energy history mutex");
@@ -375,13 +410,23 @@ void OpenQuattEnergyHistory::on_shutdown() {
   if (!this->runtime_storage_ready()) {
     return;
   }
-  const HourStateLock lock(this->hour_state_mutex_, 0);
-  if (!lock) {
-    ESP_LOGW(TAG, "Energy history busy at shutdown; could not flush pending samples");
-    return;
+  if (this->stale_shutdown_marker_) {
+    consume_clean_shutdown_marker(this->stale_shutdown_marker_);
   }
-  this->flush_requested_ = true;
-  this->process_pending_history_locked_();
+  {
+    const HourStateLock lock(this->hour_state_mutex_, pdMS_TO_TICKS(SHUTDOWN_LOCK_TIMEOUT_MS));
+    if (!lock) {
+      ESP_LOGW(TAG, "Energy history busy at shutdown; could not flush pending samples");
+      return;
+    }
+    this->flush_requested_ = true;
+    if (!this->process_pending_history_locked_(true)) {
+      return;
+    }
+  }
+  if (!save_clean_shutdown_marker()) {
+    ESP_LOGW(TAG, "Could not save energy history shutdown marker");
+  }
 }
 
 bool OpenQuattEnergyHistory::force_flush() {
@@ -392,13 +437,13 @@ bool OpenQuattEnergyHistory::force_flush() {
   return this->service_pending_history_();
 }
 
-bool OpenQuattEnergyHistory::flush_current_day_locked_() {
+bool OpenQuattEnergyHistory::flush_current_day_locked_(bool require_complete_flush) {
   if (!this->enabled_() || !this->has_current_day_ || !record_has_values_(this->current_values_)) {
     return false;
   }
   const bool day_written = this->write_record_(this->active_date_key_, this->current_values_, true);
   const bool hours_written = this->write_hour_day_record_(this->active_date_key_, true);
-  return day_written || hours_written;
+  return require_complete_flush ? (day_written && hours_written) : (day_written || hours_written);
 }
 
 void OpenQuattEnergyHistory::refresh_hourly_retention() {
@@ -419,7 +464,7 @@ bool OpenQuattEnergyHistory::service_pending_history_() {
   return lock && this->process_pending_history_locked_();
 }
 
-bool OpenQuattEnergyHistory::process_pending_history_locked_() {
+bool OpenQuattEnergyHistory::process_pending_history_locked_(bool require_complete_flush) {
   if (this->clear_requested_) {
     this->clear_requested_ = false;
     this->clear_history_locked_();
@@ -441,7 +486,7 @@ bool OpenQuattEnergyHistory::process_pending_history_locked_() {
     return false;
   }
   this->flush_requested_ = false;
-  return this->flush_current_day_locked_();
+  return this->flush_current_day_locked_(require_complete_flush);
 }
 
 void OpenQuattEnergyHistory::dump_config() {
@@ -1157,7 +1202,8 @@ OpenQuattEnergyHistory::EnergyHistoryValues OpenQuattEnergyHistory::delta_values
 }
 
 void OpenQuattEnergyHistory::restore_current_day_hours_(uint32_t date_key, uint8_t current_hour,
-                                                        const EnergyHistoryValues& current_values, bool first_sample) {
+                                                        const EnergyHistoryValues& current_values,
+                                                        bool mark_recovered) {
   if (!this->runtime_storage_ready() || date_key == 0U || current_hour > 23U) {
     return;
   }
@@ -1214,7 +1260,7 @@ void OpenQuattEnergyHistory::restore_current_day_hours_(uint32_t date_key, uint8
   // reboot hour so the live cumulative snapshot reconciles exactly with the restored day counters.
   const auto delta = this->delta_values_(current_values, restored_totals);
   bool includes_recovered_energy = false;
-  if (first_sample) {
+  if (mark_recovered) {
     for (const uint32_t wh :
          {delta.electrical_input_wh, delta.heating_input_wh, delta.cooling_input_wh, delta.heatpump_heat_output_wh,
           delta.heatpump_cooling_output_wh, delta.boiler_heat_output_wh, delta.system_heat_output_wh}) {
@@ -1326,7 +1372,8 @@ void OpenQuattEnergyHistory::apply_sample_locked_(const PendingSample& sample) {
   const auto& values = sample.values;
   const bool starts_new_day_or_boot = !this->has_last_hour_sample_ || this->last_hour_sample_date_key_ != date_key;
   if (starts_new_day_or_boot) {
-    this->restore_current_day_hours_(date_key, hour, values, !this->has_last_hour_sample_);
+    this->restore_current_day_hours_(date_key, hour, values, this->mark_boot_recovery_);
+    this->mark_boot_recovery_ = false;
   } else {
     this->capture_hour_delta_(date_key, hour, this->delta_values_(values, this->last_hour_sample_values_));
   }
@@ -1374,6 +1421,7 @@ void OpenQuattEnergyHistory::clear_history_locked_() {
   this->current_values_ =
       EnergyHistoryValues{UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
   this->clear_hour_records_();
+  this->mark_boot_recovery_ = false;
   this->scan_archive_();
   this->scan_hour_archive_();
 }

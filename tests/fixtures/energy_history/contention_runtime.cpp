@@ -18,15 +18,29 @@ struct Mutex {
   bool acquired{false};
   bool http_context{false};
   bool owner_http{false};
+  bool release_during_shutdown_wait{false};
   std::function<void()> before_http_take;
 };
 using SemaphoreHandle_t = Mutex*;
 using TickType_t = uint32_t;
 constexpr TickType_t portMAX_DELAY = UINT32_MAX;
 constexpr int pdTRUE = 1;
+constexpr TickType_t pdMS_TO_TICKS(uint32_t ms) { return ms; }
+constexpr int ESP_RST_SW = 3;
+constexpr int ESP_RST_POWERON = 1;
+int reset_reason = ESP_RST_SW;
+int esp_reset_reason() { return reset_reason; }
 
 int xSemaphoreTake(SemaphoreHandle_t mutex, TickType_t timeout) {
-  assert(timeout == (mutex->http_context ? portMAX_DELAY : 0));
+  if (mutex->http_context) {
+    assert(timeout == portMAX_DELAY);
+  } else {
+    assert(timeout == 0 || timeout == 200);
+  }
+  if (timeout == 200 && mutex->release_during_shutdown_wait) {
+    assert(mutex->held_by_http);
+    mutex->held_by_http = false;
+  }
   if (mutex->acquired) {
     assert(mutex->owner_http && !mutex->http_context);  // The simulated main loop cannot take HTTP's mutex.
     return 0;
@@ -50,16 +64,57 @@ void xSemaphoreGive(SemaphoreHandle_t mutex) {
 
 using esp_err_t = int;
 constexpr esp_err_t ESP_OK = 0;
+using nvs_handle_t = int;
+constexpr int NVS_READWRITE = 1;
+constexpr int ESP_ERR_NVS_NOT_FOUND = 2;
+bool has_shutdown_marker = false;
+bool nvs_readonly_failure = false;
+uint8_t nvs_shutdown_version = 0;
+int nvs_open(const char*, int, nvs_handle_t* handle) {
+  *handle = 1;
+  return ESP_OK;
+}
+int nvs_get_u8(nvs_handle_t, const char*, uint8_t* value) {
+  if (!has_shutdown_marker) {
+    return 1;
+  }
+  *value = nvs_shutdown_version;
+  return ESP_OK;
+}
+int nvs_erase_key(nvs_handle_t, const char*) {
+  if (!has_shutdown_marker) {
+    return ESP_ERR_NVS_NOT_FOUND;
+  }
+  if (nvs_readonly_failure) {
+    return 1;
+  }
+  has_shutdown_marker = false;
+  return ESP_OK;
+}
+int nvs_set_u8(nvs_handle_t, const char*, uint8_t value) {
+  if (nvs_readonly_failure) {
+    return 1;
+  }
+  nvs_shutdown_version = value;
+  has_shutdown_marker = true;
+  return ESP_OK;
+}
+int nvs_commit(nvs_handle_t) { return ESP_OK; }
+void nvs_close(nvs_handle_t) {}
 
 struct esp_partition_t {
   mutable std::vector<uint8_t> bytes;
   const Mutex* mutex;
   std::function<void(const void*)> after_write;
   std::function<void(size_t)> after_erase;
+  bool fail_writes{false};
 };
 
 esp_err_t esp_partition_write(const esp_partition_t* p, size_t offset, const void* src, size_t length) {
   assert(p->mutex->acquired && offset + length <= p->bytes.size());
+  if (p->fail_writes) {
+    return 1;
+  }
   const auto* input = static_cast<const uint8_t*>(src);
   for (size_t i = 0; i < length; ++i) {
     assert((p->bytes[offset + i] & input[i]) == input[i]);  // Flash cannot set an erased bit back to one.
@@ -152,6 +207,9 @@ class OpenQuattEnergyHistory {
   uint32_t active_date_key_{0};
   EnergyHistoryValues current_values_{};
   bool has_last_hour_sample_{false};
+  bool mark_boot_recovery_{true};
+  bool stale_shutdown_marker_{false};
+  bool fail_hour_writes{false};
   uint32_t last_hour_sample_date_key_{0};
   EnergyHistoryValues last_hour_sample_values_{};
   EnergyHistoryHourDayRecord hour_flash_record_buffer_{};
@@ -220,6 +278,9 @@ class OpenQuattEnergyHistory {
 
   bool write_hour_day_record_(uint32_t date, bool partial) {
     assert(mutex.acquired);
+    if (fail_hour_writes) {
+      return false;
+    }
     for (const auto& row : state.hour_records) {
       if (row.valid && row.date_key == date) {
         hour_writes.push_back({date, row.hour, row.values.electrical_input_wh, partial});
@@ -259,6 +320,11 @@ class OpenQuattEnergyHistory {
 };
 
 // COMPONENT_DEFINITIONS
+
+bool consume_test_shutdown_marker() {
+  bool stale_marker;
+  return consume_clean_shutdown_marker(stale_marker);
+}
 
 int main() {
   constexpr uint32_t day = 20261114U;
@@ -330,6 +396,7 @@ int main() {
     assert(!history.force_flush());
     history.on_shutdown();
     assert(history.refreshes == 0 && history.day_writes.empty());
+    assert(!consume_test_shutdown_marker());
     history.mutex.held_by_http = false;
     history.loop();
     assert(history.refreshes == 1 && history.day_writes.size() == 1);
@@ -345,6 +412,62 @@ int main() {
     history.mutex.held_by_http = false;
     history.loop();
     assert(history.clears == 1 && !history.has_current_day_ && history.day_writes.size() == 1);
+  }
+
+  {
+    OpenQuattEnergyHistory before_ota;
+    before_ota.capture(14, 17, 0.050f);
+    before_ota.mutex.held_by_http = true;
+    before_ota.capture(14, 17, 0.057f);
+    before_ota.mutex.release_during_shutdown_wait = true;
+    before_ota.on_shutdown();
+    assert(before_ota.pending_sample_count_ == 0);
+    assert(before_ota.day_writes.size() == 1 && before_ota.day_writes[0].wh == 57);
+    assert(before_ota.hour_writes.size() == 1 && before_ota.hour_writes[0].wh == 57);
+
+    OpenQuattEnergyHistory after_ota;
+    after_ota.mark_boot_recovery_ = !consume_test_shutdown_marker();
+    after_ota.capture(14, 18, 0.065f);
+    assert(after_ota.hour(day, 18).values.electrical_input_wh == 65);
+    assert(!after_ota.hour(day, 18).includes_recovered_energy);
+    assert(!consume_test_shutdown_marker());  // The handoff is single use.
+
+    before_ota.mutex.release_during_shutdown_wait = false;
+    before_ota.on_shutdown();
+    reset_reason = ESP_RST_POWERON;
+    OpenQuattEnergyHistory after_power_cut;
+    after_power_cut.mark_boot_recovery_ = !consume_test_shutdown_marker();
+    after_power_cut.capture(14, 18, 0.065f);
+    assert(after_power_cut.hour(day, 18).includes_recovered_energy);
+    reset_reason = ESP_RST_SW;
+    assert(!consume_test_shutdown_marker());
+  }
+
+  {
+    OpenQuattEnergyHistory history;
+    history.capture(14, 17, 0.050f);
+    nvs_readonly_failure = true;
+    history.on_shutdown();
+    assert(!has_shutdown_marker);
+    nvs_readonly_failure = false;
+    history.on_shutdown();
+    assert(has_shutdown_marker);
+    nvs_readonly_failure = true;
+    assert(!consume_clean_shutdown_marker(history.stale_shutdown_marker_));
+    assert(history.stale_shutdown_marker_);
+    nvs_readonly_failure = false;
+    history.mutex.held_by_http = true;
+    history.on_shutdown();
+    assert(!history.stale_shutdown_marker_ && !has_shutdown_marker);
+  }
+
+  for (const bool fail_day_write : {false, true}) {
+    OpenQuattEnergyHistory history;
+    history.capture(14, 17, 0.050f);
+    history.flash.fail_writes = fail_day_write;
+    history.fail_hour_writes = !fail_day_write;
+    history.on_shutdown();
+    assert(!consume_test_shutdown_marker());
   }
 
   {

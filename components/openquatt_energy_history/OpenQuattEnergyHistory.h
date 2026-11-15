@@ -214,7 +214,7 @@ class OpenQuattEnergyHistory : public Component {
                                             bool rescan = true);
   EnergyHistoryValues delta_values_(const EnergyHistoryValues& current, const EnergyHistoryValues& previous) const;
   void restore_current_day_hours_(uint32_t date_key, uint8_t current_hour, const EnergyHistoryValues& current_values,
-                                  bool first_sample);
+                                  bool mark_recovered);
   void capture_hour_delta_(uint32_t date_key, uint8_t hour, const EnergyHistoryValues& values,
                            bool includes_recovered_energy = false);
   uint16_t requested_flash_hourly_retention_days_() const;
@@ -226,8 +226,8 @@ class OpenQuattEnergyHistory : public Component {
   // Main-loop requests and pending samples have one owner. The helpers ending in
   // _locked_ run with the non-recursive hour state mutex already held.
   bool service_pending_history_();
-  bool process_pending_history_locked_();
-  bool flush_current_day_locked_();
+  bool process_pending_history_locked_(bool require_complete_flush = false);
+  bool flush_current_day_locked_(bool require_complete_flush);
   void clear_history_locked_();
   void apply_sample_locked_(const PendingSample& sample);
   uint32_t get_hour_record_count_() const;
@@ -254,6 +254,8 @@ class OpenQuattEnergyHistory : public Component {
                                       UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
 
   bool has_last_hour_sample_{false};
+  bool mark_boot_recovery_{true};
+  bool stale_shutdown_marker_{false};
   uint32_t last_hour_sample_date_key_{0};
   EnergyHistoryValues last_hour_sample_values_{UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH,
                                                UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
