@@ -243,7 +243,7 @@ export default {
       help: "The configured and learned heat demand curves take one step from the same observed state. The difference is learned minus configured demand.",
       lineEstimate: "Estimate from both curves at {temperature} outdoors. The controller compares the curves only within the validated range.",
       lineEstimateHelp: "The estimate uses the last received outdoor temperature. The controller can also adjust heat demand based on the indoor temperature.",
-      provisionalEstimate: "Estimate at {temperature} outdoors.",
+      provisionalEstimate: "Estimate at {temperature} outdoors and 20 °C indoors.",
       outsidePreviewRange: "Outside the measured range of the provisional curve ({min} to {max} °C).",
       manual: "Configured heat demand curve", candidate: "Learned heat demand curve", delta: "Difference",
       reasons: {
