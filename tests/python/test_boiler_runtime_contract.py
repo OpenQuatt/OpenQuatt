@@ -12,6 +12,9 @@ OTB_RUNTIME = (ROOT / "openquatt/includes/boiler/oq_boiler_otb_runtime.h").read_
 BOILER_LOGIC = (ROOT / "openquatt/includes/boiler/oq_boiler_logic.h").read_text()
 RELAY_TARGET_LOGIC = (ROOT / "openquatt/includes/boiler/oq_boiler_relay_target_logic.h").read_text()
 DISPATCH_LOGIC = (ROOT / "openquatt/includes/control/oq_boiler_dispatch_logic.h").read_text()
+DEFROST_ASSIST_LOGIC = (ROOT / "openquatt/includes/control/oq_boiler_defrost_assist_logic.h").read_text()
+SUPERVISORY_YAML = (ROOT / "openquatt/oq_supervisory_controlmode.yaml").read_text()
+SUPERVISORY_RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_state_runtime.h").read_text()
 SUBSTITUTIONS = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 
 
@@ -86,6 +89,54 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             'oq_defrost_comp_boost_steps: "1"',
         ):
             self.assertIn(substitution, SUBSTITUTIONS)
+
+    def test_defrost_assist_is_opt_in(self) -> None:
+        # De ketelhulp tijdens ontdooien staat standaard uit, zodat bestaand
+        # gedrag zonder expliciete keuze ongewijzigd blijft.
+        start = SUPERVISORY_YAML.index("id: oq_boiler_defrost_assist_enabled")
+        end = SUPERVISORY_YAML.index("id: oq_boiler_fault_fallback_enabled", start)
+        switch = SUPERVISORY_YAML[start:end]
+        self.assertIn('name: "Boiler assist during defrost"', switch)
+        self.assertIn("restore_mode: RESTORE_DEFAULT_OFF", switch)
+        self.assertNotIn("RESTORE_DEFAULT_ON", switch)
+        # De hulp is een eigen toestemming: de aanwezige warmtebron is vereist,
+        # de algemene ketelhulp niet.
+        self.assertIn(
+            "{now_ms, id(oq_aux_heat_source_present).state && id(oq_boiler_defrost_assist_enabled).state,",
+            SUPERVISORY_RUNTIME,
+        )
+        self.assertIn(
+            "oq_boiler::assist_permission_for_source(command.source, id(oq_boiler_assist_enabled).state,",
+            CONTROL_RUNTIME,
+        )
+        # Zonder warmtebron wordt de toestemming ingetrokken, net als de andere.
+        self.assertIn("- switch.turn_off: oq_boiler_defrost_assist_enabled", SUPERVISORY_YAML)
+        # De normale ketelhulp blijft afhankelijk van haar eigen schakelaar.
+        self.assertIn(
+            "const bool boiler_assist_available = boiler_assist_enabled && boiler_transport_available &&\n"
+            "                                               "
+            "(cold_start_assist_requested || boiler_strategy_command_available);",
+            SUPERVISORY_RUNTIME,
+        )
+        self.assertIn('oq_boiler_defrost_assist_max_s: "900"', SUBSTITUTIONS)
+        self.assertIn("${oq_boiler_defrost_assist_max_s},", SUPERVISORY_YAML)
+
+    def test_defrost_assist_observation_stays_in_supervisory(self) -> None:
+        # De defrostwaarneming blijft in de supervisory. De ketelketen krijgt
+        # alleen CM3-eigenaarschap en de vast te houden aanvoertemperatuur.
+        self.assertIn("oq_boiler_defrost_assist::update(", SUPERVISORY_RUNTIME)
+        self.assertIn("bool supply_hold_assist = false;", DISPATCH_LOGIC)
+        self.assertIn("float supply_hold_target_c = NAN;", DISPATCH_LOGIC)
+        self.assertIn("in.supply_hold_assist = id(oq_defrost_assist_active);", DISPATCH_RUNTIME)
+        for chain_source in (DISPATCH_RUNTIME, CONTROL_RUNTIME, OTB_RUNTIME):
+            self.assertNotIn("4_way_valve", chain_source)
+            self.assertNotIn("_defrost).state", chain_source)
+        # De hulp vraagt nooit meer dan de referentie en is in tijd begrensd.
+        self.assertIn("state.target_c = state.reference_supply_c;", DEFROST_ASSIST_LOGIC)
+        self.assertIn("uint32_t maximum_ms = 900000UL;", DEFROST_ASSIST_LOGIC)
+        self.assertIn("bounded_maximum_water_temperature(in.maximum_water_temperature_c)", DISPATCH_LOGIC)
+        # De eigenaarsvlag overleeft CM3 nooit.
+        self.assertIn("if (desired != 3) id(oq_defrost_assist_active) = false;", SUPERVISORY_RUNTIME)
 
 
 if __name__ == "__main__":

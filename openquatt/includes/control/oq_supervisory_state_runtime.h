@@ -11,6 +11,7 @@
 #include "../performance/oq_energy_logic.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
+#include "oq_boiler_defrost_assist_logic.h"
 #include "oq_cold_start_probe.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_control_mode_log_logic.h"
@@ -65,6 +66,7 @@ struct TickConfig {
   uint32_t cm0_sticky_run_s;
   float cm0_pump_stop_ipwm;
   float sticky_pwm;
+  uint32_t boiler_defrost_assist_max_s;
 };
 
 class Runtime {
@@ -481,6 +483,30 @@ class Runtime {
     // -------------------------------------------------
     const char* cur_cm = id(oq_control_mode).state.c_str();
     std::string cm_transition_reason = "control decision updated";
+    // Optional boiler assist during a defrost (opt-in, off by default). It is
+    // its own permission: it neither needs nor grants normal boiler assist.
+    // The observation stays here: the boiler chain only receives CM3 ownership
+    // and the supply reference to hold, as it does for a cold water start.
+    bool any_hp_defrost_reported = id(hp1_4_way_valve).state || id(hp1_defrost).state;
+#if OQ_TOPOLOGY_DUO
+    any_hp_defrost_reported = any_hp_defrost_reported || id(hp2_4_way_valve).state || id(hp2_defrost).state;
+#endif
+    const bool heat_pump_heating_mode = strcmp(cur_cm, "CM2") == 0 || strcmp(cur_cm, "CM3") == 0;
+    const auto defrost_assist = oq_boiler_defrost_assist::update(
+        {now_ms, id(oq_aux_heat_source_present).state && id(oq_boiler_defrost_assist_enabled).state,
+         heating_req && heat_pump_heating_mode, any_hp_defrost_reported, id(water_supply_temp_selected).state},
+        this->defrost_assist_state_, {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s)});
+    this->defrost_assist_state_ = defrost_assist.state;
+    const bool defrost_assist_requested = defrost_assist.requested;
+    id(oq_defrost_assist_target_c) = defrost_assist.target_c;
+    if (defrost_assist.started) {
+      ESP_LOGI("supervisory", "Defrost assist requested: hold supply at %.1fC", defrost_assist.target_c);
+    } else if (defrost_assist.expired_now) {
+      ESP_LOGW("supervisory", "Defrost assist released: maximum duration of %u s reached",
+               (unsigned int)tick.boiler_defrost_assist_max_s);
+    } else if (defrost_assist.released) {
+      ESP_LOGI("supervisory", "Defrost assist released");
+    }
     uint8_t cm1_event_reason = openquatt_decision_log::REASON_UNKNOWN;
     oq_hp_fallback::FallbackDecision fallback_decision;
     bool fallback_requested = false;
@@ -794,13 +820,22 @@ class Runtime {
                                                                   !isnan(rated_boiler_w) && rated_boiler_w > 0.0f));
           const bool boiler_assist_available = boiler_assist_enabled && boiler_transport_available &&
                                                (cold_start_assist_requested || boiler_strategy_command_available);
-          if (heating_strategy_active && boiler_assist_available && !fallback_requested && !no_hp_available_confirmed) {
+          // The optional defrost assist does not depend on normal boiler
+          // assist. With its setting off both values below stay false and
+          // every branch that reads them is dead.
+          const bool defrost_assist_available = defrost_assist_requested && boiler_transport_available;
+          // CM3 that this tick still holds for the defrost assist only.
+          const bool defrost_assist_owned = id(oq_defrost_assist_active) && cm_now == 3;
+          if (heating_strategy_active && (boiler_assist_available || defrost_assist_available) && !fallback_requested &&
+              !no_hp_available_confirmed) {
             bool need_on = false;
             bool ok_off = true;
             const char* promote_reason = "boiler assist promoted to CM3";
             const char* demote_reason = "boiler assist cleared, demoting to CM2";
 
-            if (cold_start_assist_requested) {
+            if (!boiler_assist_available) {
+              // Defrost assist only: normal assist has no need of its own.
+            } else if (cold_start_assist_requested) {
               need_on = true;
               ok_off = false;
               promote_reason = "cold water start promoted to CM3";
@@ -833,7 +868,23 @@ class Runtime {
               id(oq_cm3_need_since_ms) = 0;
               id(oq_cm3_demote_since_ms) = 0;
               cm_transition_reason = promote_reason;
-            } else if (cm_now == 2) {
+            } else if (defrost_assist_available && desired_local == 2 &&
+                       (cm_now == 2 || defrost_assist_owned || (cm_now == 3 && !boiler_assist_available))) {
+              // The defrost dip is immediate, so the normal promotion delay
+              // does not apply. A CM3 that normal assist already owns is left
+              // to the normal logic below.
+              desired_local = 3;
+              id(oq_defrost_assist_active) = true;
+              id(oq_cm3_need_since_ms) = 0;
+              id(oq_cm3_demote_since_ms) = 0;
+              cm_transition_reason = "defrost assist promoted to CM3";
+            } else if (defrost_assist_owned && desired_local == 2 && ok_off) {
+              // The assist ended and normal assist has no need of its own:
+              // hand back at once instead of serving the CM3 minimum run.
+              id(oq_cm3_need_since_ms) = 0;
+              id(oq_cm3_demote_since_ms) = 0;
+              cm_transition_reason = "defrost assist released, demoting to CM2";
+            } else if (boiler_assist_available && cm_now == 2) {
               if (now_ms - id(oq_cm_last_change_ms) >= MIN_CM2_MS) {
                 if (need_on) {
                   if (id(oq_cm3_need_since_ms) == 0) id(oq_cm3_need_since_ms) = now_ms;
@@ -847,7 +898,7 @@ class Runtime {
                   id(oq_cm3_need_since_ms) = 0;
                 }
               }
-            } else if (cm_now == 3) {
+            } else if (boiler_assist_available && cm_now == 3) {
               const bool minimum_run_elapsed = now_ms - id(oq_cm_last_change_ms) >= MIN_CM3_MS;
               bool demote_confirmation_elapsed = false;
               if (minimum_run_elapsed) {
@@ -877,7 +928,9 @@ class Runtime {
             id(oq_cm3_demote_since_ms) = 0;
             if (cm_now == 3 && heating_req && base_target == 2 && !cm3_fallback_handover_wait) {
               desired_local = 2;
-              if (!boiler_assist_enabled) {
+              if (defrost_assist_owned) {
+                cm_transition_reason = "defrost assist released, demoting to CM2";
+              } else if (!boiler_assist_enabled) {
                 cm_transition_reason = "boiler/CV assist disabled, returning to CM2";
               } else if (!boiler_transport_available) {
                 cm_transition_reason = "selected boiler transport unavailable, returning to CM2";
@@ -896,6 +949,9 @@ class Runtime {
           if (!cold_start_assist_requested || desired_local != 3) {
             id(oq_cold_start_assist_active) = false;
           }
+          if (!defrost_assist_requested || desired_local != 3) {
+            id(oq_defrost_assist_active) = false;
+          }
         }
       }
       // Every standby entry, including Force CM0, must wait in circulation
@@ -912,6 +968,9 @@ class Runtime {
       return desired_local;
     };
     const int desired = resolve_desired_cm();
+    // Overrides, commissioning and standby paths leave CM3 without passing the
+    // assist bookkeeping above, so the ownership flag never outlives CM3.
+    if (desired != 3) id(oq_defrost_assist_active) = false;
     this->heating_gate_reason_ = 0;
     if (desired != 2 && desired != 3) {
       if (stop_override_active)
@@ -1204,6 +1263,7 @@ class Runtime {
 
  private:
   uint8_t heating_gate_reason_{0};
+  oq_boiler_defrost_assist::State defrost_assist_state_;
   oq_cold_start::WaterProbe hp1_water_probe_;
 #if OQ_TOPOLOGY_DUO
   oq_cold_start::WaterProbe hp2_water_probe_;

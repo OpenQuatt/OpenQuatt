@@ -1826,6 +1826,8 @@ export default {
     powerCopy: "Enter the heat output OpenQuatt may include in its calculations.",
     assistTitle: "Hybrid heating when heat pump capacity is insufficient",
     assistCopy: "Allow the auxiliary heat source to supplement the heat pumps when their available heat output cannot meet heat demand, and during a cold start from 5 to 12 °C.",
+    defrostAssistTitle: "Assist heating during defrost",
+    defrostAssistCopy: "Let the auxiliary heat source hold the supply temperature at its level from just before a defrost cycle. This limits the temperature dip, but uses extra gas or electricity while defrosting. Also works when hybrid heating is off. Off by default.",
     backupTitle: "Take over when the heat pump is unavailable",
     backupCopy: "Let the heat source temporarily take over when no heat pump is safely available, also on a cold start below 5 °C. This only happens after a safe stop and valid flow, temperature and control. A brief communication dip does not count as failure.",
     boilerSectionGroup: "Basic",

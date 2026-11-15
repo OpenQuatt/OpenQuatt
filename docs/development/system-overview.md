@@ -373,9 +373,19 @@ OpenTherm CH-enable output while the output safety guards remain unchanged.
 
 The boiler command from `oq_boiler_dispatch` is transport-neutral: it carries
 `demand_present`, `heat_request`, `requested_power_w`, `target_temperature_c`,
-`source` and `updated_at_ms`. Power House, Heating Curve and cold start may
-request heat and a target; CM4 fallback and CM100 commissioning keep their own
-on/off semantics.
+`source` and `updated_at_ms`. Power House, Heating Curve, cold start and the
+optional defrost assist may request heat and a target; CM4 fallback and CM100
+commissioning keep their own on/off semantics.
+
+The optional defrost assist (`Boiler assist during defrost`, off by default) is
+its own permission, independent of `Boiler assist enabled`. It is supervisory
+policy in `includes/control/oq_boiler_defrost_assist_logic.h`. The
+supervisory observes the defrost, promotes CM2 to CM3 for that cycle and hands
+the dispatcher only the ownership and the supply reference to hold (the supply
+temperature from just before the defrost). The boiler chain itself still has
+no defrost observation. One session is bounded by
+`oq_boiler_defrost_assist_max_s`, and a CM3 that normal assist already owns is
+left untouched.
 
 `oq_boiler_runtime` owns validation, safety and transport. The selected
 transport decides how the requested target is realised:

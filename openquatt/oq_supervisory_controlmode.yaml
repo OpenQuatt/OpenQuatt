@@ -128,6 +128,15 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+  # Optional defrost assist: CM3 ownership and the supply reference to hold.
+  - id: oq_defrost_assist_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: oq_defrost_assist_target_c
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
 
   # Sticky Pump Protection (CM0-only)
   - id: oq_cm0_since_ms
@@ -276,6 +285,7 @@ switch:
       # Physical absence is the top-level fail-closed gate. Revoke both use
       # permissions and make the selected boiler transport dormant.
       - switch.turn_off: oq_boiler_assist_enabled
+      - switch.turn_off: oq_boiler_defrost_assist_enabled
       - switch.turn_off: oq_boiler_fault_fallback_enabled
       - lambda: |-
           ${oq_aux_heat_source_presence_extra}
@@ -297,6 +307,23 @@ switch:
               return !id(oq_aux_heat_source_present).state;
           then:
             - switch.turn_off: oq_boiler_assist_enabled
+
+  - platform: template
+    id: oq_boiler_defrost_assist_enabled
+    name: "Boiler assist during defrost"
+    icon: mdi:snowflake-melt
+    # Opt-in and independent of `oq_boiler_assist_enabled`: with this off a
+    # defrost changes nothing in the boiler chain, exactly as before.
+    restore_mode: RESTORE_DEFAULT_OFF
+    optimistic: true
+    entity_category: config
+    on_turn_on:
+      - if:
+          condition:
+            lambda: |-
+              return !id(oq_aux_heat_source_present).state;
+          then:
+            - switch.turn_off: oq_boiler_defrost_assist_enabled
 
   - platform: template
     id: oq_boiler_fault_fallback_enabled
@@ -687,4 +714,5 @@ interval:
               ${oq_cm0_sticky_run_s},
               ${oq_cm0_pump_stop_ipwm},
               ${oq_sticky_pwm},
+              ${oq_boiler_defrost_assist_max_s},
           });
