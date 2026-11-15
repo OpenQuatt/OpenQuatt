@@ -1689,8 +1689,21 @@ test("warmtevraag vergelijkt de voorlopige grafieklijn met de ingestelde lijn", 
     batch_preview: { h: 245.262, t0: 16.4044, segments: 28, days: 28, min_c: 0.818111, max_c: 12.3412 } });
   const render = (changes = {}) => renderHouseLearningShadow(normalizeHouseLearningStatus({ ...payload, ...changes }));
   assert.match(render(), /Schatting bij 4,3 °C buiten[\s\S]*Ingestelde woninglijn[\s\S]*≈ 3,2 kW[\s\S]*Voorlopige woninglijn[\s\S]*≈ 3 kW[\s\S]*op de controledagen nog niet voldoende beter/);
+  for (const outsideC of [0.818111, 4.3, 12.3412]) {
+    state.entities.outsideTempSelected.value = outsideC;
+    assert.doesNotMatch(render(), /Buiten het meetbereik/);
+  }
+  for (const outsideC of [0.8, 12.4]) {
+    state.entities.outsideTempSelected.value = outsideC;
+    assert.match(render(), /Buiten het meetbereik van de voorlopige lijn \(0,82 tot 12,34 °C\)/);
+  }
+  state.entities.outsideTempSelected.value = 4.3;
   assert.match(render({ batch_status: "fit_in_progress" }), /De controller toetst de woninglijn/);
   assert.match(render({ batch_status: "insufficient_data" }), /meer bruikbare leer- of controledagen nodig/);
+  for (const reason of ["warmup_active", "external_override", "inactive", "startup"]) {
+    assert.match(render({ shadow: { ...shadow, reason } }),
+      /Schatting bij 4,3 °C buiten[\s\S]*De lijn voor modeladvies presteert op de controledagen/);
+  }
   for (const changes of [
     { batch_preview: undefined }, { tick_epoch: payload.tick_epoch - 31 }, { enabled: false },
     { batch_advice_ready: true }, { sources: { outside: { valid: false } } },

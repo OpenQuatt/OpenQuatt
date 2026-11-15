@@ -146,6 +146,7 @@ const PROVISIONAL_REASON_KEYS = {
   insufficient_spread: "houseLearning.readiness.controllerNeedsSpread",
   day_dominance: "houseLearning.readiness.controllerNeedsSpread",
 };
+const PROVISIONAL_ESTIMATE_REASONS = ["batch_not_ready", "warmup_active", "external_override", "inactive", "startup"];
 
 function getShadowLineEstimate(status, { h, t0 }) {
   if (!status.sources.outside.valid) return null;
@@ -177,7 +178,7 @@ export function renderHouseLearningShadow(status = state.houseLearningStatus) {
   }
   const reason = pending ? "reset_pending" : !status.enabled ? "inactive"
     : !current || (shadow.available && remaining <= 0) ? "stale_frame" : shadow.available ? "batch_not_ready" : shadow.reason;
-  const provisional = reason === "batch_not_ready" && !status.batchAdviceReady && status.batchPreview
+  const provisional = current && PROVISIONAL_ESTIMATE_REASONS.includes(reason) && !status.batchAdviceReady && status.batchPreview
     ? getShadowLineEstimate(status, status.batchPreview) : null;
   const estimate = provisional || (reason === "outside_range" && shadow.lineEstimate && status.batchAdviceReady
     ? getShadowLineEstimate(status, { h: status.hBatch, t0: status.t0Batch }) : null);
@@ -190,6 +191,12 @@ export function renderHouseLearningShadow(status = state.houseLearningStatus) {
   const batchStatus = status.batchStatus;
   const review = provisional ? t(houseLearningBatchReasonKey(batchStatus)
     || (Object.hasOwn(PROVISIONAL_REASON_KEYS, batchStatus) ? PROVISIONAL_REASON_KEYS[batchStatus] : "houseLearning.shadow.reasons.batchNotReady")) : "";
+  const { minC, maxC } = status.batchPreview || {};
+  const outsidePreviewRange = provisional && Number.isFinite(minC) && Number.isFinite(maxC)
+    && (provisional.outsideC < minC || provisional.outsideC > maxC);
+  const range = outsidePreviewRange ? t("houseLearning.shadow.outsidePreviewRange", {
+    min: formatNumber(minC, { maximumFractionDigits: 2 }), max: formatNumber(maxC, { maximumFractionDigits: 2 }),
+  }) : "";
   return `<section class="oq-learning-shadow" aria-label="${escapeHtml(t("houseLearning.shadow.title"))}">
     <div class="oq-house-learning-section-head"><h5>${escapeHtml(t("houseLearning.shadow.title"))}</h5>
       ${renderSettingsInfoToggle("house-learning-shadow", t("houseLearning.shadow.title"), t(estimate ? "houseLearning.shadow.lineEstimateHelp" : "houseLearning.shadow.help"))}</div>
@@ -199,6 +206,7 @@ export function renderHouseLearningShadow(status = state.houseLearningStatus) {
         : available ? `${index === 2 && value > 0 ? "+" : ""}${formatNumber(value, { maximumFractionDigits: 0 })} W` : "—";
       return renderStatCard({ label: t(key), value: formatted });
     }).join("")}</div>` : ""}
+    ${range ? `<p>${escapeHtml(range)}</p>` : ""}
     ${review ? `<p>${escapeHtml(review)}</p>` : ""}
   </section>`;
 }

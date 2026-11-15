@@ -145,7 +145,9 @@ tijdstip is verstreken.
 
 Met een voorlopige woninglijn toont **Diagnose en data → Warmtevraag vergelijken**
 een schatting uit beide lijnen bij dezelfde laatst ontvangen buitentemperatuur.
-Onder de waarden staat wat de beoordeling nog tegenhoudt.
+Onder de waarden staat wat de beoordeling nog tegenhoudt. Ligt de temperatuur
+buiten het meetbereik van die lijn, dan vermeldt het scherm ook dat bereik. De
+grenzen volgen dezelfde omrekening naar 20 °C in huis als de woninglijngrafiek.
 
 Bij een goedgekeurde geleerde woninglijn toont **Diagnose en data → Warmtevraag vergelijken** hoeveel
 basiswarmte Power House met de ingestelde en met de geleerde lijn zou vragen.

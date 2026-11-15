@@ -244,6 +244,7 @@ export default {
       help: "De ingestelde en geleerde woninglijn rekenen één stap vanuit dezelfde waargenomen toestand. Het verschil is de geleerde min de ingestelde warmtevraag.",
       lineEstimate: "Schatting uit de woninglijnen bij {temperature} buiten. De regelaar vergelijkt de lijnen alleen binnen het getoetste bereik.",
       provisionalEstimate: "Schatting bij {temperature} buiten.",
+      outsidePreviewRange: "Buiten het meetbereik van de voorlopige lijn ({min} tot {max} °C).",
       lineEstimateHelp: "De schatting gebruikt de laatst ontvangen buitentemperatuur. De regeling kan daarnaast bijsturen op de binnentemperatuur.",
       manual: "Ingestelde woninglijn", candidate: "Geleerde woninglijn", delta: "Verschil",
       reasons: {
@@ -522,7 +523,7 @@ export default {
       fitFailed: "De controller kan nog geen lijn uit deze metingen berekenen. Er zijn meer bruikbare, verschillende dagmetingen nodig.",
       fitImplausible: "De berekende lijn valt buiten de toegestane grenzen. De controller wacht op meer bruikbare dagmetingen.",
       fitUnstable: "De berekende lijn verandert nog te sterk als één leerdag wordt weggelaten. Meer verschillende dagmetingen zijn nodig voor een stabiel advies.",
-      noImprovement: "De berekende lijn presteert op de controledagen nog niet voldoende beter dan de ingestelde lijn. De ingestelde lijn blijft actief.",
+      noImprovement: "De lijn voor modeladvies presteert op de controledagen nog niet voldoende beter dan de ingestelde lijn. De ingestelde lijn blijft actief.",
     },
     chart: {
       compactDailySummary: "{count} dagmetingen · omgerekend naar {temperature} °C in huis",

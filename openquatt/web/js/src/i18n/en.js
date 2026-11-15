@@ -244,6 +244,7 @@ export default {
       lineEstimate: "Estimate from both curves at {temperature} outdoors. The controller compares the curves only within the validated range.",
       lineEstimateHelp: "The estimate uses the last received outdoor temperature. The controller can also adjust heat demand based on the indoor temperature.",
       provisionalEstimate: "Estimate at {temperature} outdoors.",
+      outsidePreviewRange: "Outside the measured range of the provisional curve ({min} to {max} °C).",
       manual: "Configured heat demand curve", candidate: "Learned heat demand curve", delta: "Difference",
       reasons: {
         unavailable: "No current comparison available.",
@@ -521,7 +522,7 @@ export default {
       fitFailed: "The controller cannot yet calculate a curve from these measurements. More usable daily measurements across different conditions are needed.",
       fitImplausible: "The calculated curve is outside the allowed limits. The controller is waiting for more usable daily measurements.",
       fitUnstable: "The calculated curve still changes too much when one training day is left out. More varied daily measurements are needed for stable advice.",
-      noImprovement: "On the checking days, the calculated curve does not yet improve enough on the configured curve. The configured curve remains active.",
+      noImprovement: "On the checking days, the curve evaluated for advice does not yet improve enough on the configured curve. The configured curve remains active.",
     },
     chart: {
       compactDailySummary: "{count} daily measurements · converted to {temperature} °C indoors",
