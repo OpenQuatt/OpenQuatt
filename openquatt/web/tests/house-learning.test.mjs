@@ -1700,6 +1700,19 @@ test("warmtevraag vergelijkt de voorlopige grafieklijn met de ingestelde lijn", 
   state.entities.outsideTempSelected.value = 4.3;
   assert.match(render({ batch_status: "fit_in_progress" }), /De controller toetst de woninglijn/);
   assert.match(render({ batch_status: "insufficient_data" }), /meer bruikbare leer- of controledagen nodig/);
+  for (const batchStatus of ["segment_ready", "dataset_full", "room_unstable", "constructor"]) {
+    const preview = render({ batch_status: batchStatus });
+    assert.match(preview, /≈ 3 kW[\s\S]*De voorlopige lijn is nog niet goedgekeurd voor modeladvies/);
+    assert.doesNotMatch(preview, /De vergelijking verschijnt zodra/);
+  }
+  for (const [batchStatus, message] of [
+    ["invalid_active_model", /De ingestelde woninglijn is ongeldig/],
+    ["invalid_configuration", /[Ii]nstellingen/],
+  ]) {
+    const preview = render({ batch_status: batchStatus });
+    assert.match(preview, message);
+    assert.doesNotMatch(preview, /≈|De vergelijking verschijnt zodra/);
+  }
   for (const reason of ["warmup_active", "external_override", "inactive", "startup"]) {
     assert.match(render({ shadow: { ...shadow, reason } }),
       /Schatting bij 4,3 °C buiten[\s\S]*De lijn voor modeladvies presteert op de controledagen/);

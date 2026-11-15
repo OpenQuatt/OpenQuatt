@@ -178,7 +178,11 @@ export function renderHouseLearningShadow(status = state.houseLearningStatus) {
   }
   const reason = pending ? "reset_pending" : !status.enabled ? "inactive"
     : !current || (shadow.available && remaining <= 0) ? "stale_frame" : shadow.available ? "batch_not_ready" : shadow.reason;
-  const provisional = current && PROVISIONAL_ESTIMATE_REASONS.includes(reason) && !status.batchAdviceReady && status.batchPreview
+  const batchStatus = status.batchStatus;
+  const batchReason = houseLearningBatchReasonKey(batchStatus);
+  const canShowPreview = current && PROVISIONAL_ESTIMATE_REASONS.includes(reason) && !status.batchAdviceReady;
+  const invalidConfiguration = canShowPreview && ["invalid_active_model", "invalid_configuration"].includes(batchStatus);
+  const provisional = canShowPreview && !invalidConfiguration && status.batchPreview
     ? getShadowLineEstimate(status, status.batchPreview) : null;
   const estimate = provisional || (reason === "outside_range" && shadow.lineEstimate && status.batchAdviceReady
     ? getShadowLineEstimate(status, { h: status.hBatch, t0: status.t0Batch }) : null);
@@ -187,10 +191,10 @@ export function renderHouseLearningShadow(status = state.houseLearningStatus) {
   if (!estimate) values.push(["houseLearning.shadow.delta", shadow.deltaW]);
   const copy = estimate ? t(provisional ? "houseLearning.shadow.provisionalEstimate" : "houseLearning.shadow.lineEstimate",
     { temperature: metric(estimate.outsideC, "°C") })
-    : t(available ? "houseLearning.shadow.copy" : SHADOW_REASON_KEYS[reason] || "houseLearning.shadow.reasons.unavailable");
-  const batchStatus = status.batchStatus;
-  const review = provisional ? t(houseLearningBatchReasonKey(batchStatus)
-    || (Object.hasOwn(PROVISIONAL_REASON_KEYS, batchStatus) ? PROVISIONAL_REASON_KEYS[batchStatus] : "houseLearning.shadow.reasons.batchNotReady")) : "";
+    : t(available ? "houseLearning.shadow.copy" : invalidConfiguration ? batchReason
+      : SHADOW_REASON_KEYS[reason] || "houseLearning.shadow.reasons.unavailable");
+  const review = provisional ? t(batchReason
+    || (Object.hasOwn(PROVISIONAL_REASON_KEYS, batchStatus) ? PROVISIONAL_REASON_KEYS[batchStatus] : "houseLearning.shadow.reasons.provisionalNotApproved")) : "";
   const { minC, maxC } = status.batchPreview || {};
   const outsidePreviewRange = provisional && Number.isFinite(minC) && Number.isFinite(maxC)
     && (provisional.outsideC < minC || provisional.outsideC > maxC);
