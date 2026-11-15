@@ -36,7 +36,9 @@ Tijdens Quick Start kan een gedetecteerde OpenTherm-ketel automatisch als **Open
 
 #### Meeverwarmen tijdens ontdooien
 
-Tijdens een ontdooicyclus levert de buitenunit tijdelijk geen warmte en zakt de aanvoertemperatuur. Met `Meeverwarmen tijdens ontdooien` mag de aanvullende warmtebron die dip opvangen: zodra een buitenunit ontdooien meldt, houdt de warmtebron de aanvoer op de temperatuur van vlak vóór het ontdooien. Hoger dan die waarde wordt niet gevraagd en de ingestelde maximale watertemperatuur blijft de bovengrens. Na het ontdooien stopt de hulp direct, tenzij de normale hybride regeling de warmtebron op dat moment zelf nodig heeft. Eén hulpsessie duurt nooit langer dan 15 minuten.
+Tijdens een ontdooicyclus levert de buitenunit tijdelijk geen warmte en zakt de aanvoertemperatuur. Met `Meeverwarmen tijdens ontdooien` mag de aanvullende warmtebron die dip opvangen: zodra een buitenunit ontdooien meldt, houdt de warmtebron de aanvoer op de temperatuur van vlak vóór het ontdooien. Hoger dan die waarde wordt niet gevraagd en de ingestelde maximale watertemperatuur blijft de bovengrens. Na het ontdooien stopt de hulp direct; de normale hybride regeling beslist daarna weer zelf, volgens haar eigen voorwaarden. Per ontdooimelding is er één hulpsessie van maximaal 15 minuten.
+
+De hulp vereist een echte aanvoersensor na de warmtebron. Valt de aanvoermeting terug op de uitgaande temperatuur van de warmtepomp, dan blijft de hulp uit: die waarde zakt tijdens het ontdooien en ziet de warmte van de warmtebron niet.
 
 De optie staat standaard uit en werkt los van `Hybride verwarmen bij vermogenstekort`: je kunt alleen tijdens het ontdooien laten meeverwarmen terwijl hybride verwarmen uit blijft. Ze wijzigt geen andere instellingen en kost tijdens het ontdooien extra gas of stroom. Zonder de optie verandert een ontdooicyclus niets aan de aansturing van de warmtebron. De buitenunit blijft zelf eigenaar van de ontdooicyclus.
 

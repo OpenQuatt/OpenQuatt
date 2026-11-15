@@ -19,6 +19,7 @@ Input heating(uint32_t now_ms, float supply_c, bool defrost) {
   in.enabled = true;
   in.heating_owned = true;
   in.defrost_active = defrost;
+  in.supply_reference_valid = true;
   in.supply_c = supply_c;
   return in;
 }
@@ -79,6 +80,74 @@ void test_disabling_during_a_defrost_releases_at_once() {
   assert(!out.requested);
   assert(out.released);
   assert(isnan(out.target_c));
+
+  // One session per defrost report: switching it back on does not restart.
+  out = oq_boiler_defrost_assist::update(heating(16000U, 28.0f, true), out.state, kConfig);
+  assert(!out.requested);
+  assert(!out.started);
+}
+
+void test_interrupted_session_cannot_extend_a_stuck_defrost_report() {
+  // Ten minutes of assist, a short loss of heating ownership, then heating
+  // again while the report never cleared: no second bounded session.
+  auto out = oq_boiler_defrost_assist::update(heating(6000U, 30.0f, true), primed(36.0f), kConfig);
+  assert(out.requested);
+  out = oq_boiler_defrost_assist::update(heating(606000U, 30.0f, true), out.state, kConfig);
+  assert(out.requested);
+  auto in = heating(611000U, 30.0f, true);
+  in.heating_owned = false;
+  out = oq_boiler_defrost_assist::update(in, out.state, kConfig);
+  assert(!out.requested);
+  for (uint32_t now_ms = 616000U; now_ms < 2000000U; now_ms += 5000U) {
+    out = oq_boiler_defrost_assist::update(heating(now_ms, 30.0f, true), out.state, kConfig);
+    assert(!out.requested);
+    assert(!out.started);
+  }
+}
+
+void test_stuck_report_across_a_heating_stop_has_no_reference() {
+  // The report stays set while heating stops and resumes much later. The old
+  // supply value must not become a boiler target.
+  State state = primed(36.0f);
+  auto in = heating(6000U, 30.0f, true);
+  in.enabled = false;
+  auto out = oq_boiler_defrost_assist::update(in, state, kConfig);
+  in = heating(11000U, 25.0f, true);
+  in.heating_owned = false;
+  out = oq_boiler_defrost_assist::update(in, out.state, kConfig);
+  assert(isnan(out.state.reference_supply_c));
+  out = oq_boiler_defrost_assist::update(heating(7200000U, 22.0f, true), out.state, kConfig);
+  assert(!out.requested);
+  assert(!out.started);
+}
+
+void test_heat_pump_outlet_fallback_is_never_a_reference() {
+  // Without a real supply measurement after the boiler nothing is learned.
+  auto in = heating(1000U, 36.0f, false);
+  in.supply_reference_valid = false;
+  auto out = oq_boiler_defrost_assist::update(in, State{}, kConfig);
+  assert(isnan(out.state.reference_supply_c));
+  in = heating(6000U, 30.0f, true);
+  in.supply_reference_valid = false;
+  out = oq_boiler_defrost_assist::update(in, out.state, kConfig);
+  assert(!out.requested);
+
+  // A good reference is dropped as soon as the measurement falls back.
+  in = heating(11000U, 36.0f, false);
+  in.supply_reference_valid = false;
+  out = oq_boiler_defrost_assist::update(in, primed(36.0f), kConfig);
+  assert(isnan(out.state.reference_supply_c));
+
+  // Falling back during a session releases it for the rest of that report.
+  out = oq_boiler_defrost_assist::update(heating(6000U, 30.0f, true), primed(36.0f), kConfig);
+  assert(out.requested);
+  in = heating(11000U, 12.0f, true);
+  in.supply_reference_valid = false;
+  out = oq_boiler_defrost_assist::update(in, out.state, kConfig);
+  assert(!out.requested);
+  assert(out.released);
+  out = oq_boiler_defrost_assist::update(heating(16000U, 30.0f, true), out.state, kConfig);
+  assert(!out.requested);
 }
 
 void test_no_reference_means_no_assist() {
@@ -164,6 +233,9 @@ int main() {
   test_defrost_starts_assist_at_the_pre_defrost_supply();
   test_disabled_setting_never_requests_assist();
   test_disabling_during_a_defrost_releases_at_once();
+  test_interrupted_session_cannot_extend_a_stuck_defrost_report();
+  test_stuck_report_across_a_heating_stop_has_no_reference();
+  test_heat_pump_outlet_fallback_is_never_a_reference();
   test_no_reference_means_no_assist();
   test_reference_is_dropped_outside_heating();
   test_losing_heating_ownership_releases();

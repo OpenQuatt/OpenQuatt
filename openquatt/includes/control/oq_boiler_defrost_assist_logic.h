@@ -19,14 +19,16 @@ namespace oq_boiler_defrost_assist {
 // it does for a cold water start.
 struct Config {
   // Hard bound on one assist session. A defrost that is still reported after
-  // this time (for example a stale flag) releases the boiler and stays released
-  // until the defrost report has cleared again.
+  // this time (for example a stale flag) releases the boiler.
   uint32_t maximum_ms = 900000UL;
 };
 
 struct State {
   bool active = false;
-  bool expired = false;
+  // One session per defrost report: once a session has ended for any reason,
+  // no new one starts until the report has cleared. A stuck report can
+  // therefore never add up to more than one bounded session.
+  bool session_closed = false;
   uint32_t started_ms = 0;
   // Last supply temperature seen while heating without a defrost. Frozen
   // during a defrost so the dip itself cannot lower the reference.
@@ -43,6 +45,10 @@ struct Input {
   bool heating_owned = false;
   // Any outdoor unit reports a defrost.
   bool defrost_active = false;
+  // The supply value is a real system supply measurement downstream of the
+  // boiler. A fallback to a heat-pump outlet collapses during a defrost and
+  // cannot see boiler heat, so it can neither be a reference nor regulate one.
+  bool supply_reference_valid = false;
   float supply_c = NAN;
 };
 
@@ -61,26 +67,30 @@ inline Output update(const Input& input, State state, const Config& config = {})
   Output output;
   const bool was_active = state.active;
 
+  // Only a supply measured during heat-pump heating, without a defrost, is a
+  // valid reference. It is dropped whenever heating or the measurement is
+  // lost, also while a defrost report is still set, so an old value can never
+  // become a boiler target.
+  const bool permitted = input.enabled && input.heating_owned && input.supply_reference_valid;
+  if (!input.heating_owned || !input.supply_reference_valid) {
+    state.reference_supply_c = NAN;
+  } else if (!input.defrost_active && isfinite(input.supply_c)) {
+    state.reference_supply_c = input.supply_c;
+  }
+
   if (!input.defrost_active) {
     state.active = false;
-    state.expired = false;
-    // Only a supply measured during heat-pump heating is a valid reference for
-    // the next defrost. Outside heating the reference is dropped so an old
-    // value can never become a boiler target.
-    if (!input.heating_owned) {
-      state.reference_supply_c = NAN;
-    } else if (isfinite(input.supply_c)) {
-      state.reference_supply_c = input.supply_c;
-    }
-  } else if (!input.enabled || !input.heating_owned) {
-    state.active = false;
+    state.session_closed = false;
   } else if (state.active) {
-    if (static_cast<uint32_t>(input.now_ms - state.started_ms) >= config.maximum_ms) {
+    if (!permitted) {
       state.active = false;
-      state.expired = true;
+      state.session_closed = true;
+    } else if (static_cast<uint32_t>(input.now_ms - state.started_ms) >= config.maximum_ms) {
+      state.active = false;
+      state.session_closed = true;
       output.expired_now = true;
     }
-  } else if (!state.expired && reference_usable(state.reference_supply_c)) {
+  } else if (permitted && !state.session_closed && reference_usable(state.reference_supply_c)) {
     state.active = true;
     state.started_ms = input.now_ms;
     state.target_c = state.reference_supply_c;

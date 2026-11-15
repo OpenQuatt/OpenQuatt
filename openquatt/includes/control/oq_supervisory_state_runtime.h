@@ -494,7 +494,8 @@ class Runtime {
     const bool heat_pump_heating_mode = strcmp(cur_cm, "CM2") == 0 || strcmp(cur_cm, "CM3") == 0;
     const auto defrost_assist = oq_boiler_defrost_assist::update(
         {now_ms, id(oq_aux_heat_source_present).state && id(oq_boiler_defrost_assist_enabled).state,
-         heating_req && heat_pump_heating_mode, any_hp_defrost_reported, id(water_supply_temp_selected).state},
+         heating_req && heat_pump_heating_mode, any_hp_defrost_reported,
+         !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state},
         this->defrost_assist_state_, {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s)});
     this->defrost_assist_state_ = defrost_assist.state;
     const bool defrost_assist_requested = defrost_assist.requested;
@@ -610,7 +611,10 @@ class Runtime {
       no_hp_available_confirmed = fallback_evaluation.no_hp_available_confirmed;
       fallback_requested = fallback_evaluation.fallback_requested;
       cm3_fallback_handover_wait = fallback_evaluation.cm3_handover_wait;
-      cm4_resume_tracker.observe_fallback_request(fallback_requested, current_cm_code);
+      // A CM3 that only the defrost assist owns is an HP-only origin: recovery
+      // must not hand it back as normal boiler assist.
+      cm4_resume_tracker.observe_fallback_request(
+          fallback_requested, id(oq_defrost_assist_active) && current_cm_code == 3 ? 2 : current_cm_code);
 
       if (!cooling_req && heating_req) {
         if (fallback_decision.cm4_allowed) {
@@ -878,12 +882,14 @@ class Runtime {
               id(oq_cm3_need_since_ms) = 0;
               id(oq_cm3_demote_since_ms) = 0;
               cm_transition_reason = "defrost assist promoted to CM3";
-            } else if (defrost_assist_owned && desired_local == 2 && ok_off) {
-              // The assist ended and normal assist has no need of its own:
-              // hand back at once instead of serving the CM3 minimum run.
+            } else if (defrost_assist_owned) {
+              // The assist ended, or an upstream decision chose another mode.
+              // Yield at once and keep that decision: a defrost-owned CM3
+              // never continues as normal assist, which must meet its own
+              // promotion conditions again from CM2.
               id(oq_cm3_need_since_ms) = 0;
               id(oq_cm3_demote_since_ms) = 0;
-              cm_transition_reason = "defrost assist released, demoting to CM2";
+              if (desired_local == 2) cm_transition_reason = "defrost assist released, demoting to CM2";
             } else if (boiler_assist_available && cm_now == 2) {
               if (now_ms - id(oq_cm_last_change_ms) >= MIN_CM2_MS) {
                 if (need_on) {
@@ -913,6 +919,14 @@ class Runtime {
               }
               if (oq_boiler::cm3_should_hold(minimum_run_elapsed, ok_off, demote_confirmation_elapsed)) {
                 desired_local = 3;
+              } else if (defrost_assist_available && desired_local == 2) {
+                // Normal assist is done while a defrost is still assisted:
+                // hand CM3 over without a boiler off/on cycle through CM2.
+                desired_local = 3;
+                id(oq_defrost_assist_active) = true;
+                id(oq_cm3_need_since_ms) = 0;
+                id(oq_cm3_demote_since_ms) = 0;
+                cm_transition_reason = "normal boiler assist cleared, defrost assist keeps CM3";
               } else {
                 desired_local = 2;
                 id(oq_cm3_need_since_ms) = 0;
@@ -928,9 +942,9 @@ class Runtime {
             id(oq_cm3_demote_since_ms) = 0;
             if (cm_now == 3 && heating_req && base_target == 2 && !cm3_fallback_handover_wait) {
               desired_local = 2;
-              if (defrost_assist_owned) {
+              if (defrost_assist_owned && boiler_transport_available) {
                 cm_transition_reason = "defrost assist released, demoting to CM2";
-              } else if (!boiler_assist_enabled) {
+              } else if (!boiler_assist_enabled && !defrost_assist_owned) {
                 cm_transition_reason = "boiler/CV assist disabled, returning to CM2";
               } else if (!boiler_transport_available) {
                 cm_transition_reason = "selected boiler transport unavailable, returning to CM2";

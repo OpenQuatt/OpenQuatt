@@ -135,6 +135,14 @@ class BoilerRuntimeContractTest(unittest.TestCase):
         self.assertIn("state.target_c = state.reference_supply_c;", DEFROST_ASSIST_LOGIC)
         self.assertIn("uint32_t maximum_ms = 900000UL;", DEFROST_ASSIST_LOGIC)
         self.assertIn("bounded_maximum_water_temperature(in.maximum_water_temperature_c)", DISPATCH_LOGIC)
+        # Geen referentie uit de terugval op de warmtepompuitgang, en een
+        # defrost-eigen CM3 gaat nooit over in normale ketelhulp.
+        self.assertIn("!id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state},",
+                      SUPERVISORY_RUNTIME)
+        self.assertIn("} else if (defrost_assist_owned) {", SUPERVISORY_RUNTIME)
+        self.assertIn("id(oq_defrost_assist_active) && current_cm_code == 3 ? 2 : current_cm_code);",
+                      SUPERVISORY_RUNTIME)
+        self.assertIn("bool session_closed = false;", DEFROST_ASSIST_LOGIC)
         # De eigenaarsvlag overleeft CM3 nooit.
         self.assertIn("if (desired != 3) id(oq_defrost_assist_active) = false;", SUPERVISORY_RUNTIME)
 

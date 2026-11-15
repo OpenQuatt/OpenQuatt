@@ -383,9 +383,11 @@ policy in `includes/control/oq_boiler_defrost_assist_logic.h`. The
 supervisory observes the defrost, promotes CM2 to CM3 for that cycle and hands
 the dispatcher only the ownership and the supply reference to hold (the supply
 temperature from just before the defrost). The boiler chain itself still has
-no defrost observation. One session is bounded by
-`oq_boiler_defrost_assist_max_s`, and a CM3 that normal assist already owns is
-left untouched.
+no defrost observation. There is one session per defrost report, bounded by
+`oq_boiler_defrost_assist_max_s`, and it needs a real system supply
+measurement (not the heat-pump outlet fallback). A CM3 that normal assist
+already owns is left untouched; a defrost-owned CM3 always returns to CM2 and
+never continues as normal assist.
 
 `oq_boiler_runtime` owns validation, safety and transport. The selected
 transport decides how the requested target is realised:

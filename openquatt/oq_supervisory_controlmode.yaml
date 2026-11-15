@@ -282,7 +282,7 @@ switch:
     optimistic: true
     entity_category: config
     on_turn_off:
-      # Physical absence is the top-level fail-closed gate. Revoke both use
+      # Physical absence is the top-level fail-closed gate. Revoke every use
       # permissions and make the selected boiler transport dormant.
       - switch.turn_off: oq_boiler_assist_enabled
       - switch.turn_off: oq_boiler_defrost_assist_enabled
