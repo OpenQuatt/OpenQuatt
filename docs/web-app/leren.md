@@ -143,6 +143,10 @@ tijdstip is verstreken.
 
 ## Warmtevraag vergelijken
 
+Met een voorlopige woninglijn toont **Diagnose en data → Warmtevraag vergelijken**
+een schatting uit beide lijnen bij dezelfde laatst ontvangen buitentemperatuur.
+Onder de waarden staat wat de beoordeling nog tegenhoudt.
+
 Bij een goedgekeurde geleerde woninglijn toont **Diagnose en data → Warmtevraag vergelijken** hoeveel
 basiswarmte Power House met de ingestelde en met de geleerde lijn zou vragen.
 Beide berekeningen gebruiken hetzelfde rekenmoment, dezelfde metingen en
