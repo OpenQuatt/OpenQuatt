@@ -82,6 +82,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
   }
   const line = selectDisplayedHouseLine(learned);
   const available = Number.isFinite(line.h) && line.h > 0 && Number.isFinite(line.t0);
+  const provisionalSummary = available && !learned.ready ? t("houseLearning.readiness.provisionalSummary") : null;
   const previewCopy = learned.preview && available && !learned.ready
     ? t("houseLearning.readiness.previewAllDays", { count: number(learned.preview.count) })
     : t("houseLearning.readiness.provisionalCopy");
@@ -125,7 +126,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
     const requiredDays = TRAIN_DAYS + CHECK_DAYS;
     const serverCopy = reasonKey ? t(reasonKey) : available
       ? learned.ready ? t("houseLearning.readiness.readyCopy") : previewCopy : "";
-    return renderReadinessCard(title, t("houseLearning.readiness.compactObserved", {
+    return renderReadinessCard(title, provisionalSummary ?? t("houseLearning.readiness.compactObserved", {
       days: number(observedDays.length), known: number(knownCount), spread: observedSpread == null ? "—" : `${number(observedSpread)} °C`,
     }), `
       ${serverCopy ? `<p>${escapeHtml(serverCopy)}</p>` : ""}
@@ -144,7 +145,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
   const trainState = t(missingTrain === 1 ? "houseLearning.readiness.missingTrainingDay" : missingTrain ? "houseLearning.readiness.missingTrainingDays" : "houseLearning.readiness.sufficient", { count: number(missingTrain) });
   const checkState = t(missingChecks === 1 ? "houseLearning.readiness.missingCheckingDay" : missingChecks ? "houseLearning.readiness.missingCheckingDays" : "houseLearning.readiness.sufficient", { count: number(missingChecks) });
   const spreadState = t(progress.spread == null ? "houseLearning.readiness.notAvailable" : progress.missingSpread > 0 ? "houseLearning.readiness.missingSpread" : "houseLearning.readiness.sufficient", { value: number(progress.missingSpread ?? 0) });
-  return renderReadinessCard(title, t("houseLearning.readiness.compact", {
+  return renderReadinessCard(title, provisionalSummary ?? t("houseLearning.readiness.compact", {
     train: number(progress.trainCount), checks: number(progress.checkCount), spread: progress.spread == null ? "—" : `${number(progress.spread)} °C`,
   }), `
     <p>${escapeHtml(copy)}</p>

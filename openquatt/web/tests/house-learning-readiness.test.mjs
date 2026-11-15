@@ -148,6 +148,20 @@ test("voorlopige en goedgekeurde lijn zijn onderscheiden en vertalingen wisselen
   assert.doesNotMatch(html, /Nog geen|dagmetingen/);
 });
 
+test("de uitleg bij de voorlopige woninglijn staat in beide talen boven de beoordeling", () => {
+  const data = records([4, 4, 7, 7, 10, 10, 4, 7, 10]);
+  for (const [locale, title, explanation] of [
+    ["nl", "Voorlopige woninglijn", "De lijn is berekend uit je dagmetingen. Voor toetsing over een breder temperatuurbereik is er nog te weinig bewijs."],
+    ["en", "Provisional heat demand curve", "The curve is based on your daily measurements. There is still too little evidence to validate it over a wider temperature range."],
+  ]) {
+    setLocale(locale, config);
+    const learned = { h: 200, t0: 16 };
+    const card = renderHouseLearningReadiness(data, learned).split("<details")[0];
+    assert.ok(card.includes(`<h5>${title}</h5>`) && card.includes(`<p>${explanation}</p>`));
+    assert.ok(!renderHouseLearningReadiness(data, { ...learned, ready: true }).includes(explanation));
+  }
+});
+
 
 test("historische onbekende kwaliteit levert geen fictieve controledagen of groene criteria", () => {
   for (const locale of ["nl", "en"]) {
