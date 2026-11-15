@@ -146,8 +146,10 @@ tijdstip is verstreken.
 OpenQuatt verzamelt metingen op de controller zodra Leren en de
 weersverwachting aanstaan. Download ze via **Leren → Diagnose en data →
 Meetopname downloaden**. De opname bevat maximaal twaalf uur uit het werkgeheugen
-van de controller. Na een herstart, leerreset of wijziging van de weerlocatie
-begint een nieuwe opname. Uitschakelen van Leren of weer wist de opname.
+van de controller. Na een herstart, leerreset, gewijzigde weerlocatie of
+gewijzigde meetinstellingen begint een nieuwe opname. Voorbeelden zijn een
+andere flowmeter of aangepaste correcties voor de watertemperatuur.
+Uitschakelen van Leren of weer wist de opname.
 
 Het JSON-bestand bevat de gemeten binnen- en buitentemperatuur, warmteafgifte
 en de oorspronkelijke scenario's voor 30, 60 en 180 minuten. Elk scenario

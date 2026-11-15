@@ -552,6 +552,32 @@ void recording_guards() {
   h.handler()->handleRequest(&dropped);
   assert(dropped.response.closed && !dropped.response.finished);
   assert(h.get(recording_route).response.finished);
+
+  // A short export fits even when no large contiguous PSRAM block is available.
+  env.external_allocation_limit = 1024;
+  env.on_external_allocate = [&] {
+    env.now_ms += 10000;
+    env.epoch += 10;
+    h.device.observation(true, 20, 2000);
+  };
+  const uint64_t next_sample = env.now_ms + 10000;
+  const auto grown = h.get(recording_route).response;
+  assert(grown.finished && grown.body.find("[" + std::to_string(next_sample) + ",") != std::string::npos);
+  env.on_external_allocate = [&] { h.device.reset_forecast_evaluation(); };
+  assert(h.get(recording_route).response.status == 410);
+  const unsigned allocations = env.external_allocations;
+  h.device.observation(true, 20, 1900);
+  assert(env.external_allocations == allocations);
+  assert(h.get(recording_route).response.finished);
+
+  h.device.reset_forecast_evaluation(true);
+  h.device.observation(true, 20, 1900);
+  assert(h.get(recording_route).response.status == 503);
+  h.device.reset_forecast_evaluation();
+  env.external_allocation_limit = SIZE_MAX;
+  h.device.observation(true, 20, 1900);
+  assert(h.get(recording_route).response.finished);
+
   AsyncWebServerRequest revoked;
   revoked.url = recording_route;
   revoked.response.after_chunk = [&] { h.enabled.turn_off(); };

@@ -62,13 +62,15 @@ class ForecastRecording {
             static_cast<uint32_t>((samples_[last].monotonic_ms - samples_[window.start].monotonic_ms) / 1000U)};
   }
 
-  void clear() {
+  void clear(bool release_buffers = false) {
     const std::lock_guard lock(mutex_);
     sample_count_ = issue_count_ = sample_next_ = issue_next_ = 0;
     dropped_issue_ms_ = 0;
-    samples_.release();
-    issues_.release();
-    allocation_attempted_ = false;
+    if (release_buffers) {
+      samples_.release();
+      issues_.release();
+    }
+    allocation_attempted_ = bool(samples_);
     segment_ = 0;
     gap_ = true;
     quality_ = {};
@@ -114,26 +116,37 @@ class ForecastRecording {
   }
 
   Result capture(uint64_t now_ms, Snapshot& snapshot) {
-    {
-      const std::lock_guard lock(mutex_);
+    const uint64_t cutoff = cutoff_(now_ms);
+    std::unique_lock lock(mutex_);
+    const uint32_t revision = revision_;
+    // Retry sizing once if the recorder grows while PSRAM is being allocated.
+    for (unsigned attempt = 0; attempt <= 2; ++attempt) {
+      if (revision_ != revision) return Result::EMPTY;
       if (allocation_attempted_ && !samples_) return Result::UNAVAILABLE;
       if (!sample_count_) return Result::EMPTY;
+      const auto observations = window_(samples_, sample_next_, sample_count_, cutoff);
+      if (!observations.count) return Result::EMPTY;
+      const uint64_t first = samples_[observations.start].monotonic_ms;
+      const auto issues = issue_count_ ? window_(issues_, issue_next_, issue_count_, first) : Window{};
+      if (observations.count <= snapshot.observations.size() && issues.count <= snapshot.issues.size()) {
+        copy_window_(samples_, observations, snapshot.observations);
+        copy_window_(issues_, issues, snapshot.issues);
+        snapshot.observation_count = observations.count;
+        snapshot.issue_count = issues.count;
+        snapshot.issues_truncated = dropped_issue_ms_ >= first;
+        snapshot.revision = revision;
+        snapshot.quality = quality_;
+        return Result::READY;
+      }
+      if (attempt == 2) break;
+      lock.unlock();
+      if ((observations.count > snapshot.observations.size() &&
+           !snapshot.observations.allocate_external(observations.count)) ||
+          (issues.count > snapshot.issues.size() && !snapshot.issues.allocate_external(issues.count)))
+        return Result::UNAVAILABLE;
+      lock.lock();
     }
-    // The immutable request copy lives in PSRAM, just like the system recorder.
-    // Allocation and network I/O never hold the sampling mutex.
-    if (!snapshot.observations.allocate_external(kSampleCapacity) || !snapshot.issues.allocate_external(kIssueCapacity))
-      return Result::UNAVAILABLE;
-    const std::lock_guard lock(mutex_);
-    snapshot.revision = revision_;
-    snapshot.quality = quality_;
-    if (!sample_count_) return Result::EMPTY;
-    const uint64_t cutoff = cutoff_(now_ms);
-    snapshot.observation_count = copy_window_(samples_, sample_next_, sample_count_, cutoff, snapshot.observations);
-    if (!snapshot.observation_count) return Result::EMPTY;
-    const uint64_t first = snapshot.observations[0].monotonic_ms;
-    snapshot.issue_count = copy_window_(issues_, issue_next_, issue_count_, first, snapshot.issues);
-    snapshot.issues_truncated = dropped_issue_ms_ >= first;
-    return Result::READY;
+    return Result::UNAVAILABLE;
   }
 
   bool current(uint32_t revision) {
@@ -197,14 +210,12 @@ class ForecastRecording {
   }
 
   template <typename Row>
-  static size_t copy_window_(const openquatt_common::PsramBuffer<Row>& ring, size_t next, size_t count, uint64_t cutoff,
-                             openquatt_common::PsramBuffer<Row>& out) {
-    if (!count) return 0;
-    const auto window = window_(ring, next, count, cutoff);
+  static void copy_window_(const openquatt_common::PsramBuffer<Row>& ring, Window window,
+                           openquatt_common::PsramBuffer<Row>& out) {
+    if (!window.count) return;
     const size_t first = std::min(window.count, ring.size() - window.start);
     std::memcpy(out.data(), ring.data() + window.start, first * sizeof(Row));
     std::memcpy(out.data() + first, ring.data(), (window.count - first) * sizeof(Row));
-    return window.count;
   }
 
   ForecastMutex mutex_;

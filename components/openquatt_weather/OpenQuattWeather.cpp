@@ -162,7 +162,7 @@ void OpenQuattWeather::set_consent(bool enabled) {
   if (++consent_revision_ == 0) consent_revision_ = 1;
   consent_target_ = enabled;
   consent_state_ = ConsentState::PENDING;
-  recording_.clear();
+  recording_.clear(!enabled);
   // Stop outbound work immediately. The switch continues to show the last
   // verified value so a failed revocation can be retried with another OFF.
   invalidate_();
@@ -446,8 +446,8 @@ void OpenQuattWeather::loop() {
   publish_();
 }
 
-void OpenQuattWeather::reset_forecast_evaluation() {
-  recording_.clear();
+void OpenQuattWeather::reset_forecast_evaluation(bool release_recording) {
+  recording_.clear(release_recording);
   if (!storage_) return;
   auto& state = storage_[0];
   oq_power_house::forecast::discard_pending(state.forecast);

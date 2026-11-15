@@ -84,7 +84,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   void on_shutdown() override;
   void on_ota_global_state(ota::OTAState state, float, uint8_t, ota::OTAComponent*) override;
   void observe(const oq_power_house::forecast::Observation& observation);
-  void reset_forecast_evaluation();
+  void reset_forecast_evaluation(bool release_recording = false);
   // Same main-loop owner as the selected outside-temperature sensor.
   float current_outside_temperature() const;
   void set_consent(bool enabled);

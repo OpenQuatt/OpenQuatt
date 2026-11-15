@@ -4,7 +4,9 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          oq_ph_learning::runtime().set_forecast_reset([] { id(oq_weather_experiment).reset_forecast_evaluation(); });
+          oq_ph_learning::runtime().set_forecast_reset([] {
+            id(oq_weather_experiment).reset_forecast_evaluation(!id(oq_ph_learning_enabled).state);
+          });
 
 external_components:
   - source:
