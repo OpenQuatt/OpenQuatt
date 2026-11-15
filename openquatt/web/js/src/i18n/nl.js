@@ -149,7 +149,7 @@ export default {
       learningRequired: "Schakel passief leren in voor een temperatuurscenario.",
       disabled: "Uitgeschakeld", paused: "Gepauzeerd", locationRequired: "Vul eerst een locatie in", saving: "Locatie opslaan…",
       resolving: "Plaats opzoeken…", clock: "Wacht op een geldige klok", waitingWeather: "Wacht op weergegevens",
-      waitingObservation: "Actuele metingen van binnen- en buitentemperatuur en warmteafgifte.", waitingModel: "Wacht op voldoende modelgegevens",
+      waitingObservation: "Wacht op geldige metingen", waitingModel: "Wacht op voldoende modelgegevens",
       storedInvalid: "Opgeslagen locatie ongeldig; sla de locatie opnieuw op", storageFailed: "Opslaan op de controller mislukt",
       consentSaving: "De controller slaat de weerinstelling op.",
       consentFailed: "Weer ophalen is gestopt. De nieuwe instelling kon niet worden opgeslagen. Probeer het opnieuw vóór een herstart.",

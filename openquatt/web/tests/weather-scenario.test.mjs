@@ -77,6 +77,25 @@ test("weather settings show current errors despite a cached scenario", () => {
   assert.equal(renderForecastProgress({ statusOnly: true }), "");
 });
 
+test("measurement status belongs to Outlook, including the entity fallback", () => {
+  for (const [locale, message] of [["nl", "Wacht op geldige metingen"], ["en", "Waiting for valid measurements"]]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    state.weatherForecast = null;
+    for (const reason of ["waiting_for_observation", "invalid_observation", "measurement_gap_or_clock_jump"]) {
+      state.entities.weatherStatus = entity(reason);
+      assert.equal(renderForecastProgress({ statusOnly: true }), "");
+      assert.ok(renderForecastProgress().includes(message));
+    }
+    const p = payload();
+    Object.assign(p.scenario, { valid: false, reason: "observation_invalid", horizon_valid: [false, false, false], temperature_c: [null, null, null] });
+    state.weatherForecast = normalizeWeatherForecast(p);
+    state.entities.weatherStatus = entity("observing");
+    assert.ok(renderForecastProgress().includes(message));
+    state.weatherForecast = normalizeWeatherForecast(payload());
+    assert.ok(!renderForecastProgress().includes(message));
+  }
+});
+
 test("older forecast responses show weather without claiming room estimates", async () => {
   const legacy = payload(); delete legacy.scenario;
   state.weatherForecast = normalizeWeatherForecast(legacy);
