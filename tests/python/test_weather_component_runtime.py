@@ -26,6 +26,7 @@ STUB_HEADERS = (
     "freertos/FreeRTOS.h",
     "freertos/task.h",
     "esp_heap_caps.h",
+    "esp_random.h",
     "esp_timer.h",
     "nvs.h",
 )

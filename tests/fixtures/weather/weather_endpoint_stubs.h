@@ -8,6 +8,7 @@ struct httpd_req_t {
   std::string body;
   size_t chunks = 0, fail_at = 0, largest_chunk = 0;
   bool finished = false, closed = false;
+  std::function<void()> after_chunk;
 };
 inline constexpr const char* HTTPD_200 = "200 OK";
 inline constexpr int SHUT_RDWR = 2;
@@ -36,10 +37,19 @@ inline int httpd_resp_set_hdr(httpd_req_t* req, const char* key, const char* val
 inline int httpd_resp_send_chunk(httpd_req_t* req, const char* bytes, ssize_t size) {
   if (req->fail_at && ++req->chunks == req->fail_at) return ESP_FAIL;
   req->largest_chunk = std::max(req->largest_chunk, static_cast<size_t>(size));
-  if (bytes)
+  if (bytes) {
     req->body.append(bytes, size);
-  else
+    if (req->after_chunk) req->after_chunk();
+  } else {
     req->finished = true;
+  }
+  return ESP_OK;
+}
+
+inline int httpd_resp_send(httpd_req_t* req, const char* bytes, ssize_t size) {
+  req->body.assign(bytes, size);
+  req->status = 200;
+  req->finished = true;
   return ESP_OK;
 }
 
@@ -90,10 +100,10 @@ inline WebServerBase endpoint_server;
 inline WebServerBase* global_web_server_base = &endpoint_server;
 }  // namespace web_server_base
 namespace openquatt_common {
-enum class HttpStatus { SERVICE_UNAVAILABLE = 503, TOO_MANY_REQUESTS = 429 };
-inline void send_http_status(AsyncWebServerRequest& request, HttpStatus status, const char* body) {
-  request.response.status = static_cast<int>(status);
-  request.response.body = body;
+enum class HttpStatus { SERVICE_UNAVAILABLE = 503, TOO_MANY_REQUESTS = 429, GONE = 410 };
+inline void send_http_status(httpd_req_t* raw, HttpStatus status, const char* body) {
+  raw->status = static_cast<int>(status);
+  raw->body = body;
 }
 }  // namespace openquatt_common
 }  // namespace esphome

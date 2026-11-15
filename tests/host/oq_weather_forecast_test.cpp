@@ -177,6 +177,48 @@ void bounded_queue_and_boundary_interpolation() {
   for (const auto& ticket : state.pending) count += ticket.active;
   assert(count <= kPendingSlots);
 }
+
+void paired_baseline_coverage_and_context() {
+  State state;
+  float weather[kForcingSteps + 1];
+  for (auto& v : weather) v = 5;
+  auto o = observation();
+  // A tenfold wrong capacity is indistinguishable at equilibrium. Neither
+  // zero replay error nor the equally good baseline validates capacity.
+  o.c_wh_per_k *= 10;
+  observe(state, o);
+  assert(issue(state, weather, 1));
+  for (uint32_t elapsed = 10; elapsed <= 1800; elapsed += 10) observe(state, observation(elapsed));
+  assert(state.errors[0].issued.count == 1 && state.errors[0].unchanged_room.count == 1);
+  assert(state.errors[0].actual_inputs.mae() == 0 && state.errors[0].unchanged_room.mae() == 0);
+  assert(state.started_epoch == o.epoch && state.evaluated_epoch == o.epoch + 1800);
+  observe(state, observation(1831));
+  assert(state.errors[0].discarded == 0);  // Completed horizon stays completed.
+  assert(state.errors[1].discarded == 1 && state.errors[2].discarded == 1);
+  assert(state.issued_count == 1 && state.discarded_count == 1);
+  o = observation(1841);
+  o.context = 2;
+  observe(state, o);
+  assert(state.issued_count == 0 && state.started_epoch == 0 && state.errors[1].discarded == 0);
+  assert(issue(state, weather, 1) && state.started_epoch == o.epoch);
+  ErrorStats bias;
+  bias.add(-0.4);
+  bias.add(0.2);
+  assert(std::fabs(bias.bias() + 0.1) < 1e-12 && std::fabs(bias.mae() - 0.3) < 1e-12);
+}
+void evaluation_uses_the_observed_clock() {
+  State state;
+  float weather[kForcingSteps + 1];
+  for (auto& temperature : weather) temperature = 5;
+  observe(state, observation());
+  assert(issue(state, weather, 1));
+  for (uint32_t elapsed = 10; elapsed < 1800; elapsed += 10) observe(state, observation(elapsed));
+  auto endpoint = observation(1800);
+  endpoint.epoch -= 2;  // Accepted UTC/monotonic discrepancy.
+  observe(state, endpoint);
+  assert(state.errors[0].issued.count == 1);
+  assert(state.evaluated_epoch == endpoint.epoch);
+}
 }  // namespace
 
 int main() {
@@ -185,4 +227,6 @@ int main() {
   heating_assumption_is_not_a_model_error();
   gates_gaps_and_restart();
   bounded_queue_and_boundary_interpolation();
+  paired_baseline_coverage_and_context();
+  evaluation_uses_the_observed_clock();
 }

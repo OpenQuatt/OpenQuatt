@@ -7,6 +7,7 @@
 #include "esphome/components/network/util.h"
 #include "esphome/core/log.h"
 #include "esp_heap_caps.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "nvs.h"
 
@@ -123,6 +124,8 @@ void OpenQuattWeather::setup() {
     mark_failed();
     return;
   }
+  boot_id_ = esp_random();
+  if (boot_id_ == 0) boot_id_ = 1;
   forecast_snapshots_.bind(&storage_[0].public_snapshot, &storage_[0].request_snapshot);
 #ifdef USE_ESP32
   setup_forecast_endpoint_();
@@ -147,6 +150,7 @@ void OpenQuattWeather::invalidate_() {
   if (storage_) {
     storage_[0].current.generation = 0;
     oq_power_house::forecast::discard_pending(storage_[0].forecast);
+    recording_.gap(storage_[0].forecast);
     storage_[0].issued_scenario = {};
   }
   publish_forecast_();
@@ -158,9 +162,11 @@ void OpenQuattWeather::set_consent(bool enabled) {
   if (++consent_revision_ == 0) consent_revision_ = 1;
   consent_target_ = enabled;
   consent_state_ = ConsentState::PENDING;
+  recording_.clear(!enabled);
   // Stop outbound work immediately. The switch continues to show the last
   // verified value so a failed revocation can be retried with another OFF.
   invalidate_();
+  oq_power_house::forecast::reset_evaluation(storage_[0].forecast);
   publish_text_(status_, CONSENT_PENDING);
   if (!worker_) worker_attempted_ = false;  // One new attempt per explicit action.
   request_pending_save_();
@@ -186,8 +192,9 @@ void OpenQuattWeather::set_location_query(const std::string& query, const std::s
     publish_location_(state.location.query, request.c_str(), SaveState::STORED);
     return;
   }
+  recording_.clear();
   invalidate_();
-  for (auto& errors : state.forecast.errors) errors = {};
+  oq_power_house::forecast::reset_evaluation(state.forecast);
   if (++configuration_ == 0) configuration_ = 1;
   state.pending_location = location;
   std::memcpy(state.pending_save_request, request.c_str(), request.size() + 1);
@@ -439,6 +446,17 @@ void OpenQuattWeather::loop() {
   publish_();
 }
 
+void OpenQuattWeather::reset_forecast_evaluation(bool release_recording) {
+  recording_.clear(release_recording);
+  if (!storage_) return;
+  auto& state = storage_[0];
+  oq_power_house::forecast::discard_pending(state.forecast);
+  oq_power_house::forecast::reset_evaluation(state.forecast);
+  state.forecast.status = "waiting_for_observation";
+  state.issued_scenario = {};
+  publish_();
+}
+
 void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& observation) {
   if (!storage_ || !allowed_()) return;
   auto& state = storage_[0];
@@ -446,6 +464,7 @@ void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& obse
   const uint64_t now_ms = monotonic_ms();
   if (checked.monotonic_ms > now_ms || now_ms - checked.monotonic_ms > 15000) checked.valid = false;
   oq_power_house::forecast::observe(state.forecast, checked);
+  RecordedIssue recorded_issue{};
   const bool model_ready = oq_power_house::forecast::valid_model(checked);
   if (!model_ready) {
     // Revoke the displayed issue without erasing earlier diagnostic tickets.
@@ -481,6 +500,9 @@ void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& obse
         issued.h_w_per_k = static_cast<float>(ticket.h);
         issued.c_wh_per_k = static_cast<float>(ticket.c);
         for (size_t i = 0; i < 3; ++i) issued.temperature_c[i] = static_cast<float>(ticket.issued[i]);
+        recorded_issue.monotonic_ms = ticket.monotonic_ms;
+        recorded_issue.scenario = issued;
+        std::memcpy(recorded_issue.outside_c, forcing, sizeof(forcing));
         break;
       }
       ESP_LOGI(TAG, "Issued epoch=%u weather=%u model_samples=%u H=%.2f C=%.2f held_heat=%.1f W room=%.2f/%.2f/%.2f C",
@@ -488,6 +510,13 @@ void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& obse
                static_cast<unsigned>(checked.model_samples), checked.h_w_per_k, checked.c_wh_per_k, checked.heat_w,
                state.forecast.latest[0], state.forecast.latest[1], state.forecast.latest[2]);
     }
+  }
+  if (oq_power_house::forecast::valid_observation(checked)) {
+    recording_.observe({checked.monotonic_ms, checked.epoch, checked.context, static_cast<float>(checked.room_c),
+                        static_cast<float>(checked.outside_c), static_cast<float>(checked.heat_w)},
+                       state.forecast, recorded_issue.monotonic_ms ? &recorded_issue : nullptr);
+  } else {
+    recording_.gap(state.forecast);
   }
   publish_();
 }

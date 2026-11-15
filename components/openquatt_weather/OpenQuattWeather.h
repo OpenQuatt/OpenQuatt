@@ -18,7 +18,7 @@
 #include "OpenQuattWeatherHttp.h"
 #include "OpenQuattWeatherPolicy.h"
 #include "WeatherTextSnapshot.h"
-#include "WeatherForecastSnapshot.h"
+#include "WeatherForecastRecording.h"
 #include "includes/learning/oq_ph_forecast_logic.h"
 #include "lwip/ip_addr.h"
 #include <freertos/FreeRTOS.h>
@@ -54,6 +54,8 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   void set_clock(time::RealTimeClock* clock) { clock_ = clock; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* auth) { web_auth_ = auth; }
   openquatt_web_auth::OpenQuattWebAuth* web_auth() const { return web_auth_; }
+  ForecastRecording& forecast_recording() { return recording_; }
+  uint32_t boot_id() const { return boot_id_; }
   ForecastSnapshotAccess& forecast_endpoint() { return forecast_snapshots_; }
   void set_enabled_switch(WeatherEnabledSwitch* entity) {
     enabled_ = entity;
@@ -82,6 +84,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   void on_shutdown() override;
   void on_ota_global_state(ota::OTAState state, float, uint8_t, ota::OTAComponent*) override;
   void observe(const oq_power_house::forecast::Observation& observation);
+  void reset_forecast_evaluation(bool release_recording = false);
   // Same main-loop owner as the selected outside-temperature sensor.
   float current_outside_temperature() const;
   void set_consent(bool enabled);
@@ -116,7 +119,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
     uint32_t duration_ms = 0, stack_free = 0;
     uint32_t internal_largest_low = 0;
   };
-  static_assert(sizeof(Storage) <= 21U * 1024U, "weather data must fit its strict PSRAM budget");
+  static_assert(sizeof(Storage) <= 22U * 1024U, "weather data must fit its strict PSRAM budget");
   // Worker owns only request/result/parser fields while REQUESTED. Main loop
   // always owns location/current/forecast and copies results only after READY.
   openquatt_common::PsramObjectArray<Storage, 1> storage_;
@@ -147,7 +150,9 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   oq_weather::OtaPause ota_pause_;
   WeatherTextSnapshots text_snapshots_;
   ForecastSnapshotAccess forecast_snapshots_;
+  ForecastRecording recording_;
   uint32_t generation_ = 1, configuration_ = 1, accepted_serial_ = 0;
+  uint32_t boot_id_ = 0;
   uint64_t next_fetch_ms_ = 0;
   uint32_t backoff_ms_ = 60000, last_report_ms_ = 0;
   uint32_t request_count_ = 0, failure_count_ = 0, worker_stack_min_ = 0, last_duration_ms_ = 0;

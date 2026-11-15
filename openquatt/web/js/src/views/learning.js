@@ -1,12 +1,13 @@
 import { hasWeatherSettings, patchWeatherOutlook, patchWeatherSettings, renderWeatherOutlook, renderWeatherSettings } from "../settings/weather.js";
 import { hasEntity } from "../core/app-shared.js";
+import { getEntityValue } from "../core/entity-store.js";
 import { renderOqIcon } from "../core/config.js";
 import { escapeHtml } from "../core/html.js";
 import { getLearningPanelHref } from "../core/navigation.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { renderSettingsFeedback, syncSettingsFeedback } from "../features/settings-feedback.js";
 import { state } from "../core/state.js";
-import { t } from "../i18n/index.js";
+import { formatNumber, t } from "../i18n/index.js";
 import { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } from "../settings/house-learning.js";
 import { renderLearningExplanation } from "./learning-explanation.js";
 
@@ -26,6 +27,7 @@ export function patchLearningView() {
     return true;
   }
   if (weather && state.learningPanel === "configuration" && !patchWeatherSettings()) return false;
+  if (weather && state.learningPanel === "diagnostics" && !patchForecastRecording()) return false;
   return hasEntity("houseLearningEnabled") ? patchHouseLearningSettingsStatus() : true;
 }
 
@@ -33,8 +35,37 @@ function renderLearningPanelLink(id, label, icon, active) {
   return `<a class="oq-settings-group-button oq-learning-link${active ? " is-active" : ""}" href="${escapeHtml(getLearningPanelHref(id))}" data-oq-action="select-learning-panel" data-learning-panel="${id}"${active ? ' aria-current="page"' : ""}>${renderOqIcon(icon, "oq-settings-group-button-icon")}<span class="oq-settings-group-button-label">${escapeHtml(label)}</span></a>`;
 }
 
+function forecastRecordingStatusCopy() {
+  const status = state.forecastRecordingStatus;
+  if (state.forecastRecordingError || status?.unavailable) return t("learningWorkspace.measurementExport.unavailable");
+  if (getEntityValue("weatherEnabled") !== true || getEntityValue("houseLearningEnabled") !== true || !status?.count) {
+    return status?.count === 0 ? t("learningWorkspace.measurementExport.empty") : "";
+  }
+  const minutes = Math.floor(status.duration_s / 60);
+  const duration = minutes === 0 ? t("warmup.durationLessThanMinute") : minutes >= 60
+    ? t("houseLearning.chart.durationHoursMinutes", { hours: formatNumber(Math.floor(minutes / 60)), minutes: formatNumber(minutes % 60) })
+    : t("houseLearning.chart.durationMinutes", { minutes: formatNumber(minutes) });
+  return t("learningWorkspace.measurementExport.progress", { count: formatNumber(status.count), duration });
+}
+
+function patchForecastRecording() {
+  const progress = state.root.querySelector("[data-oq-forecast-recording-status]");
+  const button = state.root.querySelector('[data-oq-action="download-forecast-measurements"]');
+  if (!progress || !button) return false;
+  const copy = forecastRecordingStatusCopy();
+  if (progress.textContent !== copy) progress.textContent = copy;
+  button.disabled = Boolean(state.busyAction);
+  return true;
+}
+
 function renderLearningDiagnostics() {
-  const downloads = renderHouseLearningSettings("export");
+  const measurements = hasWeatherSettings() ? `<div class="oq-learning-download">
+    <div><h5>${escapeHtml(t("learningWorkspace.measurementExport.title"))}</h5>
+    <p>${escapeHtml(t("learningWorkspace.measurementExport.copy"))}</p>
+    <p data-oq-forecast-recording-status role="status">${escapeHtml(forecastRecordingStatusCopy())}</p></div>
+    <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-forecast-measurements"${state.busyAction ? " disabled" : ""}>${escapeHtml(t("learningWorkspace.measurementExport.download"))}</button>
+  </div>` : "";
+  const downloads = renderHouseLearningSettings("export") + measurements;
   const data = downloads ? `<section class="oq-settings-section">
     <h4 class="oq-learning-diagnostic-title">${escapeHtml(t("learningWorkspace.downloads"))}</h4>
     ${downloads}

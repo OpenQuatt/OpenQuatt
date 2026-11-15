@@ -29,7 +29,8 @@ struct Environment {
   std::vector<unsigned char> committed, staged;
   int committed_consent = -1, staged_consent = -1;
   std::map<unsigned, int> handles;
-  std::function<void()> on_write;
+  std::function<void()> on_write, on_external_allocate;
+  size_t external_allocation_limit = SIZE_MAX;
   std::function<void(const char*)> observe_nvs;
 };
 inline Environment env;
@@ -66,7 +67,10 @@ class RAMAllocator {
   T* allocate(size_t count) {
     if (mode_ == ALLOC_EXTERNAL) {
       ++weather_fixture::env.external_allocations;
-      if (weather_fixture::env.fail_external_allocation) return nullptr;
+      if (auto callback = std::exchange(weather_fixture::env.on_external_allocate, {})) callback();
+      if (weather_fixture::env.fail_external_allocation ||
+          count > weather_fixture::env.external_allocation_limit / sizeof(T))
+        return nullptr;
     } else {
       ++weather_fixture::env.internal_allocations;
     }
@@ -211,6 +215,10 @@ struct ip_addr_t {
   uint32_t address = 0;
 };
 inline int64_t esp_timer_get_time() { return static_cast<int64_t>(weather_fixture::env.now_ms * 1000); }
+inline uint32_t esp_random() {
+  static uint32_t next = 0;
+  return ++next;
+}
 inline constexpr int MALLOC_CAP_INTERNAL = 1, MALLOC_CAP_8BIT = 2;
 inline size_t heap_caps_get_free_size(int) { return 65536; }
 inline size_t heap_caps_get_minimum_free_size(int) { return 60000; }

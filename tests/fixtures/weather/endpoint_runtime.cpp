@@ -63,16 +63,17 @@ class Device : public openquatt_weather::OpenQuattWeather {
   static size_t storage_bytes() { return sizeof(Storage); }
   const auto& issued_scenario() const { return storage_[0].issued_scenario; }
   bool has_scalar() const { return std::isfinite(storage_[0].forecast.latest[0]); }
-  void observation(bool ready = true, double room = 0, double heat = 0) {
+  void observation(bool ready = true, double room = 0, double heat = 0, uint32_t context = 1, bool valid = true,
+                   double outside = 10.5) {
     oq_power_house::forecast::Observation value;
     value.monotonic_ms = env.now_ms;
     value.epoch = env.epoch;
-    value.context = 1;
+    value.context = context;
     value.model_samples = 155;
-    value.valid = true;
+    value.valid = valid;
     value.model_ready = ready;
     value.room_c = room;
-    value.outside_c = 10.5;
+    value.outside_c = outside;
     value.heat_w = heat;
     value.h_w_per_k = 220;
     value.c_wh_per_k = 8000;
@@ -116,8 +117,9 @@ struct Harness {
   }
   ~Harness() { web_server_base::endpoint_server.clear(); }
   AsyncWebHandler* handler() { return web_server_base::endpoint_server.handlers[0]; }
-  AsyncWebServerRequest get() {
+  AsyncWebServerRequest get(const char* path = "/openquatt/weather/forecast") {
     AsyncWebServerRequest request;
+    request.url = path;
     assert(handler()->canHandle(&request));
     handler()->handleRequest(&request);
     return request;
@@ -138,6 +140,8 @@ struct Harness {
     assert(!enabled.state);
   }
 };
+
+constexpr char recording_route[] = "/openquatt/weather/recording";
 
 void schema_and_guards() {
   Harness h;
@@ -324,6 +328,31 @@ void diagnostic_snapshots_survive_without_storage() {
   }
 }
 
+void forecast_quality() {
+  Harness h;
+  h.start();
+  h.device.observation(true, 20, 1900);
+  std::puts(h.get(recording_route).response.body.c_str());
+  double room = 20;
+  for (unsigned seconds = 10; seconds <= 10800; seconds += 10) {
+    env.now_ms += 10000;
+    env.epoch += 10;
+    room = oq_power_house::forecast::advance(room, 10.5, 1900, 220, 8000, 10.0 / 3600);
+    h.device.observation(true, room, 1900);
+  }
+  std::puts(h.get(recording_route).response.body.c_str());
+  // A gap discards outstanding tickets without promoting or erasing prior scores.
+  env.now_ms += 40000;
+  env.epoch += 40;
+  h.device.observation(false, room, 1900, 1, false);
+  std::puts(h.get(recording_route).response.body.c_str());
+  h.stop();
+  assert(h.get(recording_route).response.status == 410);
+  h.start();
+  h.device.observation(true, room, 1900, 2);
+  std::puts(h.get(recording_route).response.body.c_str());
+}
+
 void atomic_scenario_origin_and_new_fetch() {
   Harness h;
   h.start();
@@ -351,6 +380,21 @@ void atomic_scenario_origin_and_new_fetch() {
   env.epoch += 10;
   h.device.observation(true, 20, 3000);
   std::puts(h.get().response.body.c_str());
+}
+
+void forecast_evaluation_reset() {
+  Harness h;
+  h.start();
+  h.device.observation(true, 20, 1900);
+  const auto before = h.get(recording_route);
+  assert(before.response.finished);
+  h.device.reset_forecast_evaluation();
+  assert(h.get(recording_route).response.status == 410);
+  std::puts(h.get().response.body.c_str());  // No adapter tick between reset and GET.
+  env.now_ms += 10000;
+  env.epoch += 10;
+  h.device.observation(true, 20, 1900);
+  std::puts(h.get(recording_route).response.body.c_str());
 }
 
 void atomic_scenario_failure_gates() {
@@ -434,6 +478,114 @@ void wind_research_gates() {
     std::puts(h.get().response.body.c_str());
   }
 }
+void recording_night() {
+  Harness h;
+  h.start();
+  // No requests during 13 hours of simulated controller time. Fetch deterministic
+  // weather into the device on its own schedule and vary delivered heat.
+  for (unsigned second = 0; second <= 13 * 3600; second += 10) {
+    if (second % 600 == 0) h.device.install(7 + second / 600);
+    const double heat = second % 3600 < 1800 ? 1900 : 0;
+    h.device.observation(true, 20.0 + (second % 3600) / 10000.0, heat, 1, second != 7200, 10);
+    if (second < 13 * 3600) {
+      env.now_ms += 10000;
+      env.epoch += 10;
+    }
+  }
+  const auto status = h.get("/openquatt/weather/recording/status");
+  assert(status.response.body == R"({"count":4320,"duration_s":43200})");
+  const auto capture = h.get(recording_route);
+  assert(capture.response.status == 200 && capture.response.finished && !capture.response.closed);
+  assert(capture.response.headers.at("Cache-Control") == "no-store");
+  assert(capture.response.headers.at("Content-Disposition").find("openquatt-forecast-measurements.json") !=
+         std::string::npos);
+  std::puts(capture.response.body.c_str());
+}
+
+void recording_issue_after_first_weather() {
+  Harness h;
+  h.enabled.turn_on();
+  h.device.finish_job();
+  assert(h.enabled.state);
+  h.device.observation(true, 20, 1900);
+  assert(!h.device.has_scalar());
+  h.device.install();
+  h.device.observation(true, 20, 1900);
+  assert(h.device.has_scalar());
+  const auto capture = h.get(recording_route);
+  assert(capture.response.status == 200 && capture.response.finished);
+  std::puts(capture.response.body.c_str());
+}
+
+void recording_allocation_failure() {
+  Harness h;
+  h.start();
+  env.fail_external_allocation = true;
+  h.device.observation(true, 20, 1900);
+  assert(h.get("/openquatt/weather/recording/status").response.status == 503);
+  assert(h.get(recording_route).response.status == 503);
+  assert(h.get().response.status == 200 && h.device.has_scalar());
+  assert(env.internal_allocations == 0);
+  env.fail_external_allocation = false;
+  h.device.reset_forecast_evaluation();
+  assert(h.get(recording_route).response.status == 410);
+  h.device.observation(true, 20, 1900);
+  assert(h.get(recording_route).response.finished);
+}
+
+void recording_guards() {
+  Harness h;
+  h.start();
+  assert(h.get(recording_route).response.status == 410);
+  h.device.observation(true, 20, 1900);
+  AsyncWebServerRequest denied;
+  denied.url = recording_route;
+  denied.authenticated = false;
+  h.handler()->handleRequest(&denied);
+  assert(denied.response.status == 401 && denied.response.body.empty());
+  env.fail_external_allocation = true;
+  assert(h.get(recording_route).response.status == 503);
+  env.fail_external_allocation = false;
+  AsyncWebServerRequest dropped;
+  dropped.url = recording_route;
+  dropped.response.fail_at = 2;
+  h.handler()->handleRequest(&dropped);
+  assert(dropped.response.closed && !dropped.response.finished);
+  assert(h.get(recording_route).response.finished);
+
+  // A short export fits even when no large contiguous PSRAM block is available.
+  env.external_allocation_limit = 1024;
+  env.on_external_allocate = [&] {
+    env.now_ms += 10000;
+    env.epoch += 10;
+    h.device.observation(true, 20, 2000);
+  };
+  const uint64_t next_sample = env.now_ms + 10000;
+  const auto grown = h.get(recording_route).response;
+  assert(grown.finished && grown.body.find("[" + std::to_string(next_sample) + ",") != std::string::npos);
+  env.on_external_allocate = [&] { h.device.reset_forecast_evaluation(); };
+  assert(h.get(recording_route).response.status == 410);
+  const unsigned allocations = env.external_allocations;
+  h.device.observation(true, 20, 1900);
+  assert(env.external_allocations == allocations);
+  assert(h.get(recording_route).response.finished);
+
+  h.device.reset_forecast_evaluation(true);
+  h.device.observation(true, 20, 1900);
+  assert(h.get(recording_route).response.status == 503);
+  h.device.reset_forecast_evaluation();
+  env.external_allocation_limit = SIZE_MAX;
+  h.device.observation(true, 20, 1900);
+  assert(h.get(recording_route).response.finished);
+
+  AsyncWebServerRequest revoked;
+  revoked.url = recording_route;
+  revoked.response.after_chunk = [&] { h.enabled.turn_off(); };
+  h.handler()->handleRequest(&revoked);
+  assert(revoked.response.closed && !revoked.response.finished);
+  assert(h.get(recording_route).response.status == 410);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -461,10 +613,22 @@ int main(int argc, char** argv) {
     invalid_location_receipt_cannot_precede_atomic_invalidation();
   else if (scenario == "wind")
     wind_research_gates();
+  else if (scenario == "quality")
+    forecast_quality();
+  else if (scenario == "evaluation_reset")
+    forecast_evaluation_reset();
+  else if (scenario == "recording_night")
+    recording_night();
+  else if (scenario == "recording_duplicate")
+    recording_issue_after_first_weather();
+  else if (scenario == "recording_allocation")
+    recording_allocation_failure();
+  else if (scenario == "recording_guards")
+    recording_guards();
   else if (scenario == "memory") {
     std::printf("Storage=%zu Snapshot=%zu Series=%zu\n", Device::storage_bytes(),
                 sizeof(openquatt_weather::ForecastSnapshot), sizeof(oq_weather::Series));
-    assert(Device::storage_bytes() <= 21U * 1024U);
+    assert(Device::storage_bytes() <= 22U * 1024U);
   } else
     assert(false);
 }

@@ -50,10 +50,12 @@ struct ErrorStats {
     signed_sum += error;
   }
   double mae() const { return count ? absolute_sum / count : NAN; }
+  double bias() const { return count ? signed_sum / count : NAN; }
 };
 
 struct HorizonStats {
-  ErrorStats issued, persistence, actual_inputs, weather_contribution, heat_assumption;
+  ErrorStats issued, persistence, actual_inputs, weather_contribution, heat_assumption, unchanged_room;
+  uint32_t discarded = 0;
 };
 
 struct Ticket {
@@ -61,7 +63,7 @@ struct Ticket {
   uint8_t next_horizon = 0;
   uint32_t epoch = 0, context = 0, model_samples = 0, weather_generation = 0;
   uint64_t monotonic_ms = 0;
-  double h = NAN, c = NAN, held_heat = NAN, held_outside = NAN;
+  double h = NAN, c = NAN, held_heat = NAN, held_outside = NAN, initial_room = NAN;
   float weather[kForcingSteps + 1]{};
   double issued[kHorizons]{}, persistence[kHorizons]{};
   double actual_inputs = NAN, weather_actual_heat = NAN;
@@ -75,19 +77,31 @@ struct State {
   uint32_t latest_issue_epoch = 0;
   uint32_t context = 0, issued_count = 0, discarded_count = 0;
   uint32_t last_model_samples = 0;
+  uint32_t started_epoch = 0, evaluated_epoch = 0;
+  uint32_t evaluation_id = 1;
   double latest[kHorizons]{NAN, NAN, NAN};
   const char* status = "waiting_for_observation";
 };
 
 inline void discard_pending(State& state) {
   for (auto& ticket : state.pending) {
-    if (ticket.active) ++state.discarded_count;
+    if (ticket.active) {
+      ++state.discarded_count;
+      for (size_t i = ticket.next_horizon; i < kHorizons; ++i) ++state.errors[i].discarded;
+    }
     ticket.active = false;
   }
   state.previous = {};
   state.last_issue_ms = 0;
   state.latest_issue_epoch = 0;
   for (auto& value : state.latest) value = NAN;
+}
+
+inline void reset_evaluation(State& state) {
+  for (auto& errors : state.errors) errors = {};
+  state.issued_count = state.discarded_count = 0;
+  state.started_epoch = state.evaluated_epoch = 0;
+  if (++state.evaluation_id == 0) state.evaluation_id = 1;
 }
 
 inline double ticket_weather(const Ticket& t, double elapsed_s) {
@@ -105,13 +119,13 @@ inline void observe(State& state, const Observation& observation) {
   }
   if (state.context != observation.context) {
     discard_pending(state);
-    for (auto& errors : state.errors) errors = {};
+    reset_evaluation(state);
     state.context = observation.context;
     state.last_model_samples = 0;
   }
   if (observation.model_samples < state.last_model_samples) {
     discard_pending(state);
-    for (auto& errors : state.errors) errors = {};
+    reset_evaluation(state);
   }
   state.last_model_samples = observation.model_samples;
   const auto& previous = state.previous;
@@ -151,6 +165,8 @@ inline void observe(State& state, const Observation& observation) {
           errors.issued.add(ticket.issued[i] - measured);
           errors.persistence.add(ticket.persistence[i] - measured);
           errors.actual_inputs.add(ticket.actual_inputs - measured);
+          errors.unchanged_room.add(ticket.initial_room - measured);
+          state.evaluated_epoch = observation.epoch;
           errors.weather_contribution.add(ticket.weather_actual_heat - ticket.actual_inputs);
           errors.heat_assumption.add(ticket.issued[i] - ticket.weather_actual_heat);
           if (++ticket.next_horizon == kHorizons) ticket.active = false;
@@ -188,6 +204,7 @@ inline bool issue(State& state, const float* weather, uint32_t generation) {
   ticket->c = o.c_wh_per_k;
   ticket->held_heat = o.heat_w;
   ticket->held_outside = o.outside_c;
+  ticket->initial_room = o.room_c;
   ticket->actual_inputs = ticket->weather_actual_heat = o.room_c;
   double room = o.room_c;
   size_t horizon = 0;
@@ -205,6 +222,7 @@ inline bool issue(State& state, const float* weather, uint32_t generation) {
   state.last_issue_ms = o.monotonic_ms;
   state.latest_issue_epoch = o.epoch;
   ++state.issued_count;
+  if (!state.started_epoch) state.started_epoch = o.epoch;
   state.status = "observing";
   return true;
 }

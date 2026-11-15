@@ -141,6 +141,26 @@ Bij een korte onderbreking kan het laatst ontvangen scenario tijdelijk zichtbaar
 blijven. De waarden verdwijnen na 30 seconden zonder bevestiging of zodra hun
 tijdstip is verstreken.
 
+## Meetopname Vooruitblik
+
+OpenQuatt verzamelt metingen op de controller zodra Leren en de
+weersverwachting aanstaan. Download ze via **Leren → Diagnose en data →
+Meetopname downloaden**. De opname bevat maximaal twaalf uur uit het werkgeheugen
+van de controller. Na een herstart, leerreset, gewijzigde weerlocatie of
+gewijzigde meetinstellingen begint een nieuwe opname. Voorbeelden zijn een
+andere flowmeter of aangepaste correcties voor de watertemperatuur.
+Uitschakelen van Leren of weer wist de opname.
+
+Het JSON-bestand bevat de gemeten binnen- en buitentemperatuur, warmteafgifte
+en de oorspronkelijke scenario's voor 30, 60 en 180 minuten. Elk scenario
+bevat de toen gebruikte modelparameters en verwachte buitentemperatuur.
+Daarmee kun je buiten OpenQuatt herberekenen met de gemeten invoer en vergelijken
+met een gelijkblijvende binnentemperatuur. Gebruik steeds meetpunten in hetzelfde
+segment. Een onderbreking in de metingen of een kloksprong begint een nieuw
+segment. De samenvatting onder `quality` telt sinds het begin van de huidige
+beoordeling en kan een langere periode beslaan dan de meetreeks. Locatie en
+coördinaten staan niet in de export.
+
 ## Warmtevraag vergelijken
 
 Bij een goedgekeurde geleerde woninglijn toont **Diagnose en data → Warmtevraag vergelijken** hoeveel
