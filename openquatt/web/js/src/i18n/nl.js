@@ -4737,6 +4737,7 @@ export default {
     lifetimeHistory: "Lifetime energiehistorie",
     today: "Vandaag",
     hourDataSinceRestart: "uurdata sinds herstart",
+    tipRecoveredEnergy: "Bevat herstelde energie zonder uurdetail",
     dayTotal: "dagtotaal",
     copEer: "COP / EER",
     avgEer: "Gemiddelde EER",
