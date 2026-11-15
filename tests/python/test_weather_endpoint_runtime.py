@@ -57,9 +57,38 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
     def test_concurrent_main_loop_publication_and_real_http_serialization(self):
         self.scenario("concurrency")
 
-    def test_complete_strict_psram_layout_stays_below_twenty_one_kib(self):
+    def test_complete_strict_psram_layout_stays_below_twenty_two_kib(self):
         output = self.scenario("memory")
         self.assertIn("Storage=", output)
+
+    def test_quality_reuses_real_scores_and_masks_disabled_or_reset_sessions(self):
+        frames = [json.loads(line) for line in self.scenario("quality").splitlines()]
+        empty, scored, gap, reset = [frame["quality"] for frame in frames]
+        self.assertEqual([row["samples"] for row in empty["horizons"]], [0, 0, 0])
+        self.assertTrue(all(row["mae_c"] is None for row in empty["horizons"]))
+        self.assertEqual([row["samples"] for row in scored["horizons"]], [11, 9, 1])
+        for row in scored["horizons"]:
+            self.assertLess(row["mae_c"], 0.00001)
+            self.assertLess(row["model_mae_c"], 0.00001)
+            self.assertGreater(row["unchanged_room_mae_c"], 0)
+            self.assertEqual(row["samples"] + row["pending"] + row["discarded"], scored["issued"])
+        for before, after in zip(scored["horizons"], gap["horizons"]):
+            self.assertEqual(before["samples"], after["samples"])
+            self.assertEqual(after["pending"], 0)
+            self.assertEqual(after["samples"] + after["discarded"], gap["issued"])
+        self.assertGreater(scored["evaluated_epoch"], scored["started_epoch"])
+        self.assertEqual(frames[1]["observations"][0][-1], 1900)
+        self.assertEqual(frames[1]["heat_scope"], "learner_selected_heat_to_water")
+        self.assertEqual(reset["model_context"], 2)
+        self.assertTrue(all(row["samples"] == 0 and row["mae_c"] is None for row in reset["horizons"]))
+
+    def test_learning_reset_revokes_the_recording_and_displayed_scenario_before_the_next_tick(self):
+        reset, resumed = [json.loads(line) for line in self.scenario("evaluation_reset").splitlines()]
+        self.assertTrue(reset["valid"])
+        self.assertFalse(reset["scenario"]["valid"])
+        self.assertGreater(resumed["boot_id"], 0)
+        self.assertEqual(len(resumed["observations"]), 1)
+        self.assertEqual(resumed["quality"]["issued"], 1)
 
     def test_wind_research_is_atomic_optional_timestamped_and_never_revived(self):
         normal, partial, missing, no_dew_point, stale, expired, disabled, location, ota = [
@@ -91,6 +120,44 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
             self.assertIsNone(frame["current_wind"]["direction_deg"])
         for frame in (stale, disabled, location, ota):
             self.assertNotIn("wind_direction_deg", frame)
+
+    def test_after_a_night_offline_the_device_download_has_measured_input_and_frozen_issues(self):
+        body = self.scenario("recording_night")
+        recording = json.loads(body)
+        self.assertEqual(recording["schema"], 2)
+        self.assertEqual(recording["storage"], "controller_psram")
+        self.assertEqual(recording["max_age_s"], 43200)
+        rows = recording["observations"]
+        self.assertEqual(len(rows), 4320)
+        self.assertEqual(rows[-1][0] - rows[0][0], 43200000)
+        self.assertEqual(rows[-1][1] - rows[0][1], 43200)
+        self.assertEqual({row[-1] for row in rows}, {0, 1900})
+        self.assertNotEqual(rows[359][2], rows[360][2])
+        self.assertEqual(rows[360][0] - rows[359][0], 20000)
+        self.assertFalse(recording["issues_truncated"])
+        self.assertEqual(len(recording["issues"]), 48)
+        by_time = {row[0]: row for row in rows}
+        for row in recording["issues"]:
+            issue = row["scenario"]
+            original = by_time[row["monotonic_ms"]]
+            self.assertEqual(len(row["forecast_outside_c"]), 13)
+            self.assertEqual(issue["issued_epoch"], original[1])
+            self.assertEqual(issue["held_heat_w"], original[-1])
+            self.assertEqual(issue["room_start_c"], original[-3])
+            self.assertTrue(all(issue["horizon_valid"]))
+        self.assertNotIn("latitude", body)
+        self.assertNotIn("location", body)
+
+    def test_weather_arrival_at_an_already_recorded_observation_keeps_the_first_issue(self):
+        recording = json.loads(self.scenario("recording_duplicate"))
+        self.assertEqual(len(recording["observations"]), 1)
+        self.assertEqual(len(recording["issues"]), 1)
+        self.assertEqual(recording["issues"][0]["monotonic_ms"], recording["observations"][0][0])
+
+    def test_recording_authentication_allocation_failure_disconnect_and_consent_revocation(self):
+        for name in ("recording_guards", "recording_allocation"):
+            with self.subTest(name=name):
+                self.scenario(name)
 
     def test_diagnostics_remain_readable_without_psram(self):
         self.scenario("diagnostics")

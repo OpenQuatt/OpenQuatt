@@ -7,6 +7,8 @@ globalThis.window = { innerWidth: 1200, location: { pathname: "/" }, setTimeout,
   localStorage: { getItem: () => null }, sessionStorage: { getItem: () => null } };
 const { state } = await import("../js/src/core/state.js");
 const { normalizeWeatherForecast, weatherForecastCanDisplay, weatherScenarioCanDisplay, weatherScenarioNow } = await import("../js/src/core/weather-forecast.js");
+const { downloadForecastRecording, refreshForecastRecordingStatus } = await import("../js/src/features/forecast-export.js");
+const { renderLearningView } = await import("../js/src/views/learning.js");
 const { refreshWeatherForecast, invalidateWeatherForecast, suspendWeatherForecast } = await import("../js/src/features/weather-forecast.js");
 const { renderForecastProgress } = await import("../js/src/settings/forecast-progress.js");
 const { renderWeatherForecast } = await import("../js/src/settings/weather-forecast.js");
@@ -25,16 +27,53 @@ const payload = () => ({ schema: 1, model: "knmi_harmonie_arome_netherlands", co
     horizon_valid: [true, true, true], temperature_c: [0, 0.25, 0.5] } });
 
 test.beforeEach(() => {
-  state.root = null; invalidateWeatherForecast(); state.learningDisplayMode = "actual";
+  state.root = null; invalidateWeatherForecast(); state.weatherOptOutUnconfirmed = false; state.houseLearningReset = ""; state.learningDisplayMode = "actual";
   window.location.pathname = "/";
   state.appView = "learning"; state.learningPanel = "forecast"; state.nativeOpen = false; state.busyAction = ""; state.drafts = {};
   state.entities = { houseLearningEnabled: entity(true), weatherEnabled: entity(true), weatherLocation: entity("Brummen"), weatherStatus: entity("observing"),
     weatherIssuedEpoch: entity(epoch + 840), weatherTemperature30m: entity(99), weatherTemperature1h: entity(98), weatherTemperature3h: entity(97) };
-  state.houseLearningStatus = null; state.houseLearningStatusError = ""; document.hidden = false;
+  state.houseLearningStatus = null; state.houseLearningStatusError = ""; state.forecastRecordingStatus = null; state.forecastRecordingError = ""; document.hidden = false;
   Date.now = () => (epoch + 900) * 1000;
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
 });
 test.afterEach(() => { state.root = null; invalidateWeatherForecast(); globalThis.fetch = nativeFetch; Date.now = nativeNow; globalThis.performance = nativePerformance; });
+
+test("diagnostics downloads the controller recording from a fresh tab without opening Vooruitblik", async () => {
+  state.learningPanel = "diagnostics";
+  assert.match(renderLearningView(), /De controller bewaart tot twaalf uur/);
+  assert.match(renderLearningView(), /data-oq-action="download-forecast-measurements"/);
+
+  const data = { schema: 2, observations: [[1000, epoch, 1, 1, 20, 10, 0]], issues: [] };
+  let downloaded;
+  document.createElement = () => ({
+    click() { downloaded = { url: this.href, filename: this.download }; },
+    remove() {},
+  });
+  document.body = { appendChild() {} };
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/status")) return new Response(JSON.stringify({ count: 2881, duration_s: 28800 }));
+    assert.equal(url, "/openquatt/weather/recording");
+    return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
+  };
+  await refreshForecastRecordingStatus();
+  assert.match(renderLearningView(), /Opname van 8 u 0 min/);
+  assert.equal(await downloadForecastRecording(), true);
+  assert.equal(downloaded.filename, "openquatt-forecast-measurements.json");
+  assert.equal(state.busyAction, "");
+  delete document.createElement;
+  delete document.body;
+});
+
+test("an empty, missing or unavailable controller recording gives localized feedback and releases busy state", async () => {
+  for (const status of [410, 404, 503]) {
+    globalThis.fetch = async () => new Response(null, { status });
+    assert.equal(await downloadForecastRecording(), false);
+    assert.equal(state.forecastRecordingError, status === 410 ? "" : "unavailable");
+    if (status === 410) assert.equal(state.forecastRecordingStatus.count, 0);
+    assert.equal(state.houseLearningStatusError, "");
+    assert.equal(state.busyAction, "");
+  }
+});
 
 test("the atomic issue owns all three values and zero-valued frozen context in both locales", () => {
   const p = payload(); state.weatherForecast = normalizeWeatherForecast(p);

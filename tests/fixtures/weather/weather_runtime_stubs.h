@@ -211,6 +211,10 @@ struct ip_addr_t {
   uint32_t address = 0;
 };
 inline int64_t esp_timer_get_time() { return static_cast<int64_t>(weather_fixture::env.now_ms * 1000); }
+inline uint32_t esp_random() {
+  static uint32_t next = 0;
+  return ++next;
+}
 inline constexpr int MALLOC_CAP_INTERNAL = 1, MALLOC_CAP_8BIT = 2;
 inline size_t heap_caps_get_free_size(int) { return 65536; }
 inline size_t heap_caps_get_minimum_free_size(int) { return 60000; }

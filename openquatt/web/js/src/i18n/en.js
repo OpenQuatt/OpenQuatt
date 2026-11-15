@@ -212,6 +212,14 @@ export default {
     caption: "The illustrations use example data.",
   },
   learningWorkspace: {
+    measurementExport: {
+      title: "Outlook recording",
+      copy: "The controller keeps up to twelve hours of measurements. A new recording starts after a restart.",
+      empty: "The controller has no measurements yet.",
+      unavailable: "The recording could not be downloaded.",
+      progress: "Recording of {duration} · {count} samples",
+      download: "Download recording",
+    },
     "downloads": "Download data",
     "diagnosticsTab": "Diagnostics and data",
     "navLabel": "Learning sections",

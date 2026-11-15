@@ -69,6 +69,39 @@ inline void age_forecast_snapshot(ForecastSnapshot& snapshot, uint64_t now_ms) {
                         snapshot.configuration);
 }
 
+class ForecastMutex {
+ public:
+  void lock() {
+#ifdef USE_ESP32
+    xSemaphoreTake(mutex_, portMAX_DELAY);
+#else
+    mutex_.lock();
+#endif
+  }
+  bool try_lock() {
+#ifdef USE_ESP32
+    return xSemaphoreTake(mutex_, 0) == pdTRUE;
+#else
+    return mutex_.try_lock();
+#endif
+  }
+  void unlock() {
+#ifdef USE_ESP32
+    xSemaphoreGive(mutex_);
+#else
+    mutex_.unlock();
+#endif
+  }
+
+ private:
+#ifdef USE_ESP32
+  StaticSemaphore_t storage_{};
+  SemaphoreHandle_t mutex_ = xSemaphoreCreateMutexStatic(&storage_);
+#else
+  std::mutex mutex_;
+#endif
+};
+
 class ForecastSnapshotAccess {
  public:
   // Bind once before the server accepts requests; pointers never change again.
@@ -100,38 +133,7 @@ class ForecastSnapshotAccess {
   void end_request() { request_mutex_.unlock(); }
 
  private:
-  class Mutex {
-   public:
-    void lock() {
-#ifdef USE_ESP32
-      xSemaphoreTake(mutex_, portMAX_DELAY);
-#else
-      mutex_.lock();
-#endif
-    }
-    bool try_lock() {
-#ifdef USE_ESP32
-      return xSemaphoreTake(mutex_, 0) == pdTRUE;
-#else
-      return mutex_.try_lock();
-#endif
-    }
-    void unlock() {
-#ifdef USE_ESP32
-      xSemaphoreGive(mutex_);
-#else
-      mutex_.unlock();
-#endif
-    }
-
-   private:
-#ifdef USE_ESP32
-    StaticSemaphore_t storage_{};
-    SemaphoreHandle_t mutex_ = xSemaphoreCreateMutexStatic(&storage_);
-#else
-    std::mutex mutex_;
-#endif
-  } cache_mutex_, request_mutex_;
+  ForecastMutex cache_mutex_, request_mutex_;
   ForecastSnapshot* cache_ = nullptr;
   ForecastSnapshot* request_ = nullptr;
   std::atomic<bool> ready_{false};

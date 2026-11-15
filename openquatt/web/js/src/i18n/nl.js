@@ -213,6 +213,14 @@ export default {
     caption: "De illustraties gebruiken voorbeeldgegevens.",
   },
   learningWorkspace: {
+    measurementExport: {
+      title: "Meetopname Vooruitblik",
+      copy: "De controller bewaart tot twaalf uur aan metingen. Na een herstart begint een nieuwe opname.",
+      empty: "Er staan nog geen meetmomenten op de controller.",
+      unavailable: "De meetopname kon niet worden opgehaald.",
+      progress: "Opname van {duration} · {count} meetmomenten",
+      download: "Meetopname downloaden",
+    },
     "downloads": "Gegevens downloaden",
     "diagnosticsTab": "Diagnose en data",
     "navLabel": "Onderdelen van Leren",

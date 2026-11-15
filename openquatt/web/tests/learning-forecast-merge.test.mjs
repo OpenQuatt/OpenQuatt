@@ -240,6 +240,7 @@ test("vijf leeronderdelen scheiden uitleg, dagelijks gebruik, instellingen en di
       assert.equal(markup.includes('data-control-key="houseLearningEnabled"'), panel === "configuration");
       assert.equal(markup.includes('data-oq-button-key="houseLearningReset"'), panel === "configuration");
       assert.equal(markup.includes('data-oq-action="download-house-learning"'), panel === "diagnostics");
+      assert.equal(markup.includes('data-oq-action="download-forecast-measurements"'), panel === "diagnostics");
       if (panel === "diagnostics") {
         assert.doesNotMatch(markup, /data-oq-forecast-quality/);
         assert.match(markup, /data-oq-house-learning-secondary[\s\S]*data-oq-house-learning-shadow[\s\S]*data-oq-house-learning-technical[\s\S]*data-oq-house-learning-actions/);

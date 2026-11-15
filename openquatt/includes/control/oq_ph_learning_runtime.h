@@ -140,6 +140,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   }
 
   void pause(LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
+#ifdef USE_OPENQUATT_WEATHER
+    if (storage_) storage_[0].tick.dynamic_snapshot_available = false;
+    if (forecast_reset_) forecast_reset_();
+#endif
     invalidate_shadow_(oq_power_house::ShadowDemandReason::INACTIVE);
     daily_restart_ticket.clear();
     boot_restart_ticket.revoke_checkpoint();
@@ -510,6 +514,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
   }
 
 #ifdef USE_OPENQUATT_WEATHER
+  void set_forecast_reset(void (*reset)()) { forecast_reset_ = reset; }
+
   // Read-only main-loop adapter. Reuse the learner's selected receipts and
   // operational exclusions; the experiment never substitutes requested watts.
   oq_power_house::forecast::Observation forecast_observation() const {
@@ -539,6 +545,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
 #endif
 
  private:
+#ifdef USE_OPENQUATT_WEATHER
+  void (*forecast_reset_)() = nullptr;
+#endif
   static void clear_daily_resume_status_(RuntimeStorage& state) {
     state.daily_resume_status = state.daily_resume_reason = "none";
     state.pending_daily_heat_initialized = false;

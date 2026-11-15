@@ -1,4 +1,5 @@
 import { invalidateWeatherForecast } from "./weather-forecast.js";
+import { handleForecastExportAction, refreshForecastRecordingStatus } from "./forecast-export.js";
 import { hasEntity } from "../core/app-shared.js";
 import { downloadJsonFile, fetchWithTimeout } from "../core/browser-utils.js";
 import { render } from "../core/render-scheduler.js";
@@ -299,6 +300,7 @@ export async function downloadHouseLearningExport() {
 }
 
 export function handleHouseLearningAction(action, button, pressNamedButton) {
+  if (handleForecastExportAction(action)) return true;
   if (action === "download-house-learning") {
     void downloadHouseLearningExport();
     return true;
@@ -320,6 +322,7 @@ export async function refreshHouseLearningStatus(options = {}) {
   if (shadowFollowup && !shadowRefreshCurrent(shadowFollowup)) return false;
   if (!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) { clearShadowRefresh(); return false; }
   if (state.houseLearningReset === "pending" && !resetReconcile) return false;
+  if (!resetReconcile) void refreshForecastRecordingStatus();
   if (state.houseLearningFetchPromise) return state.houseLearningFetchPromise;
   const intervalAt = shadowRefreshCurrent(shadowRefresh) && shadowRefresh.lastFetchAt === state.houseLearningLastFetchAt
     ? shadowRefresh.pollAt : state.houseLearningLastFetchAt;

@@ -148,6 +148,8 @@ export function createSettingsState() {
     houseLearningEndpointChecked: false,
     houseLearningEndpointChecking: false,
     houseLearningStatusError: "",
+    forecastRecordingStatus: null,
+    forecastRecordingError: "",
     houseLearningLastFetchAt: 0,
     houseLearningFetchPromise: null,
     houseLearningRequestId: 0,
