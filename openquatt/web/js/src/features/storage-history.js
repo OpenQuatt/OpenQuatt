@@ -263,6 +263,7 @@ import { t } from "../i18n/index.js";
 
   export const ENERGY_HISTORY_IMPORT_ERROR_LABELS = {
     forbidden: "storageHistory.importForbidden",
+    archive_cleared: "storageHistory.importArchiveCleared",
     partition_unavailable: "storageHistory.importPartitionUnavailable",
     time_unavailable: "storageHistory.importTimeUnavailable",
     empty_records: "storageHistory.importEmptyRecords",
@@ -817,21 +818,21 @@ import { t } from "../i18n/index.js";
       });
   }
 
-  export function buildEnergyHistoryImportRequestBody(lines) {
+  export function buildEnergyHistoryImportRequestBody(lines, csrfToken) {
     const body = new URLSearchParams();
     body.set("records", [ENERGY_HISTORY_IMPORT_SCHEMA_LINE, ...lines].join("\n"));
-    if (state.energyHistoryCsrfToken) {
-      body.set("csrf_token", state.energyHistoryCsrfToken);
+    if (csrfToken) {
+      body.set("csrf_token", csrfToken);
     }
     return body;
   }
 
-  export function getEnergyHistoryImportLineBatches(lines) {
+  export function getEnergyHistoryImportLineBatches(lines, csrfToken) {
     const batches = [];
     let batch = [];
     lines.forEach((line) => {
       const candidate = [...batch, line];
-      if (batch.length && String(buildEnergyHistoryImportRequestBody(candidate)).length > ENERGY_HISTORY_IMPORT_MAX_BODY_CHARS) {
+      if (batch.length && String(buildEnergyHistoryImportRequestBody(candidate, csrfToken)).length > ENERGY_HISTORY_IMPORT_MAX_BODY_CHARS) {
         batches.push(batch);
         batch = [line];
       } else {
@@ -871,12 +872,12 @@ import { t } from "../i18n/index.js";
     return details.length ? `${imported} (${details.join(", ")}.)` : imported;
   }
 
-  export async function postEnergyHistoryImportLines(lines) {
+  export async function postEnergyHistoryImportLines(lines, csrfToken) {
     const response = await fetch(`${getBasePath()}/energy/history/import`, {
       method: "POST",
       cache: "no-store",
       headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-      body: buildEnergyHistoryImportRequestBody(lines),
+      body: buildEnergyHistoryImportRequestBody(lines, csrfToken),
     });
     const text = await response.text();
     let payload = {};
@@ -911,6 +912,7 @@ import { t } from "../i18n/index.js";
       throw new Error(t("storageHistory.csrfMissing"));
     }
     state.energyHistoryCsrfToken = token;
+    return token;
   }
 
   export function updateEnergyHistoryImportProgress(done, total) {
@@ -993,10 +995,10 @@ import { t } from "../i18n/index.js";
     const totals = { written: 0, hourWritten: 0, duplicates: 0, skipped: 0, invalid: 0, unsupported: 0 };
     let processedLines = 0;
     try {
-      await refreshEnergyHistoryImportCsrfToken();
-      const batches = getEnergyHistoryImportLineBatches(lines);
+      const csrfToken = await refreshEnergyHistoryImportCsrfToken();
+      const batches = getEnergyHistoryImportLineBatches(lines, csrfToken);
       for (const batch of batches) {
-        const result = await postEnergyHistoryImportLines(batch);
+        const result = await postEnergyHistoryImportLines(batch, csrfToken);
         totals.written += Number(result.written || 0);
         totals.hourWritten += Number(result.hour_written || 0);
         totals.duplicates += Number(result.duplicates || 0);

@@ -2820,6 +2820,7 @@ export default {
     decisionLogLoadFailed: "Decision log history could not be loaded.",
     trendMetadataLoadFailed: "Trend history metadata could not be loaded.",
     importForbidden: "The security token is missing or has expired. Refresh the page and try again.",
+    importArchiveCleared: "Import stopped because the energy history was cleared.",
     importPartitionUnavailable: "Unavailable with this flash layout. Flash the controller once over USB with the new layout.",
     importTimeUnavailable: "The controller does not have a valid time yet. Try again once time synchronisation has finished.",
     importEmptyRecords: "No records were sent.",

@@ -22,6 +22,9 @@ class EnergyHistoryContentionRuntimeTest(unittest.TestCase):
             "process_pending_history_locked_", "flush_current_day_locked_", "capture_day_totals", "apply_sample_locked_",
             "clear_history", "clear_hour_records_", "pack_values_", "record_has_values_", "encode_kwh_", "delta_values_",
             "add_wh_", "delta_wh_", "capture_hour_delta_", "restore_current_day_hours_",
+            "import_history_records", "parse_import_csrf_token", "clear_history_locked_", "write_record_", "read_record_", "record_valid_",
+            "scan_archive_", "fnv1a_hash_", "record_crc_", "date_key_valid_", "date_bitmap_index_",
+            "date_bitmap_get_", "date_bitmap_set_", "split_import_fields_", "parse_import_uint32_",
         )
         declarations = []
         definitions = []
@@ -31,6 +34,8 @@ class EnergyHistoryContentionRuntimeTest(unittest.TestCase):
             line_end = source.index("\n", start)
             end = line_end if source[start:line_end].endswith("}") else source.index("\n}", line_end) + 2
             definitions.append(source[start:end])
+        start = source.index("static std::string trim_copy(")
+        definitions.insert(0, source[start:source.index("\n}", start) + 2])
         fixture = (ROOT / "tests/fixtures/energy_history/contention_runtime.cpp").read_text()
         program = (fixture.replace("// COMPONENT_LOCK", lock)
                    .replace("// COMPONENT_RECORDS", records)

@@ -258,11 +258,6 @@ class OpenQuattEnergyHistoryRequestHandler : public AsyncWebHandler {
     return true;
   }
 
-  bool passes_csrf_(AsyncWebServerRequest* request) const {
-    const std::string csrf_token = request->arg("csrf_token");
-    return !csrf_token.empty() && csrf_token == this->parent_->get_csrf_token();
-  }
-
   bool canHandle(AsyncWebServerRequest* request) const override { return route_(request) != Route::NOT_FOUND; }
 
   void handleRequest(AsyncWebServerRequest* request) override {
@@ -306,11 +301,13 @@ class OpenQuattEnergyHistoryRequestHandler : public AsyncWebHandler {
   }
 
   __attribute__((noinline)) void handle_import_(AsyncWebServerRequest* request) {
-    if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+    uint32_t clear_generation = 0;
+    if (!this->passes_same_origin_(request) ||
+        !this->parent_->parse_import_csrf_token(request->arg("csrf_token"), &clear_generation)) {
       request->send(409, "application/json", R"({"ok":false,"error":"forbidden"})");
       return;
     }
-    const std::string response = this->parent_->import_history_records(request->arg("records"));
+    const std::string response = this->parent_->import_history_records(request->arg("records"), clear_generation);
     request->send(200, "application/json", response.c_str());
   }
 
@@ -1075,14 +1072,13 @@ bool OpenQuattEnergyHistory::write_hour_day_record_(uint32_t date_key, bool part
   return true;
 }
 
-bool OpenQuattEnergyHistory::write_hour_day_import_record_(uint32_t date_key, uint32_t hour_mask,
-                                                           const EnergyHistoryValues hours[24], bool rescan) {
+bool OpenQuattEnergyHistory::write_hour_day_import_record_locked_(uint32_t date_key, uint32_t hour_mask,
+                                                                  const EnergyHistoryValues hours[24], bool rescan) {
   if (!this->runtime_storage_ready()) {
     return false;
   }
-  const HourStateLock lock(this->hour_state_mutex_);
-  if (!lock || !this->is_hour_partition_ready_() || !this->time_is_valid_() || !date_key_valid_(date_key) ||
-      hour_mask == 0U || hours == nullptr) {
+  if (!this->is_hour_partition_ready_() || !this->time_is_valid_() || !date_key_valid_(date_key) || hour_mask == 0U ||
+      hours == nullptr) {
     return false;
   }
 
@@ -1359,6 +1355,7 @@ void OpenQuattEnergyHistory::clear_history() {
 }
 
 void OpenQuattEnergyHistory::clear_history_locked_() {
+  ++this->archive_clear_generation_;
   const esp_err_t erase_result =
       esp_partition_erase_range(this->flash_partition_, BASE_OFFSET, this->flash_total_bytes_);
   if (erase_result != ESP_OK) {
@@ -1381,7 +1378,14 @@ void OpenQuattEnergyHistory::clear_history_locked_() {
   this->scan_hour_archive_();
 }
 
-std::string OpenQuattEnergyHistory::import_history_records(const std::string& records) {
+bool OpenQuattEnergyHistory::parse_import_csrf_token(const std::string& token, uint32_t* clear_generation) const {
+  const size_t prefix_size = this->csrf_token_.size();
+  return prefix_size != 0U && token.size() > prefix_size && token[prefix_size] == '.' &&
+         token.compare(0, prefix_size, this->csrf_token_) == 0 &&
+         parse_import_uint32_(token.substr(prefix_size + 1U), clear_generation);
+}
+
+std::string OpenQuattEnergyHistory::import_history_records(const std::string& records, uint32_t clear_generation) {
   if (!this->is_partition_ready_()) {
     return R"({"ok":false,"error":"partition_unavailable"})";
   }
@@ -1393,6 +1397,18 @@ std::string OpenQuattEnergyHistory::import_history_records(const std::string& re
   }
   if (records.size() > 24576U) {
     return R"({"ok":false,"error":"payload_too_large"})";
+  }
+
+  static constexpr char BUSY[] = R"({"ok":false,"error":"archive_busy"})";
+  static constexpr char CLEARED[] = R"({"ok":false,"error":"archive_cleared"})";
+  {
+    const HourStateLock lock(this->hour_state_mutex_);
+    if (!lock) {
+      return BUSY;
+    }
+    if (this->archive_clear_generation_ != clear_generation) {
+      return CLEARED;
+    }
   }
 
   uint32_t written = 0;
@@ -1478,6 +1494,13 @@ std::string OpenQuattEnergyHistory::import_history_records(const std::string& re
         continue;
       }
 
+      const HourStateLock lock(this->hour_state_mutex_);
+      if (!lock) {
+        return BUSY;
+      }
+      if (this->archive_clear_generation_ != clear_generation) {
+        return CLEARED;
+      }
       if (date_bitmap_get_(this->state_()->stored_day_bitmap, date_key)) {
         ++duplicates;
         continue;
@@ -1498,11 +1521,6 @@ std::string OpenQuattEnergyHistory::import_history_records(const std::string& re
         ++invalid;
         continue;
       }
-      if (!this->is_hour_partition_ready_()) {
-        ++skipped;
-        continue;
-      }
-
       uint32_t date_key = 0;
       uint32_t hour_mask = 0;
       if (!parse_import_uint32_(fields[1], &date_key) || !date_key_valid_(date_key) ||
@@ -1562,12 +1580,23 @@ std::string OpenQuattEnergyHistory::import_history_records(const std::string& re
         continue;
       }
 
+      const HourStateLock lock(this->hour_state_mutex_);
+      if (!lock) {
+        return BUSY;
+      }
+      if (this->archive_clear_generation_ != clear_generation) {
+        return CLEARED;
+      }
+      if (!this->is_hour_partition_ready_()) {
+        ++skipped;
+        continue;
+      }
       if (date_bitmap_get_(this->state_()->stored_hour_day_bitmap, date_key)) {
         ++duplicates;
         continue;
       }
 
-      if (this->write_hour_day_import_record_(date_key, hour_mask, this->state_()->hour_import_values, false)) {
+      if (this->write_hour_day_import_record_locked_(date_key, hour_mask, this->state_()->hour_import_values, false)) {
         ++hour_written;
       } else {
         ++skipped;
@@ -1578,12 +1607,18 @@ std::string OpenQuattEnergyHistory::import_history_records(const std::string& re
     ++unsupported;
   }
 
-  if (written > 0U) {
-    this->scan_archive_();
-  }
-  if (hour_written > 0U) {
+  if (written > 0U || hour_written > 0U) {
     const HourStateLock lock(this->hour_state_mutex_);
-    if (lock) {
+    if (!lock) {
+      return BUSY;
+    }
+    if (this->archive_clear_generation_ != clear_generation) {
+      return CLEARED;
+    }
+    if (written > 0U) {
+      this->scan_archive_();
+    }
+    if (hour_written > 0U) {
       this->scan_hour_archive_();
     }
   }
@@ -1820,13 +1855,17 @@ void OpenQuattEnergyHistory::write_history(httpd_req_t* req) {
   if (!writer.begin_response("text/plain; charset=utf-8")) {
     return;
   }
-  uint32_t hour_count;
+  uint32_t hour_count = 0;
+  uint32_t clear_generation = 0;
   {
     const HourStateLock lock(this->hour_state_mutex_);
-    hour_count = lock ? this->get_hour_record_count_() : 0U;
+    if (lock) {
+      hour_count = this->get_hour_record_count_();
+      clear_generation = this->archive_clear_generation_;
+    }
   }
   if (!writer.printf("@schema|3\n") || !writer.printf("@enabled|%u\n", this->enabled_() ? 1U : 0U) ||
-      !writer.printf("@csrf|%s\n", this->csrf_token_.c_str()) ||
+      !writer.printf("@csrf|%s.%u\n", this->csrf_token_.c_str(), static_cast<unsigned>(clear_generation)) ||
       !writer.printf("@now|%llu\n", static_cast<unsigned long long>(this->current_time_ms_())) ||
       !writer.printf("@records|%u\n", static_cast<unsigned>(this->record_count_)) ||
       !writer.printf("@hours|%u|%u\n", static_cast<unsigned>(hour_count),

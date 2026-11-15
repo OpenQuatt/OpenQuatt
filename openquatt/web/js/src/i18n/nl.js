@@ -2820,6 +2820,7 @@ export default {
     decisionLogLoadFailed: "Beslisloghistorie kon niet worden geladen.",
     trendMetadataLoadFailed: "Trendhistorie metadata kon niet worden geladen.",
     importForbidden: "Beveiligingstoken ontbreekt of is verlopen. Vernieuw de pagina en probeer opnieuw.",
+    importArchiveCleared: "Import gestopt omdat de energiehistorie is gewist.",
     importPartitionUnavailable: "Niet beschikbaar op deze Flash-indeling. Flash de controller eenmalig via USB met de nieuwe indeling.",
     importTimeUnavailable: "De controller heeft nog geen geldige tijd. Probeer opnieuw zodra de tijdsync klaar is.",
     importEmptyRecords: "Er zijn geen records verstuurd.",

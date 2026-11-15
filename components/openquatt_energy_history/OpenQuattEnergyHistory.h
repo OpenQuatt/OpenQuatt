@@ -47,8 +47,8 @@ class OpenQuattEnergyHistory : public Component {
   void refresh_hourly_retention();
   void write_history(httpd_req_t* req);
   void write_history_export(httpd_req_t* req);
-  std::string import_history_records(const std::string& records);
-  const std::string& get_csrf_token() const { return this->csrf_token_; }
+  std::string import_history_records(const std::string& records, uint32_t clear_generation);
+  bool parse_import_csrf_token(const std::string& token, uint32_t* clear_generation) const;
   std::string get_available_label() const;
   std::string get_oldest_day_label() const;
   std::string get_newest_day_label() const;
@@ -210,8 +210,8 @@ class OpenQuattEnergyHistory : public Component {
   bool write_record_(uint32_t date_key, const EnergyHistoryValues& values, bool partial, bool rescan = true,
                      bool require_enabled = true);
   bool write_hour_day_record_(uint32_t date_key, bool partial);
-  bool write_hour_day_import_record_(uint32_t date_key, uint32_t hour_mask, const EnergyHistoryValues hours[24],
-                                     bool rescan = true);
+  bool write_hour_day_import_record_locked_(uint32_t date_key, uint32_t hour_mask, const EnergyHistoryValues hours[24],
+                                            bool rescan = true);
   EnergyHistoryValues delta_values_(const EnergyHistoryValues& current, const EnergyHistoryValues& previous) const;
   void restore_current_day_hours_(uint32_t date_key, uint8_t current_hour, const EnergyHistoryValues& current_values,
                                   bool first_sample);
@@ -276,6 +276,8 @@ class OpenQuattEnergyHistory : public Component {
   EnergyHistoryHourDayRecord hour_flash_record_buffer_{};
   uint8_t hour_flash_slot_buffer_[HOUR_FLASH_SLOT_SIZE]{};
 
+  // Protected by hour_state_mutex_. Cancels an in-flight import after a clear.
+  uint32_t archive_clear_generation_{0};
   uint32_t next_sequence_{0};
   uint32_t record_count_{0};
   uint32_t stored_day_count_{0};

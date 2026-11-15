@@ -1,14 +1,24 @@
+#include <algorithm>
 #include <cassert>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
+#include <string>
+#include <utility>
 #include <vector>
 
 struct Mutex {
   bool held_by_http{false};
   bool acquired{false};
+  bool http_context{false};
+  bool owner_http{false};
+  std::function<void()> before_http_take;
 };
 using SemaphoreHandle_t = Mutex*;
 using TickType_t = uint32_t;
@@ -16,18 +26,60 @@ constexpr TickType_t portMAX_DELAY = UINT32_MAX;
 constexpr int pdTRUE = 1;
 
 int xSemaphoreTake(SemaphoreHandle_t mutex, TickType_t timeout) {
-  assert(timeout == 0);      // Every tested entry point runs on the main loop.
-  assert(!mutex->acquired);  // No recursive takes.
-  if (mutex->held_by_http) {
+  assert(timeout == (mutex->http_context ? portMAX_DELAY : 0));
+  if (mutex->acquired) {
+    assert(mutex->owner_http && !mutex->http_context);  // The simulated main loop cannot take HTTP's mutex.
     return 0;
   }
+  if (mutex->held_by_http) {
+    assert(!mutex->http_context);
+    return 0;
+  }
+  if (mutex->http_context && mutex->before_http_take) {
+    std::exchange(mutex->before_http_take, {})();
+  }
   mutex->acquired = true;
+  mutex->owner_http = mutex->http_context;
   return pdTRUE;
 }
 
 void xSemaphoreGive(SemaphoreHandle_t mutex) {
   assert(mutex->acquired && !mutex->held_by_http);
   mutex->acquired = false;
+}
+
+using esp_err_t = int;
+constexpr esp_err_t ESP_OK = 0;
+
+struct esp_partition_t {
+  mutable std::vector<uint8_t> bytes;
+  const Mutex* mutex;
+  std::function<void(const void*)> after_write;
+  std::function<void(size_t)> after_erase;
+};
+
+esp_err_t esp_partition_write(const esp_partition_t* p, size_t offset, const void* src, size_t length) {
+  assert(p->mutex->acquired && offset + length <= p->bytes.size());
+  const auto* input = static_cast<const uint8_t*>(src);
+  for (size_t i = 0; i < length; ++i) {
+    assert((p->bytes[offset + i] & input[i]) == input[i]);  // Flash cannot set an erased bit back to one.
+    p->bytes[offset + i] = input[i];
+  }
+  p->after_write(src);
+  return ESP_OK;
+}
+
+esp_err_t esp_partition_read(const esp_partition_t* p, size_t offset, void* dst, size_t length) {
+  assert(p->mutex->acquired && offset + length <= p->bytes.size());
+  std::memcpy(dst, p->bytes.data() + offset, length);
+  return ESP_OK;
+}
+
+esp_err_t esp_partition_erase_range(const esp_partition_t* p, size_t offset, size_t length) {
+  assert(p->mutex->acquired && offset + length <= p->bytes.size());
+  std::fill_n(p->bytes.begin() + offset, length, 0xFFU);
+  p->after_erase(length);
+  return ESP_OK;
 }
 
 #define ESP_LOGW(...) ((void)0)
@@ -51,6 +103,15 @@ class OpenQuattEnergyHistory {
   static constexpr size_t HOURLY_SLOT_COUNT = 168;
   static constexpr size_t FLASH_SLOT_SIZE = 64;
   static constexpr size_t HOUR_FLASH_SLOT_SIZE = 1024;
+  static constexpr uint32_t RECORD_MAGIC = 0x3148454F;
+  static constexpr uint16_t RECORD_VERSION = 1;
+  static constexpr uint16_t FLAG_PARTIAL = 1;
+  static constexpr size_t BASE_OFFSET = 0;
+  static constexpr size_t HOUR_FLASH_BASE_OFFSET = 256;
+  static constexpr size_t FLASH_SECTOR_SIZE = 128;
+  static constexpr uint16_t MIN_DATE_YEAR = 2020;
+  static constexpr uint16_t MAX_DATE_YEAR = 2099;
+  static constexpr size_t DATE_BITMAP_BYTES = ((MAX_DATE_YEAR - MIN_DATE_YEAR + 1) * 12 * 31 + 7) / 8;
 
   // COMPONENT_RECORDS
   // COMPONENT_DECLARATIONS
@@ -58,6 +119,9 @@ class OpenQuattEnergyHistory {
   struct State {
     PendingSample pending_samples[PENDING_SAMPLE_CAPACITY]{};
     EnergyHistoryHourRecord hour_records[HOURLY_SLOT_COUNT]{};
+    EnergyHistoryValues hour_import_values[24]{};
+    uint8_t stored_day_bitmap[DATE_BITMAP_BYTES]{};
+    uint8_t stored_hour_day_bitmap[DATE_BITMAP_BYTES]{};
   } state;
   struct Archived {
     uint32_t date;
@@ -92,6 +156,53 @@ class OpenQuattEnergyHistory {
   EnergyHistoryValues last_hour_sample_values_{};
   EnergyHistoryHourDayRecord hour_flash_record_buffer_{};
   uint32_t next_hour_sequence_{0};
+  uint32_t archive_clear_generation_{0};
+  std::string csrf_token_{"test-secret"};
+  uint32_t next_sequence_{0};
+  uint32_t record_count_{0};
+  uint32_t stored_day_count_{0};
+  uint32_t oldest_date_key_{0};
+  uint32_t newest_date_key_{0};
+  uint32_t last_write_timestamp_s_{0};
+  size_t flash_total_bytes_{256};
+  size_t flash_slot_count_{4};
+  esp_partition_t flash{std::vector<uint8_t>(flash_total_bytes_, 0xFFU), &mutex, {}, {}};
+  const esp_partition_t* flash_partition_{&flash};
+  std::function<void()> while_import_writes;
+
+  OpenQuattEnergyHistory() {
+    flash.after_write = [this](const void* data) {
+      EnergyHistoryRecord record{};
+      std::memcpy(&record, data, sizeof(record));
+      assert(record_crc_(record) == record.crc32);
+      day_writes.push_back({record.date_key, record.values.electrical_input_wh, (record.flags & FLAG_PARTIAL) != 0});
+      if (mutex.owner_http && while_import_writes) {
+        std::exchange(while_import_writes, {})();
+      }
+    };
+    flash.after_erase = [this](size_t length) {
+      if (length == flash_total_bytes_) {
+        ++clears;
+      }
+    };
+  }
+
+  std::string import_days(const char* records, const std::string& token = "") {
+    mutex.http_context = true;
+    uint32_t generation = 0;
+    const auto effective_token = token.empty() ? csrf_token_ + "." + std::to_string(archive_clear_generation_) : token;
+    assert(parse_import_csrf_token(effective_token, &generation));
+    const auto result = import_history_records(records, generation);
+    mutex.http_context = false;
+    return result;
+  }
+
+  void run_main(const std::function<void()>& step) {
+    assert(mutex.http_context);
+    mutex.http_context = false;
+    step();
+    mutex.http_context = true;
+  }
 
   State* state_() { return &state; }
   bool runtime_storage_ready() const { return true; }
@@ -101,11 +212,11 @@ class OpenQuattEnergyHistory {
   bool hour_day_record_valid_(const EnergyHistoryHourDayRecord&) const { return false; }
   uint32_t recovered_hour_mask_(const EnergyHistoryHourDayRecord&) const { return 0; }
 
-  bool write_record_(uint32_t date, const EnergyHistoryValues& values, bool partial) {
-    assert(mutex.acquired);
-    day_writes.push_back({date, values.electrical_input_wh, partial});
-    return true;
-  }
+  bool time_is_valid_() const { return true; }
+  uint64_t current_time_ms_() const { return 1000U; }
+  bool is_hour_partition_ready_() const { return false; }
+  size_t max_hour_flash_total_bytes_() const { return 0; }
+  bool write_hour_day_import_record_locked_(uint32_t, uint32_t, const EnergyHistoryValues*, bool) { return false; }
 
   bool write_hour_day_record_(uint32_t date, bool partial) {
     assert(mutex.acquired);
@@ -123,11 +234,11 @@ class OpenQuattEnergyHistory {
   }
   void scan_hour_archive_() { assert(mutex.acquired); }
 
-  void clear_history_locked_() {
-    assert(mutex.acquired);
-    ++clears;
-    has_current_day_ = false;
-    clear_hour_records_();
+  EnergyHistoryRecord flash_day(uint32_t slot_index) const {
+    EnergyHistoryRecord record{};
+    std::memcpy(&record, flash.bytes.data() + slot_index * FLASH_SLOT_SIZE, sizeof(record));
+    assert(record_valid_(record));
+    return record;
   }
 
   void capture(int day, int hour, float electricity) {
@@ -234,5 +345,55 @@ int main() {
     history.mutex.held_by_http = false;
     history.loop();
     assert(history.clears == 1 && !history.has_current_day_ && history.day_writes.size() == 1);
+  }
+
+  {
+    OpenQuattEnergyHistory history;
+    history.capture(14, 23, 0.56f);
+    history.while_import_writes = [&] {
+      history.run_main([&] { history.capture(15, 0, 0.012f); });
+      assert(history.pending_sample_count_ == 1 && history.active_date_key_ == day);
+      history.mutex.before_http_take = [&] { history.run_main([&] { history.loop(); }); };
+    };
+    const auto result = history.import_days("day|20261113|300|550|0\nday|20261114|999|999|0\nday|20261112|200|350|0\n");
+    assert(result.find(R"("written":2)") != std::string::npos);
+    assert(result.find(R"("duplicates":1)") != std::string::npos);
+    assert(history.record_count_ == 3 && history.next_sequence_ == 3);
+    assert(history.flash_day(0).sequence == 0 && history.flash_day(0).date_key == day - 1);
+    assert(history.flash_day(1).sequence == 1 && history.flash_day(1).date_key == day);
+    assert(history.flash_day(1).values.electrical_input_wh == 560);
+    assert(history.flash_day(2).sequence == 2 && history.flash_day(2).date_key == day - 2);
+    assert(history.hour(day + 1, 0).values.electrical_input_wh == 12);
+  }
+
+  for (const char* input : {"day|20261113|300|550|0\n", "day|20261113|300|550|0\nday|20261112|200|350|0\n"}) {
+    OpenQuattEnergyHistory history;
+    history.while_import_writes = [&] {
+      history.run_main([&] { history.clear_history(); });
+      assert(history.clear_requested_ && history.clears == 0);
+      history.mutex.before_http_take = [&] { history.run_main([&] { history.loop(); }); };
+    };
+    assert(history.import_days(input) == R"({"ok":false,"error":"archive_cleared"})");
+    assert(history.clears == 1 && history.record_count_ == 0 && history.next_sequence_ == 0);
+    assert(std::all_of(history.flash.bytes.begin(), history.flash.bytes.end(), [](uint8_t b) { return b == 0xFFU; }));
+    assert(history.import_days("day|20261113|300|550|0\n").find(R"("written":1)") != std::string::npos);
+    assert(history.flash_day(0).sequence == 0 && history.flash_day(0).date_key == day - 1);
+  }
+
+  {
+    OpenQuattEnergyHistory history;
+    const std::string old_token = "test-secret.0";
+    const char* first = "day|20261113|300|550|0\n";
+    const char* second = "day|20261112|200|350|0\n";
+    uint32_t generation = 0;
+    assert(!history.parse_import_csrf_token("wrong-secret.0", &generation));
+    assert(!history.parse_import_csrf_token("test-secret", &generation));
+    assert(!history.parse_import_csrf_token("test-secret.bad", &generation));
+    assert(history.import_days(first, old_token).find(R"("written":1)") != std::string::npos);
+    history.clear_history();
+    assert(history.import_days(second, old_token) == R"({"ok":false,"error":"archive_cleared"})");
+    assert(history.record_count_ == 0 && history.next_sequence_ == 0);
+    assert(history.import_days(second, "test-secret.1").find(R"("written":1)") != std::string::npos);
+    assert(history.flash_day(0).date_key == day - 2);
   }
 }
