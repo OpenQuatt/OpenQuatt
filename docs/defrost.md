@@ -24,7 +24,7 @@ De API gebruikt bestaande webauthenticatie, origincontrole en CSRF voor acties. 
 
 ## Meeverwarmen tijdens ontdooien
 
-Standaard verandert een ontdooicyclus niets aan de aansturing van de aanvullende warmtebron. Met de optionele instelling `Meeverwarmen tijdens ontdooien` (zie [Instellingen](web-app/instellingen.md)) mag de warmtebron de aanvoertemperatuur tijdens de cyclus vasthouden op de waarde van vlak vóór het ontdooien. OpenQuatt stuurt daarbij nog steeds geen compressorfrequentie, ventilator of vierwegklep.
+Standaard verandert een ontdooicyclus niets aan de aansturing van de aanvullende warmtebron. Met de optionele instelling `Meeverwarmen tijdens ontdooien` (zie [Instellingen](web-app/instellingen.md)) mag de warmtebron de aanvoertemperatuur tijdens de cyclus vasthouden rond de waarde van vlak vóór het ontdooien (doel 3 °C erboven, minstens 3 °C onder de maximale watertemperatuur). OpenQuatt stuurt daarbij nog steeds geen compressorfrequentie, ventilator of vierwegklep.
 
 ## Telemetrie-ontwerpkeuze: vasthouden bij stale, stoppen bij langdurige blindheid
 

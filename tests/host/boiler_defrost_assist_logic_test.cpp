@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <initializer_list>
 #include <math.h>
 #include <stdint.h>
 
@@ -11,7 +12,7 @@ using oq_boiler_defrost_assist::Input;
 using oq_boiler_defrost_assist::Output;
 using oq_boiler_defrost_assist::State;
 
-constexpr Config kConfig{900000UL};
+constexpr Config kConfig{900000UL, 3.0f};
 
 Input heating(uint32_t now_ms, float supply_c, bool defrost) {
   Input in;
@@ -52,14 +53,24 @@ void test_defrost_starts_assist_at_the_pre_defrost_supply() {
   auto out = oq_boiler_defrost_assist::update(heating(6000U, 30.0f, true), primed(36.0f), kConfig);
   assert(out.requested);
   assert(out.started);
-  assert(out.target_c == 36.0f);
+  // The target sits the configured margin above the pre-defrost supply.
+  assert(out.target_c == 39.0f);
 
   // The dip itself must not lower the reference or the target.
   out = oq_boiler_defrost_assist::update(heating(11000U, 24.0f, true), out.state, kConfig);
   assert(out.requested);
   assert(!out.started);
-  assert(out.target_c == 36.0f);
+  assert(out.target_c == 39.0f);
   assert(out.state.reference_supply_c == 36.0f);
+}
+
+void test_unusable_margin_never_raises_the_target() {
+  for (const float margin_c : {0.0f, -2.0f, NAN, INFINITY}) {
+    const Config config{900000UL, margin_c};
+    const auto out = oq_boiler_defrost_assist::update(heating(6000U, 30.0f, true), primed(36.0f), config);
+    assert(out.requested);
+    assert(out.target_c == 36.0f);
+  }
 }
 
 void test_disabled_setting_never_requests_assist() {
@@ -212,7 +223,7 @@ void test_maximum_duration_releases_until_the_defrost_clears() {
   assert(!out.requested);
   out = oq_boiler_defrost_assist::update(heating(6000U + 915000U, 31.0f, true), out.state, kConfig);
   assert(out.requested);
-  assert(out.target_c == 35.0f);
+  assert(out.target_c == 38.0f);
 }
 
 void test_duration_survives_millis_wraparound() {
@@ -231,6 +242,7 @@ void test_duration_survives_millis_wraparound() {
 int main() {
   test_idle_without_defrost_only_tracks_the_reference();
   test_defrost_starts_assist_at_the_pre_defrost_supply();
+  test_unusable_margin_never_raises_the_target();
   test_disabled_setting_never_requests_assist();
   test_disabling_during_a_defrost_releases_at_once();
   test_interrupted_session_cannot_extend_a_stuck_defrost_report();

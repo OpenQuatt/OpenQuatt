@@ -381,8 +381,10 @@ The optional defrost assist (`Boiler assist during defrost`, off by default) is
 its own permission, independent of `Boiler assist enabled`. It is supervisory
 policy in `includes/control/oq_boiler_defrost_assist_logic.h`. The
 supervisory observes the defrost, promotes CM2 to CM3 for that cycle and hands
-the dispatcher only the ownership and the supply reference to hold (the supply
-temperature from just before the defrost). The boiler chain itself still has
+the dispatcher only the ownership and the target to hold: the supply
+temperature from just before the defrost plus `oq_boiler_defrost_assist_margin_c`.
+The dispatcher caps it below the water-limit soft band
+(`supply_hold_target_ceiling`), so the assist cannot throttle the heat pumps. The boiler chain itself still has
 no defrost observation. There is one session per defrost report, bounded by
 `oq_boiler_defrost_assist_max_s`, and it needs a real system supply
 measurement (not the heat-pump outlet fallback). A CM3 that normal assist

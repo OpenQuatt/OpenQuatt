@@ -60,10 +60,16 @@ void test_supply_hold_assist_owns_cm3_and_holds_the_reference() {
   assert(command.requested_power_w == 10000.0f);
   assert(command.updated_at_ms == 5000);
 
-  // Never beyond the configured maximum water temperature.
-  in.maximum_water_temperature_c = 32.0f;
+  // Never into the water-limit soft band below the configured maximum, so
+  // the assist cannot throttle the heat pumps or inhibit the boiler.
+  in.maximum_water_temperature_c = 45.0f;
+  in.supply_hold_target_c = 44.0f;
   command = oq_boiler_dispatch::dispatch(in);
-  assert(command.target_temperature_c == 32.0f);
+  assert(command.target_temperature_c == 42.0f);
+  assert(oq_boiler_dispatch::supply_hold_target_ceiling(45.0f) == 42.0f);
+  assert(oq_boiler_dispatch::supply_hold_target_ceiling(45.0f) == 45.0f - oq_thermal_limits::Config{}.soft_band_c);
+  // An unknown maximum falls back to the same default the supply guard uses.
+  assert(oq_boiler_dispatch::supply_hold_target_ceiling(NAN) == 57.0f);
 
   // No heat request means no boiler heat, but CM3 ownership stays visible.
   in.heat_request = false;

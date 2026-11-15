@@ -715,4 +715,5 @@ interval:
               ${oq_cm0_pump_stop_ipwm},
               ${oq_sticky_pwm},
               ${oq_boiler_defrost_assist_max_s},
+              ${oq_boiler_defrost_assist_margin_c},
           });

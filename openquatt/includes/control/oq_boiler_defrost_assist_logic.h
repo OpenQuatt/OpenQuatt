@@ -10,9 +10,11 @@ namespace oq_boiler_defrost_assist {
 // A defrosting outdoor unit takes heat out of the water instead of adding it,
 // so the supply temperature drops for the duration of the cycle. With this
 // policy enabled the supervisory may hand the boiler a bounded task for that
-// cycle only: hold the supply at the temperature the system had just before
-// the defrost began. It never asks for more than that reference, so the boiler
-// only compensates the dip and does not take over normal heating.
+// cycle only: hold the supply around the temperature the system had just
+// before the defrost began. The target sits a small margin above that
+// reference so a binary boiler does not release the moment the dip is closed,
+// and the dispatcher keeps it below the water-limit soft band. The boiler
+// therefore compensates the dip and does not take over normal heating.
 //
 // This is supervisory policy. The boiler chain itself still has no defrost
 // observation: it only sees CM3 ownership and a target temperature, exactly as
@@ -21,6 +23,10 @@ struct Config {
   // Hard bound on one assist session. A defrost that is still reported after
   // this time (for example a stale flag) releases the boiler.
   uint32_t maximum_ms = 900000UL;
+  // Margin of the boiler target above the pre-defrost supply reference. Policy,
+  // not physics: with the R1 target band it keeps the supply at or above the
+  // reference for the whole cycle instead of cycling around it.
+  float target_margin_c = 3.0f;
 };
 
 struct State {
@@ -33,7 +39,7 @@ struct State {
   // Last supply temperature seen while heating without a defrost. Frozen
   // during a defrost so the dip itself cannot lower the reference.
   float reference_supply_c = NAN;
-  // Reference latched at the start of the active session.
+  // Reference plus margin, latched at the start of the active session.
   float target_c = NAN;
 };
 
@@ -62,6 +68,9 @@ struct Output {
 };
 
 inline bool reference_usable(float reference_c) { return isfinite(reference_c) && reference_c > 0.0f; }
+
+// An unusable margin never raises the target above the reference.
+inline float usable_margin(float margin_c) { return isfinite(margin_c) && margin_c > 0.0f ? margin_c : 0.0f; }
 
 inline Output update(const Input& input, State state, const Config& config = {}) {
   Output output;
@@ -93,7 +102,7 @@ inline Output update(const Input& input, State state, const Config& config = {})
   } else if (permitted && !state.session_closed && reference_usable(state.reference_supply_c)) {
     state.active = true;
     state.started_ms = input.now_ms;
-    state.target_c = state.reference_supply_c;
+    state.target_c = state.reference_supply_c + usable_margin(config.target_margin_c);
     output.started = true;
   }
 

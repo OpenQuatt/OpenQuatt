@@ -132,9 +132,16 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             self.assertNotIn("4_way_valve", chain_source)
             self.assertNotIn("_defrost).state", chain_source)
         # De hulp vraagt nooit meer dan de referentie en is in tijd begrensd.
-        self.assertIn("state.target_c = state.reference_supply_c;", DEFROST_ASSIST_LOGIC)
+        self.assertIn(
+            "state.target_c = state.reference_supply_c + usable_margin(config.target_margin_c);",
+            DEFROST_ASSIST_LOGIC,
+        )
         self.assertIn("uint32_t maximum_ms = 900000UL;", DEFROST_ASSIST_LOGIC)
-        self.assertIn("bounded_maximum_water_temperature(in.maximum_water_temperature_c)", DISPATCH_LOGIC)
+        self.assertIn('oq_boiler_defrost_assist_margin_c: "3.0"', SUBSTITUTIONS)
+        self.assertIn("${oq_boiler_defrost_assist_margin_c},", SUPERVISORY_YAML)
+        # Het doel blijft onder de zachte band van de watertemperatuurgrens.
+        self.assertIn("supply_hold_target_ceiling(in.maximum_water_temperature_c)", DISPATCH_LOGIC)
+        self.assertIn("- oq_thermal_limits::Config{}.soft_band_c;", DISPATCH_LOGIC)
         # Geen referentie uit de terugval op de warmtepompuitgang, en een
         # defrost-eigen CM3 gaat nooit over in normale ketelhulp.
         self.assertIn("!id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state},",

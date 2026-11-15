@@ -67,6 +67,7 @@ struct TickConfig {
   float cm0_pump_stop_ipwm;
   float sticky_pwm;
   uint32_t boiler_defrost_assist_max_s;
+  float boiler_defrost_assist_margin_c;
 };
 
 class Runtime {
@@ -496,12 +497,14 @@ class Runtime {
         {now_ms, id(oq_aux_heat_source_present).state && id(oq_boiler_defrost_assist_enabled).state,
          heating_req && heat_pump_heating_mode, any_hp_defrost_reported,
          !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state},
-        this->defrost_assist_state_, {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s)});
+        this->defrost_assist_state_,
+        {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s), tick.boiler_defrost_assist_margin_c});
     this->defrost_assist_state_ = defrost_assist.state;
     const bool defrost_assist_requested = defrost_assist.requested;
     id(oq_defrost_assist_target_c) = defrost_assist.target_c;
     if (defrost_assist.started) {
-      ESP_LOGI("supervisory", "Defrost assist requested: hold supply at %.1fC", defrost_assist.target_c);
+      ESP_LOGI("supervisory", "Defrost assist requested: boiler target %.1fC (pre-defrost supply %.1fC)",
+               defrost_assist.target_c, defrost_assist.state.reference_supply_c);
     } else if (defrost_assist.expired_now) {
       ESP_LOGW("supervisory", "Defrost assist released: maximum duration of %u s reached",
                (unsigned int)tick.boiler_defrost_assist_max_s);
