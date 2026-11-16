@@ -19,7 +19,8 @@ class EnergyHistoryContentionRuntimeTest(unittest.TestCase):
                          header.index("  struct ExternalState {")]
         methods = (
             "loop", "on_shutdown", "force_flush", "refresh_hourly_retention", "service_pending_history_",
-            "process_pending_history_locked_", "flush_current_day_locked_", "capture_day_totals", "apply_sample_locked_",
+            "process_pending_history_locked_", "flush_current_day_locked_", "setup_daily_counters_",
+            "observe_daily_date_", "capture_day_totals", "apply_sample_locked_",
             "clear_history", "clear_hour_records_", "pack_values_", "record_has_values_", "encode_kwh_", "delta_values_",
             "add_wh_", "delta_wh_", "capture_hour_delta_", "restore_current_day_hours_",
             "import_history_records", "parse_import_csrf_token", "clear_history_locked_", "write_record_", "read_record_", "record_valid_",
