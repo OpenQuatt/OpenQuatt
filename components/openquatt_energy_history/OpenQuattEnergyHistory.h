@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -12,6 +13,7 @@
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "esphome/components/select/select.h"
+#include "esphome/components/sensor/sensor.h"
 #include "esp_partition.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -28,10 +30,16 @@ class ChunkedTextWriter;
 
 class OpenQuattEnergyHistory : public Component {
  public:
+  static constexpr size_t DAILY_COUNTER_COUNT = 7;
+
   void set_enabled_switch(switch_::Switch* enabled_switch) { this->enabled_switch_ = enabled_switch; }
   void set_clock(time::RealTimeClock* clock) { this->clock_ = clock; }
   void set_hourly_retention_select(select::Select* hourly_retention_select) {
     this->hourly_retention_select_ = hourly_retention_select;
+  }
+
+  void set_daily_counters(std::array<sensor::Sensor*, DAILY_COUNTER_COUNT> counters) {
+    this->daily_counters_ = counters;
   }
 
   void setup() override;
@@ -40,10 +48,7 @@ class OpenQuattEnergyHistory : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  void capture_day_totals(const ESPTime& now, float electrical_input_kwh, float heating_input_kwh,
-                          float cooling_input_kwh, float heatpump_heat_output_kwh, float heatpump_cooling_output_kwh,
-                          float boiler_heat_output_kwh, float system_heat_output_kwh);
-  bool try_read_daily_checkpoint(uint32_t date_key, std::array<float, 7>& wh);
+  void capture_day_totals();
   bool force_flush();
   void clear_history();
   void refresh_hourly_retention();
@@ -67,8 +72,6 @@ class OpenQuattEnergyHistory : public Component {
   static constexpr uint32_t HOUR_DAY_RECORD_MAGIC = 0x3248454F;  // "OEH2"
   static constexpr uint16_t HOUR_DAY_RECORD_VERSION = 1;
   static constexpr uint16_t FLAG_PARTIAL = 1U << 0U;
-  static constexpr uint16_t FLAG_DATED_TOTALS = 1U << 1U;
-  static constexpr uint16_t DATED_CHECKPOINT_FLAGS = FLAG_PARTIAL | FLAG_DATED_TOTALS;
   static constexpr size_t FLASH_SECTOR_SIZE = OpenQuattFlashLayout::SECTOR_SIZE;
   static constexpr size_t FLASH_SLOT_SIZE = 64;
   static constexpr size_t HOUR_FLASH_SLOT_SIZE = OpenQuattFlashLayout::ENERGY_HOURLY_SLOT_SIZE;
@@ -167,6 +170,8 @@ class OpenQuattEnergyHistory : public Component {
 
   ExternalState* state_() { return this->external_state_storage_.data(); }
   const ExternalState* state_() const { return this->external_state_storage_.data(); }
+  void setup_daily_counters_();
+  uint32_t observe_daily_date_(const ESPTime& now);
   bool enabled_() const;
   bool time_is_valid_() const;
   uint64_t current_time_ms_() const;
@@ -240,6 +245,9 @@ class OpenQuattEnergyHistory : public Component {
   switch_::Switch* enabled_switch_{nullptr};
   select::Select* hourly_retention_select_{nullptr};
   time::RealTimeClock* clock_{nullptr};
+  std::array<sensor::Sensor*, DAILY_COUNTER_COUNT> daily_counters_{};
+  std::bitset<DAILY_COUNTER_COUNT> daily_counters_ready_{};
+  uint32_t daily_counter_date_{0};
   const esp_partition_t* flash_partition_{nullptr};
   std::string csrf_token_;
 
@@ -285,8 +293,6 @@ class OpenQuattEnergyHistory : public Component {
   // Protected by hour_state_mutex_. Cancels an in-flight import after a clear.
   uint32_t archive_clear_generation_{0};
   uint32_t next_sequence_{0};
-  uint32_t daily_checkpoint_date_{0};
-  uint32_t daily_checkpoint_sequence_{0};
   uint32_t record_count_{0};
   uint32_t stored_day_count_{0};
   uint32_t oldest_date_key_{0};

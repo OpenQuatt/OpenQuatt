@@ -395,6 +395,7 @@ void OpenQuattEnergyHistory::setup() {
     }
   }
 
+  this->setup_daily_counters_();
   web_server_base::global_web_server_base->add_handler(new OpenQuattEnergyHistoryRequestHandler(this));
 }
 
@@ -869,7 +870,6 @@ bool OpenQuattEnergyHistory::scan_archive_() {
     return false;
   }
   std::memset(this->state_()->stored_day_bitmap, 0, sizeof(this->state_()->stored_day_bitmap));
-  this->daily_checkpoint_date_ = 0U;
   if (!this->is_partition_ready_()) {
     this->record_count_ = 0;
     this->stored_day_count_ = 0;
@@ -893,11 +893,6 @@ bool OpenQuattEnergyHistory::scan_archive_() {
     EnergyHistoryRecord record{};
     if (!this->read_record_(slot_index, &record) || !this->record_valid_(record)) {
       continue;
-    }
-    if ((record.flags & DATED_CHECKPOINT_FLAGS) == DATED_CHECKPOINT_FLAGS &&
-        (this->daily_checkpoint_date_ == 0U || record.sequence > this->daily_checkpoint_sequence_)) {
-      this->daily_checkpoint_date_ = record.date_key;
-      this->daily_checkpoint_sequence_ = record.sequence;
     }
     if (!date_bitmap_get_(this->state_()->stored_day_bitmap, record.date_key)) {
       date_bitmap_set_(this->state_()->stored_day_bitmap, record.date_key);
@@ -1008,7 +1003,7 @@ bool OpenQuattEnergyHistory::write_record_(uint32_t date_key, const EnergyHistor
   EnergyHistoryRecord record{};
   record.magic = RECORD_MAGIC;
   record.version = RECORD_VERSION;
-  record.flags = partial ? DATED_CHECKPOINT_FLAGS : 0U;
+  record.flags = partial ? FLAG_PARTIAL : 0U;
   record.sequence = sequence;
   record.date_key = date_key;
   record.write_timestamp_s = static_cast<uint32_t>(this->current_time_ms_() / 1000ULL);
@@ -1098,7 +1093,7 @@ bool OpenQuattEnergyHistory::write_hour_day_record_(uint32_t date_key, bool part
   record = EnergyHistoryHourDayRecord{};
   record.magic = HOUR_DAY_RECORD_MAGIC;
   record.version = HOUR_DAY_RECORD_VERSION;
-  record.flags = partial ? DATED_CHECKPOINT_FLAGS : 0U;
+  record.flags = partial ? FLAG_PARTIAL : 0U;
   record.sequence = sequence;
   record.date_key = date_key;
   record.write_timestamp_s = static_cast<uint32_t>(this->current_time_ms_() / 1000ULL);
@@ -1225,7 +1220,7 @@ void OpenQuattEnergyHistory::restore_current_day_hours_(uint32_t date_key, uint8
   for (uint32_t slot_index = 0; slot_index < this->hour_flash_slot_count_; ++slot_index) {
     auto& record = this->hour_flash_record_buffer_;
     if (!this->read_hour_day_record_(slot_index, &record) || !this->hour_day_record_valid_(record) ||
-        record.date_key != date_key || (record.flags & DATED_CHECKPOINT_FLAGS) != DATED_CHECKPOINT_FLAGS) {
+        record.date_key != date_key) {
       continue;
     }
     const uint32_t recovered_mask = recovered_hour_mask_(record);
@@ -1341,47 +1336,52 @@ void OpenQuattEnergyHistory::clear_hour_records_() {
       EnergyHistoryValues{UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
 }
 
-bool OpenQuattEnergyHistory::try_read_daily_checkpoint(uint32_t date_key, std::array<float, 7>& wh) {
-  if (!this->runtime_storage_ready() || !this->is_partition_ready_()) {
-    return true;
+void OpenQuattEnergyHistory::setup_daily_counters_() {
+  this->observe_daily_date_(this->clock_->now());
+  this->clock_->add_on_time_sync_callback([this] { this->observe_daily_date_(this->clock_->now()); });
+  for (size_t index = 0; index < this->daily_counters_.size(); ++index) {
+    this->daily_counters_[index]->add_on_state_callback([this, index](float state) {
+      // TotalDailyEnergy publishes zero on its scheduled reset, even for idle channels.
+      if (state == 0.0f && this->observe_daily_date_(this->clock_->now()) != 0U) {
+        this->daily_counters_ready_.set(index);
+      }
+    });
   }
-  const HourStateLock lock(this->hour_state_mutex_, 0);
-  if (!lock) {
-    return false;
-  }
-  if (this->daily_checkpoint_date_ != date_key) {
-    return true;
-  }
-  const uint32_t sequence = this->daily_checkpoint_sequence_;
-  EnergyHistoryRecord record{};
-  if (!this->read_record_(sequence % this->flash_slot_count_, &record) || !this->record_valid_(record) ||
-      record.sequence != sequence || record.date_key != date_key ||
-      (record.flags & DATED_CHECKPOINT_FLAGS) != DATED_CHECKPOINT_FLAGS) {
-    return true;
-  }
-  const auto& values = record.values;
-  const std::array<uint32_t, 7> stored{values.electrical_input_wh,        values.heating_input_wh,
-                                       values.cooling_input_wh,           values.heatpump_heat_output_wh,
-                                       values.heatpump_cooling_output_wh, values.boiler_heat_output_wh,
-                                       values.system_heat_output_wh};
-  for (size_t i = 0; i < stored.size(); ++i) {
-    wh[i] = stored[i] == UNKNOWN_WH ? 0.0f : static_cast<float>(stored[i]);
-  }
-  return true;
 }
 
-void OpenQuattEnergyHistory::capture_day_totals(const ESPTime& now, float electrical_input_kwh, float heating_input_kwh,
-                                                float cooling_input_kwh, float heatpump_heat_output_kwh,
-                                                float heatpump_cooling_output_kwh, float boiler_heat_output_kwh,
-                                                float system_heat_output_kwh) {
-  if (!this->runtime_storage_ready() || !this->enabled_() || !now.is_valid()) {
-    return;
+uint32_t OpenQuattEnergyHistory::observe_daily_date_(const ESPTime& now) {
+  if (!now.is_valid()) {
+    return 0U;
   }
   const uint32_t date_key = (static_cast<uint32_t>(now.year) * 10000U) + (static_cast<uint32_t>(now.month) * 100U) +
                             static_cast<uint32_t>(now.day_of_month);
-  const auto values =
-      this->pack_values_(electrical_input_kwh, heating_input_kwh, cooling_input_kwh, heatpump_heat_output_kwh,
-                         heatpump_cooling_output_kwh, boiler_heat_output_kwh, system_heat_output_kwh);
+  if (this->daily_counter_date_ == 0U) {
+    // At boot the existing ESPHome preferences supply the same-day totals.
+    this->daily_counters_ready_.set();
+  } else if (this->daily_counter_date_ != date_key) {
+    // The clock can cross midnight before ESPHome runs the individual counter resets.
+    this->daily_counters_ready_.reset();
+  }
+  this->daily_counter_date_ = date_key;
+  return date_key;
+}
+
+void OpenQuattEnergyHistory::capture_day_totals() {
+  if (!this->runtime_storage_ready() || !this->enabled_() || this->clock_ == nullptr) {
+    return;
+  }
+  const auto now = this->clock_->now();
+  const uint32_t date_key = this->observe_daily_date_(now);
+  if (date_key == 0U || !this->daily_counters_ready_.all()) {
+    return;
+  }
+
+  std::array<float, DAILY_COUNTER_COUNT> kwh;
+  for (size_t index = 0; index < kwh.size(); ++index) {
+    auto* counter = this->daily_counters_[index];
+    kwh[index] = counter->has_state() ? counter->state : NAN;
+  }
+  const auto values = this->pack_values_(kwh[0], kwh[1], kwh[2], kwh[3], kwh[4], kwh[5], kwh[6]);
   if (!record_has_values_(values)) {
     return;
   }

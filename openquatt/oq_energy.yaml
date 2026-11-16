@@ -6,12 +6,6 @@
 # - Keep control packages focused on control logic.
 # ==============================================================================
 
-external_components:
-  - source:
-      type: local
-      path: ${external_components_path}
-    components: [openquatt_daily_energy]
-
 button:
   - platform: template
     id: oq_reset_cumulative_energy_counters
@@ -32,37 +26,46 @@ button:
 
 sensor:
   # Electrical input energy (daily, kWh).
-  - platform: template
+  - platform: total_daily_energy
     id: oq_electrical_energy_daily
     name: "Electrical Energy Daily"
-    icon: mdi:flash
-    update_interval: never
+    power_id: oq_total_power_input
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
+    filters:
+      - multiply: 0.001
+    restore: true
 
   # Heating electrical input energy (daily, kWh). Keeps COP heating-only when cooling is active.
-  - platform: template
+  - platform: total_daily_energy
     id: oq_heating_electrical_energy_daily
     name: "Heating Electrical Energy Daily"
-    icon: mdi:flash
-    update_interval: never
+    power_id: oq_heating_power_input
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
+    filters:
+      - multiply: 0.001
+    restore: true
 
   # Cooling electrical input energy (daily, kWh). Used for cooling-only EER.
-  - platform: template
+  - platform: total_daily_energy
     id: oq_cooling_electrical_energy_daily
     name: "Cooling Electrical Energy Daily"
-    icon: mdi:flash
-    update_interval: never
+    power_id: oq_cooling_power_input
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
+    filters:
+      - multiply: 0.001
+    restore: true
 
   # Electrical input energy (cumulative, kWh).
   - platform: integration
@@ -131,15 +134,18 @@ sensor:
       return oq_energy::ratio_or_nan(id(oq_heatpump_thermal_energy_daily).state, id(oq_heating_electrical_energy_daily).state, 0.01f);
 
   # HeatPump thermal energy (daily, kWh).
-  - platform: template
+  - platform: total_daily_energy
     id: oq_heatpump_thermal_energy_daily
     name: "HeatPump Thermal Energy Daily"
-    icon: mdi:radiator
-    update_interval: never
+    power_id: oq_total_heat_power
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
+    filters:
+      - multiply: 0.001
+    restore: true
 
   # HeatPump thermal energy (cumulative, kWh).
   - platform: integration
@@ -156,15 +162,18 @@ sensor:
     restore: true
 
   # HeatPump cooling energy (daily, kWh).
-  - platform: template
+  - platform: total_daily_energy
     id: oq_heatpump_cooling_energy_daily
     name: "HeatPump Cooling Energy Daily"
-    icon: mdi:snowflake
-    update_interval: never
+    power_id: oq_total_cooling_power
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
+    filters:
+      - multiply: 0.001
+    restore: true
 
   # HeatPump cooling energy (cumulative, kWh).
   - platform: integration
@@ -214,15 +223,18 @@ sensor:
       return oq_energy::ratio_or_nan(id(oq_heatpump_cooling_energy_cumulative).state, id(oq_cooling_electrical_energy_cumulative).state, 0.01f);
 
   # Boiler thermal energy (daily, kWh).
-  - platform: template
+  - platform: total_daily_energy
     id: oq_boiler_thermal_energy_daily
     name: "Boiler Thermal Energy Daily"
-    icon: mdi:radiator
-    update_interval: never
+    power_id: boiler_heat_power
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
+    filters:
+      - multiply: 0.001
+    restore: true
 
   # Boiler thermal energy (cumulative, kWh).
   - platform: integration
@@ -239,15 +251,18 @@ sensor:
     restore: true
 
   # System thermal energy (daily, kWh): HeatPump + Boiler.
-  - platform: template
+  - platform: total_daily_energy
     id: oq_system_thermal_energy_daily
     name: "System Thermal Energy Daily"
-    icon: mdi:fire
-    update_interval: never
+    power_id: oq_system_heat_power
+    time_id: oq_time
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
     accuracy_decimals: 1
+    filters:
+      - multiply: 0.001
+    restore: true
 
   # System thermal energy (cumulative, kWh): HeatPump + Boiler.
   - platform: integration
@@ -262,29 +277,3 @@ sensor:
     filters:
       - multiply: 0.001
     restore: true
-
-openquatt_daily_energy:
-  id: oq_daily_energy
-  clock: oq_time
-  archive: oq_energy_history_endpoint
-  electrical_input:
-    power: oq_total_power_input
-    total: oq_electrical_energy_daily
-  heating_input:
-    power: oq_heating_power_input
-    total: oq_heating_electrical_energy_daily
-  cooling_input:
-    power: oq_cooling_power_input
-    total: oq_cooling_electrical_energy_daily
-  heatpump_heat:
-    power: oq_total_heat_power
-    total: oq_heatpump_thermal_energy_daily
-  heatpump_cooling:
-    power: oq_total_cooling_power
-    total: oq_heatpump_cooling_energy_daily
-  boiler_heat:
-    power: boiler_heat_power
-    total: oq_boiler_thermal_energy_daily
-  system_heat:
-    power: oq_system_heat_power
-    total: oq_system_thermal_energy_daily

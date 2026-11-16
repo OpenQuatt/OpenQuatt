@@ -41,9 +41,6 @@ AIR_PURGE = (ROOT / "openquatt/oq_air_purge.yaml").read_text()
 INSTALLATION_MONITORING = (ROOT / "openquatt/oq_installation_monitoring.yaml").read_text()
 USAGE_TELEMETRY = (ROOT / "openquatt/oq_usage_telemetry.yaml").read_text()
 ENERGY = (ROOT / "openquatt/oq_energy.yaml").read_text()
-DAILY_ENERGY_DIR = ROOT / "components/openquatt_daily_energy"
-DAILY_ENERGY_SOURCE = (DAILY_ENERGY_DIR / "OpenQuattDailyEnergy.cpp").read_text()
-DAILY_ENERGY_STORAGE = (DAILY_ENERGY_DIR / "oq_daily_energy_state.h").read_text()
 HEATING_CURVE = (ROOT / "openquatt/oq_heating_curve_strategy.yaml").read_text()
 
 
@@ -126,19 +123,10 @@ class NvsPersistenceContractTest(unittest.TestCase):
             self.assertIn("restore_value: true", yaml_entry(FLOW_CONTROL, entity_id))
         for entity_id in ("oq_compressor_starts_warning_limit_2h", "oq_compressor_starts_warning_limit_72h"):
             self.assertIn("restore_value: true", yaml_entry(INSTALLATION_MONITORING, entity_id))
-        self.assertIn("restore: true", yaml_entry(ENERGY, "oq_system_thermal_energy_cumulative"))
+        for entity_id in ("oq_system_thermal_energy_daily", "oq_system_thermal_energy_cumulative"):
+            self.assertIn("restore: true", yaml_entry(ENERGY, entity_id))
         self.assertIn("id: oq_heating_curve_pid", HEATING_CURVE)
         self.assertIn("platform: pid", HEATING_CURVE)
-
-    def test_daily_energy_uses_a_dated_preference(self) -> None:
-        self.assertIn("update_interval: never", yaml_entry(ENERGY, "oq_system_thermal_energy_daily"))
-        self.assertRegex(
-            ENERGY, r"(?m)^  system_heat:\n    power: oq_system_heat_power\n    total: oq_system_thermal_energy_daily$"
-        )
-        self.assertIn("make_preference<DatedTotals>", DAILY_ENERGY_SOURCE)
-        self.assertIn("pref_.load(&saved_)", DAILY_ENERGY_SOURCE)
-        self.assertIn("pref_.save(&state_.totals())", DAILY_ENERGY_SOURCE)
-        self.assertIn("saved.date_key == date_key", DAILY_ENERGY_STORAGE)
 
     def test_odu_editor_is_ram_only_and_requires_a_current_boot_load(self) -> None:
         runtime_service = ODU_RUNTIME_HEADER + ODU_RUNTIME_SOURCE
@@ -221,11 +209,6 @@ class NvsPersistenceContractTest(unittest.TestCase):
     def test_custom_blob_sizes_are_compile_time_budget_contracts(self) -> None:
         self.assertIn("sizeof(StateStorage) == 56U", CRASH_HEADER)
         self.assertIn("sizeof(AuthStorage) == 104U", AUTH_HEADER)
-        self.assertIn("sizeof(DatedTotals) == 32U", DAILY_ENERGY_STORAGE)
-        self.assertEqual(
-            check_nvs_budget.estimate_custom_preferences({"openquatt_daily_energy": {}}),
-            {"openquatt_daily_energy": 3},
-        )
 
 
 if __name__ == "__main__":

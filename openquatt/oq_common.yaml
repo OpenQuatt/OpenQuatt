@@ -949,12 +949,7 @@ script:
   - id: oq_capture_energy_history_sample
     mode: single
     then:
-      - lambda: |-
-          if (!id(oq_lifetime_energy_history_switch).state) {
-            return;
-          }
-
-          id(oq_daily_energy).capture_history();
+      - lambda: id(oq_energy_history_endpoint).capture_day_totals();
 
 openquatt_trends:
   id: oq_trends_endpoint
@@ -967,6 +962,14 @@ openquatt_energy_history:
   enabled_switch: oq_lifetime_energy_history_switch
   hourly_retention_select: oq_lifetime_energy_hour_retention
   clock: oq_time
+  daily_counters:
+    electrical_input: oq_electrical_energy_daily
+    heating_input: oq_heating_electrical_energy_daily
+    cooling_input: oq_cooling_electrical_energy_daily
+    heatpump_heat_output: oq_heatpump_thermal_energy_daily
+    heatpump_cooling_output: oq_heatpump_cooling_energy_daily
+    boiler_heat_output: oq_boiler_thermal_energy_daily
+    system_heat_output: oq_system_thermal_energy_daily
 
 # ==============================================================================
 # PR TEST FIRMWARE VIA OTA-MANIFEST (manifest preferred, directe OTA+MD5 als fallback)
