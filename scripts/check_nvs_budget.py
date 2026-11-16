@@ -34,6 +34,7 @@ CUSTOM_PREFERENCE_LAYOUTS = (
     ("openquatt_network", 8, 1),
     ("openquatt_incident_manager", 8, 3),
     ("openquatt_debug_recorder", 2, 1),
+    ("openquatt_daily_energy", 32, 1),
     ("openquatt_odu_settings", 16, 1),
     ("openquatt_odu_defrost", 16, 2),
 )

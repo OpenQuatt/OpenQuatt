@@ -14,6 +14,8 @@ struct DatedTotals {
   Totals wh{};
 };
 
+static_assert(sizeof(DatedTotals) == 32U, "Daily energy preference must match the NVS budget");
+
 class DailyEnergyState {
  public:
   const DatedTotals& totals() const { return totals_; }

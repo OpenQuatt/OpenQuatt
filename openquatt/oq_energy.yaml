@@ -6,6 +6,12 @@
 # - Keep control packages focused on control logic.
 # ==============================================================================
 
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_daily_energy]
+
 button:
   - platform: template
     id: oq_reset_cumulative_energy_counters

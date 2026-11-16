@@ -296,7 +296,7 @@ external_components:
   - source:
       type: local
       path: ${external_components_path}
-    components: [openquatt_modbus, openquatt_daily_energy]
+    components: [openquatt_modbus]
 
 uart:
   - id: uart_bus
