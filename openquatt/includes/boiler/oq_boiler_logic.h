@@ -80,8 +80,9 @@ inline BoilerStartThermalDecision evaluate_boiler_start_water_limit(bool openthe
     return BoilerStartThermalDecision{BOILER_START_THERMAL_UNKNOWN, NAN};
   }
 
+  // Match the threshold at which the measured system supply inhibits the boiler.
   return BoilerStartThermalDecision{
-      boiler_temperature_c > maximum_water_temperature_c ? BOILER_START_THERMAL_HOT : BOILER_START_THERMAL_SAFE,
+      boiler_temperature_c >= maximum_water_temperature_c ? BOILER_START_THERMAL_HOT : BOILER_START_THERMAL_SAFE,
       maximum_water_temperature_c,
   };
 }

@@ -172,8 +172,12 @@ void test_boiler_start_water_limit() {
   assert(decision.state == oq_boiler::BOILER_START_THERMAL_SAFE);
   assert(decision.safe_ceiling_c == 45.0f);
 
-  decision = evaluate_boiler_start_water_limit(true, true, 45.0f, 45.0f);
+  decision = evaluate_boiler_start_water_limit(true, true, 44.9f, 45.0f);
   assert(decision.state == oq_boiler::BOILER_START_THERMAL_SAFE);
+  assert(decision.safe_ceiling_c == 45.0f);
+
+  decision = evaluate_boiler_start_water_limit(true, true, 45.0f, 45.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_HOT);
   assert(decision.safe_ceiling_c == 45.0f);
 
   decision = evaluate_boiler_start_water_limit(true, true, 48.0f, 45.0f);
@@ -199,8 +203,11 @@ void test_warm_start_controller_interlock() {
     input.boiler_start_thermal_state = oq_boiler::evaluate_boiler_start_water_limit(true, true, 42.0f, 45.0f).state;
     assert_decision(oq_boiler::evaluate(command, input), true, false, oq_boiler::BLOCK_NONE);
 
-    input.boiler_start_thermal_state = oq_boiler::evaluate_boiler_start_water_limit(true, true, 48.0f, 45.0f).state;
-    assert_decision(oq_boiler::evaluate(command, input), false, true, oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START);
+    for (float boiler_temperature_c : {45.0f, 48.0f}) {
+      input.boiler_start_thermal_state =
+          oq_boiler::evaluate_boiler_start_water_limit(true, true, boiler_temperature_c, 45.0f).state;
+      assert_decision(oq_boiler::evaluate(command, input), false, true, oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START);
+    }
 
     input.boiler_start_thermal_state = oq_boiler::evaluate_boiler_start_water_limit(true, false, 48.0f, 45.0f).state;
     assert_decision(oq_boiler::evaluate(command, input), true, false, oq_boiler::BLOCK_NONE);
