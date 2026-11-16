@@ -125,7 +125,7 @@ test("firmwareafwijzingen blijven leidend; voldoen aan telcriteria claimt geen g
   const data = records([4, 4, 7, 7, 10, 10, 4, 7, 10]);
   assert.match(renderHouseLearningReadiness(data, { batchStatus: "mixed_context" }), /verschillende meetcontexten/);
   assert.match(renderHouseLearningReadiness(data, { batchStatus: "unstable_fit" }), /één leerdag wordt weggelaten/);
-  assert.match(renderHouseLearningReadiness(data), /De controller moet de lijn ook kunnen berekenen/);
+  assert.match(renderHouseLearningReadiness(data), /Genoeg meetdagen en spreiding\. De controller moet de lijn nog berekenen en toetsen/);
   assert.doesNotMatch(renderHouseLearningReadiness(data), /Geleerde woninglijn beschikbaar/);
   assert.match(renderHouseLearningReadiness(data, { batchStatus: "insufficient_data" }), /controller heeft nog onvoldoende bruikbare dagmetingen/);
   for (const batchStatus of ["insufficient_spread", "day_dominance"]) {
@@ -146,6 +146,30 @@ test("voorlopige en goedgekeurde lijn zijn onderscheiden en vertalingen wisselen
   assert.match(html, /3\.8 °C more spread needed/);
   assert.match(html, /Training days<\/dt><dd>6 <span>\/ 6 needed/);
   assert.doesNotMatch(html, /Nog geen|dagmetingen/);
+});
+
+test("de uitleg bij de voorlopige woninglijn staat in beide talen boven de beoordeling", () => {
+  const data = records([4, 4, 7, 7, 10, 10, 4, 7, 10]);
+  for (const [locale, title, explanation] of [
+    ["nl", "Voorlopige woninglijn", "De lijn is berekend uit je dagmetingen. Ze moet de toets nog doorstaan."],
+    ["en", "Provisional heat demand curve", "The curve is based on your daily measurements. It still needs to pass the assessment."],
+  ]) {
+    setLocale(locale, config);
+    const learned = { h: 200, t0: 16 };
+    const pendingChecks = {
+      ...learned, batchStatus: "insufficient_data",
+      fit: { trainCount: 6, checkCount: 0, trainDays: 6, checkDays: 0, p10: 4, p90: 10, minC: 4, maxC: 10 },
+    };
+    for (const [status, reason] of [
+      [pendingChecks, locale === "nl" ? /Nog 3 controledagen nodig/ : /3 more checking days needed/],
+      [{ ...learned, batchStatus: "unstable_fit" }, locale === "nl" ? /één leerdag wordt weggelaten/ : /one training day is left out/],
+    ]) {
+      const [summary, assessment] = renderHouseLearningReadiness(data, status).split("<details");
+      assert.ok(summary.includes(`<h5>${title}</h5>`) && summary.includes(`<p>${explanation}</p>`));
+      assert.match(assessment, reason);
+    }
+    assert.ok(!renderHouseLearningReadiness(data, { ...learned, ready: true }).includes(explanation));
+  }
 });
 
 
