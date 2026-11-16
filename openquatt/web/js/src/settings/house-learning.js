@@ -7,7 +7,7 @@ import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
 import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsInfoToggle, renderSettingsSystemRow } from "./controls.js";
 import { configuredLinePowerAt, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
-import { selectDisplayedHouseLine } from "./house-learning-readiness.js";
+import { houseLearningBatchReasonKey, selectDisplayedHouseLine } from "./house-learning-readiness.js";
 import { getSettingsSwitchModel } from "./field-models.js";
 
 const metric = (value, unit = "") => value != null && Number.isFinite(Number(value))
@@ -140,14 +140,21 @@ const SHADOW_REASON_KEYS = {
 
 let shadowExpiryTimer = null;
 
-function getShadowLineEstimate(status) {
-  if (!status.shadow.lineEstimate || !status.batchAdviceReady || !status.sources.outside.valid) return null;
+const PROVISIONAL_REASON_KEYS = {
+  fit_in_progress: "houseLearning.shadow.reasons.fitInProgress",
+  insufficient_data: "houseLearning.shadow.reasons.tooFewDays",
+  insufficient_spread: "houseLearning.readiness.controllerNeedsSpread",
+  day_dominance: "houseLearning.readiness.controllerNeedsSpread",
+};
+const PROVISIONAL_ESTIMATE_REASONS = ["batch_not_ready", "warmup_active", "external_override", "inactive", "startup"];
+
+function getShadowLineEstimate(status, { h, t0 }) {
+  if (!status.sources.outside.valid) return null;
   const confirmedNumber = (key) => parseLooseNumber(state.entities[key]?.value ?? state.entities[key]?.state);
   const outsideC = confirmedNumber("outsideTempSelected");
   const coldC = confirmedNumber("houseColdTemp");
   const zeroC = confirmedNumber("houseOutdoorMax");
   const ratedW = confirmedNumber("housePower");
-  const { hBatch: h, t0Batch: t0 } = status;
   if (![outsideC, coldC, zeroC, ratedW, h, t0].every(Number.isFinite) || zeroC <= coldC || ratedW <= 0 || h <= 0) return null;
   return { outsideC, manualW: configuredLinePowerAt({ coldC, zeroC, ratedW }, outsideC), candidateW: learnedLinePowerAt({ h, t0 }, outsideC) };
 }
@@ -171,12 +178,29 @@ export function renderHouseLearningShadow(status = state.houseLearningStatus) {
   }
   const reason = pending ? "reset_pending" : !status.enabled ? "inactive"
     : !current || (shadow.available && remaining <= 0) ? "stale_frame" : shadow.available ? "batch_not_ready" : shadow.reason;
-  const estimate = reason === "outside_range" ? getShadowLineEstimate(status) : null;
+  const batchStatus = status.batchStatus;
+  const batchReason = houseLearningBatchReasonKey(batchStatus);
+  const canShowPreview = current && PROVISIONAL_ESTIMATE_REASONS.includes(reason) && !status.batchAdviceReady;
+  const invalidConfiguration = canShowPreview && ["invalid_active_model", "invalid_configuration"].includes(batchStatus);
+  const provisional = canShowPreview && !invalidConfiguration && status.batchPreview
+    ? getShadowLineEstimate(status, status.batchPreview) : null;
+  const estimate = provisional || (reason === "outside_range" && shadow.lineEstimate && status.batchAdviceReady
+    ? getShadowLineEstimate(status, { h: status.hBatch, t0: status.t0Batch }) : null);
   const values = [["houseLearning.shadow.manual", estimate?.manualW ?? shadow.manualW],
-    ["houseLearning.shadow.candidate", estimate?.candidateW ?? shadow.candidateW]];
+    [provisional ? "houseLearning.readiness.provisionalTitle" : "houseLearning.shadow.candidate", estimate?.candidateW ?? shadow.candidateW]];
   if (!estimate) values.push(["houseLearning.shadow.delta", shadow.deltaW]);
-  const copy = estimate ? t("houseLearning.shadow.lineEstimate", { temperature: metric(estimate.outsideC, "°C") })
-    : t(available ? "houseLearning.shadow.copy" : SHADOW_REASON_KEYS[reason] || "houseLearning.shadow.reasons.unavailable");
+  const copy = estimate ? t(provisional ? "houseLearning.shadow.provisionalEstimate" : "houseLearning.shadow.lineEstimate",
+    { temperature: metric(estimate.outsideC, "°C") })
+    : t(available ? "houseLearning.shadow.copy" : invalidConfiguration ? batchReason
+      : SHADOW_REASON_KEYS[reason] || "houseLearning.shadow.reasons.unavailable");
+  const review = provisional ? t(batchReason
+    || (Object.hasOwn(PROVISIONAL_REASON_KEYS, batchStatus) ? PROVISIONAL_REASON_KEYS[batchStatus] : "houseLearning.shadow.reasons.provisionalNotApproved")) : "";
+  const { minC, maxC } = status.batchPreview || {};
+  const outsidePreviewRange = provisional && Number.isFinite(minC) && Number.isFinite(maxC)
+    && (provisional.outsideC < minC || provisional.outsideC > maxC);
+  const range = outsidePreviewRange ? t("houseLearning.shadow.outsidePreviewRange", {
+    min: formatNumber(minC, { maximumFractionDigits: 2 }), max: formatNumber(maxC, { maximumFractionDigits: 2 }),
+  }) : "";
   return `<section class="oq-learning-shadow" aria-label="${escapeHtml(t("houseLearning.shadow.title"))}">
     <div class="oq-house-learning-section-head"><h5>${escapeHtml(t("houseLearning.shadow.title"))}</h5>
       ${renderSettingsInfoToggle("house-learning-shadow", t("houseLearning.shadow.title"), t(estimate ? "houseLearning.shadow.lineEstimateHelp" : "houseLearning.shadow.help"))}</div>
@@ -186,6 +210,8 @@ export function renderHouseLearningShadow(status = state.houseLearningStatus) {
         : available ? `${index === 2 && value > 0 ? "+" : ""}${formatNumber(value, { maximumFractionDigits: 0 })} W` : "—";
       return renderStatCard({ label: t(key), value: formatted });
     }).join("")}</div>` : ""}
+    ${range ? `<p>${escapeHtml(range)}</p>` : ""}
+    ${review ? `<p>${escapeHtml(review)}</p>` : ""}
   </section>`;
 }
 

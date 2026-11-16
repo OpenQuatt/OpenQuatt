@@ -64,7 +64,7 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
     else gapKey = status && status !== "ready" && status !== "observing" ? "weather.status.unknown" : "learningWorkspace.forecast.newCalculation";
   }
   if (statusOnly) {
-    return gapKey && gapKey !== "learningWorkspace.forecast.newCalculation"
+    return gapKey && gapKey !== "learningWorkspace.forecast.newCalculation" && gapKey !== "weather.status.waitingObservation"
       ? `<p class="oq-settings-action-note" role="status">${escapeHtml(t(gapKey))}</p>`
       : "";
   }

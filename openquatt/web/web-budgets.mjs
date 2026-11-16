@@ -78,7 +78,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Preserve the existing 84 B raw headroom and relative gzip growth limits.
     // The recovery tooltip and both translations add 226 B raw on Node 24.14.1.
     // The import token and clear notification add 108 B raw, preserving 44 B headroom.
-    raw: 1_482_805,
+    // Provisional heat demand and Outlook status copy: +1,266 B raw versus dev 7252cab3.
+    raw: 1_484_071,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

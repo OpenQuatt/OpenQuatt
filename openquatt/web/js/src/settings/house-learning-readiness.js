@@ -58,6 +58,10 @@ const BATCH_REASON_KEYS = {
   no_holdout_improvement: "houseLearning.readiness.noImprovement",
 };
 
+export function houseLearningBatchReasonKey(status) {
+  return Object.hasOwn(BATCH_REASON_KEYS, status) ? BATCH_REASON_KEYS[status] : null;
+}
+
 function renderReadinessCard(title, compact, body, info = "") {
   return `<section class="oq-house-learning-readiness" aria-label="${escapeHtml(t("houseLearning.readiness.label"))}">
     <div class="oq-house-learning-readiness-head"><h5>${escapeHtml(title)}</h5>${info}</div>
@@ -85,7 +89,7 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
   const previewCopy = learned.preview && available && !learned.ready
     ? t("houseLearning.readiness.previewAllDays", { count: number(learned.preview.count) })
     : t("houseLearning.readiness.provisionalCopy");
-  const reasonKey = Object.hasOwn(BATCH_REASON_KEYS, learned.batchStatus) ? BATCH_REASON_KEYS[learned.batchStatus] : null;
+  const reasonKey = houseLearningBatchReasonKey(learned.batchStatus);
   let copy;
   if (reasonKey) copy = t(reasonKey);
   else if (available && learned.ready) copy = t("houseLearning.readiness.readyCopy");
