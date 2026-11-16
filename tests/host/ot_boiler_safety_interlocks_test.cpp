@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <initializer_list>
+
 #include "openquatt/includes/boiler/oq_boiler_logic.h"
 
 namespace {
@@ -168,14 +170,26 @@ void test_warm_start_controller_interlock() {
   auto command = active_command(1000);
   auto input = safe_input(1500);
   input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_HOT;
-  auto decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, false, true, oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START);
 
-  command.source = oq_boiler::COMMAND_SOURCE_FALLBACK;
+  for (auto source : {oq_boiler::COMMAND_SOURCE_POWER_HOUSE, oq_boiler::COMMAND_SOURCE_HEATING_CURVE,
+                      oq_boiler::COMMAND_SOURCE_COLD_START, oq_boiler::COMMAND_SOURCE_FALLBACK}) {
+    command.source = source;
+    assert_decision(oq_boiler::evaluate(command, input), true, false, oq_boiler::BLOCK_NONE);
+  }
+
+  input.boiler_inhibit_active = true;
+  auto decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_WATER_TEMP_INHIBIT);
+  input.boiler_inhibit_active = false;
+  input.flow_sufficient = false;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_FLOW_INSUFFICIENT);
+  input.flow_sufficient = true;
+
+  command.source = oq_boiler::COMMAND_SOURCE_COMMISSIONING;
   decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, false, true, oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START);
 
-  command.source = oq_boiler::COMMAND_SOURCE_COMMISSIONING;
   input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_UNKNOWN;
   decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, false, true, oq_boiler::BLOCK_BOILER_TEMPERATURE_UNAVAILABLE);

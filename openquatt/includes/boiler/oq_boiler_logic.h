@@ -306,6 +306,10 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   decision.blocked = false;
   decision.block_reason = BLOCK_NONE;
 
+  // The service test needs a verified starting temperature for its operating point.
+  const bool commissioning_start =
+      command.heat_request && !input.output_active && command.source == COMMAND_SOURCE_COMMISSIONING;
+
   if (input.hard_trip_active) {
     decision.force_off = true;
     decision.block_reason = BLOCK_WATER_TEMP_HARD_TRIP;
@@ -341,16 +345,10 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   } else if (command.source == COMMAND_SOURCE_FALLBACK && !input.fallback_outputs_safe) {
     decision.force_off = true;
     decision.block_reason = BLOCK_HP_STOP_UNCONFIRMED;
-  } else if (command.heat_request && !input.output_active &&
-             input.boiler_start_thermal_state == BOILER_START_THERMAL_HOT) {
+  } else if (commissioning_start && input.boiler_start_thermal_state == BOILER_START_THERMAL_HOT) {
     decision.force_off = true;
     decision.block_reason = BLOCK_BOILER_TOO_HOT_FOR_START;
-  } else if (command.heat_request && !input.output_active && command.source == COMMAND_SOURCE_COMMISSIONING &&
-             input.boiler_start_thermal_state == BOILER_START_THERMAL_UNKNOWN) {
-    // A service test may only energize an OpenTherm boiler after proving the
-    // chosen operating point is thermally suitable. Normal CM3/CM4 operation
-    // retains the existing supply-temperature fail-safe when optional ID25 is
-    // unsupported or temporarily unavailable.
+  } else if (commissioning_start && input.boiler_start_thermal_state == BOILER_START_THERMAL_UNKNOWN) {
     decision.force_off = true;
     decision.block_reason = BLOCK_BOILER_TEMPERATURE_UNAVAILABLE;
   } else if (!command.demand_present) {

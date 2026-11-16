@@ -197,7 +197,7 @@ class Runtime {
                                                                        bool opentherm_selected, float supply_c,
                                                                        float target_c, uint32_t now_ms,
                                                                        const Config& config) {
-    if (!command.heat_request && command.source != oq_boiler::COMMAND_SOURCE_COMMISSIONING) return {};
+    if (command.source != oq_boiler::COMMAND_SOURCE_COMMISSIONING) return {};
     float maximum_c = id(max_water_temp_limit_c).state;
     if (isnan(maximum_c)) maximum_c = 60.0f;
     maximum_c = fmaxf(25.0f, fminf(maximum_c, 75.0f));
