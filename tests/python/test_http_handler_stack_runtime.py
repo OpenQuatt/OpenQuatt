@@ -223,10 +223,10 @@ class OpenQuattEnergyHistory {
  public:
  bool ready=true;int histories=0,exports=0,imports=0;
  bool runtime_storage_ready(){return ready;}
- std::string get_csrf_token(){return "valid";}
+ bool parse_import_csrf_token(const std::string& token,uint32_t* generation){*generation=1;return token=="valid";}
  void write_history(httpd_req_t*){++histories;}
  void write_history_export(httpd_req_t*){++exports;}
- std::string import_history_records(const std::string&){++imports;return "{}";}
+ std::string import_history_records(const std::string&,uint32_t generation){assert(generation==1);++imports;return "{}";}
 };
 """ + origin + path_match + writer + route + r"""
 int main(){

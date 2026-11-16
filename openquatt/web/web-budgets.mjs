@@ -76,9 +76,12 @@ export const WEB_BUNDLE_BUDGETS = [
     // Visible learning download/status errors and stable legacy outlook patches:
     // +251 B raw / +67 B gzip versus c6837b0 on Node 24.14.1.
     // Preserve the existing 84 B raw headroom and relative gzip growth limits.
+    // The recovery tooltip and both translations add 226 B raw on Node 24.14.1.
+    // The import token and clear notification add 108 B raw, preserving 44 B headroom.
+    // Provisional heat demand and Outlook status copy: +1,266 B raw versus dev 7252cab3.
     // Optional boiler assist during defrost (settings switch and copy in both locales):
     // +1,065 B raw / +228 B gzip versus dev 9829c1e (Node 24.21.0); raw headroom unchanged.
-    raw: 1_483_536,
+    raw: 1_485_136,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

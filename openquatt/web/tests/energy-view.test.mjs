@@ -11,6 +11,7 @@ const {
   getEnergyHistoryHeatingInputWh,
   getEnergyHistoryEfficiencyStat,
   getEnergyHistoryPeriodControlModel,
+  getEnergyHistoryCalendarBuckets,
   getEnergyHistoryRecords,
   getEnergyHistoryRenderSignature,
   getEnergyHistorySummary,
@@ -172,6 +173,31 @@ test("unknown cooling electricity cannot inflate the EER of a mixed history peri
   assert.equal(getEnergyHistoryEfficiencyStat(getEnergyHistorySummary(records)).value, "—");
   assert.equal(getEnergyHistoryEfficiencyStat(getEnergyHistorySummary([bucket])).value, "—");
   assert.match(getEnergyHistoryBucketTooltip(bucket), /Elektrisch koelen: —/);
+});
+
+test("only the marked hour tooltip identifies recovered energy", () => {
+  const previousLocale = getLocale();
+  const previousRaw = state.energyHistoryRaw;
+  state.energyHistoryRaw = [
+    "@hour|3|20261114|18|18600|18600|0|50300|0|0|50300|1",
+    "@hour|4|20261114|19|1200|1200|0|3100|0|0|3100|0",
+    "@hour|5|20261114|20|1100|1100|0|3000|0|0|3000",
+  ].join("\n");
+
+  try {
+    setLocale("nl", { persist: false });
+    const { buckets } = getEnergyHistoryCalendarBuckets([], "day", { selectedValue: "20261114" });
+    assert.match(getEnergyHistoryBucketTooltip(buckets[18]), /Bevat herstelde energie zonder uurdetail/);
+    assert.match(getEnergyHistoryBucketTooltip(buckets[18]), /Elektrisch verwarmen: 18,6 kWh/);
+    assert.doesNotMatch(getEnergyHistoryBucketTooltip(buckets[19]), /herstelde energie/);
+    assert.doesNotMatch(getEnergyHistoryBucketTooltip(buckets[20]), /herstelde energie/);
+
+    setLocale("en", { persist: false });
+    assert.match(getEnergyHistoryBucketTooltip(buckets[18]), /Includes recovered energy without hourly detail/);
+  } finally {
+    setLocale(previousLocale, { persist: false });
+    state.energyHistoryRaw = previousRaw;
+  }
 });
 
 test("current history record stays authoritative while live energy entities load", () => {

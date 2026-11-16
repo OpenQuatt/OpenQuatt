@@ -716,6 +716,7 @@ import { renderStatCard } from "./stat-card.js";
           const record = byHour.get(hour);
           if (record) {
             mergeEnergyHistoryRecordIntoBucket(bucket, record);
+            bucket.includesRecoveredEnergy = record.includesRecoveredEnergy;
           }
           buckets.push(bucket);
         }
@@ -1126,6 +1127,7 @@ import { renderStatCard } from "./stat-card.js";
     const coolingEer = formatEnergyRatio(record.heatpumpCoolingOutputWh, coolingInputWh);
     return [
       record.tooltipLabel || record.label || formatEnergyHistoryDateLabel(record.dateKey),
+      ...(record.includesRecoveredEnergy ? [t("energy.tipRecoveredEnergy")] : []),
       `${t("energy.tipHeatingInput")}: ${formatEnergyAdaptiveWh(heatingInputWh, 1)}`,
       `${t("energy.tipCoolingInput")}: ${formatEnergyAdaptiveWh(coolingInputWh, 1)}`,
       `${t("energy.tipHeatOutput")}: ${formatEnergyAdaptiveWh(record.heatpumpHeatOutputWh, 1)}`,

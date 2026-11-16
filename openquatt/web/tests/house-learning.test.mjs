@@ -1673,6 +1673,59 @@ test("buiten het getoetste bereik toont de vergelijking twee lijnschattingen", (
   assert.doesNotMatch(render(), /≈/);
 });
 
+test("warmtevraag vergelijkt de voorlopige grafieklijn met de ingestelde lijn", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["Date"], now: 1_793_963_600_000 });
+  state.entities = {
+    houseLearningEnabled: switchEntity(true), outsideTempSelected: { value: 4.3 },
+    houseColdTemp: { value: -10 }, houseOutdoorMax: { value: 16 }, housePower: { value: 7100 },
+  };
+  const shadow = {
+    schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
+    source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
+    available: false, reason: "batch_not_ready", manual_w: null, candidate_w: null, delta_w: null, auto_apply_allowed: false,
+  };
+  const payload = statusPayload({ enabled: true, journal_status: "saved_verified", context_revision: 8, shadow,
+    records: 29, batch_status: "no_holdout_improvement", h_batch: 228.101, t0_batch: 16.9219,
+    batch_preview: { h: 245.262, t0: 16.4044, segments: 28, days: 28, min_c: 0.818111, max_c: 12.3412 } });
+  const render = (changes = {}) => renderHouseLearningShadow(normalizeHouseLearningStatus({ ...payload, ...changes }));
+  assert.match(render(), /Schatting bij 4,3 °C buiten en 20 °C binnen[\s\S]*Ingestelde woninglijn[\s\S]*≈ 3,2 kW[\s\S]*Voorlopige woninglijn[\s\S]*≈ 3 kW[\s\S]*op de controledagen nog niet voldoende beter/);
+  for (const outsideC of [0.818111, 4.3, 12.3412]) {
+    state.entities.outsideTempSelected.value = outsideC;
+    assert.doesNotMatch(render(), /Buiten het meetbereik/);
+  }
+  for (const outsideC of [0.8, 12.4]) {
+    state.entities.outsideTempSelected.value = outsideC;
+    assert.match(render(), /Buiten het meetbereik van de voorlopige lijn \(0,82 tot 12,34 °C\)/);
+  }
+  state.entities.outsideTempSelected.value = 4.3;
+  assert.match(render({ batch_status: "fit_in_progress" }), /De controller toetst de woninglijn/);
+  assert.match(render({ batch_status: "insufficient_data" }), /meer bruikbare leer- of controledagen nodig/);
+  for (const batchStatus of ["segment_ready", "dataset_full", "room_unstable", "constructor"]) {
+    const preview = render({ batch_status: batchStatus });
+    assert.match(preview, /≈ 3 kW[\s\S]*De voorlopige lijn is nog niet goedgekeurd voor modeladvies/);
+    assert.doesNotMatch(preview, /De vergelijking verschijnt zodra/);
+  }
+  for (const [batchStatus, message] of [
+    ["invalid_active_model", /De ingestelde woninglijn is ongeldig/],
+    ["invalid_configuration", /[Ii]nstellingen/],
+  ]) {
+    const preview = render({ batch_status: batchStatus });
+    assert.match(preview, message);
+    assert.doesNotMatch(preview, /≈|De vergelijking verschijnt zodra/);
+  }
+  for (const reason of ["warmup_active", "external_override", "inactive", "startup"]) {
+    assert.match(render({ shadow: { ...shadow, reason } }),
+      /Schatting bij 4,3 °C buiten[\s\S]*De lijn voor modeladvies presteert op de controledagen/);
+  }
+  for (const changes of [
+    { batch_preview: undefined }, { tick_epoch: payload.tick_epoch - 31 }, { enabled: false },
+    { batch_advice_ready: true }, { sources: { outside: { valid: false } } },
+    { shadow: { ...shadow, reason: "context_mismatch" } }, { shadow_expired: true },
+  ]) assert.doesNotMatch(render(changes), /≈/);
+  state.houseLearningReset = "pending";
+  assert.doesNotMatch(render(), /≈/);
+});
+
 test("display preview is optional and cannot replace the independent advice candidate", () => {
   const preview = {h:190,t0:18,segments:21,days:21,min_c:1.97,max_c:12.34};
   const raw = statusPayload({records:21,h_batch:213,t0_batch:17.4,batch_preview:preview});

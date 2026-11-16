@@ -1,10 +1,13 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include <esp_http_server.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "esphome/components/select/select.h"
@@ -44,15 +47,17 @@ class OpenQuattEnergyHistory : public Component {
   void refresh_hourly_retention();
   void write_history(httpd_req_t* req);
   void write_history_export(httpd_req_t* req);
-  std::string import_history_records(const std::string& records);
-  const std::string& get_csrf_token() const { return this->csrf_token_; }
+  std::string import_history_records(const std::string& records, uint32_t clear_generation);
+  bool parse_import_csrf_token(const std::string& token, uint32_t* clear_generation) const;
   std::string get_available_label() const;
   std::string get_oldest_day_label() const;
   std::string get_newest_day_label() const;
   std::string get_last_write_label() const;
   float get_storage_kib() const;
   uint32_t get_write_count() const;
-  bool runtime_storage_ready() const { return static_cast<bool>(this->external_state_storage_); }
+  bool runtime_storage_ready() const {
+    return this->hour_state_mutex_ != nullptr && static_cast<bool>(this->external_state_storage_);
+  }
 
  protected:
   static constexpr uint32_t RECORD_MAGIC = 0x3148454F;  // "OEH1"
@@ -104,6 +109,7 @@ class OpenQuattEnergyHistory : public Component {
     uint32_t date_key;
     uint8_t hour;
     bool valid;
+    bool includes_recovered_energy;
     EnergyHistoryValues values;
   };
 
@@ -117,18 +123,31 @@ class OpenQuattEnergyHistory : public Component {
     uint32_t hour_mask;
     EnergyHistoryValues hours[24];
     uint32_t crc32;
+    // Optional metadata in the existing slot padding. Older firmware reads through crc32.
+    uint32_t recovered_hour_mask;
+    uint32_t recovery_crc32;
   };
 
   static_assert(sizeof(EnergyHistoryValues) == 28, "EnergyHistoryValues must stay packed");
   static_assert(sizeof(EnergyHistoryRecord) == 52, "EnergyHistoryRecord must stay packed");
   static_assert(sizeof(EnergyHistoryRecord) <= FLASH_SLOT_SIZE, "Energy history record must fit in one slot");
+  static_assert(offsetof(EnergyHistoryHourDayRecord, crc32) == 696, "Legacy hourly record CRC must stay in place");
   static_assert(sizeof(EnergyHistoryHourDayRecord) <= HOUR_FLASH_SLOT_SIZE,
                 "Energy history hour day record must fit in one slot");
 
+  static constexpr size_t PENDING_SAMPLE_CAPACITY = 4;
+  struct PendingSample {
+    uint32_t date_key;
+    uint8_t hour;
+    EnergyHistoryValues values;
+  };
+
   struct ExternalState {
+    PendingSample pending_samples[PENDING_SAMPLE_CAPACITY];
     EnergyHistoryHourRecord hour_records[HOURLY_SLOT_COUNT];
     EnergyHistoryValues hour_snapshot_values[24];
     EnergyHistoryValues hour_import_values[24];
+    EnergyHistoryHourDayRecord http_hour_record;
     uint8_t stored_day_bitmap[DATE_BITMAP_BYTES];
     uint8_t stored_hour_day_bitmap[DATE_BITMAP_BYTES];
     uint8_t export_date_bitmap[DATE_BITMAP_BYTES];
@@ -136,9 +155,10 @@ class OpenQuattEnergyHistory : public Component {
     uint32_t export_hour_masks[EXPORT_HOUR_DATE_COUNT];
   };
 
-  static constexpr size_t EXTERNAL_STATE_BYTES = (sizeof(EnergyHistoryHourRecord) * HOURLY_SLOT_COUNT) +
-                                                 (sizeof(EnergyHistoryValues) * 24U * 2U) + (DATE_BITMAP_BYTES * 3U) +
-                                                 (sizeof(uint32_t) * EXPORT_HOUR_DATE_COUNT * 2U);
+  static constexpr size_t EXTERNAL_STATE_BYTES =
+      sizeof(PendingSample) * PENDING_SAMPLE_CAPACITY + sizeof(EnergyHistoryHourDayRecord) +
+      (sizeof(EnergyHistoryHourRecord) * HOURLY_SLOT_COUNT) + (sizeof(EnergyHistoryValues) * 24U * 2U) +
+      (DATE_BITMAP_BYTES * 3U) + (sizeof(uint32_t) * EXPORT_HOUR_DATE_COUNT * 2U);
   static_assert(sizeof(ExternalState) == EXTERNAL_STATE_BYTES, "External energy history state must stay packed");
 
   ExternalState* state_() { return this->external_state_storage_.data(); }
@@ -146,14 +166,14 @@ class OpenQuattEnergyHistory : public Component {
   bool enabled_() const;
   bool time_is_valid_() const;
   uint64_t current_time_ms_() const;
-  uint32_t get_current_date_key_() const;
-  uint8_t get_current_hour_() const;
   bool is_partition_ready_() const;
   static uint32_t encode_kwh_(float value);
   static int32_t printable_wh_(uint32_t value);
   static uint32_t fnv1a_hash_(const uint8_t* data, size_t len);
   static uint32_t record_crc_(const EnergyHistoryRecord& record);
   static uint32_t hour_day_record_crc_(const EnergyHistoryHourDayRecord& record);
+  static uint32_t hour_day_recovery_crc_(const EnergyHistoryHourDayRecord& record);
+  static uint32_t recovered_hour_mask_(const EnergyHistoryHourDayRecord& record);
   static bool record_has_values_(const EnergyHistoryValues& values);
   static bool date_key_valid_(uint32_t date_key);
   static bool date_bitmap_index_(uint32_t date_key, size_t* byte_index, uint8_t* bit_mask);
@@ -181,22 +201,35 @@ class OpenQuattEnergyHistory : public Component {
   bool read_record_(uint32_t slot_index, EnergyHistoryRecord* record) const;
   bool record_valid_(const EnergyHistoryRecord& record) const;
   bool read_hour_day_record_(uint32_t slot_index, EnergyHistoryHourDayRecord* record) const;
+  // The shared HTTP server runs its handlers serially. Only those handlers use the PSRAM snapshot.
+  bool read_http_hour_day_record_(uint32_t slot_index);
+  EnergyHistoryHourRecord copy_live_hour_record_(size_t slot_index);
   bool hour_day_record_valid_(const EnergyHistoryHourDayRecord& record) const;
   bool scan_archive_();
   bool scan_hour_archive_();
   bool write_record_(uint32_t date_key, const EnergyHistoryValues& values, bool partial, bool rescan = true,
                      bool require_enabled = true);
   bool write_hour_day_record_(uint32_t date_key, bool partial);
-  bool write_hour_day_import_record_(uint32_t date_key, uint32_t hour_mask, const EnergyHistoryValues hours[24],
-                                     bool rescan = true);
+  bool write_hour_day_import_record_locked_(uint32_t date_key, uint32_t hour_mask, const EnergyHistoryValues hours[24],
+                                            bool rescan = true);
   EnergyHistoryValues delta_values_(const EnergyHistoryValues& current, const EnergyHistoryValues& previous) const;
-  void restore_current_day_hours_(uint32_t date_key, uint8_t current_hour, const EnergyHistoryValues& current_values);
-  void capture_hour_delta_(uint32_t date_key, uint8_t hour, const EnergyHistoryValues& values);
+  void restore_current_day_hours_(uint32_t date_key, uint8_t current_hour, const EnergyHistoryValues& current_values,
+                                  bool mark_recovered);
+  void capture_hour_delta_(uint32_t date_key, uint8_t hour, const EnergyHistoryValues& values,
+                           bool includes_recovered_energy = false);
   uint16_t requested_flash_hourly_retention_days_() const;
   size_t max_hour_flash_total_bytes_() const;
   void configure_hour_flash_window_();
   bool is_hour_partition_ready_() const;
-  bool snapshot_hour_day_values_(uint32_t date_key, EnergyHistoryValues hours[24], uint32_t* hour_mask) const;
+  bool snapshot_hour_day_values_(uint32_t date_key, EnergyHistoryValues hours[24], uint32_t* hour_mask,
+                                 uint32_t* recovered_hour_mask) const;
+  // Main-loop requests and pending samples have one owner. The helpers ending in
+  // _locked_ run with the non-recursive hour state mutex already held.
+  bool service_pending_history_();
+  bool process_pending_history_locked_(bool require_complete_flush = false);
+  bool flush_current_day_locked_(bool require_complete_flush);
+  void clear_history_locked_();
+  void apply_sample_locked_(const PendingSample& sample);
   uint32_t get_hour_record_count_() const;
   void clear_hour_records_();
 
@@ -221,11 +254,18 @@ class OpenQuattEnergyHistory : public Component {
                                       UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
 
   bool has_last_hour_sample_{false};
+  bool mark_boot_recovery_{true};
+  bool stale_shutdown_marker_{false};
   uint32_t last_hour_sample_date_key_{0};
-  uint8_t last_hour_sample_hour_{0};
   EnergyHistoryValues last_hour_sample_values_{UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH,
                                                UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
   PsramObjectArray<ExternalState, 1U> external_state_storage_{};
+  StaticSemaphore_t hour_state_mutex_storage_{};
+  SemaphoreHandle_t hour_state_mutex_{nullptr};
+  size_t pending_sample_count_{0};
+  bool clear_requested_{false};
+  bool retention_refresh_requested_{false};
+  bool flush_requested_{false};
   uint32_t next_hour_sequence_{0};
   uint32_t next_hour_flash_sequence_{0};
   uint32_t hour_flash_record_count_{0};
@@ -238,6 +278,8 @@ class OpenQuattEnergyHistory : public Component {
   EnergyHistoryHourDayRecord hour_flash_record_buffer_{};
   uint8_t hour_flash_slot_buffer_[HOUR_FLASH_SLOT_SIZE]{};
 
+  // Protected by hour_state_mutex_. Cancels an in-flight import after a clear.
+  uint32_t archive_clear_generation_{0};
   uint32_t next_sequence_{0};
   uint32_t record_count_{0};
   uint32_t stored_day_count_{0};
