@@ -84,16 +84,25 @@ int main() {
   assert(solve(variants[0], 90, -7, 10, flow, true).valid());  // Existing cold-start boundary remains usable.
   // Extended V2-new heating frequencies (95/102/110 Hz, F18-F20) must remain
   // usable through the water-chain model in both coupled and uncoupled modes.
+
   for (int level = 18; level <= 20; ++level) {
     const Frequency extended;
-    const CandidateModel coupled(extended, -7, 30, flow, {35.77f, 40.75f}, true, false);
+    const CandidateModel coupled(extended, -7, 30, flow, {32.77f, 34.75f}, true, false);
     const auto pair = coupled.pair(10, level);
     assert(pair.valid() && pair.thermal_w > 0 && pair.electrical_w > 0);
     assert(coupled.unit(false, level).valid());
 
-    const CandidateModel independent(extended, -7, 30, NAN, {35.77f, 40.75f}, false, false);
+    const CandidateModel independent(extended, -7, 30, NAN, {32.77f, 34.75f}, false, false);
     assert(independent.unit(false, level).valid());
     assert(independent.pair(10, level).valid());
+  }
+
+  // At higher outlet temperatures, the uppermost two levels are invalid
+  for (int level = 19; level <= 20; ++level) {
+    const Frequency extended;
+    const CandidateModel coupled(extended, -7, 30, flow, {35.77f, 40.75f}, true, false);
+    const auto pair = coupled.pair(10, level);
+    assert(!pair.valid());
   }
 
   const Frequency frequency;
