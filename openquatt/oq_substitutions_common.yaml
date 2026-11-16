@@ -256,6 +256,8 @@ oq_boiler_defrost_assist_margin_c: "3.0"              # Defrost-assist boiler ta
 oq_boiler_defrost_assist_confirm_s: "10"              # A defrost report must persist this long before an assist session starts [s].
 oq_boiler_defrost_assist_min_run_s: "60"              # Minimum run of a started assist session, also if the report clears earlier [s].
 oq_boiler_defrost_assist_rearm_s: "120"               # Clear time after a session before a new assist session may start [s].
+oq_boiler_defrost_assist_release_s: "60"              # A started session ends only after the report has been clear this long [s].
+oq_boiler_defrost_assist_reference_settle_s: "300"    # Settle time after boiler heat before the supply is a defrost reference again [s].
 oq_boiler_otb_min_on_s: "30"                          # OpenTherm minimum requested on-time [s]; safety trips override it.
 oq_boiler_otb_min_off_s: "120"                        # OpenTherm minimum requested off-time [s].
 oq_otb_supported: "false"                             # Compile-time availability of the boiler OpenTherm master transport.

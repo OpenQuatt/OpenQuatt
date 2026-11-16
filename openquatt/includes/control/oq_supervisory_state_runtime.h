@@ -71,6 +71,8 @@ struct TickConfig {
   uint32_t boiler_defrost_assist_confirm_s;
   uint32_t boiler_defrost_assist_min_run_s;
   uint32_t boiler_defrost_assist_rearm_s;
+  uint32_t boiler_defrost_assist_release_s;
+  uint32_t boiler_defrost_assist_reference_settle_s;
 };
 
 class Runtime {
@@ -496,15 +498,23 @@ class Runtime {
     any_hp_defrost_reported = any_hp_defrost_reported || id(hp2_4_way_valve).state || id(hp2_defrost).state;
 #endif
     const bool heat_pump_heating_mode = strcmp(cur_cm, "CM2") == 0 || strcmp(cur_cm, "CM3") == 0;
+    // Boiler heat in the water must not become the pre-defrost reference. After
+    // a restart the water may still hold boiler heat from before it.
+    const bool boiler_heat_active = this->defrost_assist_first_tick_ || strcmp(cur_cm, "CM3") == 0 ||
+                                    strcmp(cur_cm, "CM4") == 0 || id(oq_boiler_output_request) ||
+                                    id(boiler_relay).state;
+    this->defrost_assist_first_tick_ = false;
     const auto defrost_assist = oq_boiler_defrost_assist::update(
         {now_ms, id(oq_aux_heat_source_present).state && id(oq_boiler_defrost_assist_enabled).state,
          heating_req && heat_pump_heating_mode, any_hp_defrost_reported,
-         !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state},
+         !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state, boiler_heat_active},
         this->defrost_assist_state_,
         {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s), tick.boiler_defrost_assist_margin_c,
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_confirm_s),
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_min_run_s),
-         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_rearm_s)});
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_rearm_s),
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_release_s),
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_reference_settle_s)});
     this->defrost_assist_state_ = defrost_assist.state;
     const bool defrost_assist_requested = defrost_assist.requested;
     id(oq_defrost_assist_target_c) = defrost_assist.target_c;
@@ -882,12 +892,15 @@ class Runtime {
               id(oq_cm3_demote_since_ms) = 0;
               cm_transition_reason = promote_reason;
             } else if (defrost_assist_available && desired_local == 2 &&
-                       (cm_now == 2 || defrost_assist_owned || (cm_now == 3 && !boiler_assist_available))) {
+                       ((cm_now == 2 && any_hp_defrost_reported) || defrost_assist_owned ||
+                        (cm_now == 3 && !boiler_assist_available))) {
               // The defrost dip is immediate, so the normal promotion delay
               // does not apply. The assist session carries its own
               // anti-cycling instead (confirm, minimum run and rearm time in
               // oq_boiler_defrost_assist). A CM3 that normal assist already
-              // owns is left to the normal logic below.
+              // owns is left to the normal logic below. Only a current report
+              // promotes from CM2: the release time holds a CM3 that the
+              // defrost already owns, it never starts the boiler afterwards.
               desired_local = 3;
               id(oq_defrost_assist_active) = true;
               id(oq_cm3_need_since_ms) = 0;
@@ -1289,6 +1302,7 @@ class Runtime {
  private:
   uint8_t heating_gate_reason_{0};
   oq_boiler_defrost_assist::State defrost_assist_state_;
+  bool defrost_assist_first_tick_{true};
   oq_cold_start::WaterProbe hp1_water_probe_;
 #if OQ_TOPOLOGY_DUO
   oq_cold_start::WaterProbe hp2_water_probe_;

@@ -14,8 +14,8 @@ using oq_boiler_defrost_assist::State;
 
 // Timing-free policy for the session rules; the anti-cycling timers have their
 // own cases below with kTimed.
-constexpr Config kConfig{900000UL, 3.0f, 0UL, 0UL, 0UL};
-constexpr Config kTimed{900000UL, 3.0f, 10000UL, 60000UL, 120000UL};
+constexpr Config kConfig{900000UL, 3.0f, 0UL, 0UL, 0UL, 0UL, 0UL};
+constexpr Config kTimed{900000UL, 3.0f, 10000UL, 60000UL, 120000UL, 60000UL, 300000UL};
 
 Input heating(uint32_t now_ms, float supply_c, bool defrost) {
   Input in;
@@ -69,7 +69,7 @@ void test_defrost_starts_assist_at_the_pre_defrost_supply() {
 
 void test_unusable_margin_never_raises_the_target() {
   for (const float margin_c : {0.0f, -2.0f, NAN, INFINITY}) {
-    const Config config{900000UL, margin_c, 0UL, 0UL, 0UL};
+    const Config config{900000UL, margin_c, 0UL, 0UL, 0UL, 0UL, 0UL};
     const auto out = oq_boiler_defrost_assist::update(heating(6000U, 30.0f, true), primed(36.0f), config);
     assert(out.requested);
     assert(out.target_c == 36.0f);
@@ -244,15 +244,16 @@ void test_a_single_sample_report_does_not_start_a_session() {
   assert(out.target_c == 39.0f);
 }
 
-void test_started_session_runs_its_minimum_time() {
+void test_started_session_runs_its_minimum_and_release_time() {
   Run run;
   run.step(false, 36.0f);
   run.step(true, 36.0f);
   run.step(true, 35.0f);
   assert(run.step(true, 33.0f).started);
   const uint32_t started_ms = run.now_ms;
-  // The report clears 5 s into the session; the session is held.
-  while (run.now_ms - started_ms < 55000U) {
+  // The report clears 5 s into the session. The session is held for the
+  // minimum run and until the report has been clear for the release time.
+  while (run.now_ms - started_ms < 60000U) {
     const auto out = run.step(false, 37.0f);
     assert(out.requested);
     assert(!out.released);
@@ -260,7 +261,39 @@ void test_started_session_runs_its_minimum_time() {
   const auto out = run.step(false, 37.0f);
   assert(!out.requested);
   assert(out.released);
-  assert(run.now_ms - started_ms == 60000U);
+  assert(run.now_ms - started_ms == 65000U);
+}
+
+void test_a_single_clear_sample_does_not_end_a_session() {
+  Run run;
+  run.step(false, 36.0f);
+  run.step(true, 36.0f);
+  run.step(true, 35.0f);
+  assert(run.step(true, 33.0f).started);
+  for (int tick = 0; tick < 24; ++tick) assert(run.step(true, 34.0f).requested);
+  // One 5 s sample without the bit, past the minimum run.
+  assert(run.step(false, 34.0f).requested);
+  assert(run.step(true, 34.0f).requested);
+  assert(run.starts == 1);
+}
+
+void test_release_time_bridges_a_second_outdoor_unit() {
+  // Duo: the second unit starts its defrost 45 s after the first one ended.
+  // The session carries over instead of leaving the second dip unassisted.
+  Run run;
+  run.step(false, 36.0f);
+  run.step(true, 36.0f);
+  run.step(true, 35.0f);
+  assert(run.step(true, 33.0f).started);
+  for (int tick = 0; tick < 36; ++tick) assert(run.step(true, 34.0f).requested);
+  for (int tick = 0; tick < 9; ++tick) assert(run.step(false, 37.0f).requested);
+  for (int tick = 0; tick < 36; ++tick) assert(run.step(true, 34.0f).requested);
+  // The second defrost ends: release after the release time.
+  for (int tick = 0; tick < 12; ++tick) assert(run.step(false, 37.0f).requested);
+  const auto out = run.step(false, 37.0f);
+  assert(!out.requested);
+  assert(out.released);
+  assert(run.starts == 1);
 }
 
 void test_losing_permission_overrides_the_minimum_time() {
@@ -317,8 +350,8 @@ void test_assist_heat_does_not_raise_the_next_reference() {
   run.step(true, 35.0f);
   assert(run.step(true, 33.0f).started);
   for (int tick = 0; tick < 30; ++tick) run.step(true, 38.5f);
-  // Defrost over; supply still lifted by the boiler during hold and rearm.
-  for (int tick = 0; tick < 23; ++tick) {
+  // Defrost over; supply still lifted by the boiler during release and rearm.
+  for (int tick = 0; tick < 35; ++tick) {
     run.step(false, 38.5f);
     assert(run.state.reference_supply_c == 36.0f);
   }
@@ -326,6 +359,48 @@ void test_assist_heat_does_not_raise_the_next_reference() {
   run.step(false, 35.5f);
   run.step(false, 35.5f);
   assert(run.state.reference_supply_c == 35.5f);
+}
+
+void test_boiler_heat_is_never_a_reference() {
+  // Normal assist lifts the supply in CM3. That supply is no reference, also
+  // not during the settle time after the boiler stopped.
+  const Config config{900000UL, 3.0f, 0UL, 0UL, 0UL, 0UL, 300000UL};
+  auto out = oq_boiler_defrost_assist::update(heating(1000U, 36.0f, false), State{}, config);
+  assert(out.state.reference_supply_c == 36.0f);
+  auto in = heating(6000U, 48.0f, false);
+  in.boiler_heat_active = true;
+  out = oq_boiler_defrost_assist::update(in, out.state, config);
+  assert(isnan(out.state.reference_supply_c));
+
+  // A defrost while the boiler heats has nothing to hold.
+  in = heating(11000U, 44.0f, true);
+  in.boiler_heat_active = true;
+  out = oq_boiler_defrost_assist::update(in, out.state, config);
+  assert(!out.requested);
+
+  // Normal assist has ended, but the water still holds boiler heat.
+  out = oq_boiler_defrost_assist::update(heating(16000U, 46.0f, false), out.state, config);
+  assert(isnan(out.state.reference_supply_c));
+  out = oq_boiler_defrost_assist::update(heating(216000U, 41.0f, true), out.state, config);
+  assert(!out.requested);
+
+  // After the settle time the heat-pump supply is the reference again.
+  out = oq_boiler_defrost_assist::update(heating(311000U, 38.0f, false), out.state, config);
+  assert(out.state.reference_supply_c == 38.0f);
+  out = oq_boiler_defrost_assist::update(heating(316000U, 31.0f, true), out.state, config);
+  assert(out.requested);
+  assert(out.target_c == 41.0f);
+}
+
+void test_running_session_keeps_its_target_while_the_boiler_heats() {
+  auto out = oq_boiler_defrost_assist::update(heating(6000U, 30.0f, true), primed(36.0f), kConfig);
+  assert(out.requested);
+  auto in = heating(11000U, 34.0f, true);
+  in.boiler_heat_active = true;
+  out = oq_boiler_defrost_assist::update(in, out.state, kConfig);
+  assert(out.requested);
+  assert(out.target_c == 39.0f);
+  assert(isnan(out.state.reference_supply_c));
 }
 
 void test_maximum_duration_releases_until_the_defrost_clears() {
@@ -381,10 +456,14 @@ int main() {
   test_losing_heating_ownership_releases();
   test_defrost_end_releases_and_resumes_tracking();
   test_a_single_sample_report_does_not_start_a_session();
-  test_started_session_runs_its_minimum_time();
+  test_started_session_runs_its_minimum_and_release_time();
+  test_a_single_clear_sample_does_not_end_a_session();
+  test_release_time_bridges_a_second_outdoor_unit();
   test_losing_permission_overrides_the_minimum_time();
   test_flickering_report_cannot_cycle_the_session();
   test_assist_heat_does_not_raise_the_next_reference();
+  test_boiler_heat_is_never_a_reference();
+  test_running_session_keeps_its_target_while_the_boiler_heats();
   test_maximum_duration_releases_until_the_defrost_clears();
   test_duration_survives_millis_wraparound();
   return 0;

@@ -144,8 +144,23 @@ class BoilerRuntimeContractTest(unittest.TestCase):
         self.assertIn("- oq_thermal_limits::Config{}.soft_band_c;", DISPATCH_LOGIC)
         # Geen referentie uit de terugval op de warmtepompuitgang, en een
         # defrost-eigen CM3 gaat nooit over in normale ketelhulp.
-        self.assertIn("!id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state},",
-                      SUPERVISORY_RUNTIME)
+        self.assertIn(
+            "!id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state, boiler_heat_active},",
+            SUPERVISORY_RUNTIME,
+        )
+        # Ketelwarmte van normale hulp, koude start, fallback of een eerdere
+        # sessie wordt nooit de referentie voor het volgende doel.
+        self.assertIn(
+            "const bool boiler_heat_active = this->defrost_assist_first_tick_ || strcmp(cur_cm, \"CM3\") == 0 ||\n"
+            "                                    strcmp(cur_cm, \"CM4\") == 0 || id(oq_boiler_output_request) ||\n"
+            "                                    id(boiler_relay).state;",
+            SUPERVISORY_RUNTIME,
+        )
+        # Alleen een actuele melding promoveert vanuit CM2; de vrijgavetijd
+        # start de ketel nooit meer na afloop van de defrost.
+        self.assertIn("((cm_now == 2 && any_hp_defrost_reported) || defrost_assist_owned ||", SUPERVISORY_RUNTIME)
+        self.assertIn("if (!input.heating_owned || !input.supply_reference_valid || state.boiler_heat_recent) {",
+                      DEFROST_ASSIST_LOGIC)
         self.assertIn("} else if (defrost_assist_owned) {", SUPERVISORY_RUNTIME)
         self.assertIn("id(oq_defrost_assist_active) && current_cm_code == 3 ? 2 : current_cm_code);",
                       SUPERVISORY_RUNTIME)
@@ -156,6 +171,8 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             ('oq_boiler_defrost_assist_confirm_s: "10"', "uint32_t confirm_ms = 10000UL;"),
             ('oq_boiler_defrost_assist_min_run_s: "60"', "uint32_t minimum_ms = 60000UL;"),
             ('oq_boiler_defrost_assist_rearm_s: "120"', "uint32_t rearm_ms = 120000UL;"),
+            ('oq_boiler_defrost_assist_release_s: "60"', "uint32_t release_ms = 60000UL;"),
+            ('oq_boiler_defrost_assist_reference_settle_s: "300"', "uint32_t reference_settle_ms = 300000UL;"),
         ):
             self.assertIn(substitution, SUBSTITUTIONS)
             self.assertIn(default, DEFROST_ASSIST_LOGIC)
