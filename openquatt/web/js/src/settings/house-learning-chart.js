@@ -111,14 +111,11 @@ function ciSvg(model, learned, fitRecords) {
     }
   }
   if (!hasCov && !localFit && !fanFit) return { html: "", isConfidence: false };
-  const zeroTemp = hasCov ? line.t0 : localFit ? localFit.t0 : fanFit.t0;
-  const maxTemp = Math.min(model.maxX, zeroTemp);
-  if (maxTemp <= model.minX) return { html: "", isConfidence: hasCov };
-  const temps = []; for (let t = model.minX; t < maxTemp - 1e-6; t += 0.5) temps.push(t); temps.push(maxTemp);
+  const temps = []; for (let t = model.minX; t < model.maxX - 1e-6; t += 0.5) temps.push(t); temps.push(model.maxX);
   let upper = "", lower = "";
   const yMin = Math.max(0, model.axisMinY), yMax = Math.max(0, model.axisMaxY);
   for (const t of temps) {
-    const y = Math.max(0, hasCov ? line.h * (line.t0 - t) : localFit ? localFit.b0 + localFit.b1 * t : fanFit.h * (fanFit.t0 - t));
+    const y = hasCov ? line.h * (line.t0 - t) : localFit ? localFit.b0 + localFit.b1 * t : fanFit.h * (fanFit.t0 - t);
     const c = hasCov ? line : localFit;
     const margin = c ? 1.96 * Math.sqrt(Math.max(0, c.cov00 - 2 * c.cov01 * t + c.cov11 * t * t)) : fanFit.baseMargin + fanFit.slopeMargin * Math.abs(t - fanFit.meanT);
     const x = model.x(t).toFixed(1);
