@@ -92,6 +92,11 @@ void test_fixture_chain() {
         input.hp1 = modeled_hp(frequency, true, level, 35, ambient);
         if (input.hp1.levels[level].thermal_valid) break;
       }
+      // The highest V2-new entries are only covered at colder supply points.
+      for (float ambient : {-15.0f, -7.0f, 0.0f, 2.0f, 7.0f, 12.0f}) {
+        if (input.hp1.levels[level].thermal_valid) break;
+        input.hp1 = modeled_hp(frequency, true, level, 30, ambient);
+      }
       assert(input.hp1.levels[level].thermal_valid);
       input.requested_w = input.hp1.levels[level].thermal_w;
       const auto selected = decide_dispatch(input, limits(), {});
@@ -123,8 +128,10 @@ void test_extra_points_and_limits() {
     assert(decide_dispatch(input, limits(), {}).hp1_level == level);
   }
   for (int level : {18, 19, 20}) {
-    assert(oq_perf::predict_candidate(frequency, table.variant, true, level, 7, 35).usable_for_running_optimization());
+    assert(frequency.automatic_level_limit(true, 2) == 20);
     assert(oq_odu::resolve_automatic_level(false, table, 2, level).physical_level == level);
+    // Above 90 Hz the map only covers colder operating points.
+    assert(oq_perf::predict_candidate(frequency, table.variant, true, level, -7, 30).usable_for_running_optimization());
   }
   frequency.cap_hz = 40;
   frequency.hp1_excluded = {30, 36};
