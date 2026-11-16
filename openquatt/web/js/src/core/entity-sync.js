@@ -1228,6 +1228,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   const LEARNING_VIEW_KEYS = [
     "houseLearningEnabled", "houseLearningReset", "houseColdTemp", "houseOutdoorMax", "housePower",
+    "outsideTempSelected",
     "hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut", "weatherLocation", "weatherEnabled", "weatherStatus",
   ];
 

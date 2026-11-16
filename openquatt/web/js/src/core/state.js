@@ -102,7 +102,7 @@ export const state = {
   appView: "",
   // Last view opened per top-level tab group, such as Results or Diagnose under Charts.
   appViewGroupLast: {},
-  learningForecastOpen: false,
+  learningPanel: "measurements",
   weatherConfigRevision: 0,
   weatherOptOutUnconfirmed: false,
   weatherForecast: null,

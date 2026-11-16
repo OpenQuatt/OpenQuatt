@@ -79,6 +79,18 @@ inline QualityConfig daily_heat_quality(const QualityConfig& hp_quality, bool sy
   return quality;
 }
 
+inline QualityConfig live_daily_heat_quality(const QualityConfig& hp_quality, bool system_heat_enabled,
+                                             bool boiler_off_between_ticks) {
+  auto quality = daily_heat_quality(hp_quality, system_heat_enabled);
+  if (system_heat_enabled) {
+    constexpr float kAssumedBoilerHeatBoundW = 24000.0f;
+    float bound_w = configured_daily_missing_heat_bound_w(hp_quality);
+    if (!boiler_off_between_ticks) bound_w += kAssumedBoilerHeatBoundW;
+    quality.max_daily_missing_heat_w = fminf(bound_w, quality.max_abs_heat_w);
+  }
+  return quality;
+}
+
 // Real endpoint evidence can exceed the reference envelope, e.g. during signed
 // defrost or a thermal transition. Enlarge the conditional bound; never hide the
 // observation or reduce already accrued debt. Unobserved heat remains an assumption.

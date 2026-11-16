@@ -9,7 +9,11 @@ const { state } = await import("../js/src/core/state.js");
 const { commitNumber, commitSwitch, commitText } = await import("../js/src/core/entity-write-actions.js");
 const { refreshEntities } = await import("../js/src/core/entity-sync.js");
 const { patchLearningDom } = await import("../js/src/core/view-patch-controls.js");
+const { shouldRefreshWeatherForecast } = await import("../js/src/features/weather-forecast.js");
+const { shouldRefreshHouseLearningStatusSurface } = await import("../js/src/features/house-learning.js");
+const { setLocale } = await import("../js/src/i18n/index.js");
 const { renderLearningView } = await import("../js/src/views/learning.js");
+const { patchWeatherOutlook } = await import("../js/src/settings/weather.js");
 
 const ok = payload => ({ ok: true, status: 200, json: async () => payload });
 function deferred() {
@@ -23,7 +27,8 @@ test.beforeEach(t => {
   state.busyAction = state.controlError = state.controlNotice = "";
   state.weatherConfigRevision = 0;
   state.weatherOptOutUnconfirmed = false;
-  state.learningForecastOpen = true;
+  state.houseLearningEndpointAvailable = state.houseLearningEndpointChecked = state.houseLearningEndpointChecking = false;
+  state.learningPanel = "configuration";
   state.loadingEntities = false;
   state.nativeOpen = false;
   state.drafts = {};
@@ -187,13 +192,135 @@ test("de Leren-patch bewaart Vooruitblikbediening en toont tegelijk actuele meld
   state.controlError = "Bewaren <mislukt>";
   const markup = renderLearningView();
   assert.match(markup, /data-oq-feedback-stack/);
-  assert.match(markup, /data-learning-panel="forecast" aria-pressed="true"/);
+  assert.match(markup, /data-learning-panel="configuration" aria-current="page"/);
   assert.equal(patchLearningDom(), true);
   assert.match(added.join(""), /role="alert".*Bewaren &lt;mislukt&gt;/);
   assert.equal(document.activeElement, input);
   assert.equal(input.selectionStart, 1);
   assert.equal(input.selectionEnd, 4);
   assert.equal(state.root.scrollTop, 200);
+
+  state.entities.houseLearningEnabled = { value: true, state: "ON" };
+  assert.equal(patchLearningDom(), true, "the weather field remains mounted before the capability check");
+  state.houseLearningEndpointChecked = true;
+  assert.equal(patchLearningDom(), true, "a missing learning endpoint does not require a full render");
+  assert.equal(document.activeElement, input);
+  assert.equal(input.selectionStart, 1);
+  assert.equal(input.selectionEnd, 4);
+  state.houseLearningEndpointAvailable = true;
+  assert.equal(patchLearningDom(), false, "the available learning panel must be mounted");
   delete state.entities.weatherEnabled;
   assert.equal(patchLearningDom(), false, "veranderde tabcapability vereist een structurele render");
+});
+
+
+test("vijf leeronderdelen scheiden uitleg, dagelijks gebruik, instellingen en diagnose in beide talen", () => {
+  state.appView = "learning";
+  state.entities.houseLearningEnabled = { value: true, state: "ON" };
+  state.entities.houseLearningReset = {};
+  state.houseLearningEndpointAvailable = state.houseLearningEndpointChecked = true;
+  state.houseLearningStatus = null;
+  state.entities.weatherStatus = { value: "observing", state: "observing" };
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    const titles = locale === "nl"
+      ? ["Leren en voorspellen", "Huismodel volgen", "Vooruitblik", "Instellingen", "Diagnose en data"]
+      : ["Learning and forecasting", "Monitor home model", "Outlook", "Settings", "Diagnostics and data"];
+    const badge = locale === "nl" ? "Experimenteel" : "Experimental";
+    for (const [index, panel] of ["explanation", "measurements", "forecast", "configuration", "diagnostics"].entries()) {
+      state.learningPanel = panel;
+      const markup = renderLearningView();
+      const heading = markup.match(/<header class="oq-settings-section-head oq-learning-page-head">([\s\S]*?)<\/header>/)?.[1];
+      assert.match(heading ?? "", new RegExp(String.raw`<h3>${titles[index]}</h3>\s*<span[^>]+>${badge}</span>`));
+      assert.equal((markup.match(/oq-settings-section-badge--experimental/g) || []).length, 1);
+      assert.equal((markup.match(/data-learning-panel=/g) || []).length, 5);
+      assert.match(markup, new RegExp(`data-learning-panel="${panel}" aria-current="page"`));
+      if (panel === "configuration") assert.doesNotMatch(markup, /Een nieuwe berekening|A new calculation|data-oq-learning-scenario|<table/);
+      assert.equal(markup.includes('data-oq-field="weatherLocation"'), panel === "configuration");
+      assert.equal(markup.includes('data-control-key="houseLearningEnabled"'), panel === "configuration");
+      assert.equal(markup.includes('data-oq-button-key="houseLearningReset"'), panel === "configuration");
+      assert.equal(markup.includes('data-oq-action="download-house-learning"'), panel === "diagnostics");
+      if (panel === "diagnostics") {
+        assert.doesNotMatch(markup, /data-oq-forecast-quality/);
+        assert.match(markup, /data-oq-house-learning-secondary[\s\S]*data-oq-house-learning-shadow[\s\S]*data-oq-house-learning-technical[\s\S]*data-oq-house-learning-actions/);
+      }
+      const href = markup.match(new RegExp('href="([^"]+)"[^>]*data-learning-panel="' + panel + '"'))?.[1];
+      assert.ok(href);
+      const url = new URL(href.replaceAll("&amp;", "&"), "http://fixture/");
+      assert.equal(url.searchParams.get("view"), "learning");
+      assert.equal(url.searchParams.get("section"), panel === "measurements" ? null : panel);
+      assert.equal(markup.includes("oq-learning-explanation"), panel === "explanation");
+      assert.equal(markup.includes('data-oq-learning-scenario'), panel === "forecast");
+      assert.equal(markup.includes('data-oq-house-learning-chart-panel'), panel === "measurements");
+      assert.equal(shouldRefreshWeatherForecast(), panel === "forecast");
+      assert.equal(shouldRefreshHouseLearningStatusSurface(), !["explanation", "forecast"].includes(panel));
+    }
+    document.hidden = true;
+    assert.equal(shouldRefreshWeatherForecast(), false);
+    assert.equal(shouldRefreshHouseLearningStatusSurface(), false);
+    document.hidden = false;
+  }
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
+});
+
+test("Vooruitblik wisselt tussen de uitmelding en de prognose zonder fouten te verbergen", () => {
+  state.appView = "learning";
+  state.learningPanel = "forecast";
+  state.entities.weatherEnabled = { value: false, state: "OFF" };
+  state.entities.weatherStatus = { value: "disabled", consent_state: "off" };
+  const markup = renderLearningView();
+  assert.match(markup, /Weersverwachting staat uit/);
+  assert.match(markup, /href="[^"]*section=configuration"\s+data-oq-action="select-learning-panel"[^>]*>Naar weerinstellingen/);
+  assert.doesNotMatch(markup, /data-oq-learning-scenario|data-oq-weather-forecast/);
+
+  state.entities.weatherStatus.consent_state = "failed";
+  const error = renderLearningView();
+  assert.match(error, /kon niet worden opgeslagen/);
+  assert.doesNotMatch(error, /Zet de weersverwachting aan/);
+
+  const panel = { dataset: { oqWeatherOutlook: "off" } };
+  state.root = { querySelector: selector => selector === "[data-oq-weather-outlook]" ? panel : null };
+  assert.equal(patchWeatherOutlook(), true);
+  state.entities.weatherEnabled = { value: true, state: "ON" };
+  state.entities.weatherStatus.consent_state = "on";
+  assert.equal(patchWeatherOutlook(), false);
+  assert.match(renderLearningView(), /data-oq-learning-scenario[\s\S]*data-oq-weather-forecast/);
+  panel.dataset.oqWeatherOutlook = "";
+  assert.equal(patchWeatherOutlook(), true);
+  state.entities.weatherEnabled = { value: false, state: "OFF" };
+  assert.equal(patchWeatherOutlook(), false);
+});
+
+test("Vooruitblik zonder weerentiteiten behoudt de DOM bij polls en volgt laden en taal", () => {
+  state.appView = "learning";
+  state.learningPanel = "forecast";
+  state.entities = {};
+  state.controlError = state.controlNotice = "";
+  const unavailable = { textContent: "" };
+  const stack = { style: { setProperty() {} }, classList: { toggle() {} },
+    replaceChildren() {}, replaceWith() {}, querySelector: () => null };
+  state.root = { scrollTop: 120, querySelector: selector => ({
+    "[data-oq-feedback-stack]": stack,
+    "[data-oq-weather-unavailable]": unavailable,
+  })[selector] };
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const loading of [true, false]) {
+      state.loadingEntities = loading;
+      const markup = renderLearningView();
+      const message = markup.match(/data-oq-weather-unavailable role="status">([^<]+)<\/p>/)?.[1];
+      assert.ok(message);
+      assert.equal(patchLearningDom(), true);
+      assert.equal(patchLearningDom(), true, "ongewijzigde polls vereisen geen volledige render");
+      assert.equal(unavailable.textContent, message);
+      assert.equal(state.root.scrollTop, 120);
+    }
+  }
+  state.entities.weatherEnabled = { value: true, state: "ON" };
+  state.entities.weatherLocation = { value: "Brummen", state: "Brummen" };
+  assert.equal(patchLearningDom(), false, "beschikbare weerentiteiten vereisen een nieuwe paneelstructuur");
+  state.entities = {};
+  state.root.querySelector = selector => selector === "[data-oq-feedback-stack]" ? stack : null;
+  assert.equal(patchLearningDom(), false, "een ontbrekende uitmelding moet eerst worden gemount");
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
 });

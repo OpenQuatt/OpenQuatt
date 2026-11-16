@@ -394,3 +394,22 @@ test("all-days preview includes the cold checking range without granting advice"
   assert.equal(approved.h, 213); assert.equal(approved.t0, 17.4);
   assert.equal(getHouseLearningChartModel([], {}, {...learned, preview:null}).learnedValid, false);
 });
+
+test("de woninglijn toont meetpunten, doorgetrokken schattingen en geen band", () => {
+  const records = [3, 4, 5, 6, 7, 8, 1, 12, 14].map((outsideC, index) => ({
+    startEpoch: 86400 * (20000 + index), endEpoch: 86400 * (20001 + index),
+    outsideC, heatW: 200 * (17.8 - outsideC) + 150, recordKind: 1,
+    quality: { valid: true, fitEligible: true, fitWeightBp: 10000 },
+  }));
+  const learned = { ready: true, h: 200, t0: 17.8, referenceRoomC: 20,
+    fit: { trainCount: 6, checkCount: 3, trainDays: 6, checkDays: 3, minC: 3, maxC: 8, p10: 3, p90: 8 } };
+  const html = renderHouseLearningChart(records, {}, learned);
+  assert.equal((html.match(/oq-house-learning-chart-point"/g) || []).length, 9);
+  assert.equal((html.match(/oq-house-learning-chart-line--learned-dashed/g) || []).length, 2);
+  assert.match(html, /<dt>Bij -10 °C<\/dt><dd>5,56 kW<\/dd>/);
+  assert.match(html, /<dt>Bij 17,8 °C<\/dt><dd>0 kW<\/dd>/);
+  assert.doesNotMatch(html, /<polygon|Band in grafiek|Berekende band|Meetspreiding/);
+
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.match(renderHouseLearningChart(records, {}, learned), /<dt>At 17\.8 °C<\/dt><dd>0 kW<\/dd>/);
+});

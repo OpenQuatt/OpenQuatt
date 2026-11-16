@@ -28,6 +28,11 @@ async function buildCompactFixture() {
     import { optionLabel, setLocale, t } from "./i18n/index.js";
     import { renderOduDefrostModal } from "./features/odu-defrost.js";
     import { state } from "./core/state.js";
+    import { renderLearningExplanation } from "./views/learning-explanation.js";
+    export function readLearningExplanation(locale) {
+      setLocale(locale, { persist: false, applyDocument: false, notify: false });
+      return renderLearningExplanation();
+    }
     export function readDefrostInfo(locale, variant) {
       setLocale(locale, { persist: false, applyDocument: false, notify: false });
       state.systemModal = "odu-defrost-info-1";
@@ -88,6 +93,16 @@ test("compact i18n build keeps both locales and dynamic incident keys", async ()
     module.readDynamicTranslations("en", dynamicKeys),
     dynamicKeys.map((key) => enEntries.get(key)),
   );
+});
+
+test("the compact production bundle resolves both learning guide translations", async () => {
+  const { module } = await buildCompactFixture();
+  for (const [locale, catalogue] of [["nl", nl], ["en", en]]) {
+    const { intro, flowLabel, scenarioLabel, pauseCopy } = catalogue.learningExplanation;
+    const html = module.readLearningExplanation(locale);
+    assert.doesNotMatch(html, /learningExplanation\./);
+    for (const label of [intro, flowLabel, scenarioLabel, pauseCopy]) assert.ok(html.includes(label));
+  }
 });
 
 test("compact i18n build uses a bounded runtime key index", () => {

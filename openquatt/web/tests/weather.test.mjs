@@ -147,7 +147,7 @@ test("weather opt-out cannot be confirmed by failed persistence or a legacy swit
 
 test("an unreadable opt-out does not resume weather polling on a cached ON", async () => {
   state.appView = "learning";
-  state.learningForecastOpen = true;
+  state.learningPanel = "forecast";
   state.entities.weatherEnabled = entity(true);
   state.entities.weatherStatus = { ...entity("observing"), consent_state: "on" };
   validForecast();
@@ -163,7 +163,7 @@ test("an unreadable opt-out does not resume weather polling on a cached ON", asy
     assert.equal(forecastReads, 0);
     assert.match(weatherMarkup(), /nog niet bevestigd/);
   } finally {
-    state.learningForecastOpen = false;
+    state.learningPanel = "measurements";
   }
 });
 
@@ -367,12 +367,12 @@ test("weather UI localizes NL and EN without translating stored location or wire
   state.entities.weatherStatus = entity("location_ambiguous");
   state.entities.weatherResolvedLocation = entity("Brummen (52.09000, 6.15556)");
   const nl = weatherMarkup();
-  assert.match(nl, /Vooruitblik/);
+  assert.match(nl, /Weersverwachting gebruiken/);
   assert.match(nl, /Meerdere plaatsen gevonden/);
   assert.match(nl, /Bij inschakelen:[^<]*Open-Meteo/);
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   const en = weatherMarkup();
-  assert.match(en, /Outlook/);
+  assert.match(en, /Use weather forecast/);
   assert.match(en, /Multiple places found/);
   assert.match(en, /Enabling shares your location with Open-Meteo/);
   assert.match(en, /value="Brummen"/);
@@ -411,7 +411,7 @@ test("diagnostic patch changes no location input, focus, selection or draft and 
   const diagnostics = { querySelector: () => ({}), get innerHTML() { return markup; }, set innerHTML(value) { markup = value; writes += 1; } };
   const toggle = { setAttribute() {}, dataset: {}, classList: { toggle() {} } };
   const pill = { classList: { toggle() {} } };
-  const nodes = { "[data-oq-weather-diagnostics]": diagnostics, '[data-oq-field="weatherLocation"]': input,
+  const nodes = { "[data-oq-weather-settings-status]": diagnostics, '[data-oq-field="weatherLocation"]': input,
     '[data-control-key="weatherEnabled"]': toggle, '[data-oq-switch-pill="weatherEnabled"]': pill };
   const panel = {
     querySelector: (selector) => nodes[selector],
@@ -421,7 +421,7 @@ test("diagnostic patch changes no location input, focus, selection or draft and 
   assert.equal(patchWeatherSettings(), true);
   assert.equal(patchWeatherSettings(), true);
   assert.equal(writes, 1);
-  state.entities.weatherStatus = entity("observing");
+  state.entities.weatherStatus = entity("location_ambiguous");
   assert.equal(patchWeatherSettings(), true);
   assert.equal(writes, 2);
   assert.equal(document.activeElement, input);
@@ -432,8 +432,8 @@ test("diagnostic patch changes no location input, focus, selection or draft and 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   assert.equal(patchWeatherSettings(), true);
   assert.equal(writes, 3);
-  assert.match(markup, /constant heat delivery/);
-  assert.doesNotMatch(markup, /Calculating and comparing|oq-settings-action-note/);
+  assert.match(markup, /Multiple places found/);
+  assert.doesNotMatch(markup, /constant heat delivery|<table/);
 });
 
 test("capability changes require a structural render rather than leaving a stale weather panel", () => {

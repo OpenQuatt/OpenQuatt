@@ -48,5 +48,33 @@ int main() {
   state.reset_link_session();
   const auto reset = state.field_receipt(oq_otb::FIELD_STATUS);
   assert(!reset.received && !reset.valid && reset.received_ms == 0U);
+
+  const auto status = [&](uint32_t now_ms, uint16_t payload, uint8_t type = oq_otb::MESSAGE_TYPE_READ_ACK) {
+    state.record_request(0, oq_otb::MESSAGE_TYPE_READ_DATA);
+    state.record_response(now_ms, 0, type, payload);
+  };
+  status(1000, 0);
+  status(2000, 0x000cU);  // DHW-only flame.
+  assert(state.cv_off_since_ms(2000) == 1000);
+  status(3000, 0x0020U);  // CH2 between learner ticks.
+  status(4000, 0);
+  assert(state.cv_off_since_ms(4000) == 4000);
+  assert(state.cv_off_since_ms(14001) == 0);
+  status(14001, 0);
+  assert(state.cv_off_since_ms(14001) == 14001);
+  status(15000, 0, oq_otb::MESSAGE_TYPE_DATA_INVALID);
+  status(16000, 0);
+  assert(state.cv_off_since_ms(16000) == 16000);
+  state.record_request(25, oq_otb::MESSAGE_TYPE_READ_DATA);
+  state.record_missing_response();
+  assert(state.cv_off_since_ms(17000) == 16000);
+  state.record_request(0, oq_otb::MESSAGE_TYPE_READ_DATA);
+  state.record_missing_response();
+  assert(state.cv_off_since_ms(18000) == 0);
+  assert(state.field_is_valid(oq_otb::FIELD_STATUS));
+  status(19000, 0);
+  assert(state.cv_off_since_ms(19000) == 19000);
+  state.reset_link_session();
+  assert(state.cv_off_since_ms(19000) == 0);
   return 0;
 }

@@ -23,6 +23,7 @@ struct RuntimeStorage {
   PassiveRuntimeStorage learner;
   PassiveRuntimeConfig config;
   QualityConfig daily_quality;
+  LearningSourceInput input;
   bool system_supply_observed = false;
   LearningJournalStore journal;
   LearningJournalRecords pending_daily;

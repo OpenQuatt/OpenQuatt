@@ -31,7 +31,7 @@ const response = (value, status = 200) => ({ status, ok: status >= 200 && status
 test.beforeEach(() => {
   state.root = null;
   invalidateWeatherForecast();
-  state.weatherForecastHourlyOpen = false; state.appView = "learning"; state.learningForecastOpen = true; state.settingsGroup = "heating"; state.nativeOpen = false;
+  state.weatherForecastHourlyOpen = false; state.appView = "learning"; state.learningPanel = "forecast"; state.settingsGroup = "heating"; state.nativeOpen = false;
   state.busyAction = ""; state.entities = { weatherEnabled: entity(true), weatherLocation: entity("Brummen") };
   document.hidden = false;
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
@@ -98,7 +98,7 @@ test("only the visible enabled learning surface fetches controller data", async 
   const cached = state.weatherForecast;
   state.appView = "settings"; state.settingsGroup = "cooling"; assert.equal(await refreshWeatherForecast({ force: true }), false);
   assert.equal(state.weatherForecast, cached); assert.equal(calls, 1);
-  state.appView = "learning"; state.learningForecastOpen = true; document.hidden = true;
+  state.appView = "learning"; state.learningPanel = "forecast"; document.hidden = true;
   assert.equal(await refreshWeatherForecast({ force: true }), false); assert.equal(calls, 1);
 });
 

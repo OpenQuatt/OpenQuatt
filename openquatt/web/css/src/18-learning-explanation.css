@@ -1,0 +1,214 @@
+.oq-learning-link {
+  box-sizing: border-box;
+  text-decoration: none;
+}
+
+.oq-learning-explanation {
+  --oq-learning-cool: #35689f;
+  --oq-learning-green: #1e7552;
+  --oq-learning-heat-tint: #efd3be;
+  container-type: inline-size;
+  padding: clamp(16px, 3vw, 32px);
+}
+
+.oq-helper-shell--dark .oq-learning-explanation {
+  --oq-learning-cool: #93c5fd;
+  --oq-learning-green: #86efac;
+  --oq-learning-heat-tint: #835638;
+}
+
+.oq-learning-explanation > section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--oq-helper-line);
+}
+
+.oq-learning-explanation :is(h4, h5, dt) {
+  margin: 0;
+  color: var(--oq-helper-ink);
+}
+
+.oq-learning-explanation h4 {
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+.oq-learning-explanation :is(p, dd) {
+  margin: 8px 0 0;
+  color: var(--oq-helper-soft);
+  line-height: 1.55;
+}
+
+.oq-learning-explanation header {
+  max-width: 68ch;
+}
+
+.oq-learning-explanation dl {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.oq-learning-explanation dt {
+  font-weight: 650;
+}
+
+.oq-learning-explanation dd {
+  margin-top: 2px;
+}
+
+.oq-learning-split,
+.oq-learning-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.oq-learning-split {
+  align-items: center;
+}
+
+.oq-learning-pair {
+  margin: 14px 0;
+}
+
+.oq-learning-pair article {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-md);
+}
+
+.oq-learning-explanation .oq-learning-kicker {
+  margin: 0 0 5px;
+  color: var(--oq-helper-accent-deep);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.oq-learning-visual {
+  min-width: 0;
+  margin: 0;
+  border-radius: var(--oq-helper-radius-md);
+  background: var(--oq-helper-card-muted);
+}
+
+.oq-learning-pair .oq-learning-visual {
+  margin-top: auto;
+  padding-top: 12px;
+  background: transparent;
+}
+
+.oq-learning-visual svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.oq-learning-visual figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--oq-helper-soft);
+  font-size: 0.78rem;
+}
+
+.oq-learning-visual figcaption span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oq-learning-key {
+  display: inline-block;
+  flex: none;
+  width: 15px;
+  height: 2px;
+  border-radius: 10px;
+  background: var(--oq-helper-accent-deep);
+}
+
+.oq-learning-key--dot {
+  width: 8px;
+  height: 8px;
+}
+
+.oq-learning-key--green {
+  background: var(--oq-learning-green);
+}
+
+.oq-learning-visual :is(.plot-label, .picture-label) {
+  fill: var(--oq-helper-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.oq-learning-visual :is(.picture-line, .plot-axis, .plot-grid) {
+  fill: none;
+  stroke: var(--oq-helper-muted);
+  stroke-width: 1.4;
+}
+
+.oq-learning-visual .plot-grid {
+  stroke: var(--oq-helper-line);
+}
+
+.oq-learning-visual :is(.warm-line, .cool-line) {
+  fill: none;
+  stroke: var(--oq-helper-accent-deep);
+  stroke-width: 2.8;
+  stroke-linecap: round;
+}
+
+.oq-learning-visual .cool-line {
+  stroke: var(--oq-learning-cool);
+}
+
+.oq-learning-heat figcaption {
+  padding: 0 14px 12px;
+}
+
+.oq-learning-heat .oq-learning-heat-input {
+  fill: var(--oq-helper-accent-deep);
+}
+
+.oq-learning-heat .oq-learning-heat-loss {
+  fill: var(--oq-learning-cool);
+}
+
+.oq-learning-flow {
+  stroke-dasharray: 6 5;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oq-learning-flow {
+    animation: oq-learning-flow 1.25s linear infinite;
+  }
+
+  .oq-learning-rotor {
+    transform-origin: 74px 182px;
+    animation: oq-learning-spin 2.5s linear infinite;
+  }
+}
+
+@keyframes oq-learning-flow {
+  to { stroke-dashoffset: -11; }
+}
+
+@keyframes oq-learning-spin {
+  to { transform: rotate(1turn); }
+}
+
+.oq-learning-explanation .oq-learning-caption {
+  margin-top: 16px;
+  color: var(--oq-helper-muted);
+  font-size: 0.8rem;
+}
+
+@container (max-width: 600px) {
+  .oq-learning-split,
+  .oq-learning-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

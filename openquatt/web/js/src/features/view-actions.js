@@ -4,7 +4,7 @@ import { invokeActionMap } from "../core/action-router.js";
 import { SETTINGS_GROUPS } from "../core/config.js";
 import { syncEntities } from "../core/entity-sync.js";
 import { undoSettingsChange } from "../core/entity-write-actions.js";
-import { setAppView } from "../core/navigation.js";
+import { isLearningPanel, setAppView, syncUrlAppView } from "../core/navigation.js";
 import { render } from "../core/render-scheduler.js";
 import { setFeedbackPosition, setHpLayoutMode, setHpVisualMode, setOverviewTheme, setSettingsGroup } from "../core/runtime.js";
 import { invalidateHouseLearningShadow, state } from "../core/state.js";
@@ -56,15 +56,19 @@ function toggleSettingsAdvanced(event, button) {
 }
 
 const viewActionHandlers = {
-  "select-learning-panel": (button) => {
-    const open = button.dataset.learningPanel === "forecast";
-    if (open === state.learningForecastOpen) return;
-    if (open) invalidateHouseLearningShadow();
-    else suspendWeatherForecast();
-    state.learningForecastOpen = open;
+  "select-learning-panel": (button, event) => {
+    const panel = button.dataset.learningPanel;
+    if (!isLearningPanel(panel)) return;
+    if (event?.defaultPrevented || event?.button > 0 || event?.metaKey || event?.ctrlKey || event?.shiftKey || event?.altKey) return;
+    event?.preventDefault();
+    if (panel === state.learningPanel) return;
+    invalidateHouseLearningShadow();
+    suspendWeatherForecast();
+    state.learningPanel = panel;
+    syncUrlAppView("push");
     render();
-    if (open) void refreshWeatherForecast();
-    else void syncEntities({ forceFast: true });
+    if (panel === "forecast") void refreshWeatherForecast();
+    if (panel !== "forecast" && panel !== "explanation") void syncEntities({ forceFast: true });
   },
   "toggle-weather-hourly": (button, event) => {
     const details = button.closest("details");

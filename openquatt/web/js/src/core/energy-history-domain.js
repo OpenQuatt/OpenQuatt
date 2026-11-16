@@ -306,6 +306,7 @@ export function parseEnergyHistoryHourLine(line) {
     month: parsed.month,
     day: parsed.day,
     hour,
+    includesRecoveredEnergy: parts[11] === "1",
     partial: true,
     source: "hour",
     label: String(hour),

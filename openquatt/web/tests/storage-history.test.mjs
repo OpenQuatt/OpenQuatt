@@ -11,7 +11,53 @@ globalThis.window = {
 const { SENSOR_CALIBRATION_KEYS, SETTINGS_BACKUP_SECTIONS, SUPPLY_CALIBRATION_BACKUP_KEYS, ENTITY_DEFS } = await import("../js/src/core/config.js");
 const { normalizeSettingsBackupMqttConfig } = await import("../js/src/core/settings-backup-domain.js");
 const { state } = await import("../js/src/core/state.js");
-const { isUsageTelemetrySetupCompletionSafe, parseDecisionLogStorageMetadata, parseTrendHistoryMetadata, restoreSettingsBackup, shouldDisableUsageTelemetryForSetupRestore } = await import("../js/src/features/storage-history.js");
+const { importEnergyHistoryRecords, isUsageTelemetrySetupCompletionSafe, parseDecisionLogStorageMetadata, parseTrendHistoryMetadata, restoreSettingsBackup, shouldDisableUsageTelemetryForSetupRestore } = await import("../js/src/features/storage-history.js");
+
+test("a file import keeps its original token and stops if history is cleared between batches", async (context) => {
+  const originalFetch = globalThis.fetch;
+  const previousState = {};
+  for (const key of [
+    "energyHistoryCsrfToken", "energyHistoryImportBusy", "energyHistoryImportError",
+    "energyHistoryImportHourRecords", "energyHistoryImportNotice", "energyHistoryImportProgressPercent",
+    "energyHistoryImportRecords",
+  ]) {
+    previousState[key] = state[key];
+  }
+  context.after(() => {
+    globalThis.fetch = originalFetch;
+    Object.assign(state, previousState);
+  });
+
+  state.energyHistoryImportRecords = Array.from({ length: 31 }, (_, index) => ({
+    dateKey: `202610${String(index + 1).padStart(2, "0")}`,
+    electricalInputWh: 1200,
+    heatpumpHeatOutputWh: 3600,
+    boilerHeatOutputWh: 0,
+  }));
+  state.energyHistoryImportHourRecords = [];
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    if (url === "/energy/history?meta=1") {
+      return new Response("@csrf|test-secret.0\n");
+    }
+    assert.equal(url, "/energy/history/import");
+    requests.push(options.body.get("csrf_token"));
+    assert.ok(String(options.body).length <= 850);
+    if (requests.length === 1) {
+      // A background refresh can see the new token while the import is in flight.
+      state.energyHistoryCsrfToken = "test-secret.1";
+      return Response.json({ ok: true, written: 1 });
+    }
+    return Response.json({ ok: false, error: "archive_cleared" });
+  };
+
+  await importEnergyHistoryRecords();
+
+  assert.deepEqual(requests, ["test-secret.0", "test-secret.0"]);
+  assert.equal(state.energyHistoryImportNotice, "");
+  assert.match(state.energyHistoryImportError, /energiehistorie is gewist/);
+  assert.equal(state.energyHistoryImportBusy, false);
+});
 
 test("trend history metadata exposes bounded flash timing evidence", () => {
   const metadata = parseTrendHistoryMetadata([

@@ -77,10 +77,12 @@ function normalizeHouseLearningShadow(payload, requestStartedAt) {
       || value.available !== (value.reason === "ready") || !Number.isSafeInteger(value.tick_ms) || value.tick_ms < 0
       || !Number.isInteger(value.context_revision) || value.context_revision < 0) return invalid;
   const { manual_w: manualW, candidate_w: candidateW, delta_w: deltaW } = value;
+  const matchingFrame = value.tick_ms > 0 && value.context_revision > 0 && value.context_revision === payload.context_revision;
   if (!value.available) return [manualW, candidateW, deltaW].every(item => item === null)
-    ? { available: false, reason: value.reason } : invalid;
+    ? { available: false, reason: value.reason, ...(value.reason === "outside_range" && matchingFrame ? { lineEstimate: true } : {}) }
+    : invalid;
   const ttl = payload.shadow_ttl_ms;
-  if (!Number.isInteger(ttl) || ttl <= 0 || ttl > 30000 || value.tick_ms === 0 || value.context_revision === 0 || value.context_revision !== payload.context_revision
+  if (!Number.isInteger(ttl) || ttl <= 0 || ttl > 30000 || !matchingFrame
       || ![manualW, candidateW, deltaW].every(Number.isFinite) || manualW < 0 || candidateW < 0
       || Math.abs(candidateW - manualW - deltaW) > Math.max(0.01, Math.abs(manualW) * 0.00001, Math.abs(candidateW) * 0.00001)) return invalid;
   return { available: true, reason: "ready", manualW, candidateW, deltaW, expiresAt: requestStartedAt + ttl };
@@ -167,7 +169,8 @@ export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = pe
 }
 
 export function shouldRefreshHouseLearningStatusSurface() {
-  return !document.hidden && !state.nativeOpen && state.appView === "learning" && !state.learningForecastOpen && hasEntity("houseLearningEnabled");
+  return !document.hidden && !state.nativeOpen && state.appView === "learning" && state.learningPanel !== "forecast"
+    && state.learningPanel !== "explanation" && hasEntity("houseLearningEnabled");
 }
 
 // One expiry follow-up and at most two short retries per normal status poll.
@@ -185,7 +188,7 @@ function clearShadowRefresh() {
 function shadowRefreshCurrent(plan) {
   return plan && plan === shadowRefresh && plan.epoch === state.houseLearningShadowEpoch
     && plan.requestId === state.houseLearningRequestId && plan.status === state.houseLearningStatus
-    && shouldRefreshHouseLearningStatusSurface()
+    && state.learningPanel === "diagnostics" && shouldRefreshHouseLearningStatusSurface()
     && !state.busyAction && !["pending", "uncertain"].includes(state.houseLearningReset);
 }
 
@@ -222,7 +225,7 @@ export const getHouseLearningExportEndpoint = () => `${getBasePath()}/openquatt/
 // A cleared journal has nothing to show, and a failed load waits for the refresh button.
 function autoLoadHouseLearningChart() {
   const status = state.houseLearningStatus;
-  if (!status || !state.houseLearningEndpointAvailable || state.houseLearningChart !== null
+  if (state.learningPanel !== "measurements" || !status || !state.houseLearningEndpointAvailable || state.houseLearningChart !== null
     || state.houseLearningChartLoading || state.houseLearningChartError
     || (status.records === 0 && status.journalStatus === "cleared")
     || !shouldRefreshHouseLearningStatusSurface()) return;

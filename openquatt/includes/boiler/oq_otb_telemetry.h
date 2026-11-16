@@ -95,9 +95,18 @@ inline bool field_is_session_scoped(Field field) {
   }
 }
 
+constexpr uint64_t kBoilerStatusFreshMs = 10000;
+
+inline bool status_may_deliver_cv_heat(uint16_t status) {
+  const bool ch_active = (status & 0x0022U) != 0U;  // CH or CH2.
+  const bool dhw_only = (status & 0x0004U) != 0U && !ch_active && (status & 0x0010U) == 0U;
+  return ch_active || ((status & 0x0008U) != 0U && !dhw_only);
+}
+
 class TelemetryState {
  public:
   void reset_link_session() {
+    this->cv_off_since_ms_ = 0;
     this->session_has_response_ = false;
     this->last_response_ms_ = 0;
     this->pending_request_ = false;
@@ -115,6 +124,13 @@ class TelemetryState {
     this->pending_request_ = true;
     this->last_request_id_ = message_id;
     this->last_request_type_ = message_type;
+  }
+
+  void record_missing_response() {
+    if (this->pending_request_ && this->last_request_id_ >= 0 &&
+        field_index_for_message_id(this->last_request_id_) == FIELD_STATUS)
+      this->cv_off_since_ms_ = 0;
+    this->pending_request_ = false;
   }
 
   void record_response(uint32_t now_ms, uint8_t message_id, uint8_t message_type) {
@@ -182,6 +198,7 @@ class TelemetryState {
     if (field_index < 0) return;
 
     auto& field = this->fields_[field_index];
+    const uint64_t previous_received_ms = field.received_ms;
     // An ID-mismatched frame is not a physical receipt for the requested
     // field. It still revokes legacy/current validity below.
     if (this->last_response_correlation_ != RESPONSE_CORRELATION_ID_MISMATCH) {
@@ -198,6 +215,14 @@ class TelemetryState {
     } else {
       field.valid = false;
     }
+    if (field_index == FIELD_STATUS) {
+      if (!field.valid || !field.payload_valid || status_may_deliver_cv_heat(field.value)) {
+        this->cv_off_since_ms_ = 0;
+      } else if (this->cv_off_since_ms_ == 0 || received_ms < previous_received_ms ||
+                 received_ms - previous_received_ms > kBoilerStatusFreshMs) {
+        this->cv_off_since_ms_ = received_ms;
+      }
+    }
   }
 
  public:
@@ -206,6 +231,13 @@ class TelemetryState {
   FieldReceipt field_receipt(Field field) const {
     const auto& state = this->fields_[field];
     return {state.value, state.received_ms, state.received, state.valid && state.payload_valid};
+  }
+
+  uint64_t cv_off_since_ms(uint64_t now_ms) const {
+    const auto status = this->field_receipt(FIELD_STATUS);
+    return status.valid && now_ms >= status.received_ms && now_ms - status.received_ms <= kBoilerStatusFreshMs
+               ? this->cv_off_since_ms_
+               : 0;
   }
 
   bool field_is_fresh(Field field, uint32_t now_ms, uint32_t max_age_ms) const {
@@ -229,6 +261,7 @@ class TelemetryState {
     // fresh again for one timeout window after roughly 49.7 days.
     this->session_has_response_ = false;
     this->last_response_ms_ = 0;
+    this->cv_off_since_ms_ = 0;
     for (auto& field : this->fields_) {
       field.valid = false;
     }
@@ -395,6 +428,7 @@ class TelemetryState {
   }
 
   FieldState fields_[FIELD_COUNT]{};
+  uint64_t cv_off_since_ms_{0};
 
   bool session_has_response_{false};
   uint32_t last_response_ms_{0};

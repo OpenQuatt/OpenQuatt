@@ -21,6 +21,7 @@ esphome:
           // The OpenTherm hub is runtime-owned by the installation choice. A
           // normal R1 installation must not poll an unconnected boiler bus.
           oq_otb::telemetry_state.reset_link_session();
+          id(oq_otb_hub).set_on_missing_response([]() { oq_otb::telemetry_state.record_missing_response(); });
           oq_otb::start_handshake_state.reset();
           id(oq_otb_link_initialized) = true;
           id(oq_otb_link_available_state) = false;

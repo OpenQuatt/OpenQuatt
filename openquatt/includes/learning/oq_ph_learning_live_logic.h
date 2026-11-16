@@ -6,6 +6,7 @@
 
 #include "../control/oq_input_source_logic.h"
 #include "../boiler/oq_boiler_logic.h"
+#include "../boiler/oq_otb_telemetry.h"
 #include "../sources/oq_resolved_learning_source.h"
 #include "../sources/oq_source_receipt_runtime.h"
 #include "oq_ph_learning_source_logic.h"
@@ -520,13 +521,12 @@ inline PhysicalMeasurement<BoilerHeatState> learning_boiler_status(float payload
   const bool payload_valid = valid && transport_active && valid_register_word(payload);
   receipt.observe(payload, received_ms, payload_valid);
   const uint16_t status = payload_valid ? static_cast<uint16_t>(payload) : 0U;
-  const bool ch_active = (status & 0x0022U) != 0U;  // Slave CH or CH2 active.
-  const bool dhw_only = (status & 0x0004U) != 0U && !ch_active && (status & 0x0010U) == 0U;
   // A flame with no confirmed DHW-only destination remains ambiguous. Never
   // let DHW mask simultaneous CH/CH2 activity or a contradictory cooling state.
-  const bool heating = ch_active || ((status & 0x0008U) != 0U && !dhw_only);
+  const bool heating = oq_otb::status_may_deliver_cv_heat(status);
   return receipt_measurement(receipt, heating ? BoilerHeatState::HEAT_ACTIVE : BoilerHeatState::NO_HEAT,
-                             {PhysicalSourceKind::OPENTHERM_FRAME, 0x10000U, PhysicalUnit::SYSTEM}, 1, {10000, 30000});
+                             {PhysicalSourceKind::OPENTHERM_FRAME, 0x10000U, PhysicalUnit::SYSTEM}, 1,
+                             {oq_otb::kBoilerStatusFreshMs, 30000});
 }
 
 // Heating and its idle/pump phases have no boiler demand. OpenTherm is an optional
@@ -545,6 +545,17 @@ inline PhysicalMeasurement<BoilerHeatState> learning_boiler_heat(
 inline bool learning_boiler_off_since_boot(uint32_t output_last_change_ms, bool heat_observed, bool& boot_heat_seen) {
   boot_heat_seen = boot_heat_seen || heat_observed;
   return output_last_change_ms == 0 && !boot_heat_seen;
+}
+
+inline bool learning_boiler_off_between_ticks(uint64_t previous_ms, uint64_t now_ms, bool previous_off,
+                                              bool current_off, uint32_t output_last_change_ms,
+                                              uint32_t rearm_after_command_ms) {
+  if (!previous_off || !current_off || previous_ms == 0 || now_ms <= previous_ms || now_ms - previous_ms > 15000U)
+    return false;
+  const auto before_interval = [previous_ms, now_ms](uint32_t edge_ms) {
+    return (edge_ms == 0 && now_ms <= UINT32_MAX) || static_cast<uint32_t>(now_ms - edge_ms) > now_ms - previous_ms;
+  };
+  return before_interval(output_last_change_ms) && before_interval(rearm_after_command_ms);
 }
 
 inline const QualityConfig& daily_checkpoint_heat_quality(const QualityConfig& hp_quality,
