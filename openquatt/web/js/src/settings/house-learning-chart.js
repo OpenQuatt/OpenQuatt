@@ -87,12 +87,12 @@ function ciSvg(model, learned, fitRecords) {
     let s1 = 0, st = 0, stt = 0, sy = 0, sty = 0, n = 0, minT = Infinity, maxT = -Infinity;
     for (const r of fitRecords) {
       if (!Number.isFinite(r.outsideC) || !Number.isFinite(r.heatW)) continue;
-      n++; s1 += 1; st += r.outsideC; stt += r.outsideV * r.outsideC; sy += r.heatW; sty += r.outsideC * r.heatW;
+      n++; s1 += 1; st += r.outsideC; stt += r.outsideC * r.outsideC; sy += r.heatW; sty += r.outsideC * r.heatW;
       if (r.outsideC < minT) minT = r.outsideC; if (r.outsideC > maxT) maxT = r.outsideC;
     }
     const det = s1 * stt - st * st;
     if (n >= 2 && (maxT - minT) >= 4 && det > 1e-6) {
-      const b0 = (stt * sy - st * sty) / det, b1 = (c1 * sty - st * sy) / det;
+      const b0 = (stt * sy - st * sty) / det, b1 = (s1 * sty - st * sy) / det;
       if (b1 < 0) {
         let rss = 0; for (const r of fitRecords) { const e = b0 + b1 * r.outsideC - r.heatW; rss += e * e; }
         const s2 = n > 2 ? rss / (n - 2) : Math.max(25000, rss);

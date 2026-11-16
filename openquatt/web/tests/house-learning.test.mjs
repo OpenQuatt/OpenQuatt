@@ -1812,6 +1812,12 @@ test("95% confidence band renders for ready fit, 2-day preview and 1-point fan",
   const earlyHtml = renderHouseLearningChart(earlyRecords, conf, { ready: false });
   assert.match(earlyHtml, /oq-house-learning-chart-interval/);
   assert.match(earlyHtml, /Onzekerheidsband|Uncertainty band/);
+  const bandTag = (h) => { const i = h.indexOf("oq-house-learning-chart-interval"); return h.slice(h.lastIndexOf("<", i), h.indexOf(">", i) + 1); };
+  assert.ok(bandTag(earlyHtml).length > 10);
+  const fanFallbackHtml = renderHouseLearningChart([{ outsideC: 4, heatW: 3200, recordKind: 1, startEpoch: 1, endEpoch: 2 }, { outsideC: 5, heatW: 3000, recordKind: 1, startEpoch: 3, endEpoch: 4 }], conf, { ready: false });
+  assert.notEqual(bandTag(earlyHtml), bandTag(fanFallbackHtml));
+  const threePtHtml = renderHouseLearningChart([...earlyRecords, { outsideC: 7, heatW: 2650, recordKind: 1, startEpoch: 5, endEpoch: 6 }], conf, { ready: false });
+  assert.ok(bandTag(threePtHtml).length > 10);
   const onePt = renderHouseLearningChart([{ outsideC: 8, heatW: 2400, recordKind: 1, startEpoch: 1, endEpoch: 2 }], conf, { ready: false });
   assert.match(onePt, /oq-house-learning-chart-interval/);
 });
