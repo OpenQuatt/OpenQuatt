@@ -197,7 +197,8 @@ class Runtime {
                                                                        bool opentherm_selected, float supply_c,
                                                                        float target_c, uint32_t now_ms,
                                                                        const Config& config) {
-    if (command.source != oq_boiler::COMMAND_SOURCE_COMMISSIONING) return {};
+    const bool commissioning = command.source == oq_boiler::COMMAND_SOURCE_COMMISSIONING;
+    if (!command.heat_request && !commissioning) return {};
     float maximum_c = id(max_water_temp_limit_c).state;
     if (isnan(maximum_c)) maximum_c = 60.0f;
     maximum_c = fmaxf(25.0f, fminf(maximum_c, 75.0f));
@@ -210,6 +211,10 @@ class Runtime {
     const bool boiler_temperature_fresh = false;
     const float boiler_temperature_c = NAN;
 #endif
+    if (!commissioning) {
+      return oq_boiler::evaluate_boiler_start_water_limit(opentherm_selected, boiler_temperature_fresh,
+                                                          boiler_temperature_c, maximum_c);
+    }
     return oq_boiler::evaluate_boiler_start_thermal_state(opentherm_selected, boiler_temperature_fresh,
                                                           boiler_temperature_c, supply_c, target_c, maximum_c);
   }

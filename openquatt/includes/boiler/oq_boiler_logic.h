@@ -68,6 +68,24 @@ struct BoilerStartThermalDecision {
   float safe_ceiling_c = NAN;
 };
 
+inline BoilerStartThermalDecision evaluate_boiler_start_water_limit(bool opentherm_selected,
+                                                                    bool boiler_temperature_fresh,
+                                                                    float boiler_temperature_c,
+                                                                    float maximum_water_temperature_c) {
+  if (!opentherm_selected) {
+    return BoilerStartThermalDecision{BOILER_START_THERMAL_NOT_APPLICABLE, NAN};
+  }
+  if (!boiler_temperature_fresh || !isfinite(boiler_temperature_c) || !isfinite(maximum_water_temperature_c) ||
+      maximum_water_temperature_c <= 0.0f) {
+    return BoilerStartThermalDecision{BOILER_START_THERMAL_UNKNOWN, NAN};
+  }
+
+  return BoilerStartThermalDecision{
+      boiler_temperature_c > maximum_water_temperature_c ? BOILER_START_THERMAL_HOT : BOILER_START_THERMAL_SAFE,
+      maximum_water_temperature_c,
+  };
+}
+
 inline BoilerStartThermalDecision evaluate_boiler_start_thermal_state(
     bool opentherm_selected, bool boiler_temperature_fresh, float boiler_temperature_c, float system_supply_c,
     float requested_target_c, float maximum_water_temperature_c, float operating_margin_c = 2.0f) {
@@ -306,9 +324,7 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   decision.blocked = false;
   decision.block_reason = BLOCK_NONE;
 
-  // The service test needs a verified starting temperature for its operating point.
-  const bool commissioning_start =
-      command.heat_request && !input.output_active && command.source == COMMAND_SOURCE_COMMISSIONING;
+  const bool start_requested = command.heat_request && !input.output_active;
 
   if (input.hard_trip_active) {
     decision.force_off = true;
@@ -345,10 +361,12 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   } else if (command.source == COMMAND_SOURCE_FALLBACK && !input.fallback_outputs_safe) {
     decision.force_off = true;
     decision.block_reason = BLOCK_HP_STOP_UNCONFIRMED;
-  } else if (commissioning_start && input.boiler_start_thermal_state == BOILER_START_THERMAL_HOT) {
+  } else if (start_requested && input.boiler_start_thermal_state == BOILER_START_THERMAL_HOT) {
     decision.force_off = true;
     decision.block_reason = BLOCK_BOILER_TOO_HOT_FOR_START;
-  } else if (commissioning_start && input.boiler_start_thermal_state == BOILER_START_THERMAL_UNKNOWN) {
+  } else if (start_requested && command.source == COMMAND_SOURCE_COMMISSIONING &&
+             input.boiler_start_thermal_state == BOILER_START_THERMAL_UNKNOWN) {
+    // The service test needs a verified starting temperature for its operating point.
     decision.force_off = true;
     decision.block_reason = BLOCK_BOILER_TEMPERATURE_UNAVAILABLE;
   } else if (!command.demand_present) {

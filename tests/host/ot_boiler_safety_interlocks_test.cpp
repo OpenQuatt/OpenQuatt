@@ -166,17 +166,47 @@ void test_boiler_start_thermal_policy() {
          oq_boiler::BOILER_START_THERMAL_UNKNOWN);
 }
 
+void test_boiler_start_water_limit() {
+  using oq_boiler::evaluate_boiler_start_water_limit;
+  auto decision = evaluate_boiler_start_water_limit(true, true, 42.0f, 45.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_SAFE);
+  assert(decision.safe_ceiling_c == 45.0f);
+
+  decision = evaluate_boiler_start_water_limit(true, true, 45.0f, 45.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_SAFE);
+  assert(decision.safe_ceiling_c == 45.0f);
+
+  decision = evaluate_boiler_start_water_limit(true, true, 48.0f, 45.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_HOT);
+  assert(decision.safe_ceiling_c == 45.0f);
+
+  assert(evaluate_boiler_start_water_limit(true, false, 48.0f, 45.0f).state == oq_boiler::BOILER_START_THERMAL_UNKNOWN);
+  assert(evaluate_boiler_start_water_limit(true, true, NAN, 45.0f).state == oq_boiler::BOILER_START_THERMAL_UNKNOWN);
+  assert(evaluate_boiler_start_water_limit(true, true, INFINITY, 45.0f).state ==
+         oq_boiler::BOILER_START_THERMAL_UNKNOWN);
+  assert(evaluate_boiler_start_water_limit(false, true, 48.0f, 45.0f).state ==
+         oq_boiler::BOILER_START_THERMAL_NOT_APPLICABLE);
+}
+
 void test_warm_start_controller_interlock() {
   auto command = active_command(1000);
   auto input = safe_input(1500);
-  input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_HOT;
+  command.target_temperature_c = 34.0f;
 
   for (auto source : {oq_boiler::COMMAND_SOURCE_POWER_HOUSE, oq_boiler::COMMAND_SOURCE_HEATING_CURVE,
                       oq_boiler::COMMAND_SOURCE_COLD_START, oq_boiler::COMMAND_SOURCE_FALLBACK}) {
     command.source = source;
+    input.boiler_start_thermal_state = oq_boiler::evaluate_boiler_start_water_limit(true, true, 42.0f, 45.0f).state;
+    assert_decision(oq_boiler::evaluate(command, input), true, false, oq_boiler::BLOCK_NONE);
+
+    input.boiler_start_thermal_state = oq_boiler::evaluate_boiler_start_water_limit(true, true, 48.0f, 45.0f).state;
+    assert_decision(oq_boiler::evaluate(command, input), false, true, oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START);
+
+    input.boiler_start_thermal_state = oq_boiler::evaluate_boiler_start_water_limit(true, false, 48.0f, 45.0f).state;
     assert_decision(oq_boiler::evaluate(command, input), true, false, oq_boiler::BLOCK_NONE);
   }
 
+  input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_HOT;
   input.boiler_inhibit_active = true;
   auto decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, false, true, oq_boiler::BLOCK_WATER_TEMP_INHIBIT);
@@ -194,22 +224,14 @@ void test_warm_start_controller_interlock() {
   decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, false, true, oq_boiler::BLOCK_BOILER_TEMPERATURE_UNAVAILABLE);
 
-  command.source = oq_boiler::COMMAND_SOURCE_POWER_HOUSE;
-  decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
-
-  command.source = oq_boiler::COMMAND_SOURCE_FALLBACK;
-  decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
-
-  // The warm-start guard applies only to the OFF -> ON edge. Once the boiler
-  // is active, normal supply inhibit and hard-trip guards remain authoritative.
-  command.source = oq_boiler::COMMAND_SOURCE_COMMISSIONING;
+  // Once OpenTherm is active, the measured system supply still governs shutdown.
   input.output_active = true;
   input.output_last_change_ms = 1499;
   input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_HOT;
-  decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
+  for (auto source : {oq_boiler::COMMAND_SOURCE_POWER_HOUSE, oq_boiler::COMMAND_SOURCE_COMMISSIONING}) {
+    command.source = source;
+    assert_decision(oq_boiler::evaluate(command, input), true, false, oq_boiler::BLOCK_NONE);
+  }
 }
 
 void test_fail_safe_priority() {
@@ -509,6 +531,7 @@ int main() {
   test_command_ownership_and_time();
   test_effective_output_target();
   test_boiler_start_thermal_policy();
+  test_boiler_start_water_limit();
   test_warm_start_controller_interlock();
   test_fail_safe_priority();
   test_transport_selection_guard();
