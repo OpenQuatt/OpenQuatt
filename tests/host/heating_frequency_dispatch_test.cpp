@@ -184,6 +184,17 @@ void test_future_v1_and_asymmetric_duo() {
   assert(suspect.hp1_level == 7 && suspect.hp2_level == 0);
 }
 
+void test_high_frequency_warm_temperature_limitation() {
+  const auto table = snapshot(oq_test::v2_new_amh6::EEPROM_WORDS, oq_odu::Variant::V2_NEW_MODEL);
+  auto frequency = context(table, table);
+  // Level 20 is the highest for V2 new.
+  int level = 20;
+  // Above 90 Hz the map only covers colder operating points.
+  // We verify that at a warm ambient temperature (e.g. 7.0), it is no longer usable.
+  assert(!oq_perf::predict_candidate(frequency, table.variant, true, level, 7.0f, 35.0f)
+              .usable_for_running_optimization());
+}
+
 void test_high_stand_guards() {
   using namespace oq_thermal_actuator;
   assert(!may_retain_command(0, false) && may_retain_command(17, false) && !may_retain_command(17, true));
@@ -227,4 +238,5 @@ int main() {
   test_future_v1_and_asymmetric_duo();
   test_high_stand_guards();
   test_allowed_entry_slew_and_suspect_filter();
+  test_high_frequency_warm_temperature_limitation();
 }

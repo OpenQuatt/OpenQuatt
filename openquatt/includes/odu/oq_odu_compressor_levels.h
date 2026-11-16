@@ -13,8 +13,8 @@ inline constexpr int LEGACY_PHYSICAL_LEVEL_MAX = 10;
 inline constexpr int EXTENDED_PHYSICAL_LEVEL_MAX = 20;
 
 // Automatic heating uses physical table entries. Only the extended V2-new
-// heating table may use its full 110 Hz range; legacy V2 and V1 variants keep
-// the existing 90 Hz ceiling.
+// heating table may use its full 110 Hz range; V1, V1.5 and the legacy V2 table
+// keep the existing 90 Hz ceiling.
 inline constexpr int MAX_AUTOMATIC_HEATING_FREQUENCY_HZ = 110;
 inline constexpr int MAX_LEGACY_AUTOMATIC_HEATING_FREQUENCY_HZ = 90;
 // Reference axes are used only to normalize feedback into the existing demand
