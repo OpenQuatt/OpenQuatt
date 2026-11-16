@@ -11,6 +11,8 @@ inline void tick(const oq_boiler_dispatch::Config& config, float boiler_inlet_c)
   in.control_mode = id(oq_control_mode_code);
   in.now_ms = (uint32_t)millis();
   in.cold_start_assist = id(oq_cold_start_assist_active);
+  in.supply_hold_assist = id(oq_defrost_assist_active);
+  in.supply_hold_target_c = id(oq_defrost_assist_target_c);
   in.heat_request = id(oq_strategy_heat_request_active);
   in.rated_boiler_power_w = id(oq_boiler_rated_heat_power).state;
   in.maximum_water_temperature_c = id(max_water_temp_limit_c).state;
