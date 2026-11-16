@@ -83,6 +83,9 @@ int main() {
   assert(automatic_frequency_hz(true, v2, 2, 4) == 36);
   assert(automatic_frequency_hz(true, v2, 2, 8) == 52);
   assert(automatic_frequency_hz(true, v2, 2, 17) == 90);
+  assert(automatic_frequency_hz(true, v2, 2, 18) == 95);
+  assert(automatic_frequency_hz(true, v2, 2, 20) == 110);
+  assert(automatic_frequency_hz(true, v2, 2, 21) == -1);
   assert(automatic_frequency_hz(true, v2, 1, 10) == 46);
   assert(minimum_automatic_frequency_hz(true, v2, 2) == automatic_frequency_hz(true, v2, 2, 1));
   assert(minimum_automatic_frequency_hz(true, v2, 1) == automatic_frequency_hz(true, v2, 1, 1));
@@ -145,8 +148,8 @@ int main() {
   assert(pick_allowed_level(true, v2, 2, 15, 1, 20, 80, none) == 14);
   assert(pick_allowed_level(false, unknown, 2, 6, 1, 10, 120, none) == 0);
   assert(pick_allowed_level(false, v1, 2, 6, 1, 10, 0, none) == 0);
-  assert(pick_allowed_level(true, v2, 2, 20, 1, 20, 120, none) == 17);
-  assert(automatic_frequency_hz(true, v2, 2, 18) == -1);
+  assert(pick_allowed_level(true, v2, 2, 20, 1, 20, 120, none) == 20);
+  assert(pick_allowed_level(true, v2, 2, 20, 1, 20, 90, none) == 17);
   assert(pick_allowed_level(true, v2, 2, 5, 1, 20, 90, none) == 5);
   assert(pick_allowed_level(true, v2, 2, 5, 1, 20, 90, {36, 45}) == 3);
   return 0;

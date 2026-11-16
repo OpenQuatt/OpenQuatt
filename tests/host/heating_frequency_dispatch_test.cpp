@@ -84,7 +84,7 @@ void test_fixture_chain() {
   for (const auto& table : tables) {
     const auto frequency = context(table, table);
     const int maximum = frequency.automatic_level_limit(true, 2);
-    assert(maximum == (table.variant == oq_odu::Variant::V2_NEW_MODEL ? 17 : 10));
+    assert(maximum == (table.variant == oq_odu::Variant::V2_NEW_MODEL ? 20 : 10));
     for (int level = 1; level <= maximum; ++level) {
       DispatchInput input;
       input.performance_valid = true;
@@ -103,7 +103,7 @@ void test_fixture_chain() {
       assert(command.physical_level == level && command.control_level == level);
       assert(oq_thermal_actuator::valid_level_command(command.control_level, command.physical_level));
       assert(frequency.automatic_frequency_hz(true, 2, command.physical_level) == table.heating.hz[level]);
-      assert(table.heating.hz[level] <= 90);
+      assert(table.heating.hz[level] <= (table.variant == oq_odu::Variant::V2_NEW_MODEL ? 110 : 90));
     }
   }
 }
@@ -123,8 +123,8 @@ void test_extra_points_and_limits() {
     assert(decide_dispatch(input, limits(), {}).hp1_level == level);
   }
   for (int level : {18, 19, 20}) {
-    assert(!oq_perf::predict_candidate(frequency, table.variant, true, level, 7, 35).usable_for_running_optimization());
-    assert(oq_odu::resolve_automatic_level(false, table, 2, level).physical_level == 0);
+    assert(oq_perf::predict_candidate(frequency, table.variant, true, level, 7, 35).usable_for_running_optimization());
+    assert(oq_odu::resolve_automatic_level(false, table, 2, level).physical_level == level);
   }
   frequency.cap_hz = 40;
   frequency.hp1_excluded = {30, 36};

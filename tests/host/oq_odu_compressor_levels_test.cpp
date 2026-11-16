@@ -50,12 +50,12 @@ int main() {
   const auto old_v2 = old_v2_snapshot();
   const oq_odu::RuntimeFrequencySnapshot unknown{};
 
-  assert(oq_odu::automatic_level_limit(true, extended, 2) == 17);
-  for (int physical = 0; physical <= 17; ++physical) {
+  assert(oq_odu::automatic_level_limit(true, extended, 2) == 20);
+  for (int physical = 0; physical <= 20; ++physical) {
     const auto command = oq_odu::resolve_automatic_level(true, extended, 2, physical);
     assert(command.control_level == physical && command.physical_level == physical);
   }
-  for (int physical : {18, 19, 20, 99, -1})
+  for (int physical : {21, 99, -1})
     assert(oq_odu::resolve_automatic_level(true, extended, 2, physical).physical_level == 0);
   // Detection and validated table length, rather than a generation setting,
   // determine available entries. A future verified V1 table needs no optimizer branch.
@@ -67,6 +67,20 @@ int main() {
   assert(oq_odu::resolve_automatic_level(false, future_v1, 2, 20).physical_level == 20);
   assert(oq_odu::automatic_level_limit(true, extended, 1) == 10);
 
+  // Only the extended V2-new heating table may use the 110 Hz ceiling. V1,
+  // V1.5 and the legacy V2 table keep the 90 Hz automatic limit.
+  auto legacy_variants_high = extended;
+  for (size_t level = 1; level < legacy_variants_high.heating.level_count; ++level) {
+    legacy_variants_high.heating.hz[level] = static_cast<uint8_t>(30U + level * 4U);
+  }
+  assert(oq_odu::validate_frequency_table(legacy_variants_high.heating));
+  for (const auto variant : {oq_odu::Variant::V1, oq_odu::Variant::V1_5, oq_odu::Variant::V2_OLD_MODEL}) {
+    legacy_variants_high.variant = variant;
+    assert(oq_odu::automatic_level_limit(false, legacy_variants_high, 2) == 15);
+    assert(oq_odu::resolve_automatic_level(false, legacy_variants_high, 2, 15).physical_level == 15);
+    assert(oq_odu::resolve_automatic_level(false, legacy_variants_high, 2, 16).physical_level == 0);
+  }
+
   // Known V2-old factory data and cooling retain their current physical outcomes.
   assert(oq_odu::resolve_automatic_level(true, old_v2, 2, 10).physical_level == 10);
   auto modified_old_v2 = old_v2;
@@ -77,12 +91,12 @@ int main() {
   assert(oq_odu::resolve_automatic_level(true, extended, 1, 10).physical_level == 10);
   assert(oq_odu::resolve_automatic_level(true, extended, 2, 99).physical_level == 0);
   assert(oq_odu::resolve_automatic_level(true, extended, 2, -1).physical_level == 0);
-  auto no_automatic_frequency_below_ceiling = extended;
-  for (size_t level = 1; level < no_automatic_frequency_below_ceiling.heating.level_count; ++level) {
-    no_automatic_frequency_below_ceiling.heating.hz[level] = static_cast<uint8_t>(90U + level);
+  auto above_extended_ceiling = extended;
+  for (size_t level = 1; level < above_extended_ceiling.heating.level_count; ++level) {
+    above_extended_ceiling.heating.hz[level] = 120U;
   }
-  assert(oq_odu::validate_frequency_table(no_automatic_frequency_below_ceiling.heating));
-  const auto unmappable = oq_odu::resolve_automatic_level(true, no_automatic_frequency_below_ceiling, 2, 10);
+  assert(oq_odu::validate_frequency_table(above_extended_ceiling.heating));
+  const auto unmappable = oq_odu::resolve_automatic_level(true, above_extended_ceiling, 2, 10);
   assert(unmappable.control_level == 0);
   assert(unmappable.physical_level == 0);
 

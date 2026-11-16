@@ -12,8 +12,11 @@ namespace oq_odu {
 inline constexpr int LEGACY_PHYSICAL_LEVEL_MAX = 10;
 inline constexpr int EXTENDED_PHYSICAL_LEVEL_MAX = 20;
 
-// Automatic heating uses physical table entries; the model domain remains 90 Hz.
-inline constexpr int MAX_AUTOMATIC_HEATING_FREQUENCY_HZ = 90;
+// Automatic heating uses physical table entries. Only the extended V2-new
+// heating table may use its full 110 Hz range; legacy V2 and V1 variants keep
+// the existing 90 Hz ceiling.
+inline constexpr int MAX_AUTOMATIC_HEATING_FREQUENCY_HZ = 110;
+inline constexpr int MAX_LEGACY_AUTOMATIC_HEATING_FREQUENCY_HZ = 90;
 // Reference axes are used only to normalize feedback into the existing demand
 // scale, never to restrict or translate the automatic heating candidates.
 inline constexpr std::array<uint8_t, 11> V2_HEATING_DEMAND_REFERENCE_HZ = {
@@ -93,9 +96,11 @@ inline int automatic_level_limit(bool configured_v2, const RuntimeFrequencySnaps
     return 0;
   const auto& table = snapshot.heating;
   if (!validate_frequency_table(table)) return 0;
+  const int ceiling = has_extended_frequency_table(snapshot, 2) ? MAX_AUTOMATIC_HEATING_FREQUENCY_HZ
+                                                                : MAX_LEGACY_AUTOMATIC_HEATING_FREQUENCY_HZ;
   int maximum = 0;
   for (size_t level = 1; level < table.level_count; ++level) {
-    if (table.hz[level] > MAX_AUTOMATIC_HEATING_FREQUENCY_HZ) break;
+    if (table.hz[level] > ceiling) break;
     maximum = static_cast<int>(level);
   }
   return maximum;
