@@ -1,3 +1,4 @@
+#include "../../components/openquatt_daily_energy/oq_daily_energy_state.h"
 #include <assert.h>
 #include <math.h>
 
@@ -11,7 +12,45 @@ bool near(float actual, float expected, float tolerance = 0.01f) { return fabsf(
 
 }  // namespace
 
+static void test_daily_energy_rollover() {
+  using namespace esphome::openquatt_daily_energy;
+  constexpr uint32_t yesterday = 20260115;
+  constexpr uint32_t today = 20260116;
+  DatedTotals saved{yesterday, {92.0f, 92.0f, 0.0f, 378.0f, 0.0f, 0.0f, 378.0f}};
+  DailyEnergyState ongoing;
+  assert(ongoing.prepare(yesterday, 1000, saved));
+  assert(ongoing.totals().wh[3] == 378.0f);
+  assert(ongoing.prepare(today, 2000));
+  assert(ongoing.totals().date_key == today && ongoing.totals().wh == Totals{});
+  assert(!ongoing.add_power(3, 7200.0f, 2000));
+  assert(ongoing.add_power(3, 7200.0f, 3000));
+  assert(near(ongoing.totals().wh[3], 2.0f));
+  assert(!ongoing.prepare(yesterday, 4000));
+  assert(ongoing.totals().wh[3] == 2.0f);
+  assert(ongoing.prepare(today, 4000));
+  assert(!ongoing.add_power(3, 7200.0f, 4000));
+
+  DailyEnergyState rebooted_after_midnight;
+  assert(!rebooted_after_midnight.prepare(0, 1000, saved));
+  assert(rebooted_after_midnight.prepare(today, 2000, saved));
+  assert(rebooted_after_midnight.totals().wh == Totals{});
+
+  DailyEnergyState rebooted_on_same_day;
+  const Totals checkpoint{90.0f, 90.0f, 0.0f, 380.0f};
+  assert(rebooted_on_same_day.prepare(yesterday, 5000, saved, checkpoint));
+  assert(rebooted_on_same_day.totals().wh[0] == 92.0f);
+  assert(rebooted_on_same_day.totals().wh[3] == 380.0f);
+  assert(!rebooted_on_same_day.add_power(3, NAN, 6000));
+  assert(rebooted_on_same_day.add_power(3, 7200.0f, 7000));
+  assert(near(rebooted_on_same_day.totals().wh[3], 382.0f));
+
+  DailyEnergyState upgraded_with_checkpoint;
+  assert(upgraded_with_checkpoint.prepare(yesterday, 8000, {}, checkpoint));
+  assert(upgraded_with_checkpoint.totals().wh == checkpoint);
+}
+
 int main() {
+  test_daily_energy_rollover();
   assert(isnan(oq_energy::ratio_or_nan(NAN, 1.0f, 0.01f)));
   assert(isnan(oq_energy::ratio_or_nan(1.0f, NAN, 0.01f)));
   assert(isnan(oq_energy::ratio_or_nan(1.0f, 0.009f, 0.01f)));

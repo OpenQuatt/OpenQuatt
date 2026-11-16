@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -39,9 +40,10 @@ class OpenQuattEnergyHistory : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  void capture_day_totals(float electrical_input_kwh, float heating_input_kwh, float cooling_input_kwh,
-                          float heatpump_heat_output_kwh, float heatpump_cooling_output_kwh,
+  void capture_day_totals(const ESPTime& now, float electrical_input_kwh, float heating_input_kwh,
+                          float cooling_input_kwh, float heatpump_heat_output_kwh, float heatpump_cooling_output_kwh,
                           float boiler_heat_output_kwh, float system_heat_output_kwh);
+  bool try_read_daily_checkpoint(uint32_t date_key, std::array<float, 7>& wh);
   bool force_flush();
   void clear_history();
   void refresh_hourly_retention();
@@ -65,6 +67,8 @@ class OpenQuattEnergyHistory : public Component {
   static constexpr uint32_t HOUR_DAY_RECORD_MAGIC = 0x3248454F;  // "OEH2"
   static constexpr uint16_t HOUR_DAY_RECORD_VERSION = 1;
   static constexpr uint16_t FLAG_PARTIAL = 1U << 0U;
+  static constexpr uint16_t FLAG_DATED_TOTALS = 1U << 1U;
+  static constexpr uint16_t DATED_CHECKPOINT_FLAGS = FLAG_PARTIAL | FLAG_DATED_TOTALS;
   static constexpr size_t FLASH_SECTOR_SIZE = OpenQuattFlashLayout::SECTOR_SIZE;
   static constexpr size_t FLASH_SLOT_SIZE = 64;
   static constexpr size_t HOUR_FLASH_SLOT_SIZE = OpenQuattFlashLayout::ENERGY_HOURLY_SLOT_SIZE;
@@ -281,6 +285,8 @@ class OpenQuattEnergyHistory : public Component {
   // Protected by hour_state_mutex_. Cancels an in-flight import after a clear.
   uint32_t archive_clear_generation_{0};
   uint32_t next_sequence_{0};
+  uint32_t daily_checkpoint_date_{0};
+  uint32_t daily_checkpoint_sequence_{0};
   uint32_t record_count_{0};
   uint32_t stored_day_count_{0};
   uint32_t oldest_date_key_{0};
