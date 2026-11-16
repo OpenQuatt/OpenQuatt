@@ -48,7 +48,7 @@ int main() {
     if (hz[0] == 0) assert(pair[0].thermal_w == 0 && pair[0].outlet_c == 30);
     if (hz[1] == 0) assert(pair[1].thermal_w == 0 && pair[1].outlet_c == pair[0].outlet_c);
   }
-  assert(!observed(variants[0], 90.1f, -7, 35).valid());
+  assert(!observed(variants[0], 110.1f, -7, 35).valid());
   assert(!observed(variants[0], 90, NAN, 35).valid());
   assert(!observed(variants[0], 20, -7, 30).valid());  // Existing masked map point.
   assert(!solve(variants[0], 90, -7, 30, 299).valid());
@@ -82,6 +82,20 @@ int main() {
   assert(hot_return.valid() && std::fabs(hot_return.outlet_c - 68.13822f) < .01f);
   assert(std::fabs(500 * 4186.0f / 3600 * (hot_return.outlet_c - 65) - hot_return.thermal_w) <= 1);
   assert(solve(variants[0], 90, -7, 10, flow, true).valid());  // Existing cold-start boundary remains usable.
+  // Extended V2-new heating frequencies (95/102/110 Hz, F18-F20) must remain
+  // usable through the water-chain model in both coupled and uncoupled modes.
+  for (int level = 18; level <= 20; ++level) {
+    const Frequency extended;
+    const CandidateModel coupled(extended, -7, 30, flow, {35.77f, 40.75f}, true, false);
+    const auto pair = coupled.pair(10, level);
+    assert(pair.valid() && pair.thermal_w > 0 && pair.electrical_w > 0);
+    assert(coupled.unit(false, level).valid());
+
+    const CandidateModel independent(extended, -7, 30, NAN, {35.77f, 40.75f}, false, false);
+    assert(independent.unit(false, level).valid());
+    assert(independent.pair(10, level).valid());
+  }
+
   const Frequency frequency;
   const CandidateModel model(frequency, -7, 30, flow, {35.77f, 40.75f}, true, false);
   oq_power_house_dispatch::DispatchInput in;

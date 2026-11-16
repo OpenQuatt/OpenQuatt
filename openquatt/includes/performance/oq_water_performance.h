@@ -15,7 +15,8 @@ struct Prediction {
   }
 };
 inline Prediction observed(oq_odu::Variant variant, float hz, float outside_c, float outlet_c, bool boundary = false) {
-  if (!std::isfinite(hz) || hz < 0 || hz > 90 || !std::isfinite(outside_c) || !std::isfinite(outlet_c)) return {};
+  // V1 remains limited by its performance map; V2-new extends to 110 Hz.
+  if (!std::isfinite(hz) || hz < 0 || !std::isfinite(outside_c) || !std::isfinite(outlet_c)) return {};
   if (hz == 0) return {0, 0, outlet_c};
   const auto p = oq_perf::predict_heating_hz(variant, hz, outside_c, outlet_c, boundary);
   return p.available ? Prediction{p.pth_w, p.pel_w, outlet_c} : Prediction{};
