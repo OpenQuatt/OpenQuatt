@@ -277,6 +277,8 @@ class Runtime {
     const float peak_limit_w = id(oq_power_limit_peak_w);
     const bool may_settle =
         current_power.valid() && std::isfinite(peak_limit_w) && current_power.electrical_w <= peak_limit_w;
+    const bool water_guard_clear = !id(oq_water_temp_hard_trip_active) &&
+                                   oq_power_house_run_extension::water_floor_allowed(id(oq_water_temp_limit_factor));
     const bool performance_valid = std::isfinite(outside_c) && (model.coupled || std::isfinite(model.outlet[0]) ||
                                                                 (duo && std::isfinite(model.outlet[1])));
 
@@ -299,9 +301,10 @@ class Runtime {
       const bool boot_hold = id(oq_incident_manager).boot_protection_hold(hp_index, now_ms) && !defrost &&
                              !valve_defrost && !(hp1 ? hp1_oil_return : hp2_oil_return);
       result.fixed_level = pending || boot_hold ? candidate.previous_applied_level : 0;
+      const bool peer_valve_defrost = duo && (hp1 ? hp2_valve_defrost : hp1_valve_defrost);
       result.feedback_hold_level = feedback[hp1 ? 0 : 1].hold_level(
           candidate.previous_applied_level, frequency.frequency_allowed(hp1, 2, candidate.previous_applied_level),
-          may_settle);
+          may_settle, water_guard_clear && !peer_valve_defrost);
       result.stop_inhibited =
           candidate.previous_applied_level > 0 && !candidate.must_stop &&
           (pending || boot_hold || oq_request::min_runtime_window_active(now_ms, last_start_ms, minimum_runtime_ms));
@@ -333,9 +336,9 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     build_hp(dispatch_input.hp2, false, hp2_candidate, hp2_defrost_active, hp2_valve_defrost);
 #endif
-    const bool active_model_missing = (retained_hp1 > 0 && !hp1_model_available) ||
-                                      (duo && retained_hp2 > 0 && !hp2_model_available) ||
-                                      ((retained_hp1 > 0 || retained_hp2 > 0) && !current_power.valid());
+    // A single infeasible working point can still have valid alternatives.
+    const bool active_model_missing =
+        (retained_hp1 > 0 && !hp1_model_available) || (duo && retained_hp2 > 0 && !hp2_model_available);
     const bool any_servable_candidate =
         (oq_hp_candidate::may_serve_candidate(hp1_candidate) && hp1_runnable_candidate) ||
         (duo && oq_hp_candidate::may_serve_candidate(hp2_candidate) && hp2_runnable_candidate);

@@ -113,10 +113,10 @@ void test_receipt_after_response_window() {
   in.now_ms = in.received_ms = 181000;
   out = observer.observe(table(), 3, in);
   assert(!out.missing && out.settling);
-  assert(out.hold_level(3, true, true) == 3);
-  assert(out.hold_level(3, false, true) == 0);  // Caps and excluded ranges take precedence.
-  assert(out.hold_level(3, true, false) == 0);  // Peak power takes precedence.
-  assert(out.hold_level(0, true, true) == 0);
+  assert(out.hold_level(3, true, true, true) == 3);
+  assert(out.hold_level(3, false, true, true) == 0);  // Caps and excluded ranges take precedence.
+  assert(out.hold_level(3, true, false, true) == 0);  // Peak power takes precedence.
+  assert(out.hold_level(0, true, true, true) == 0);
   auto stopped = reading(191000, 0, 0);
   stopped.working_mode = 0;
   auto inspect = observer;

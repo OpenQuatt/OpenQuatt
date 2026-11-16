@@ -11,6 +11,12 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("!active_model_missing", gate)
         self.assertIn("any_servable_candidate", gate)
 
+    def test_infeasible_current_pair_leaves_valid_alternatives_available(self):
+        missing = RUNTIME.split("const bool active_model_missing =", 1)[1].split(";", 1)[0]
+        self.assertNotIn("current_power", missing)
+        settling = RUNTIME.split("const bool may_settle =", 1)[1].split(";", 1)[0]
+        self.assertIn("current_power.valid()", settling)
+
     def test_watt_request_reaches_dispatch_without_normalized_control(self) -> None:
         core = (ROOT / "openquatt/includes/control/oq_power_house_demand_logic.h").read_text()
         for source in (core, RUNTIME, DISPATCH_LOGIC):

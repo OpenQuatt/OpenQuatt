@@ -100,6 +100,82 @@ void test_frequency_feedback_changes_duo_selection() {
   after = decide_dispatch(in, limits, {}, &CandidateModel::confirmed_power);
   assert(after.hp1_level == 0 && after.hp2_level == 0);
 }
+void test_water_limit_allows_modulation_during_feedback_hold() {
+  using namespace oq_power_house_dispatch;
+  const std::array<uint8_t, oq_compressor_feedback::kLevels> nominal{0, 20, 26, 30, 48};
+  oq_compressor_feedback::Observer observer;
+  observer.observe(nominal, 3, {1000, 4, 2, 48, 8, 35, true, false, false, 1000, 0});
+  const auto feedback = observer.observe(nominal, 3, {11000, 4, 2, 48, 8, 35, true, false, false, 11000, 0});
+  assert(!feedback.missing && feedback.settling);
+
+  DispatchInput in{};
+  in.now_ms = 11000;
+  in.requested_w = 2000;
+  in.performance_valid = true;
+  in.lead_hp1 = true;
+  in.hp1.candidate = {4, true, false, false, true};
+  in.hp1.stop_inhibited = true;
+  in.hp1.levels[0] = {true, true, true, 0, 0};
+  in.hp1.levels[1] = {true, true, true, 2000, 400, 20};
+  in.hp1.levels[4] = {true, true, true, 4800, 1250, 48};
+  const DispatchTuning limits{6000, 6500};
+
+  in.hp1.feedback_hold_level = feedback.hold_level(4, true, true, true);
+  const auto held = decide_dispatch(in, limits, {});
+  assert(held.output_valid && held.hp1_level == 4);
+
+  in.hp1.feedback_hold_level = feedback.hold_level(4, true, true, false);
+  const auto reduced = decide_dispatch(in, limits, {});
+  assert(reduced.output_valid && reduced.hp1_level == 1);
+}
+void test_peer_defrost_allows_modulation_during_feedback_hold() {
+  using namespace oq_power_house_dispatch;
+  oq_compressor_feedback::Snapshot feedback{};
+  feedback.settling = true;
+  DispatchInput in{};
+  in.requested_w = 7000;
+  in.duo = in.performance_valid = in.lead_hp1 = true;
+  in.hp1.candidate = {2, true, false, false, true};
+  in.hp2.candidate = {1, true, false, false, true};
+  in.hp1.stop_inhibited = in.hp2.stop_inhibited = true;
+  in.hp1.fixed_level = 2;
+  in.hp1.valve_defrost = true;
+  in.hp1.levels[2] = {true, true, true, 1000, 300, 26};
+  in.hp2.levels[1] = {true, true, true, 2000, 500, 20};
+  in.hp2.levels[2] = {true, true, true, 6000, 1400, 26};
+  const DispatchTuning limits{6000, 6500};
+
+  in.hp2.feedback_hold_level = feedback.hold_level(1, true, true, true);
+  const auto held = decide_dispatch(in, limits, {});
+  assert(held.output_valid && held.hp1_level == 2 && held.hp2_level == 1);
+
+  in.hp2.feedback_hold_level = feedback.hold_level(1, true, true, false);
+  const auto raised = decide_dispatch(in, limits, {});
+  assert(raised.output_valid && raised.hp1_level == 2 && raised.hp2_level == 2);
+}
+void test_model_boundary_allows_lower_duo_levels() {
+  using namespace oq_power_house_dispatch;
+  using namespace oq_water_performance;
+  const Frequency frequency;
+  const CandidateModel model(frequency, -7, 49, 450, {61, 61}, true, false);
+  assert(!model.pair(7, 13).valid());
+  const auto reduced = model.pair(4, 7);
+  assert(reduced.valid());
+
+  DispatchInput in{};
+  in.requested_w = reduced.thermal_w;
+  in.duo = in.performance_valid = true;
+  in.hp1.candidate = {7, true, false, false, true};
+  in.hp2.candidate = {13, true, false, false, true};
+  in.hp1.stop_inhibited = in.hp2.stop_inhibited = true;
+  in.hp1.levels[4].allowed = in.hp1.levels[7].allowed = true;
+  in.hp2.levels[7].allowed = in.hp2.levels[13].allowed = true;
+  in.pair_context = &model;
+  in.pair_power = &CandidateModel::dispatch;
+  const DispatchTuning limits{6000, 6500};
+  const auto out = decide_dispatch(in, limits, {});
+  assert(out.output_valid && out.hp1_level == 4 && out.hp2_level == 7);
+}
 void test_missing_feedback_allows_peer_start() {
   using namespace oq_water_performance;
   using namespace oq_power_house_dispatch;
@@ -142,7 +218,8 @@ void test_missing_feedback_allows_peer_start() {
             auto& input = hp == 0 ? in.hp1 : in.hp2;
             input.candidate = {hp == running_hp ? 2 : 0, true, false, false, true};
             input.stop_inhibited = hp == running_hp;  // Preserve the starting unit's minimum run time.
-            input.feedback_hold_level = feedback[hp].hold_level(input.candidate.previous_applied_level, true, true);
+            input.feedback_hold_level =
+                feedback[hp].hold_level(input.candidate.previous_applied_level, true, true, true);
             input.levels[0] = {true, true, true, 0, 0};
             for (int level = 1; level <= 2; ++level) {
               const auto power = model.unit(hp == 0, level);
@@ -242,7 +319,7 @@ void test_feedback_closed_loop() {
                 auto& input = hp == 0 ? in.hp1 : in.hp2;
                 input.feedback_hold_level = feedback[hp].hold_level(
                     applied[hp], applied[hp] > 0 && frequency.automatic_frequency_hz(hp == 0, 2, applied[hp]) <= 90,
-                    may_settle);
+                    may_settle, true);
                 input.levels[0] = {true, true, true, 0, 0};
                 for (int level = 1; level <= (hp == 0 && !frequency.full_table ? 10 : 20); ++level) {
                   const auto power = model.unit(hp == 0, level);
@@ -504,7 +581,7 @@ void test_startup_oil_and_restart_closed_loop() {
           input.candidate = {applied[hp], true, false, false, true};
           input.candidate.minimum_off_ready = applied[hp] > 0 || stopped[hp] == 0 || now - stopped[hp] >= 240000;
           input.stop_inhibited = applied[hp] > 0 && now - started[hp] < minimum_on;
-          input.feedback_hold_level = feedback[hp].hold_level(applied[hp], true, true);
+          input.feedback_hold_level = feedback[hp].hold_level(applied[hp], true, true, true);
           in.performance_valid &= !feedback[hp].missing;
           input.levels[0] = {true, true, true, 0, 0};
           for (int level = 1; level <= 2; ++level) {
@@ -546,6 +623,9 @@ int main() {
   test_mixed_response_selects_duo_or_single_for_actual_capacity();
   test_inactive_outlet_is_not_required();
   test_frequency_feedback_changes_duo_selection();
+  test_water_limit_allows_modulation_during_feedback_hold();
+  test_peer_defrost_allows_modulation_during_feedback_hold();
+  test_model_boundary_allows_lower_duo_levels();
   test_missing_feedback_allows_peer_start();
   test_feedback_closed_loop();
   test_temporary_boost_cannot_shed_a_needed_peer();

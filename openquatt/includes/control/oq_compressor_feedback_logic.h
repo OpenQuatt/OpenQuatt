@@ -15,8 +15,8 @@ struct Snapshot {
   uint32_t confirmed_mask = 0;
   bool missing = false, settling = false, response_changed = false, qualified_run = false;
   uint8_t requested_hz = 0, actual_hz = 0;
-  int hold_level(int level, bool policy_allowed, bool current_power_safe) const {
-    return this->settling && level > 0 && policy_allowed && current_power_safe ? level : 0;
+  int hold_level(int level, bool policy_allowed, bool current_power_safe, bool control_allows_hold) const {
+    return this->settling && level > 0 && policy_allowed && current_power_safe && control_allows_hold ? level : 0;
   }
   int frequency(unsigned level, int nominal) const {
     // Missing receipts fall back per HP; they must not freeze the healthy peer.
