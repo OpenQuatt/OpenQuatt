@@ -62,6 +62,9 @@ Draadkleuren in de schema's en stappenhulp zijn illustratief. De klemmarkeringen
 
 Onderstaand referentiebeeld toont de fysieke positie en functie van alle aansluitingen. De aansluitingen staan op de behuizing aangeduid als `Q`, `R1`, `R2`, `T`, `M1`, `M2`, `OTT` en `OTB`.
 
+> [!IMPORTANT]
+> Bij `M1` en `M2` wordt de `GND` niet aangesloten.
+
 [![Referentiebeeld met alle aansluitingen van de Heatpump Controller Q-edition](assets/hcq-aansluitingen-referentie.png)](assets/hcq-aansluitingen-referentie.png)
 
 [Open het referentiebeeld op volledige grootte](assets/hcq-aansluitingen-referentie.png)
