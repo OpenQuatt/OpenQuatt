@@ -32,12 +32,12 @@ Draadkleuren in de schema's en stappenhulp zijn illustratief. De klemmarkeringen
 
 | Van de CiC | Naar de HCQ | Zo sluit je aan |
 |---|---|---|
-| Buitenunit(s) · Modbus `A/G/B` | `M1` · `A/B` | Let goed op de juiste volgorde: `A → A` (rood) en `B → B` (blauw). De groene ader `G` wordt **niet** aangesloten. |
+| Buitenunit(s) · Modbus `A/G/B` | `M1` · `GND/A/B` | Let goed op de juiste volgorde: `A → A` (rood) en `B → B` (blauw). De groene ader `G` wordt **niet** aangesloten. |
 | Kamerthermostaat · OpenTherm | `OTT` | Neem de twee aders over. |
 | CV-ketel · OpenTherm | `OTB` | Neem de twee aders over. Sluit OTB alleen aan op de digitale OpenTherm-klemmen van de ketel; gebruik voor een aan/uit-kamerthermostaatingang R1. |
 | CV-ketel · aan/uit | `R1` · `COM + NO` | Gebruik R1 voor een aan/uit-kamerthermostaatingang (bijv. RT, RT24 of TA). Het CV-aan/uit-contact van de CiC zit onder een apart afdekkapje. Op R1 blijft de bovenste klem `NC` vrij; gebruik de middelste klem `COM` en de onderste klem `NO`. |
 | Quatt flowmeter / PT1000 | `Q` | Steek de bestaande Quatt-sensorstekker over. |
-| **Optioneel:** vrijgekomen buitenunit-Modbus `A/G/B` op de CiC | `M2` · `A/B` | Gebruik een aparte RS485-kabel: `A → A`, `B → B`. Ook hier wordt de `G` **niet** aangesloten. |
+| **Optioneel:** vrijgekomen buitenunit-Modbus `A/G/B` op de CiC | `M2` · `GND/A/B` | Gebruik een aparte RS485-kabel: `A → A`, `B → B`. Ook hier wordt de `G` **niet** aangesloten. |
 
 > [!NOTE]
 > Bij de OpenTherm-verbindingen (`OTT` en `OTB`) en het aan/uit-contact (`R1`: `COM` + `NO`) maakt de polariteit of volgorde van de twee aders niet uit. Gebruik wel de genoemde aansluitklemmen.
