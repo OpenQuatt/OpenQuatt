@@ -81,7 +81,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Provisional heat demand and Outlook status copy: +1,266 B raw versus dev 7252cab3.
     // Optional boiler assist during defrost (settings switch and copy in both locales):
     // +1,065 B raw / +228 B gzip versus dev 9829c1e (Node 24.21.0); raw headroom unchanged.
-    raw: 1_485_136,
+    // House learning chart 95% confidence interval and legend labels
+    raw: 1_487_415,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

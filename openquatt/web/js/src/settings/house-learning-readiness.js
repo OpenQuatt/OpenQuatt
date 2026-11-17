@@ -12,7 +12,7 @@ const MAX_BIN_FRACTION = 0.67;
 const number = (value) => formatNumber(value, { maximumFractionDigits: 2 });
 
 export function selectDisplayedHouseLine(learned = {}) {
-  return learned.ready !== true && learned.preview !== undefined ? learned.preview || {} : learned;
+  return learned.ready !== true && learned.preview !== undefined ? (learned.preview?.days >= TRAIN_DAYS && learned.preview?.count >= TRAIN_DAYS ? learned.preview : {}) : learned;
 }
 
 function temperatureRange(days) {
