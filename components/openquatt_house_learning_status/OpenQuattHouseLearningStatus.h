@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 
@@ -24,6 +25,14 @@ class OpenQuattHouseLearningStatus : public Component {
   void set_web_server(web_server::WebServer* web_server) { this->web_server_ = web_server; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* web_auth) { this->web_auth_ = web_auth; }
 
+  enum class LineResult : uint8_t { STORED, REFUSED, UNCERTAIN, QUEUED, UNKNOWN };
+  using ChangeLine = uint8_t (*)(float, float, float, float, float, bool);
+  void set_change_line(ChangeLine change) { this->change_line_ = change; }
+  bool request_allows_write(AsyncWebServerRequest* request) const {
+    return this->web_auth_ != nullptr && this->web_auth_->request_allows_write(request);
+  }
+  uint32_t queue_line_change(const std::array<float, 5>& values, bool restore);
+  LineResult line_result(uint32_t ticket) const;
   void setup() override;
   void dump_config() override;
   float get_setup_priority() const override;
@@ -77,6 +86,9 @@ class OpenQuattHouseLearningStatus : public Component {
   mutable SemaphoreHandle_t cache_mutex_{nullptr};
   mutable SemaphoreHandle_t request_mutex_{nullptr};
   TaskHandle_t main_loop_task_{nullptr};
+  ChangeLine change_line_{nullptr};
+  uint32_t line_ticket_{0U};  // Protected by cache_mutex_.
+  LineResult line_result_{LineResult::UNKNOWN};
   std::atomic<bool> storage_available_{false};
 };
 

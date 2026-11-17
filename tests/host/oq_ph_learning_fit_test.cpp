@@ -213,8 +213,9 @@ void test_fail_closed_dataset_gates() {
   records[0].effective_outside_profile_centi[0] = 1000;
   assert(begin_advice_fit(records, 9, now, {150.0f, 15.0f}, {}, {}, workspace) == LearningStatus::INVALID_MEASUREMENT);
   make_dataset(records);
-  assert(begin_advice_fit(records, 9, now, {0.001f, -100.0f}, {}, {}, workspace) ==
-         LearningStatus::INVALID_ACTIVE_MODEL);
+  assert(begin_advice_fit(records, 9, now, {0.001f, -100.0f}, {}, {}, workspace) == LearningStatus::FIT_IN_PROGRESS);
+  assert(finish_fit(workspace) == LearningStatus::INVALID_ACTIVE_MODEL);
+  assert(workspace.result.line_checked && !workspace.result.advice_ready);
 }
 
 void test_temperature_dominance() {
@@ -318,12 +319,33 @@ void test_unprepared_metadata_cannot_survive_a_rejected_record_view() {
   assert(begin_advice_fit(records, 9, records[8].end_epoch_s + kMaxRecordAgeS + 1, {150, 15}, {}, {}, workspace) ==
          LearningStatus::STALE_DATA);
   assert(!workspace.result.metadata_prepared);
-  assert(begin_advice_fit(records, 9, records[8].end_epoch_s, {NAN, 15}, {}, {}, workspace) ==
-         LearningStatus::INVALID_ACTIVE_MODEL);
-  assert(!workspace.result.metadata_prepared);
   assert(begin_advice_fit(records, 3, records[8].end_epoch_s, {150, 15}, {}, {}, workspace) ==
          LearningStatus::INSUFFICIENT_DATA);
   assert(!workspace.result.metadata_prepared && workspace.result.train_days == 0);
+}
+
+void test_line_check_uses_spread_and_accuracy_independently_of_active_line() {
+  SegmentRecord records[9];
+  make_dataset(records);
+  AdviceFitWorkspace workspace;
+  const uint32_t now = records[8].end_epoch_s;
+  const auto check = [&](HouseLine active) {
+    assert(begin_advice_fit(records, 9, now, active, {}, {}, workspace) == LearningStatus::FIT_IN_PROGRESS);
+    const auto status = finish_fit(workspace);
+    assert(status == LearningStatus::NO_HOLDOUT_IMPROVEMENT || status == LearningStatus::ADVICE_READY);
+    return workspace.result.line_checked;
+  };
+  assert(check({200, 16}) && !workspace.result.advice_ready);
+  assert(check({150, 15}) && workspace.result.advice_ready);
+  records[7].mean_heat_w += 1000;
+  assert(!check({150, 15}));
+  assert(workspace.result.checked_error_w > workspace.result.checked_error_limit_w);
+  records[7] = fitted_record(7, 7.5f);
+  records[8] = fitted_record(8, 8.0f);
+  assert(!check({150, 15}));
+  assert(workspace.result.checked_error_w < workspace.result.checked_error_limit_w);
+  assert(workspace.result.checked_max_c - workspace.result.checked_min_c == 1.0f);
+  assert(workspace.result.manual_proposal() == &workspace.result.candidate);
 }
 
 void test_preview_with_six_total_days_keeps_advice_closed() {
@@ -336,6 +358,9 @@ void test_preview_with_six_total_days_keeps_advice_closed() {
   assert(advance_advice_fit(workspace) == LearningStatus::INSUFFICIENT_DATA);
   assert(workspace.result.preview.available && workspace.result.preview.days == 6);
   assert(!workspace.result.candidate_available && !workspace.result.advice_ready);
+  assert(workspace.result.manual_proposal() == &workspace.result.preview.line);
+  assert(workspace.result.context_revision == records[0].context_revision);
+  assert(AdviceResult{}.manual_proposal() == nullptr);
   const auto validation = validate_house_models(workspace.result, ThermalModelState{}, {}, 1000, 1);
   assert(!validation.batch_advice_ready && !validation.cross_validated_advice_ready && !validation.auto_apply_allowed);
 }
@@ -369,6 +394,7 @@ int main() {
   test_preparation_gates_precede_numerical_fit_failures();
   test_implausible_official_candidate_remains_diagnostic();
   test_unprepared_metadata_cannot_survive_a_rejected_record_view();
+  test_line_check_uses_spread_and_accuracy_independently_of_active_line();
   test_preview_with_six_total_days_keeps_advice_closed();
   test_exact_retention_boundary_allows_sparse_season();
   static_assert(kMaxRecordsVisitedPerHuberFit == 1536);

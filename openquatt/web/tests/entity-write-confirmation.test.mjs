@@ -254,6 +254,41 @@ test("aanvoerbron blijft onbevestigd als de responsebody ontbreekt", async t => 
   assert.match(state.controlError, /niet worden bevestigd/);
 });
 
+for (const allowed of [false, true]) {
+  test(`handmatige woninglijnwijziging ${allowed ? "wacht op verse bevestiging" : "meldt geweigerde opslag"}`, async t => {
+    confirmationClock(t);
+    state.entities.housePower = { value: 7020, state: "7020", min_value: 1000, max_value: 15000, step: 10 };
+    let writes = 0;
+    let reads = 0;
+    t.mock.method(globalThis, "fetch", async (url, options = {}) => {
+      if (url === "/auth/status") return response({});
+      if (url === "/openquatt/entities") {
+        const payload = await bulkResponse(options.body).json();
+        if (payload.entities.housePower) {
+          const value = ++reads > 1 && allowed ? 6800 : 7020;
+          payload.entities.housePower = { value, state: String(value) };
+        }
+        return response(payload);
+      }
+      assert.equal(options.method, "POST");
+      assert.match(url, /\/number\/Rated%20maximum%20house%20power\/set\?value=6800$/);
+      writes += 1;
+      return response({});
+    });
+    assert.equal(await commitNumber("housePower", 6800), allowed);
+    assert.equal(writes, 1);
+    assert.equal(state.entities.housePower.value, allowed ? 6800 : 7020);
+    if (allowed) {
+      assert.notEqual(state.controlNotice, "");
+      assert.equal(state.controlError, "");
+    } else {
+      assert.equal(state.controlNotice, "");
+      assert.match(state.controlError, /opgeslagen keuze niet bevestigd/);
+      assert.equal(state.inputDrafts.housePower, "6800");
+    }
+  });
+}
+
 for (const [label, action] of [
   ["number", () => commitNumber("maxWater", 45)],
   ["select", () => commitSelect("strategy", "Power House")],

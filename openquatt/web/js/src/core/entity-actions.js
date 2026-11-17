@@ -3,6 +3,7 @@ import { handlePerformanceTelemetryPromptAction, handlePerformanceTelemetryPromp
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { hasEntity } from "./app-shared.js";
 import { ENTITY_DEFS } from "./config.js";
+import { refreshEntities } from "./entity-sync.js";
 import { getInputDraftValue } from "./control-drafts.js";
 import { reportUnknownAction } from "./action-router.js";
 import { commitQuickStartStrategySelection, handleControlAction } from "./control-actions.js";
@@ -47,7 +48,7 @@ const actionDelegates = [
   handleControlReplayAction,
   handleQuickStartAction,
   handleDebugRecordingAction,
-  (action, button) => handleHouseLearningAction(action, button, triggerNamedButton),
+  (action, button) => handleHouseLearningAction(action, button, triggerNamedButton, refreshEntities),
   handleOduEepromDumpAction,
   handleOduDefrostAction,
   handleOduRuntimeFrequencyAction,

@@ -54,6 +54,7 @@ class OpenQuattWebAuth : public Component {
     return web_server_base::global_web_server_base != nullptr &&
            web_server_base::global_web_server_base->request_is_authenticated(request, true);
   }
+  bool request_allows_write(AsyncWebServerRequest* request) const;
   bool is_api_security_transport_active() const;
   bool is_api_security_key_present() const;
   bool is_api_provisioning_pending() const;

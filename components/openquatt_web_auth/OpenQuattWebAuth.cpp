@@ -74,30 +74,6 @@ class OpenQuattWebAuthRequestHandler : public AsyncWebHandler {
  public:
   explicit OpenQuattWebAuthRequestHandler(OpenQuattWebAuth* parent) : parent_(parent) {}
 
-  bool passes_same_origin_(AsyncWebServerRequest* request) const {
-    const auto host = request->get_header("Host");
-    if (!host.has_value() || host->empty()) {
-      return false;
-    }
-
-    const auto origin = request->get_header("Origin");
-    if (origin.has_value() && !header_matches_host_(origin.value(), host.value())) {
-      return false;
-    }
-
-    const auto referer = request->get_header("Referer");
-    if (referer.has_value() && !header_matches_host_(referer.value(), host.value())) {
-      return false;
-    }
-
-    return true;
-  }
-
-  bool passes_csrf_(AsyncWebServerRequest* request) const {
-    const std::string csrf_token = request->arg("csrf_token");
-    return !csrf_token.empty() && csrf_token == this->parent_->get_csrf_token();
-  }
-
   bool canHandle(AsyncWebServerRequest* request) const override {
     char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
     StringRef url = request->url_to(url_buf);
@@ -137,7 +113,7 @@ class OpenQuattWebAuthRequestHandler : public AsyncWebHandler {
     }
 
     if (url == "/auth/change" && request->method() == HTTP_POST) {
-      if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+      if (!this->parent_->request_allows_write(request)) {
         lock.unlock();
         request->send(409, "application/json", R"({"ok":false,"error":"forbidden"})");
         return;
@@ -184,7 +160,7 @@ class OpenQuattWebAuthRequestHandler : public AsyncWebHandler {
     }
 
     if (url == "/auth/disable" && request->method() == HTTP_POST) {
-      if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
+      if (!this->parent_->request_allows_write(request)) {
         lock.unlock();
         request->send(409, "application/json", R"({"ok":false,"error":"forbidden"})");
         return;
@@ -240,6 +216,17 @@ class OpenQuattWebAuthRequestHandler : public AsyncWebHandler {
  protected:
   OpenQuattWebAuth* parent_;
 };
+
+bool OpenQuattWebAuth::request_allows_write(AsyncWebServerRequest* request) const {
+  const auto host = request->get_header("Host");
+  if (!host.has_value() || host->empty()) return false;
+  const auto origin = request->get_header("Origin");
+  if (origin.has_value() && !header_matches_host_(origin.value(), host.value())) return false;
+  const auto referer = request->get_header("Referer");
+  if (referer.has_value() && !header_matches_host_(referer.value(), host.value())) return false;
+  const auto token = request->arg("csrf_token");
+  return !token.empty() && token == this->get_csrf_token();
+}
 
 void OpenQuattWebAuth::setup() {
   std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);

@@ -12,7 +12,16 @@ const MAX_BIN_FRACTION = 0.67;
 const number = (value) => formatNumber(value, { maximumFractionDigits: 2 });
 
 export function selectDisplayedHouseLine(learned = {}) {
-  return learned.ready !== true && learned.preview !== undefined ? (learned.preview?.days >= TRAIN_DAYS && learned.preview?.count >= TRAIN_DAYS ? learned.preview : {}) : learned;
+  return learned.proposal ?? (learned.ready !== true && learned.preview !== undefined
+    ? (usableHouseLinePreview(learned.preview) ?? {}) : learned);
+}
+
+export function usableHouseLinePreview(preview) {
+  return preview?.days >= TRAIN_DAYS && preview?.count >= TRAIN_DAYS ? preview : null;
+}
+
+export function houseLearningCheckFailureKey(spreadC, minSpreadC) {
+  return spreadC < minSpreadC ? "houseLearning.advice.narrowSpread" : "houseLearning.advice.checkFailed";
 }
 
 function temperatureRange(days) {
@@ -87,10 +96,13 @@ export function renderHouseLearningReadiness(records, learned = {}, observedReco
   const line = selectDisplayedHouseLine(learned);
   const available = Number.isFinite(line.h) && line.h > 0 && Number.isFinite(line.t0);
   const provisionalSummary = available && !learned.ready ? t("houseLearning.readiness.provisionalSummary") : null;
-  const previewCopy = learned.preview && available && !learned.ready
+  const previewCopy = learned.preview && !learned.proposal?.check && available && !learned.ready
     ? t("houseLearning.readiness.previewAllDays", { count: number(learned.preview.count) })
     : t("houseLearning.readiness.provisionalCopy");
-  const reasonKey = houseLearningBatchReasonKey(learned.batchStatus);
+  const check = learned.proposal?.check;
+  const reasonKey = learned.retesting ? "houseLearning.advice.retesting" : check
+    ? (check.passed ? "houseLearning.readiness.readyCopy" : houseLearningCheckFailureKey(check.maxC - check.minC, check.minSpreadC))
+    : houseLearningBatchReasonKey(learned.batchStatus);
   let copy;
   if (reasonKey) copy = t(reasonKey);
   else if (available && learned.ready) copy = t("houseLearning.readiness.readyCopy");

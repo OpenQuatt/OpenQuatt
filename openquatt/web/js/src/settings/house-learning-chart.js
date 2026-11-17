@@ -77,7 +77,7 @@ export function normalizeHouseLearningExport(payload = {}) {
 }
 
 function ciSvg(model, learned, fitRecords) {
-  const line = learned?.ready === true ? learned : learned?.preview;
+  const line = learned?.proposal ?? (learned?.ready === true ? learned : learned?.preview);
   const hasCov = line?.h > 0 && Number.isFinite(line.t0)
     && Number.isFinite(line.cov00) && line.cov00 >= 0
     && Number.isFinite(line.cov01)
@@ -206,7 +206,7 @@ export function renderHouseLearningChart(records, configured, learned) {
   const xGrid = compact ? [-10, 0, 10, 20] : [-10, -5, 0, 5, 10, 15, 20];
   const configuredPower = (temperature) => configuredLinePowerAt(model, temperature);
   const learnedPower = (temperature) => learnedLinePowerAt(model, temperature);
-  const previewRange = learned?.preview !== undefined ? learned.preview : learned?.fit;
+  const previewRange = learned?.proposal?.check ? learned.fit : learned?.preview !== undefined ? learned.preview : learned?.fit;
   const rangeMin = model.ready ? finite(learned?.fit?.minC) ?? measuredMin : finite(previewRange?.minC);
   const rangeMax = model.ready ? finite(learned?.fit?.maxC) ?? measuredMax : finite(previewRange?.maxC);
   const learnedStart = rangeMin == null ? model.minX : clamp(rangeMin, model.minX, model.maxX);
