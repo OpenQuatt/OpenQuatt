@@ -18,6 +18,9 @@ Schakel eerst de CiC uit en maak alle Quatt-buitenunits spanningsloos, bijvoorbe
 > [!WARNING]
 > Twijfel je over de bedrading of aansluitingen? Stop dan en laat dit door een vakbekwaam installateur uitvoeren.
 
+> [!IMPORTANT]
+> De aansluitingen `M1` en `M2` hebben beiden drie connectoren. Sluit enkel de `A` en de `B` aan om storingen te voorkomen. Laat de bovenste aansluiting dus leeg.
+
 De HCQ neemt de signaalkabels van de CiC over. Sluit dezelfde kabel nooit tegelijk op de CiC en de HCQ aan.
 
 ### Interactief aansluiten: één stap tegelijk
