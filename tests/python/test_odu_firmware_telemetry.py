@@ -66,14 +66,15 @@ class OduFirmwareTelemetryTest(unittest.TestCase):
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <sys/select.h>
 #include <vector>
 #include "components/openquatt_common/OpenQuattOduFirmware.h"
 #include "components/openquatt_performance_telemetry/OpenQuattPerformanceTelemetryPolicy.h"
-using namespace esphome::openquatt_performance_telemetry;
-namespace openquatt_common = esphome::openquatt_common;
+namespace esphome {
 namespace sensor { struct Sensor { float state=0; bool known=true; bool has_state() const { return known; } }; }
 namespace binary_sensor { struct BinarySensor { bool state=false; bool has_state() const { return true; } }; }
 namespace select { struct Select { bool has_state() const { return true; } std::string current_option() const { return "V2"; } }; }
+namespace openquatt_performance_telemetry {
 #define ESP_LOGW(...) ((void)0)
 struct Buffer {
  std::vector<char> bytes;
@@ -120,7 +121,11 @@ struct Usage {
   payload+='}';assert(payload.ok());return buffer;
  }
 };
+}  // namespace openquatt_performance_telemetry
+}  // namespace esphome
 int main() {
+ using namespace esphome;
+ using namespace esphome::openquatt_performance_telemetry;
  using esphome::openquatt_common::odu_firmware_raw;
  using esphome::openquatt_common::format_odu_firmware;
  for (float value : {NAN, INFINITY, -1.f, 0.f, 65535.f, 65536.f, 514.5f}) assert(odu_firmware_raw(value)==0);
