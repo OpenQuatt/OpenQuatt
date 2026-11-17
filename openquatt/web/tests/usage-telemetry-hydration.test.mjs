@@ -99,6 +99,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     connection_preference: "auto",
     quatt_hybrid_generation_config: "v1_5",
     water_supply_source: "pt1000",
+    odu_fw: [null, null],
     flow_source_config: "controller_local",
     heating_strategy: "power_house",
     room_temperature_source: "opentherm",
@@ -179,6 +180,29 @@ test("Q-board serial preview uses null for unknown, invalid or unsupported hardw
     assert.match(t("usage.inPlatformCopy"), locale === "nl" ? /printserienummer binnen de batch/ : /serial number within its batch/);
   }
   setLocale("nl", { persist: false });
+});
+
+test("ODU firmware preview preserves HP order, topology and unknown versions", () => {
+  for (const [input, expected] of [
+    [{ installationTopology: "single", hp1OduFirmware: "1.25", hp2OduFirmware: "2.02" }, ["1.25"]],
+    [{ installationTopology: "duo", hp1OduFirmware: "2.02", hp2OduFirmware: "2.01" }, ["2.02", "2.01"]],
+    [{ installationTopology: "duo", hp1OduFirmware: "1.34", hp2OduFirmware: "1.30" }, ["1.34", "1.30"]],
+    [{ installationTopology: "duo", hp1OduFirmware: "3.7", hp2OduFirmware: "Unknown" }, ["3.07", null]],
+    [{ installationTopology: "duo" }, [null, null]],
+    [{}, [null]],
+  ]) {
+    const payload = createUsageTelemetryPreview({ hpGeneration: "V2", ...input });
+    assert.deepEqual(payload.odu_fw, expected);
+    assert.equal(payload.quatt_hybrid_generation_config, "v2");
+  }
+  for (const value of [null, undefined, "", "unknown", "unavailable", "NaN", "0.00", "255.255", "256.01", "2.256", "2.02x", "2e0.2"]) {
+    assert.deepEqual(createUsageTelemetryPreview({ hp1OduFirmware: value }).odu_fw, [null]);
+  }
+  assert.deepEqual(createUsageTelemetryPreview({ hp1OduFirmware: "255.254" }).odu_fw, ["255.254"]);
+  for (const key of ["hp1OduFirmware", "hp2OduFirmware"]) {
+    assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes(key));
+    assert.ok(ENTITY_DEFS[key]);
+  }
 });
 
 test("passive learning telemetry contains only the optional switch state", () => {

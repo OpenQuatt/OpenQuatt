@@ -17,6 +17,7 @@ esphome:
     - ${oq_cpp_headers_dir}
     - ${oq_component_psram_buffer_header}
     - ${oq_component_external_telemetry_transport_header}
+    - ${oq_component_odu_firmware_header}
     - ${oq_component_flash_layout_header}
     - ${oq_component_http_status_header}
   build_flags:

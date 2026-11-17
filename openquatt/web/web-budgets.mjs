@@ -82,7 +82,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Optional boiler assist during defrost (settings switch and copy in both locales):
     // +1,065 B raw / +228 B gzip versus dev 9829c1e (Node 24.21.0); raw headroom unchanged.
     // House learning chart 95% confidence interval and legend labels
-    raw: 1_487_415,
+    // Per-HP ODU firmware in telemetry previews and NL/EN disclosure: +575 B raw
+    // versus dev acfe7df2 (Node 24.22.1); existing headroom and relative gzip limits unchanged.
+    raw: 1_487_990,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

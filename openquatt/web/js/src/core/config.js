@@ -76,6 +76,8 @@
     ["preferredConnection", DOMAIN_SELECT, "Preferred Connection"],
     ["hp1Generation", DOMAIN_TEXT_SENSOR, "HP1 - ODU generation"],
     ["hp2Generation", DOMAIN_TEXT_SENSOR, "HP2 - ODU generation"],
+    ["hp1OduFirmware", DOMAIN_TEXT_SENSOR, "HP1 - ODU PCB firmware version"],
+    ["hp2OduFirmware", DOMAIN_TEXT_SENSOR, "HP2 - ODU PCB firmware version"],
     ["hp1CompressorLevelProfile", DOMAIN_TEXT_SENSOR, "HP1 - Compressor level profile"],
     ["hp2CompressorLevelProfile", DOMAIN_TEXT_SENSOR, "HP2 - Compressor level profile"],
     ["hp1GenerationVariant", DOMAIN_TEXT_SENSOR, "HP1 - ODU generation variant"],

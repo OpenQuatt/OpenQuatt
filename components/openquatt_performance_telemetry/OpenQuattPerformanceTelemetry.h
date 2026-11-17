@@ -33,6 +33,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
   void set_topology(const std::string& value) { this->topology_ = value; }
 
   void set_hp1_working_mode(sensor::Sensor* value) { this->hp_[0].working_mode = value; }
+  void set_hp1_odu_firmware(sensor::Sensor* value) { this->hp_[0].odu_firmware = value; }
   void set_hp1_frequency(sensor::Sensor* value) { this->hp_[0].frequency = value; }
   void set_hp1_level(sensor::Sensor* value) { this->hp_[0].level = value; }
   void set_hp1_input_power(sensor::Sensor* value) { this->hp_[0].input_power = value; }
@@ -46,6 +47,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
   void set_hp1_bottom_plate_heater(binary_sensor::BinarySensor* value) { this->hp_[0].bottom_plate_heater = value; }
 
   void set_hp2_working_mode(sensor::Sensor* value) { this->hp_[1].working_mode = value; }
+  void set_hp2_odu_firmware(sensor::Sensor* value) { this->hp_[1].odu_firmware = value; }
   void set_hp2_frequency(sensor::Sensor* value) { this->hp_[1].frequency = value; }
   void set_hp2_level(sensor::Sensor* value) { this->hp_[1].level = value; }
   void set_hp2_input_power(sensor::Sensor* value) { this->hp_[1].input_power = value; }
@@ -89,6 +91,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
   static_assert(sizeof(Storage) == 8U, "Preserve the existing NVS record size");
 
   struct HpSources {
+    sensor::Sensor* odu_firmware{nullptr};
     sensor::Sensor* working_mode{nullptr};
     sensor::Sensor* frequency{nullptr};
     sensor::Sensor* level{nullptr};
@@ -128,6 +131,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
     bool invalid{false};
     uint8_t active_mask{0U};
     int generation{0};
+    std::array<uint16_t, 2U> odu_firmware{};
     float outside_sum{0.0f};
     float flow_sum{0.0f};
     std::array<HpAccumulator, 2U> hp{};
@@ -137,6 +141,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
     uint32_t start_s{0U};
     uint8_t active_mask{0U};
     int generation{0};
+    std::array<uint16_t, 2U> odu_firmware{};
     float outside_c{NAN};
     float flow_lph{NAN};
     std::array<HpAccumulator, 2U> hp{};

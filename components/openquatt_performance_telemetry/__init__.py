@@ -28,6 +28,7 @@ OpenQuattPerformanceTelemetry = openquatt_performance_telemetry_ns.class_(
 
 def hp_schema(prefix):
     return {
+        cv.Optional(f"{prefix}_odu_firmware"): cv.use_id(sensor.Sensor),
         cv.Required(f"{prefix}_working_mode"): cv.use_id(sensor.Sensor),
         cv.Required(f"{prefix}_frequency"): cv.use_id(sensor.Sensor),
         cv.Required(f"{prefix}_level"): cv.use_id(sensor.Sensor),
@@ -92,6 +93,9 @@ async def to_code(config):
     cg.add(var.set_topology(config[CONF_TOPOLOGY]))
 
     for hp in ("hp1", "hp2"):
+        if f"{hp}_odu_firmware" in config:
+            source = await cg.get_variable(config[f"{hp}_odu_firmware"])
+            cg.add(getattr(var, f"set_{hp}_odu_firmware")(source))
         for field in (
             "working_mode",
             "frequency",

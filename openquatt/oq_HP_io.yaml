@@ -1158,6 +1158,9 @@ sensor:
     address: 2122
     value_type: U_WORD
     internal: true
+    on_value:
+      then:
+        - component.update: ${hp_id}_pcb_firmware_version
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1918,16 +1921,14 @@ text_sensor:
     internal: true
     lambda: |-
       if (!id(${hp_id}_pcb_firmware_raw).has_state()) {
-        return {};
+        return std::string("Unknown");
       }
 
-      const uint16_t firmware_raw = static_cast<uint16_t>(id(${hp_id}_pcb_firmware_raw).state);
-      const uint8_t major = static_cast<uint8_t>((firmware_raw >> 8) & 0xFF);
-      const uint8_t minor = static_cast<uint8_t>(firmware_raw & 0xFF);
-
+      const uint16_t firmware_raw = esphome::openquatt_common::odu_firmware_raw(
+          id(${hp_id}_pcb_firmware_raw).state);
       char buf[8];
-      snprintf(buf, sizeof(buf), "%u.%u", major, minor);
-      return std::string(buf);
+      esphome::openquatt_common::format_odu_firmware(firmware_raw, buf);
+      return std::string(buf[0] == '\0' ? "Unknown" : buf);
     update_interval: never
 
 interval:

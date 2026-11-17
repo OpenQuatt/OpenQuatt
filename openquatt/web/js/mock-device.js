@@ -288,6 +288,10 @@
       setEntity("sensor", `HP${hp} - Minimum ${mode} frequency`, { value: minimum, uom: "Hz" });
     }
     setEntity("sensor", `HP${hp} - Control board item number`, { value: profile.controlBoardItem });
+    const firmware = profile.pcbProgram > 0 && profile.pcbProgram < 0xFFFF
+      ? `${profile.pcbProgram >>> 8}.${String(profile.pcbProgram & 0xff).padStart(2, "0")}`
+      : "Unknown";
+    setEntity("text_sensor", `HP${hp} - ODU PCB firmware version`, { state: firmware, value: firmware });
     setEntity("text_sensor", `HP${hp} - ODU generation`, {
       state: profile.generation,
       value: profile.generation,
