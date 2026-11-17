@@ -290,6 +290,24 @@ void test_recovery_restarts_local_startup_timer() {
   }
   assert(out.qualified_run && out.confirmed_frequency(2, 26) == 48);
 }
+void test_response_to_higher_command_has_a_bounded_wait() {
+  Observer observer;
+  observer.observe(table(), 3, reading(1000, 2, 26));
+  auto update = [&](uint32_t now, float actual) {
+    auto in = reading(now, 4, actual);
+    in.applied_ms = 11000;
+    return observer.observe(table(), 3, in);
+  };
+  auto out = update(11000, 26);
+  assert(out.missing && !out.awaiting_requested_hz);
+  out = update(16000, 26);
+  assert(out.awaiting_requested_hz && out.frequency(4, 48) == 26 && !out.qualified_run);
+  assert(!update(20000, 47).awaiting_requested_hz);
+  assert(update(40999, 26).awaiting_requested_hz);
+  assert(!update(41000, 26).awaiting_requested_hz);
+  out = update(42000, 0);
+  assert(out.missing && !out.awaiting_requested_hz);
+}
 }  // namespace
 int main() {
   test_live_feedback_and_nonmonotonic_response();
@@ -302,5 +320,6 @@ int main() {
   test_confirmed_power_excludes_live_boost_and_old_run();
   test_run_continuity_and_per_command_capacity();
   test_recovery_restarts_local_startup_timer();
+  test_response_to_higher_command_has_a_bounded_wait();
   test_startup_shape_withdraws_previous_capacity_between_receipts();
 }

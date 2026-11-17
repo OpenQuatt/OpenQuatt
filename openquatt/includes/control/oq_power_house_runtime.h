@@ -542,8 +542,22 @@ class Runtime {
             .set_warmup_power(diagnostics::warmup_log_key(warming, warmup_runtime.intermediate_target(),
                                                           warmup_runtime.offset(), warmup_power.path),
                               warmup_power);
+    oq_power_house_dispatch::PendingSinglePower pending_single;
+#if OQ_TOPOLOGY_DUO
+    if (duo && request_active && ((retained_hp1 > 0) != (retained_hp2 > 0))) {
+      const bool hp1_running = retained_hp1 > 0;
+      const auto& running = hp1_running ? dispatch_input.hp1 : dispatch_input.hp2;
+      const auto& response = feedback[hp1_running ? 0 : 1];
+      if (response.awaiting_requested_hz && running.feedback_hold_level > 0 && running.fixed_level == 0 &&
+          running.candidate.available_for_start && !running.candidate.link_suspect) {
+        const auto planned = model.single_at_frequency(hp1_running, response.requested_hz);
+        if (planned.valid()) pending_single = {planned.thermal_w, planned.electrical_w};
+      }
+    }
+#endif
     const auto dispatch = oq_power_house_dispatch::decide_dispatch(
-        dispatch_input, dispatch_tuning, this->dispatch_state_, &oq_water_performance::CandidateModel::confirmed_power);
+        dispatch_input, dispatch_tuning, this->dispatch_state_, &oq_water_performance::CandidateModel::confirmed_power,
+        pending_single);
     if (log_warmup_power) {
       ESP_LOGI("quatt.warmup",
                "power path=%s room=%.2f final=%.2f step=%.2f boost=%.2f effective=%.2f kp=%.0f below=%.2f base=%.0f "

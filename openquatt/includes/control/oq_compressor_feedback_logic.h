@@ -14,6 +14,7 @@ struct Snapshot {
   std::array<uint8_t, kLevels> hz{};
   uint32_t confirmed_mask = 0;
   bool missing = false, settling = false, response_changed = false, qualified_run = false;
+  bool awaiting_requested_hz = false;
   uint8_t requested_hz = 0, actual_hz = 0;
   int hold_level(int level, bool policy_allowed, bool current_power_safe, bool control_allows_hold) const {
     return this->settling && level > 0 && policy_allowed && current_power_safe && control_allows_hold ? level : 0;
@@ -96,6 +97,7 @@ class Observer {
                                             static_cast<uint32_t>(in.now_ms - in.applied_ms));
       const uint32_t receipt_age = in.receipt_age_ms == UINT32_MAX ? in.now_ms - in.received_ms : in.receipt_age_ms;
       out.missing = receipt_age >= command_age;
+      out.awaiting_requested_hz = !out.missing && actual + 2 < requested && command_age < kSettlingMs;
       // An unobserved stop may hide behind unchanged Heating mode and command.
       // Start a new local startup window after any loss of run continuity.
       if (this->continuous_run_ && static_cast<uint32_t>(in.received_ms - this->run_receipt_ms_) > kSettlingMs)

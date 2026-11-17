@@ -110,12 +110,15 @@ struct CandidateModel {
       if (coupled) upstream[level] = solve(variants[0], hz[0][level], outside_c, inlet_c, flow_lph, boundary);
     }
   }
+  Prediction single_at_frequency(bool hp1, int frequency_hz) const {
+    const unsigned hp = hp1 ? 0 : 1;
+    if (coupled) return solve(variants[hp], frequency_hz, outside_c, inlet_c, flow_lph, boundary);
+    return observed(variants[hp], frequency_hz, outside_c, outlet[hp], boundary);
+  }
   Prediction unit(bool hp1, int level) const {
     if (level < 0 || level > 20) return {};
-    if (coupled)
-      return hp1 ? upstream[level] : solve(variants[1], hz[1][level], outside_c, inlet_c, flow_lph, boundary);
-    const unsigned hp = hp1 ? 0 : 1;
-    return observed(variants[hp], hz[hp][level], outside_c, outlet[hp], boundary);
+    if (coupled && hp1) return upstream[level];
+    return single_at_frequency(hp1, hz[hp1 ? 0 : 1][level]);
   }
   Prediction pair(int first, int second) const {
     if (first < 0 || first > 20 || second < 0 || second > 20) return {};

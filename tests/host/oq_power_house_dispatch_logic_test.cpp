@@ -112,6 +112,100 @@ void test_actuator_hold_constrains_owner_swap() {
     assert(out.owner_hp != running_owner && topology(out.hp1_level, out.hp2_level) == 1);
   }
 }
+void test_feedback_hold_prefers_upshift_before_starting_peer() {
+  for (bool hp1_running : {false, true}) {
+    auto in = input(true);
+    auto& running = hp1_running ? in.hp1 : in.hp2;
+    auto& idle = hp1_running ? in.hp2 : in.hp1;
+    auto limits = tuning();
+    PendingSinglePower pending_single;
+    const auto check = [&](int running_level, int idle_level, const DispatchState& state = {}) {
+      const auto out = decide_dispatch(in, limits, state, nullptr, pending_single);
+      assert(out.output_valid);
+      assert(out.hp1_level == (hp1_running ? running_level : idle_level));
+      assert(out.hp2_level == (hp1_running ? idle_level : running_level));
+      expect_safe(out, in, limits);
+      return out;
+    };
+    in.hp1.levels = in.hp2.levels = {};
+    running.candidate.previous_applied_level = 2;
+    running.stop_inhibited = true;
+    running.feedback_hold_level = 2;
+    running.levels[2] = {true, true, true, 2000.0f, 250.0f, 26};
+    running.levels[4] = {true, true, true, 3000.0f, 450.0f, 48};
+    idle.levels[1] = {true, true, true, 1000.0f, 250.0f, 20};
+
+    in.requested_w = 2000.0f;
+    check(2, 0);
+    in.requested_w = 3000.0f;
+    check(4, 0);
+    idle.levels[1].thermal_w = 500.0f;
+    const auto raised = check(4, 0);
+    assert(raised.capacity_w == 3000.0f && raised.deficit_w == 0.0f && !raised.saturated);
+    idle.levels[1].thermal_w = 1000.0f;
+
+    // The current hold caps the modelled Duo output at 3 kW. A 3.6 kW
+    // request still needs the peer; compare against the full request.
+    in.requested_w = 3600.0f;
+    const auto shortfall = check(2, 1);
+    assert(shortfall.saturated && shortfall.deficit_w == 600.0f);
+
+    in.requested_w = 3000.0f;
+    running.levels[4].thermal_w = 6000.0f;
+    check(2, 1);
+    running.levels[4].thermal_w = 3000.0f;
+    running.levels[4].allowed = false;
+    check(2, 1);
+    running.levels[4].allowed = true;
+    running.levels[4].electrical_w = 10500.0f;
+    check(2, 1);
+    limits.soft_limit_w = 500.0f;
+    running.levels[4].electrical_w = 600.0f;
+    check(2, 1);
+    limits = tuning();
+    running.levels[4].electrical_w = 450.0f;
+    running.fixed_level = 2;
+    check(2, 1);
+    running.fixed_level = 0;
+    running.candidate.available_for_start = false;
+    check(2, 1);
+    running.candidate.available_for_start = true;
+
+    const auto oil_return = observe_protection({}, {in.now_ms, false, false, true, 2, 0});
+    check(2, 1, oil_return);
+
+    // A fresh receipt can still report the old frequency just after an upshift.
+    running.candidate.previous_applied_level = running.feedback_hold_level = 4;
+    running.levels[4].thermal_w = 2000.0f;
+    running.levels[5] = {true, true, true, 3100.0f, 475.0f, 55};
+    pending_single = {3000.0f, 450.0f};
+    const auto waiting = check(4, 0);
+    assert(waiting.expected_w == 2000.0f);
+    in.requested_w = 2500.0f;
+    idle.levels[1].thermal_w = 500.0f;
+    check(4, 1);
+    idle.levels[1].thermal_w = 1000.0f;
+    in.requested_w = 3600.0f;
+    check(4, 1);
+    in.requested_w = 3000.0f;
+    pending_single = {};
+    check(5, 0);
+
+    // A requested owner swap also starts the idle peer. The actuator may
+    // keep the first HP running, so try the upshift on the incumbent first.
+    running.candidate.previous_applied_level = running.feedback_hold_level = 2;
+    running.stop_inhibited = false;
+    running.levels[4] = {true, true, true, 3000.0f, 450.0f, 48};
+    idle.levels[1] = {true, true, true, 3000.0f, 200.0f, 20};
+    check(4, 0);
+    in.requested_w = 2100.0f;
+    idle.levels[1].thermal_w = 2100.0f;
+    check(2, 0);
+    in.requested_w = 100.0f;
+    idle.levels[1].thermal_w = 1000.0f;
+    check(0, 1);
+  }
+}
 void test_timing_and_matrix() {
   auto state = observe_protection({}, {UINT32_MAX - 4U, true, false, false, 3, 0});
   state = observe_protection(state, {UINT32_MAX - 2U, false, false, false, 3, 0});
@@ -369,6 +463,7 @@ int main() {
   test_cold_weather_request_reaches_dispatch_and_deficit();
   test_extension_uses_only_active_units();
   test_actuator_hold_constrains_owner_swap();
+  test_feedback_hold_prefers_upshift_before_starting_peer();
   test_timing_and_matrix();
   test_performance_supply_fallback();
   test_single_and_failures();
