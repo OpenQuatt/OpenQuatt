@@ -83,7 +83,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // +1,065 B raw / +228 B gzip versus dev 9829c1e (Node 24.21.0); raw headroom unchanged.
     // House learning chart 95% confidence interval and legend labels
     // Manual house-line advice, apply, restore and recheck: +8,542 B raw / +2,835 B gzip versus dev acfe7df2.
-    raw: 1_495_957,
+    // Per-HP ODU firmware in telemetry previews and NL/EN disclosure: +575 B raw
+    // versus dev acfe7df2 (Node 24.22.1); existing headroom and relative gzip limits unchanged.
+    raw: 1_496_532,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

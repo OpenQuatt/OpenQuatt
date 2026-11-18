@@ -1,4 +1,5 @@
 #include "OpenQuattUsageTelemetry.h"
+#include "OpenQuattOduFirmware.h"
 
 #include <algorithm>
 #include <array>
@@ -1083,6 +1084,16 @@ bool OpenQuattUsageTelemetry::build_payload_() {
                                quatt_hybrid_generation_wire_value);
   append_json_water_supply_source_(payload, this->water_supply_source_select_,
                                    this->local_water_supply_temp_source_select_);
+  std::array<uint16_t, 2U> odu_firmware{};
+  const size_t hp_count = this->topology_ == "duo" ? 2U : 1U;
+  for (size_t index = 0U; index < hp_count; ++index) {
+    const auto* source = this->odu_firmware_[index];
+    if (source != nullptr && source->has_state()) {
+      odu_firmware[index] = openquatt_common::odu_firmware_raw(source->state);
+    }
+  }
+  append_json_key_(payload, "odu_fw");
+  openquatt_common::append_odu_firmware(payload, odu_firmware, hp_count);
   append_json_flow_source_(payload, this->flow_source_select_, this->q_flow_source_select_);
   append_json_optional_select_(payload, "heating_strategy", this->heating_strategy_select_,
                                heating_strategy_wire_value);

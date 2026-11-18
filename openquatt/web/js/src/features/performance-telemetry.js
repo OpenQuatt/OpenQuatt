@@ -36,18 +36,16 @@ const PERFORMANCE_PAYLOAD_EXAMPLE = `{
   "iid": "3f9a…",
   "bid": "7c4e…",
   "ws": 1757760000,
-  "fw": "v0.50.0",
+  "fw": "v0.58.1",
   "top": "duo",
-  "gen": "v1_5",
-  "map": "v1-2026-09-a",
-  "pem": "pinput-v1",
-  "mk": "system_actual",
+  "gen": "v2",
+  "map": "v2-2026-09-a",
+  "odu_fw": ["2.02", "2.01"],
   "m": [
     {
       "t": 1757760000,
       "a": 1,
       "o": 7.25,
-      "s": 32.50,
       "f": 807.0,
       "h": [
         {"l": 2, "hz": 30.0, "ti": 28.10, "to": 31.40, "el": 5.67, "et": 17.28, "ep": 0.42, "b": false},

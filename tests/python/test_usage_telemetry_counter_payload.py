@@ -36,6 +36,7 @@ class UsageTelemetryCounterPayloadTest(unittest.TestCase):
 #include <iostream>
 #include <memory>
 #include <string>
+#include "components/openquatt_common/OpenQuattOduFirmware.h"
 #include "components/openquatt_usage_telemetry/OpenQuattUsageTelemetryPolicy.h"
 #define ESP_LOGE(...)
 constexpr uint32_t MALLOC_CAP_INTERNAL = 1, MALLOC_CAP_SPIRAM = 2;
@@ -109,7 +110,7 @@ int main() {
   value.firmware_version_ = std::string(32, 'v');
   value.release_channel_ = std::string(16, 'd');
   value.hardware_profile_ = "heatpump_controller_q";
-  value.topology_ = "single";
+  value.topology_ = "duo";
   value.connection_ = "wifi";
   select::Select selection, generation, heating, supply, local, flow, q_flow;
   generation.option = "V1.5";
@@ -119,6 +120,9 @@ int main() {
   flow.option = "Outdoor unit";
   q_flow.option = "Local";
   sensor::Sensor sensor;
+  sensor::Sensor odu_firmware;
+  odu_firmware.state = 65534;
+  value.odu_firmware_ = {&odu_firmware, &odu_firmware};
   switch_::Switch feature;
   time::RealTimeClock clock;
   openquatt_modbus::OpenQuattModbusClientHub hub;
@@ -187,6 +191,8 @@ int main() {
                     self.assertEqual(len(payloads), 5)
                     for line in lines:
                         self.assertLessEqual(len(line), 2048)
+                    for payload in payloads:
+                        self.assertEqual(payload["odu_fw"], ["255.254", "255.254"])
                     for key in ("max31865_refin_low_fault_count", "max31865_rtdin_low_fault_count"):
                         if optional:
                             self.assertEqual(payloads[0][key], 7 if "refin" in key else 9)

@@ -1,4 +1,5 @@
 #include "OpenQuattPerformanceTelemetry.h"
+#include "OpenQuattOduFirmware.h"
 
 #include <algorithm>
 #include <array>
@@ -263,6 +264,17 @@ bool OpenQuattPerformanceTelemetry::sample_minute_(uint32_t timestamp_s) {
   }
 
   const size_t hp_count = this->topology_ == "duo" ? 2U : 1U;
+  std::array<uint16_t, 2U> odu_firmware{};
+  for (size_t index = 0U; index < hp_count; ++index) {
+    const auto* source = this->hp_[index].odu_firmware;
+    if (source != nullptr && source->has_state()) {
+      odu_firmware[index] = openquatt_common::odu_firmware_raw(source->state);
+    }
+  }
+  if (this->minute_.samples != 0U && this->minute_.odu_firmware != odu_firmware) {
+    this->minute_.invalid = true;
+    return false;
+  }
   uint8_t active_mask = 0U;
   for (size_t index = 0U; index < hp_count; ++index) {
     const auto& source = this->hp_[index];
@@ -333,6 +345,7 @@ bool OpenQuattPerformanceTelemetry::sample_minute_(uint32_t timestamp_s) {
     return false;
   }
   this->minute_.generation = generation;
+  this->minute_.odu_firmware = odu_firmware;
   this->minute_.active_mask = active_mask;
   this->minute_.outside_sum += this->outside_temp_sensor_->state;
   this->minute_.flow_sum += this->flow_sensor_->state;
@@ -349,6 +362,7 @@ void OpenQuattPerformanceTelemetry::finish_minute_() {
   record.start_s = this->minute_.start_s;
   record.active_mask = this->minute_.active_mask;
   record.generation = this->minute_.generation;
+  record.odu_firmware = this->minute_.odu_firmware;
   record.outside_c = this->minute_.outside_sum / 6.0f;
   record.flow_lph = this->minute_.flow_sum / 6.0f;
   record.hp = this->minute_.hp;
@@ -356,8 +370,9 @@ void OpenQuattPerformanceTelemetry::finish_minute_() {
 }
 
 bool OpenQuattPerformanceTelemetry::append_record_(const MinuteRecord& record) {
-  if (this->active_record_count_ != 0U && this->records_[0U].generation != record.generation) {
-    // Never combine measurements across a performance-map version change.
+  if (this->active_record_count_ != 0U &&
+      (this->records_[0U].generation != record.generation || this->records_[0U].odu_firmware != record.odu_firmware)) {
+    // Never combine measurements across a performance-map or ODU firmware change.
     this->close_window_(false);
   }
   if (this->active_window_s_ == 0U) this->active_window_s_ = record.start_s;
@@ -412,6 +427,8 @@ bool OpenQuattPerformanceTelemetry::build_pending_payload_() {
   append_json_string(output, generation_name_(first.generation));
   output += R"(,"map":)";
   append_json_string(output, map_id_(first.generation));
+  output += R"(,"odu_fw":)";
+  openquatt_common::append_odu_firmware(output, first.odu_firmware, this->topology_ == "duo" ? 2U : 1U);
   output += R"(,"m":[)";
   for (size_t index = 0U; index < this->pending_record_count_; ++index) {
     if (index != 0U) output += ',';

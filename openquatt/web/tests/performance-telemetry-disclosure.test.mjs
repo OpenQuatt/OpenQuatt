@@ -119,4 +119,17 @@ test("performance disclosure matches the firmware payload scope", async () => {
   ]) {
     assert.doesNotMatch(disclosureSource, needle);
   }
+  assert.match(telemetryCpp, /"odu_fw"/);
+  const example = JSON.parse(disclosureSource.match(/const PERFORMANCE_PAYLOAD_EXAMPLE = `([^`]+)`/)[1]);
+  assert.deepEqual(example.odu_fw, ["2.02", "2.01"]);
+  assert.equal(example.gen, "v2");
+  assert.equal(example.map, "v2-2026-09-a");
+  assert.equal(example.pem, undefined);
+  assert.equal(example.mk, undefined);
+  assert.equal(example.m[0].s, undefined);
+  const { default: enCatalogue } = await import("../js/src/i18n/en.js");
+  assert.match(nlCatalogue.usage.inSoftwareCopy, /ODU-firmwareversie per warmtepomp/);
+  assert.match(nlCatalogue.performance.inHpCopy, /ODU-firmwareversie per warmtepomp/);
+  assert.match(enCatalogue.usage.inSoftwareCopy, /ODU firmware version per heat pump/);
+  assert.match(enCatalogue.performance.inHpCopy, /ODU firmware version per heat pump/);
 });

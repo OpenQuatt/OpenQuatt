@@ -46,6 +46,8 @@ CONF_CONNECTION_PREFERENCE_SELECT = "connection_preference_select"
 CONF_QUATT_HYBRID_GENERATION_SELECT = "quatt_hybrid_generation_select"
 CONF_WATER_SUPPLY_SOURCE_SELECT = "water_supply_source_select"
 CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT = "local_water_supply_temp_source_select"
+CONF_HP1_ODU_FIRMWARE = "hp1_odu_firmware"
+CONF_HP2_ODU_FIRMWARE = "hp2_odu_firmware"
 CONF_FLOW_SOURCE_SELECT = "flow_source_select"
 CONF_Q_FLOW_SOURCE_SELECT = "q_flow_source_select"
 CONF_HEATING_STRATEGY_SELECT = "heating_strategy_select"
@@ -118,6 +120,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_QUATT_HYBRID_GENERATION_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_WATER_SUPPLY_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Optional(CONF_LOCAL_WATER_SUPPLY_TEMP_SOURCE_SELECT): cv.use_id(select.Select),
+            cv.Optional(CONF_HP1_ODU_FIRMWARE): cv.use_id(sensor.Sensor),
+            cv.Optional(CONF_HP2_ODU_FIRMWARE): cv.use_id(sensor.Sensor),
             cv.Required(CONF_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Optional(CONF_Q_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_HEATING_STRATEGY_SELECT): cv.use_id(select.Select),
@@ -212,6 +216,10 @@ async def to_code(config):
                 local_water_supply_temp_source_select
             )
         )
+    for key in (CONF_HP1_ODU_FIRMWARE, CONF_HP2_ODU_FIRMWARE):
+        if key in config:
+            source = await cg.get_variable(config[key])
+            cg.add(getattr(var, f"set_{key}")(source))
     flow_source_select = await cg.get_variable(config[CONF_FLOW_SOURCE_SELECT])
     cg.add(var.set_flow_source_select(flow_source_select))
     if q_flow_source_select_id := config.get(CONF_Q_FLOW_SOURCE_SELECT):

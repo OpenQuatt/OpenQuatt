@@ -20,6 +20,8 @@ export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "hpGeneration",
   "waterSupplySource",
   "localWaterSupplyTempSource",
+  "hp1OduFirmware",
+  "hp2OduFirmware",
   "flowSource",
   "qFlowSource",
   "strategy",
@@ -88,6 +90,15 @@ function optionalBoolean(value) {
 
 export function quattHybridGenerationWireValue(value) {
   return ({ V1: "v1", "V1.5": "v1_5", V2: "v2" })[optionalText(value)] ?? null;
+}
+
+function oduFirmwareWireValue(value) {
+  const match = /^(\d{1,3})\.(\d{1,3})$/.exec(optionalText(value) ?? "");
+  if (!match) return null;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  if (major > 255 || minor > 255 || (major === 0 && minor === 0) || (major === 255 && minor === 255)) return null;
+  return `${major}.${String(minor).padStart(2, "0")}`;
 }
 
 export function heatingStrategyWireValue(value) {
@@ -206,6 +217,8 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
       Object.prototype.hasOwnProperty.call(values, "localWaterSupplyTempSource"),
       values.hardwareProfileText === "heatpump_controller_q",
     ),
+    odu_fw: (values.installationTopology === "duo" ? [values.hp1OduFirmware, values.hp2OduFirmware] : [values.hp1OduFirmware])
+      .map(oduFirmwareWireValue),
     flow_source_config: flowSourceConfigWireValue(values.flowSource, values.qFlowSource, qSourceAvailable),
     heating_strategy: heatingStrategyWireValue(values.strategy),
     room_temperature_source: configuredSourceWireValue(values.roomTempSource),

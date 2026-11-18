@@ -15,6 +15,7 @@ Het bericht bevat uitsluitend:
 - de Unix-timestamp van de momentopname in seconden, of `null` zolang de klok nog niet is gesynchroniseerd;
 - uptime;
 - firmwareversie en releasekanaal;
+- `odu_fw`: de uitgelezen ODU-firmwareversie per warmtepomp als string, bijvoorbeeld `["2.02", "2.01"]`;
 - hardwareprofiel en, als beschikbaar, hardwarerevisie;
 - `hardware_serial`: het serienummer van de Q-controllerprint binnen de batch (1–1023), of `null` bij waarde 0, ontbrekende programmering, een uitleesfout of een ander hardwareprofiel;
 - `Single` of `Duo` en `Wi-Fi` of `Ethernet`;
@@ -35,8 +36,43 @@ Het bericht bevat uitsluitend:
 
 Een niet-ondersteunde functie, tijdelijk nog niet geïnitialiseerde keuze, onbekende keuze of niet-beschikbare sensor krijgt de waarde `null`; `false` betekent dat de functie beschikbaar maar uitgeschakeld is. Dit geldt ook afzonderlijk voor de nieuwe configuratievelden. `water_supply_source` is `null` zolang de bronkeuze (of op Q de lokale sensorselectie) nog geen bekende geldige toestand heeft. `flow_source_config` is `null` zolang de benodigde flowselectie nog geen bekende toestand heeft. Zo is de Wi-Fi-signaalsterkte bij Ethernet `null`. `boiler_connection` is alleen `null` wanneer de OTB-select bestaat maar tijdelijk nog geen geldige toestand heeft, of een onbekende optie bevat.
 
+`odu_fw` volgt altijd de volgorde HP1, HP2. Single bevat één element, Duo twee,
+ook wanneer een warmtepomp niet draait. Elke waarde komt uit Modbus-register
+`2122`: de hoge byte is de hoofdversie, de lage byte de subversie, met minimaal
+twee cijfers na de punt. Zo wordt `0x0202` de string `"2.02"`. Een ontbrekende,
+ongeldige of nog niet uitgelezen waarde wordt `null`; `0x0000` en `0xFFFF` gelden
+als onbekend. Nieuwe versies hoeven niet vooraf in een lijst te staan. De laatst
+uitgelezen versie blijft beschikbaar bij tijdelijk communicatieverlies; dit veld
+is geen indicatie dat de warmtepomp online is. Er worden geen extra registers
+gelezen. `firmware_version` blijft de OpenQuatt-versie en
+`quatt_hybrid_generation_config` blijft de ingestelde generatie.
+
 Het bericht bevat nooit een MAC-adres, lokaal IP-adres, wifi-netwerknaam, wifi-wachtwoord, gebruikersnaam, ander wachtwoord of andere inloggegevens. Ook MQTT-servergegevens, topics, ontvangen MQTT-waarden, ingestelde temperaturen of grenzen, verwarmingsmetingen, regelwaarden, Modbus-frames en gewone logregels gaan niet mee. Alleen de hierboven genoemde communicatiebetrouwbaarheidstellers worden gedeeld. De OpenQuatt-loggingserver ziet bij een netwerkverbinding technisch wel het bron-IP-adres, maar dit staat niet in de payload en OpenQuatt slaat het niet op. In de web-app staat onder **Welke gegevens worden gedeeld?** (in Quick Start **Wat gaat er mee?**) een eenmalige momentopname van de JSON-vorm. De vier Modbus-tellers worden rechtstreeks uit de ODU-bus gelezen bij de echte verzending en zijn bewust geen web-/Home Assistant-entiteiten; daarom staan alleen deze vier velden in de lokale preview op `null`. Het getoonde `message_id` en `timestamp_s` worden voor een echte verzending opnieuw bepaald; `reset_reason` is niet via de lokale web-API beschikbaar en staat in deze preview eveneens op `null`.
 
 Wanneer delen voor het eerst actief wordt, maakt de controller met de hardware-randomgenerator een UUIDv4 aan en bewaart die lokaal. Een UUIDv4 heeft 122 willekeurige bits; zelfs bij één miljoen installaties is de kans op minstens één dubbel ID kleiner dan ongeveer `10^-25`. Dit ID blijft gelijk na een OTA-update en wanneer je delen tijdelijk uitzet. Je kunt het bekijken via **Instellingen → Gegevens delen → Gebruiksstatistieken**. Een fabrieksreset maakt een nieuw ID. De keuze en het ID worden niet via een instellingenbackup naar een andere controller gekopieerd. Uitzetten stopt nieuwe berichten direct; er wordt geen wachtrij voor later opgeslagen. Na een mislukte verzending maakt iedere retry een verse momentopname, maar behoudt binnen dezelfde retryreeks het `message_id` zodat een verloren QoS 1-bevestiging kan worden gededupliceerd.
 
 De statistiekenclient staat los van de configureerbare [MQTT inputbronnen](mqtt.md): hij publiceert alleen dit ene bericht, subscribed nergens op en schakelt ESPHome MQTT-discovery, entiteitspublicaties en logexport niet in. Het JSON-bericht wordt met QoS 1 en zonder retain gepubliceerd op `openquatt/devices/<installation-id>/telemetry`. De broker bewaart het daardoor niet als retained state voor later verbindende subscribers; de loggingserver slaat ieder ontvangen bericht zelf op. Een eerder door oude firmware retained opgeslagen payload wordt door een non-retained publicatie niet gewist en moet zo nodig eenmalig op de centrale broker worden verwijderd. Een build zonder geconfigureerde centrale loggingserver maakt ook wanneer delen aanstaat geen externe verbinding.
+
+## ODU-firmware in prestatiemetingen
+
+Het afzonderlijke performancebericht op `openquatt/devices/<installation-id>/performance`
+bevat hetzelfde veld `odu_fw`, één keer per batch. Bijvoorbeeld:
+
+```json
+{
+  "gen": "v2",
+  "map": "v2-2026-09-a",
+  "odu_fw": ["2.02", "2.01"]
+}
+```
+
+Dit is een fragment; de overige batchvelden en minuutrecords blijven aanwezig.
+`gen` blijft de ingestelde generatie en `map` de versie van de prestatiekaart;
+`fw` blijft de OpenQuatt-versie. De ODU-versies worden tijdens de metingen
+vastgelegd en blijven gelijk bij een retry. Als een versie gedurende een minuut
+verandert, vervalt die minuut. Complete minuten met verschillende ODU-versies
+worden in afzonderlijke batches ondergebracht, ook bij een overgang van of naar
+`null`. Een nieuwe batch wacht op het bestaande verzendmoment. Toestemming,
+publicatieschema en wachtrijlimieten blijven ongewijzigd. De bestaande
+schemaversies (`schema_version: 1` en `v: 1`) blijven gelijk; `odu_fw` is een
+aanvullend veld. Bij berichten uit oudere firmware kan het veld ontbreken.
