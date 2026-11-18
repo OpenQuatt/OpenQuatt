@@ -1,9 +1,13 @@
 #include "OpenQuattHouseLearningStatus.h"
 
 #include "OpenQuattHttpStatus.h"
+#include <cerrno>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
+#include <esp_random.h>
 #include <esp_timer.h>
 
 #include "esphome/core/log.h"
@@ -15,6 +19,24 @@ namespace {
 static const char* const TAG = "openquatt.house_learning";
 static constexpr const char* STATUS_PATH = "/openquatt/learning/status";
 static constexpr const char* EXPORT_PATH = "/openquatt/learning/export";
+static constexpr const char* LINE_PATH = "/openquatt/learning/line";
+using LineResult = OpenQuattHouseLearningStatus::LineResult;
+
+bool parse_line_value(const std::string& value, float& result) {
+  if (value.empty() || value.size() > 16) return false;
+  errno = 0;
+  char* end = nullptr;
+  result = std::strtof(value.c_str(), &end);
+  return errno == 0 && end == value.data() + value.size() && std::isfinite(result);
+}
+
+void send_line_json(AsyncWebServerRequest* request, const char* status, const char* json) {
+  httpd_req_t* req = *request;
+  httpd_resp_set_status(req, status);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+  httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+}
 
 bool url_path_matches(const char* url, const char* path) {
   if (url == nullptr || path == nullptr) {
@@ -31,12 +53,20 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
   bool canHandle(AsyncWebServerRequest* request) const override {
     char url[AsyncWebServerRequest::URL_BUF_SIZE];
     request->url_to(url);
-    return request->method() == HTTP_GET && (url_path_matches(url, STATUS_PATH) || url_path_matches(url, EXPORT_PATH));
+    const auto method = request->method();
+    if (url_path_matches(url, LINE_PATH)) return method == HTTP_GET || method == HTTP_POST;
+    return method == HTTP_GET && (url_path_matches(url, STATUS_PATH) || url_path_matches(url, EXPORT_PATH));
   }
 
   void handleRequest(AsyncWebServerRequest* request) override {
     if (!this->parent_->request_is_authenticated(request)) {
       request->requestAuthentication();
+      return;
+    }
+    char url[AsyncWebServerRequest::URL_BUF_SIZE];
+    request->url_to(url);
+    if (url_path_matches(url, LINE_PATH)) {
+      this->handle_line_(request);
       return;
     }
     if (!this->parent_->storage_available()) {
@@ -50,8 +80,6 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
       return;
     }
 
-    char url[AsyncWebServerRequest::URL_BUF_SIZE];
-    request->url_to(url);
     const bool exporting = url_path_matches(url, EXPORT_PATH);
     size_t snapshot_length = 0U;
     const bool snapshot_ready =
@@ -75,6 +103,61 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
   }
 
  protected:
+  void handle_line_(AsyncWebServerRequest* request) {
+    if (request->method() == HTTP_GET) {
+      const auto raw = request->arg("ticket");
+      char* end = nullptr;
+      errno = 0;
+      const auto ticket = std::strtoul(raw.c_str(), &end, 10);
+      const auto result = !raw.empty() && raw.size() <= 10 &&
+                                  raw.find_first_not_of("0123456789") == std::string::npos && errno == 0 &&
+                                  end == raw.data() + raw.size() && ticket > 0 && ticket <= UINT32_MAX
+                              ? this->parent_->line_result(static_cast<uint32_t>(ticket))
+                              : LineResult::UNKNOWN;
+      switch (result) {
+        case LineResult::STORED:
+          send_line_json(request, "200 OK", R"({"stored":true})");
+          break;
+        case LineResult::REFUSED:
+          send_line_json(request, "409 Conflict", R"({"stored":false})");
+          break;
+        case LineResult::UNCERTAIN:
+          send_line_json(request, "503 Service Unavailable", R"({"stored":null})");
+          break;
+        case LineResult::QUEUED:
+          send_line_json(request, "202 Accepted", "{}");
+          break;
+        case LineResult::UNKNOWN:
+          send_line_json(request, "404 Not Found", "{}");
+          break;
+      }
+      return;
+    }
+    if (!this->parent_->request_allows_write(request)) {
+      send_line_json(request, "403 Forbidden", "{}");
+      return;
+    }
+    const auto action = request->arg("action");
+    const bool restore = action == "restore";
+    constexpr std::array<const char*, 5> keys{"cold", "rated", "cutoff", "proposed_rated", "proposed_cutoff"};
+    std::array<float, 5> values{};
+    bool valid = restore || action == "apply";
+    for (size_t i = 0; valid && i < (restore ? 3U : keys.size()); ++i)
+      valid = parse_line_value(request->arg(keys[i]), values[i]);
+    if (!valid) {
+      send_line_json(request, "400 Bad Request", "{}");
+      return;
+    }
+    const auto ticket = this->parent_->queue_line_change(values, restore);
+    if (ticket == 0) {
+      send_line_json(request, "409 Conflict", "{}");
+      return;
+    }
+    char json[32];
+    std::snprintf(json, sizeof(json), R"({"ticket":%u})", static_cast<unsigned>(ticket));
+    send_line_json(request, "202 Accepted", json);
+  }
+
   OpenQuattHouseLearningStatus* parent_;
 };
 
@@ -84,6 +167,7 @@ float OpenQuattHouseLearningStatus::get_setup_priority() const { return setup_pr
 
 void OpenQuattHouseLearningStatus::setup() {
   this->main_loop_task_ = xTaskGetCurrentTaskHandle();
+  this->line_ticket_ = esp_random();
   this->cache_mutex_ = xSemaphoreCreateMutexStatic(&this->cache_mutex_storage_);
   this->request_mutex_ = xSemaphoreCreateMutexStatic(&this->request_mutex_storage_);
 
@@ -118,6 +202,40 @@ void OpenQuattHouseLearningStatus::dump_config() {
                 static_cast<unsigned>(EXPORT_BUFFER_SIZE));
   ESP_LOGCONFIG(TAG, "  Request scratch: %s (%u bytes)", this->storage_available() ? "PSRAM" : "unavailable",
                 static_cast<unsigned>(REQUEST_BUFFER_SIZE));
+}
+
+uint32_t OpenQuattHouseLearningStatus::queue_line_change(const std::array<float, 5>& values, bool restore) {
+  auto* base = web_server_base::global_web_server_base;
+  if (this->change_line_ == nullptr || base == nullptr) return 0;
+  const auto epoch = base->recovery_epoch();
+  if (base->is_recovery_active() || !this->cache_lock_()) return 0;
+  if (this->line_result_ == LineResult::QUEUED) {
+    this->cache_unlock_();
+    return 0;
+  }
+  if (++this->line_ticket_ == 0) ++this->line_ticket_;
+  const auto ticket = this->line_ticket_;
+  this->line_result_ = LineResult::QUEUED;
+  this->cache_unlock_();
+  this->defer([this, values, restore, epoch]() {
+    auto* active_base = web_server_base::global_web_server_base;
+    auto result = LineResult::REFUSED;
+    if (active_base != nullptr && !active_base->is_recovery_active() && active_base->recovery_epoch() == epoch)
+      result =
+          static_cast<LineResult>(this->change_line_(values[0], values[1], values[2], values[3], values[4], restore));
+    if (this->cache_lock_()) {
+      this->line_result_ = result;
+      this->cache_unlock_();
+    }
+  });
+  return ticket;
+}
+
+OpenQuattHouseLearningStatus::LineResult OpenQuattHouseLearningStatus::line_result(uint32_t ticket) const {
+  if (!this->cache_lock_()) return LineResult::UNKNOWN;
+  const auto result = ticket == this->line_ticket_ ? this->line_result_ : LineResult::UNKNOWN;
+  this->cache_unlock_();
+  return result;
 }
 
 bool OpenQuattHouseLearningStatus::cache_lock_() const {

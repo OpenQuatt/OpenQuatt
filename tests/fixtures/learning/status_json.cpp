@@ -7,6 +7,7 @@
 #include "../../../openquatt/includes/control/oq_ph_daily_collection_state_json.h"
 #include "../../../openquatt/includes/control/oq_ph_daily_record_quality_json.h"
 #include "../../../openquatt/includes/control/oq_ph_shadow_demand_types.h"
+#include "../../../openquatt/includes/control/oq_ph_manual_line_settings.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_persistence_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
 #include "../../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
@@ -16,6 +17,7 @@
 
 using namespace oq_ph_learning;
 using namespace oq_power_house::learning;
+namespace manual_line = oq_power_house::manual_line;
 
 DailyRestartTicket daily_restart_ticket, boot_restart_ticket;
 namespace oq_sources {
@@ -84,6 +86,7 @@ struct RuntimeStorage {
 #endif
   bool daily_restore_pending = false;
   bool daily_restore_allowed = true, restart_prepared = false;
+  bool evaluation_policy_changed = false;
   DailyRestartTicket boot_restart_ticket;
   DiagnosticCaptureGate diagnostic_capture;
   const void* partition = nullptr;
@@ -323,6 +326,11 @@ int main() {
   summary.batch.train_max_c = 12.34f;
   summary.batch.train_p10_c = 8.28f;
   summary.batch.train_p90_c = 11.88f;
+  summary.batch.line_checked = true;
+  summary.batch.checked_min_c = 2.25f;
+  summary.batch.checked_max_c = 7.75f;
+  summary.batch.checked_error_w = 238.5f;
+  summary.batch.checked_error_limit_w = 300;
   summary.batch.candidate_cov_00 = -std::numeric_limits<float>::max();
   summary.batch.candidate_cov_01 = -std::numeric_limits<float>::max();
   summary.batch.candidate_cov_11 = -std::numeric_limits<float>::max();
@@ -349,6 +357,15 @@ int main() {
   Production::publish_status_(state, true, UINT32_MAX);
   assert(oq_ph_learning_status_endpoint.latest.find("\"batch_fit\":{\"metadata_prepared\":false") != std::string::npos);
   learner.status = PassiveRuntimeStatus::BLOCKED;
+  for (bool* flag : {&state.evaluation_policy_changed, &learner.fit_pending, &learner.fit_running}) {
+    *flag = true;
+    Production::publish_status_(state, true, UINT32_MAX);
+    assert(oq_ph_learning_status_endpoint.latest.find("\"manual_line_retesting\":true") != std::string::npos);
+    *flag = false;
+  }
+  Production::publish_status_(state, true, UINT32_MAX);
+  assert(oq_ph_learning_status_endpoint.latest.find("\"manual_line_retesting\":false") != std::string::npos);
+  const manual_line::Settings proposal{-10, 6560, 16.5};
   // Enumerate names so later enum additions cannot silently defeat the budget.
   for (unsigned status = 0; status <= static_cast<unsigned>(LearningStatus::UNSTABLE_FIT); ++status) {
     summary.batch.status = learner.diagnostics.last_batch_rejection = static_cast<LearningStatus>(status);
@@ -362,9 +379,9 @@ int main() {
         summary.validation.status = validation;
         for (const bool pending : {false, true}) {
           state.daily_restore_pending = pending;
-          Production::publish_status_(state, true, UINT32_MAX);
+          Production::publish_status_(state, true, UINT32_MAX, true, proposal);
           learner.blocked = false;
-          Production::publish_status_(state, true, UINT32_MAX);
+          Production::publish_status_(state, true, UINT32_MAX, true, proposal);
           learner.blocked = true;
         }
       }

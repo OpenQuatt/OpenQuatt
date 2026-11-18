@@ -82,7 +82,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Optional boiler assist during defrost (settings switch and copy in both locales):
     // +1,065 B raw / +228 B gzip versus dev 9829c1e (Node 24.21.0); raw headroom unchanged.
     // House learning chart 95% confidence interval and legend labels
-    raw: 1_487_415,
+    // Manual house-line advice, apply, restore and recheck: +8,542 B raw / +2,835 B gzip versus dev acfe7df2.
+    raw: 1_495_957,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -110,5 +111,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // Charts tab: energy-history controls stack by panel width and the side-navigation column shrinks its
   // content: +161 B CSS raw; preserves the 80 B raw headroom.
   // Learning workspace and curve display: +2,604 B raw against the same base.
-  { file: "css/openquatt-app.css", raw: 228_525, gzipBaselineCeiling: 44_985 },
+  // Manual house-line advice: +444 B raw / +94 B gzip versus dev acfe7df2.
+  { file: "css/openquatt-app.css", raw: 228_969, gzipBaselineCeiling: 44_985 },
 ];

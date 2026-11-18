@@ -497,7 +497,10 @@ export async function commitNumber(key, value, successNotice = "") {
     return false;
   }
   const previousValue = getEntityCurrentValue(key);
-  startEntityWriteAction(`save-${key}`);
+  const verify = ["houseColdTemp", "houseOutdoorMax", "housePower"].includes(key);
+  const busyAction = `save-${key}`;
+  const actionRevision = startEntityWriteAction(busyAction);
+  const isCurrent = () => isEntityWriteActionCurrent(actionRevision);
   state.controlNotice = "";
   state.controlError = "";
   state.inputDrafts[key] = String(value ?? "");
@@ -513,6 +516,21 @@ export async function commitNumber(key, value, successNotice = "") {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
+    if (verify) {
+      const [chunk] = buildBulkEntityChunks([key], "state");
+      const { confirmed } = await pollEntityConfirmation(
+        timeoutMs => fetchBulkEntityChunk(chunk, timeoutMs),
+        payload => {
+          const readback = payload?.entities?.[key];
+          if (!Array.isArray(payload?.missing) || payload.missing.includes(key) || !readback) return false;
+          state.entities[key] = mergeEntityPayload(key, state.entities[key], readback);
+          return parseLooseNumber(readback.value ?? readback.state) === normalized;
+        },
+        isCurrent,
+      );
+      if (!isCurrent()) return false;
+      if (!confirmed) throw new Error(t("actions.savedChoiceNotConfirmed"));
+    }
     delete state.drafts[key];
     delete state.inputDrafts[key];
     succeeded = true;
@@ -526,10 +544,11 @@ export async function commitNumber(key, value, successNotice = "") {
       "state"
     );
   } catch (error) {
+    if (verify && !isCurrent()) return false;
     state.inputDrafts[key] = String(normalized).replace(".", ",");
     state.controlError = t("actions.entityUpdateFailed", { name: getEntityFeedbackName(key), error: error.message });
   } finally {
-    state.busyAction = "";
+    if (!verify || ownsBusyAction(actionRevision, busyAction)) state.busyAction = "";
     render();
   }
   return succeeded;

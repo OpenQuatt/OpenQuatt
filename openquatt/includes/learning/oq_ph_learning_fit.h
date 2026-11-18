@@ -13,6 +13,9 @@ namespace oq_power_house::learning {
 constexpr size_t kMaxRecordsVisitedPerHuberFit = 2U * static_cast<size_t>(kMaxHuberPasses) * kMaxSegmentRecords;
 constexpr size_t kMaxPreparationSortComparisons = kMaxSegmentRecords * (kMaxSegmentRecords - 1U) / 2U;
 constexpr size_t kMaxAdviceFitSteps = kMaxCalendarDays + 3U;
+constexpr float kMinCheckedSpreadC = 4.0f;
+constexpr double kMaxCheckedErrorW = 300.0;
+constexpr double kMaxCheckedErrorFraction = 0.10;
 
 struct FitConfig {
   uint8_t huber_passes = kMaxHuberPasses;
@@ -35,7 +38,7 @@ struct FitConfig {
   float max_lodo_zero_power_range_k = 2.0f;
 };
 
-// Display-only fit over all usable days. Never an independently checked model.
+// Provisional fit over all usable days, without independent validation.
 struct PreviewLine {
   bool available = false;
   HouseLine line;
@@ -77,6 +80,9 @@ struct AdviceResult {
   float train_min_c = NAN;
   float train_max_c = NAN;
   float holdout_candidate_mae_w = NAN;
+  float checked_min_c = NAN, checked_max_c = NAN;
+  float checked_error_w = NAN, checked_error_limit_w = NAN;
+  bool line_checked = false;
   float holdout_active_mae_w = NAN;
   float holdout_candidate_signed_bias_w = NAN;  // Predicted minus measured.
   float holdout_active_signed_bias_w = NAN;
@@ -95,6 +101,11 @@ struct AdviceResult {
   float candidate_cov_00 = NAN;
   float candidate_cov_01 = NAN;
   float candidate_cov_11 = NAN;
+
+  const HouseLine* manual_proposal() const {
+    if (candidate_available && isfinite(checked_error_w)) return &candidate;
+    return preview.available ? &preview.line : nullptr;
+  }
 };
 
 enum class FitPhase : uint8_t { IDLE = 0, FIT_PREVIEW, FIT_BASE, FIT_LODO, FINALIZE, DONE };
@@ -267,7 +278,6 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
       workspace.now_epoch_s == 0 || !valid_quality_config(workspace.quality_config) ||
       !valid_fit_config(workspace.config))
     return LearningStatus::INVALID_CONFIGURATION;
-  if (!plausible_line(workspace.active_line, workspace.config)) return LearningStatus::INVALID_ACTIVE_MODEL;
   uint32_t previous_end = 0;
   uint32_t context_revision = 0;
   size_t selected_count = 0;
@@ -458,6 +468,10 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
 }
 
 inline bool evaluate_holdout(AdviceFitWorkspace& workspace) {
+  const bool compare_active = plausible_line(workspace.active_line, workspace.config);
+  double candidate_upper_sum = 0.0;
+  double measured_heat_sum = 0.0;
+  float checked_min_c = INFINITY, checked_max_c = -INFINITY;
   double duration_sum = 0.0;
   double candidate_abs_error = 0.0;
   double active_abs_error = 0.0;
@@ -481,15 +495,17 @@ inline bool evaluate_holdout(AdviceFitWorkspace& workspace) {
     if (!daily_record_holdout_eligible(record, workspace.quality_config)) return false;
     const double weight = record.duration_s;
     const double candidate_w = record_house_line_power_w(workspace.result.candidate, record);
-    const double active_w = record_house_line_power_w(workspace.active_line, record);
+    const double active_w = compare_active ? record_house_line_power_w(workspace.active_line, record) : NAN;
     const double candidate_error = candidate_w - record.mean_heat_w;
     const double active_error = active_w - record.mean_heat_w;
     const double uncertainty_w = daily_record_assumed_heat_uncertainty_w(record);
     const double minimum_gain =
-        worst_case_absolute_error_gain_w(active_w, candidate_w, record.mean_heat_w, uncertainty_w);
+        compare_active ? worst_case_absolute_error_gain_w(active_w, candidate_w, record.mean_heat_w, uncertainty_w)
+                       : NAN;
     const double quality_weight = record_base_weight(workspace, index);
     const double robust_weight = weight * quality_weight;
-    if (!isfinite(candidate_error) || !isfinite(active_error) || !isfinite(minimum_gain) || !isfinite(robust_weight) ||
+    if (!isfinite(candidate_error) || !isfinite(uncertainty_w) ||
+        (compare_active && (!isfinite(active_error) || !isfinite(minimum_gain))) || !isfinite(robust_weight) ||
         !(robust_weight > 0.0))
       return false;
     robust_weight_sum += robust_weight;
@@ -498,25 +514,39 @@ inline bool evaluate_holdout(AdviceFitWorkspace& workspace) {
     quality_weight_sum += quality_weight;
     duration_sum += weight;
     candidate_abs_error += weight * fabs(candidate_error);
+    candidate_upper_sum += weight * (fabs(candidate_error) + uncertainty_w);
+    measured_heat_sum += weight * record.mean_heat_w;
     active_abs_error += weight * fabs(active_error);
     candidate_bias += weight * candidate_error;
     active_bias += weight * active_error;
     workspace.result.validated_temp_min_c = fminf(workspace.result.validated_temp_min_c, record.mean_outside_c);
     workspace.result.validated_temp_max_c = fmaxf(workspace.result.validated_temp_max_c, record.mean_outside_c);
+    const float outside_c = effective_outside_c(record);
+    checked_min_c = fminf(checked_min_c, outside_c);
+    checked_max_c = fmaxf(checked_max_c, outside_c);
     uint8_t bin = 0;
-    if (effective_outside_c(record) >= workspace.result.train_p90_c)
+    if (outside_c >= workspace.result.train_p90_c)
       bin = 2;
-    else if (effective_outside_c(record) > workspace.result.train_p10_c)
-      bin = static_cast<uint8_t>(3.0f * (effective_outside_c(record) - workspace.result.train_p10_c) /
+    else if (outside_c > workspace.result.train_p10_c)
+      bin = static_cast<uint8_t>(3.0f * (outside_c - workspace.result.train_p10_c) /
                                  (workspace.result.train_p90_c - workspace.result.train_p10_c));
     if (bin > 2) bin = 2;
     bin_duration[bin] += weight;
     candidate_bin_bias[bin] += weight * candidate_error;
     active_bin_bias[bin] += weight * active_error;
   }
-  if (!(duration_sum > 0.0) || !(robust_weight_sum > 0.0) || !isfinite(robust_gain_sum) || !isfinite(active_upper_sum))
-    return false;
+  if (!(duration_sum > 0.0) || !(robust_weight_sum > 0.0)) return false;
   workspace.result.holdout_candidate_mae_w = static_cast<float>(candidate_abs_error / duration_sum);
+  // Use the same temperature coordinate as the line and chart. The error is
+  // the mean upper bound from each held-out day's heat measurement.
+  auto& result = workspace.result;
+  result.checked_min_c = checked_min_c;
+  result.checked_max_c = checked_max_c;
+  result.checked_error_w = static_cast<float>(candidate_upper_sum / duration_sum);
+  result.checked_error_limit_w = static_cast<float>(
+      fmin(kMaxCheckedErrorW, fmax(0.0, measured_heat_sum / duration_sum) * kMaxCheckedErrorFraction));
+  result.line_checked = checked_max_c - checked_min_c >= kMinCheckedSpreadC && result.checked_error_limit_w > 0.0f &&
+                        result.checked_error_w <= result.checked_error_limit_w;
   workspace.result.holdout_active_mae_w = static_cast<float>(active_abs_error / duration_sum);
   workspace.result.holdout_candidate_signed_bias_w = static_cast<float>(candidate_bias / duration_sum);
   workspace.result.holdout_active_signed_bias_w = static_cast<float>(active_bias / duration_sum);
@@ -651,6 +681,11 @@ inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
     }
     if (!detail::evaluate_holdout(workspace)) {
       workspace.result.status = LearningStatus::INVALID_MEASUREMENT;
+      workspace.phase = FitPhase::DONE;
+      return workspace.result.status;
+    }
+    if (!detail::plausible_line(workspace.active_line, workspace.config)) {
+      workspace.result.status = LearningStatus::INVALID_ACTIVE_MODEL;
       workspace.phase = FitPhase::DONE;
       return workspace.result.status;
     }
