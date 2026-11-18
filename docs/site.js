@@ -284,7 +284,7 @@ window.addEventListener("hashchange", followLegacyAnchor);
         mobileFile: "q-edition-kabelstap-2-modbus-mobile.svg",
         height: 405,
         mobileHeight: 720,
-        alt: "Stap 2 van 7: Modbus A, G en B van de CiC verplaatsen naar M1 van de HCQ.",
+        alt: "Stap 2 van 7: Modbus A en B van de CiC verplaatsen naar M1 van de HCQ. Sluit de groene G-ader niet aan.",
       },
       {
         number: "03",
@@ -347,7 +347,7 @@ window.addEventListener("hashchange", followLegacyAnchor);
         mobileFile: "q-edition-kabelstap-7-eindcontrole-mobile.svg",
         height: 329,
         mobileHeight: 650,
-        alt: "Stap 7 van 7: alle aansluitingen controleren voordat de installatie wordt ingeschakeld.",
+        alt: "Stap 7 van 7: alle aansluitingen controleren voordat de installatie wordt ingeschakeld. Controleer dat de G-aders niet zijn aangesloten.",
       },
     ];
 
