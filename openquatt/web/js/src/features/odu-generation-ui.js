@@ -12,9 +12,11 @@ export function getOduGenerationDetectionModel() {
     hp1Available: hasEntity("hp1Generation"),
     hp1Generation: getEntityValue("hp1Generation"),
     hp1DetectAvailable: hasEntity("hp1GenerationDetect"),
+    hp1Firmware: getEntityValue("hp1OduFirmware"),
     hp2Available: hasEntity("hp2Generation"),
     hp2Generation: getEntityValue("hp2Generation"),
     hp2DetectAvailable: hasEntity("hp2GenerationDetect"),
+    hp2Firmware: getEntityValue("hp2OduFirmware"),
   });
 }
 
@@ -64,10 +66,41 @@ export function getOduGenerationChoiceMeta(option, selectedGeneration, recommend
   return "";
 }
 
+function renderOduUnits(model, detecting = false) {
+  const rows = model.heatPumps.map(({ index, generation, firmwareVersion, known }) => {
+    const label = detecting ? t("oduGeneration.rowDetecting") : known ? generation : t("common.unknown");
+    const firmware = !detecting && firmwareVersion
+      ? `<span class="oq-gen-unit-firmware">${escapeHtml(t("oduGeneration.firmware", { version: firmwareVersion }))}</span>`
+      : "";
+    return `
+      <li class="oq-gen-unit" data-oq-odu-generation="hp${index}">
+        <span class="oq-gen-unit-label">${escapeHtml(t("oduGeneration.unit", { index }))}</span>
+        <div class="oq-gen-unit-value">
+          <strong>${escapeHtml(label)}</strong>
+          ${firmware}
+        </div>
+      </li>
+    `;
+  }).join("");
+  return `<ul class="oq-gen-units${model.heatPumps.length > 1 ? " is-duo" : ""}" role="list" aria-label="${escapeHtml(t("oduGeneration.unitsAria"))}">${rows}</ul>`;
+}
+
+export function renderOduFirmwareSummary(model) {
+  if (!model.heatPumps.some(({ known, firmwareVersion }) => known || firmwareVersion)) {
+    return "";
+  }
+  return `
+    <div class="oq-gen-summary">
+      <p class="oq-settings-quickstart-status-label">${escapeHtml(t("oduGeneration.unitsAria"))}</p>
+      ${renderOduUnits(model)}
+    </div>
+  `;
+}
+
 export function renderOduGenerationDetectionStatus({ embedded = false } = {}) {
   const model = getOduGenerationDetectionModel();
   const canDetect = model.heatPumps.some((heatPump) => heatPump.detectAvailable);
-  if (!model.available && !canDetect) {
+  if (!model.available && !canDetect && !model.heatPumps.some(({ firmwareVersion }) => firmwareVersion)) {
     return "";
   }
 
@@ -93,10 +126,5 @@ export function renderOduGenerationDetectionStatus({ embedded = false } = {}) {
   const detectButton = canDetect
     ? `<button class="oq-gen-reset" type="button" data-oq-action="press-odu-generation-detect-all" aria-label="${escapeHtml(t("oduGeneration.detectAria"))}" ${busy ? "disabled" : ""} aria-busy="${isDetecting ? "true" : "false"}">${escapeHtml(isDetecting ? t("oduGeneration.detectingLabel") : t("oduGeneration.redetectLabel"))}</button>`
     : "";
-  const rows = model.heatPumps.map((heatPump) => {
-    const value = isDetecting ? t("oduGeneration.rowDetecting") : heatPump.known ? `Quatt ODU ${heatPump.generation}` : "Unknown";
-    return `<div class="oq-settings-source-row oq-gen-unit${heatPump.known || isDetecting ? "" : " is-warning"}" data-oq-odu-generation="hp${heatPump.index}"><span class="oq-settings-source-row-label">HP${heatPump.index}</span><strong>${escapeHtml(value)}</strong></div>`;
-  }).join("");
-
-  return `<section class="oq-gen-detection oq-settings-field--span-2${embedded ? " is-embedded" : " oq-helper-surface oq-settings-field"}" data-oq-settings-field="oduGenerationDetection" aria-label="${escapeHtml(t("oduGeneration.sectionAria"))}"><div class="oq-gen-hd"><strong>${escapeHtml(title)}</strong><div class="oq-gen-hd-actions"><span class="oq-settings-section-badge oq-gen-badge${badgeTone}">${escapeHtml(badge)}</span>${detectButton}</div></div><div class="oq-gen-units${model.heatPumps.length > 1 ? " is-duo" : ""}" role="group" aria-label="${escapeHtml(t("oduGeneration.unitsAria"))}">${rows}</div>${match ? "" : `<p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>`}</section>`;
+  return `<section class="oq-gen-detection oq-settings-field--span-2${embedded ? " is-embedded" : " oq-helper-surface oq-settings-field"}" data-oq-settings-field="oduGenerationDetection" aria-label="${escapeHtml(t("oduGeneration.sectionAria"))}"><div class="oq-gen-hd"><strong>${escapeHtml(title)}</strong><div class="oq-gen-hd-actions"><span class="oq-settings-section-badge oq-gen-badge${badgeTone}">${escapeHtml(badge)}</span>${detectButton}</div></div>${renderOduUnits(model, isDetecting)}${match ? "" : `<p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>`}</section>`;
 }

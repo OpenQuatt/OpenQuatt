@@ -26,7 +26,7 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test("late ODU-generatiewaarden hertekenen onboarding alleen bij een wijziging", async () => {
+test("late ODU-generatie- en firmwarewaarden hertekenen onboarding alleen bij een wijziging", async () => {
   const now = Date.now();
   state.appView = "energy";
   state.nativeOpen = false;
@@ -61,6 +61,7 @@ test("late ODU-generatiewaarden hertekenen onboarding alleen bij een wijziging",
     hp2Generation: textEntity("Unknown"),
   };
 
+  let firmware = "";
   let renderCount = 0;
   let energyPatchCount = 0;
   setRenderCallback(() => {
@@ -83,6 +84,7 @@ test("late ODU-generatiewaarden hertekenen onboarding alleen bij een wijziging",
     const entities = Object.fromEntries(keys.map((key) => {
       if (key === "hp1Generation") return [key, textEntity("V1")];
       if (key === "hp2Generation") return [key, textEntity("V1.5")];
+      if (key === "hp2OduFirmware") return [key, textEntity(firmware)];
       return [key, state.entities[key] || textEntity("")];
     }));
     return {
@@ -106,4 +108,12 @@ test("late ODU-generatiewaarden hertekenen onboarding alleen bij een wijziging",
 
   assert.equal(renderCount, 1);
   assert.equal(energyPatchCount, 1);
+
+  firmware = "1.34";
+  await syncEntities();
+
+  assert.equal(renderCount, 2);
+  const model = getOduGenerationDetectionModel();
+  assert.equal(model.heatPumps[1].firmwareVersion, "1.34");
+  assert.equal(model.recommendation, "V1");
 });
