@@ -145,7 +145,7 @@ De directe berekening gebruikt `min(setpoint + memory − comfort below, warme g
 
 Na een bevestigde start doordat de kamer onder de koude grens zit, ondersteunt Power House de herstelrun met het laagste geschikte warmtepompvermogen tot de gemeten kamertemperatuur het setpoint bereikt. Bij een setpoint van **20,0 °C** en ondermarge **0,1 °C** kan de startvraag vanaf **19,9 °C** ontstaan; de minimumondersteuning blijft vervolgens ook bij **19,96 °C** actief tot **20,0 °C**.
 
-Daarna neemt de gewone vermogensregeling het over. Het setpoint bereiken is geen harde stop: bij voldoende warmtevraag kan de warmtepomp blijven draaien. **Langer doorverwarmen** is altijd actief en ondersteunt lage warmtevraag tot een hogere stoptemperatuur. Waterbegrenzing en veiligheidsvoorwaarden blijven leidend; een setpointverlaging, ingetrokken warmtetoestemming of ongeldige kamerdata kan het herstel eerder beëindigen.
+Daarna neemt de gewone vermogensregeling het over. Het setpoint bereiken is geen harde stop: bij voldoende warmtevraag kan de warmtepomp blijven draaien. **Langer doorverwarmen** staat standaard aan en ondersteunt lage warmtevraag tot een hogere stoptemperatuur. Waterbegrenzing en veiligheidsvoorwaarden blijven leidend; een setpointverlaging, ingetrokken warmtetoestemming of ongeldige kamerdata kan het herstel eerder beëindigen.
 
 #### Rekenvoorbeeld van warmtevraag
 
@@ -291,7 +291,7 @@ De V1/V1.5-kaart van Quatt begint bij 35 °C water. Bij lagere watertemperaturen
 
 ## Langer doorverwarmen
 
-Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie is altijd actief.
+Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard aan. Je kunt het uitzetten met de schakelaar `Power House run extension` in Home Assistant (standaard aan). Uit geeft het gedrag van vóór v0.59.0: geen doorverwarmen op minimumvermogen, geen comfortstop en geen afkoelgrens na een stop. De gewone Power House-vraag, ook een externe warmtevraag, bepaalt dan zelf wanneer de warmtepomp start en stopt. Dat is bedoeld voor wie het starten en stoppen al zelf stuurt, bijvoorbeeld met een vooruitkijkende externe warmtevraag.
 
 ### Wat gebeurt er?
 
@@ -313,6 +313,7 @@ Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd do
 
 | In de web-app | Home Assistant / firmware | Bereik en standaard |
 |---|---|---|
+| — (alleen Home Assistant) | `Power House run extension` | Aan/uit; standaard aan |
 | Stopgrens boven gewenste temperatuur | `Power House run extension stop margin` | 0,1–1,0 °C boven setpoint; standaard 0,5 °C |
 | Afkoeling na stoppen | `Power House run extension restart cooldown` | 0,1–3,0 °C onder de comfortstop; standaard 0,2 °C |
 
@@ -354,7 +355,7 @@ De stopmarge en herstartafstand horen bij het aparte doorverwarmen-mechanisme. K
 
 De actuele status laat zien of de regeling **Normaal verwarmt**, **Doorverwarmt op minimumvermogen**, een **Stop heeft aangevraagd**, **Wacht op afkoeling** of een **Herstart heeft aangevraagd**. De firmwarewaarden blijven `normal`, `extending`, `comfort_stop`, `wait_warm_restart` en `warm_restart`. **Herstart aangevraagd** betekent dat herstart is vrijgegeven, niet dat de compressor al draait. De berekende grenzen in het instellingenblok zijn geen bewijs dat een bestaande aanvraag is ingetrokken.
 
-Langer doorverwarmen staat altijd aan en laat de gewone Power House-vraag intact: die vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
+Langer doorverwarmen laat de gewone Power House-vraag intact: die vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
 
 Een verlaging van de gewenste temperatuur kan ook bij een stilstaande warmtepomp de gewone warmtevraag blokkeren tot de nieuwe herstartgrens is bereikt. Een nog niet verwerkte verlaging blijft na tijdelijk ontbrekende inputs gelden.
 
