@@ -59,7 +59,7 @@ Ook zonder extra opwarming kan de warmtepomp draaien om het warmteverlies van je
 
 #### Langer doorverwarmen
 
-Bij weinig warmtebehoefte kan een draaiende warmtepomp op laag vermogen blijven verwarmen. **Langer doorverwarmen** staat standaard aan en hoort alleen bij Power House. Je kunt het uitzetten met de schakelaar `Power House run extension` in Home Assistant (standaard aan). Je kiest een aparte stoptemperatuur en hoeveel de kamer daarna moet afkoelen. De lopende run mag ook bij warmte terugnemen door de comfortregeling doorgaan op laag vermogen. Een stilstaande warmtepomp wordt hierdoor niet gestart. Na elke stop, ook zonder comfortstop, geldt dezelfde afkoelgrens voordat normale vraag opnieuw mag starten.
+Bij weinig warmtebehoefte kan een draaiende warmtepomp op laag vermogen blijven verwarmen. **Langer doorverwarmen** staat standaard aan en hoort alleen bij Power House. Je kunt het uitzetten met de schakelaar `Power House run extension enabled` in Home Assistant (standaard aan). Je kiest een aparte stoptemperatuur en hoeveel de kamer daarna moet afkoelen. De lopende run mag ook bij warmte terugnemen door de comfortregeling doorgaan op laag vermogen. Een stilstaande warmtepomp wordt hierdoor niet gestart. Na elke stop, ook zonder comfortstop, geldt dezelfde afkoelgrens voordat normale vraag opnieuw mag starten.
 
 Voorbeeld: je wilt **21,0 °C** en stelt bij **Stopgrens boven gewenste temperatuur** **0,7 °C** in. Power House vraagt de warmtepomp dan bij **21,7 °C** om te stoppen. Stel je bij **Afkoeling na stoppen** ook **0,7 °C** in, dan kan de warmtepomp bij **21,0 °C of lager** weer starten als je woning warmte nodig heeft. De app toont de temperaturen die uit jouw keuzes volgen.
 

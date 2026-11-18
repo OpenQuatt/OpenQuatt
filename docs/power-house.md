@@ -291,7 +291,7 @@ De V1/V1.5-kaart van Quatt begint bij 35 °C water. Bij lagere watertemperaturen
 
 ## Langer doorverwarmen
 
-Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard aan. Je kunt het uitzetten met de schakelaar `Power House run extension` in Home Assistant (standaard aan). Uit geeft het gedrag van vóór v0.59.0: geen doorverwarmen op minimumvermogen, geen comfortstop en geen afkoelgrens na een stop. De gewone Power House-vraag, ook een externe warmtevraag, bepaalt dan zelf wanneer de warmtepomp start en stopt. Dat is bedoeld voor wie het starten en stoppen al zelf stuurt, bijvoorbeeld met een vooruitkijkende externe warmtevraag.
+Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard aan. Je kunt het uitzetten met de schakelaar `Power House run extension enabled` in Home Assistant (standaard aan). Uit geeft het gedrag van vóór v0.59.0: geen doorverwarmen op minimumvermogen, geen comfortstop en geen afkoelgrens na een stop. De gewone Power House-vraag, ook een externe warmtevraag, bepaalt dan zelf wanneer de warmtepomp start en stopt. Dat is bedoeld voor wie het starten en stoppen al zelf stuurt, bijvoorbeeld met een vooruitkijkende externe warmtevraag.
 
 ### Wat gebeurt er?
 
@@ -313,7 +313,7 @@ Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd do
 
 | In de web-app | Home Assistant / firmware | Bereik en standaard |
 |---|---|---|
-| — (alleen Home Assistant) | `Power House run extension` | Aan/uit; standaard aan |
+| — (alleen Home Assistant) | `Power House run extension enabled` | Aan/uit; standaard aan |
 | Stopgrens boven gewenste temperatuur | `Power House run extension stop margin` | 0,1–1,0 °C boven setpoint; standaard 0,5 °C |
 | Afkoeling na stoppen | `Power House run extension restart cooldown` | 0,1–3,0 °C onder de comfortstop; standaard 0,2 °C |
 

@@ -76,6 +76,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         # Optional switch, on by default so the always-on behaviour stays the default.
         switch = yaml.split("id: ph_run_extension_enabled", 1)[1].split("select:", 1)[0]
         self.assertIn("restore_mode: RESTORE_DEFAULT_ON", switch)
+        # A different name than the pre-v0.59 switch keeps a stored OFF from being restored.
+        self.assertIn('name: "Power House run extension enabled"', switch)
         self.assertIn("run_ext_input.enabled = id(ph_run_extension_enabled).state;", text)
         self.assertIn("ph_run_extension_stop_margin_c", yaml)
         self.assertIn("ph_run_extension_restart_cooldown_c", yaml)
