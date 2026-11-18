@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 2901" role="img" aria-labelledby="title desc">
   <title id="title">Kabels stap voor stap verplaatsen van Quatt CiC naar Heatpump Controller Q-edition</title>
-  <desc id="desc">Zeven stappen: CiC en Quatt-buitenunits spanningsloos maken en fotograferen, buitenunit Modbus naar M1 verplaatsen, thermostaat naar OTT, ketel naar OTB of R1, Quatt sensorkabel naar Q, optioneel M2 met de CiC verbinden, controleren en de installatie weer inschakelen.</desc>
+  <desc id="desc">Zeven stappen: CiC en Quatt-buitenunits spanningsloos maken en fotograferen, buitenunit-Modbus met alleen A en B naar M1 verplaatsen en de losse G-ader afzonderlijk isoleren, thermostaat naar OTT, ketel naar OTB of R1, Quatt sensorkabel naar Q, optioneel M2 en CiC met alleen A en B verbinden, G en GND vrij laten, controleren en de installatie weer inschakelen.</desc>
   <defs>
     <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0 0 10 5 0 10z" fill="#dc2626"/>
@@ -226,10 +226,11 @@
   <text x="78" y="698" class="panel-title">Modbus · A / G / B</text>
   <use href="#cic-device" transform="translate(76 714) scale(.62)"/>
   <path d="M192 858 C192 874 204 883 222 883 C292 883 338 776 408 776" fill="none" stroke="#dc2626" stroke-width="5"/>
-  <path d="M203 858 C203 876 216 887 235 887 C300 887 344 800 408 800" fill="none" stroke="#16a34a" stroke-width="5"/>
+  <path d="M203 858 C203 876 216 887 235 887 C300 887 344 800 376 800" fill="none" stroke="#16a34a" stroke-width="5"/>
+  <path d="M373 800h9" stroke="#166534" stroke-width="9" stroke-linecap="round"/>
   <path d="M214 858 C214 878 228 891 248 891 C310 891 350 824 408 824" fill="none" stroke="#2563eb" stroke-width="5"/>
   <text x="432" y="781" class="route-label" fill="#b91c1c" text-anchor="middle">A</text>
-  <text x="432" y="805" class="route-label" fill="#166534" text-anchor="middle">G</text>
+  <text x="393" y="805" class="route-label" fill="#166534">G</text>
   <text x="432" y="829" class="route-label" fill="#1d4ed8" text-anchor="middle">B</text>
 
   <circle cx="500" cy="776" r="23" fill="#ea580c"/>
@@ -238,14 +239,13 @@
   <rect x="542" y="646" width="400" height="254" rx="18" fill="#fff7ed"/>
   <text x="562" y="674" class="panel-kicker" fill="#c2410c">AANSLUITEN OP HCQ</text>
   <text x="562" y="698" class="panel-title">M1 · GND / A / B</text>
-  <path d="M888 750 C861 750 842 766 817 766" fill="none" stroke="#16a34a" stroke-width="5"/>
   <path d="M888 770 C861 770 842 770 817 770" fill="none" stroke="#dc2626" stroke-width="5"/>
   <path d="M888 790 C861 790 842 775 817 775" fill="none" stroke="#2563eb" stroke-width="5"/>
   <use href="#hcq-device" transform="translate(687 714) scale(.62)"/>
-  <text x="916" y="755" class="route-label" fill="#166534" text-anchor="middle">GND</text>
+  <text x="904" y="755" class="route-label" fill="#475569" text-anchor="middle">GND vrij</text>
   <text x="916" y="775" class="route-label" fill="#b91c1c" text-anchor="middle">A</text>
   <text x="916" y="795" class="route-label" fill="#1d4ed8" text-anchor="middle">B</text>
-  <text x="562" y="878" class="map-copy" fill="#b91c1c">Let bij M1 goed op de juiste volgorde van de aders.</text>
+  <text x="562" y="878" class="map-copy" fill="#b91c1c">Isoleer de losse groene G-ader afzonderlijk.</text>
 
   <!-- Stap 3 -->
   <rect x="32" y="943" width="936" height="345" rx="24" fill="#f8fbff" stroke="#dbeafe"/>
@@ -325,6 +325,7 @@
   <text x="58" y="2153" class="step-no">06 · OPTIONEEL · QUATT-APP VIA CiC</text>
   <text x="58" y="2188" class="step-title">Verbind M2 met de vrijgekomen CiC-Modbuspoort.</text>
   <text x="58" y="2217" class="step-copy">M2 geeft alleen buitenunitgegevens via Modbus door aan de CiC; OpenQuatt blijft regelen.</text>
+  <text x="942" y="2217" class="map-copy" text-anchor="end"><tspan fill="#b91c1c">A → A</tspan> · <tspan fill="#1d4ed8">B → B</tspan></text>
 
   <rect x="58" y="2237" width="400" height="244" rx="18" fill="#f8fafc"/>
   <text x="78" y="2265" class="panel-kicker">AANSLUITEN OP CiC</text>
@@ -335,10 +336,11 @@
   <text x="562" y="2289" class="panel-title">M2 · GND / A / B</text>
 
   <use href="#cic-device" transform="translate(76 2302) scale(.62)"/>
-  <path d="M203 2433 C203 2440 220 2440 245 2440 H820 C870 2440 895 2415 895 2402 C895 2386 858 2377 820 2377" fill="none" stroke="#16a34a" stroke-width="5" stroke-linecap="round"/>
   <path d="M192 2433 C192 2448 212 2448 242 2448 H830 C880 2448 905 2420 905 2408 C905 2392 860 2382 820 2382" fill="none" stroke="#dc2626" stroke-width="5" stroke-linecap="round"/>
   <path d="M214 2433 C214 2456 232 2456 258 2456 H840 C890 2456 915 2425 915 2414 C915 2398 862 2387 820 2387" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round"/>
   <use href="#hcq-device" transform="translate(687 2302) scale(.62)"/>
+  <text x="300" y="2347" class="map-copy">G blijft vrij.</text>
+  <text x="562" y="2347" class="map-copy">GND blijft vrij.</text>
 
   <text x="500" y="2503" class="map-copy" text-anchor="middle">Na Quick Start: Instellingen → Bronnen / integraties → Quatt-app via CiC (standaard uit).</text>
 
@@ -348,13 +350,13 @@
   <text x="58" y="2609" class="step-title">Schakel pas in als elke kabel op de juiste plek zit.</text>
   <use href="#hcq-device" transform="translate(83 2635) scale(.82)"/>
   <circle cx="348" cy="2663" r="14" fill="#dcfce7"/><path d="M341 2663l6 6 11-13" fill="none" stroke="#15803d" stroke-width="3"/>
-  <text x="375" y="2669" class="check">M1: A → A, G → GND en B → B.</text>
+  <text x="375" y="2669" class="check">M1: A → A, B → B, GND vrij en losse G-ader afzonderlijk geïsoleerd.</text>
   <circle cx="348" cy="2697" r="14" fill="#dcfce7"/><path d="M341 2697l6 6 11-13" fill="none" stroke="#15803d" stroke-width="3"/>
   <text x="375" y="2703" class="check">OTT is aangesloten. De ketel via OTB óf R1, nooit beide.</text>
   <circle cx="348" cy="2731" r="14" fill="#dcfce7"/><path d="M341 2731l6 6 11-13" fill="none" stroke="#15803d" stroke-width="3"/>
   <text x="375" y="2737" class="check">De Q-stekker en alle overige verbindingen zitten stevig vast.</text>
   <circle cx="348" cy="2765" r="14" fill="#dcfce7"/><path d="M341 2765l6 6 11-13" fill="none" stroke="#15803d" stroke-width="3"/>
-  <text x="375" y="2771" class="check">M2 is alleen aangesloten voor Quatt-app via CiC.</text>
+  <text x="375" y="2771" class="check">M2 (optioneel, Quatt-app via CiC): A → A, B → B, G en GND vrij.</text>
   <rect x="335" y="2802" width="565" height="46" rx="12" fill="#166534"/>
   <text x="359" y="2831" class="map-title completion-title">Voed HCQ via USB. Schakel daarna de Quatt-buitenunit(s) in.</text>
 
