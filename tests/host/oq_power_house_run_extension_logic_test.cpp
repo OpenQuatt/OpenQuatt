@@ -757,7 +757,33 @@ void test_elevated_stop_survives_input_loss_during_pending_restart() {
 }
 }  // namespace
 
+void test_disabled_switch_restores_pre_v059_behaviour() {
+  // Switched off: no floor below Pmin, no comfort stop and no restart latch.
+  Input in = base_input();
+  in.enabled = false;
+  const State extending{Phase::EXTENDING, in.setpoint_c, true};
+  const auto running = evaluate(in, tuning(), extending);
+  assert(running.next.phase == Phase::INACTIVE && !running.next.cycle_armed);
+  assert(!running.floor_active && !running.force_comfort_stop);
+
+  in.room_c = in.setpoint_c + tuning().stop_margin_c + 0.3f;
+  assert(!evaluate(in, tuning(), extending).force_comfort_stop);
+
+  // An ordinary stop followed by demand well above the old restart threshold.
+  for (const auto phase : {Phase::RUNNING, Phase::EXTENDING, Phase::WAIT_WARM_RESTART, Phase::COMFORT_STOP}) {
+    Input stopped = base_input();
+    stopped.enabled = false;
+    stopped.cycle_active = stopped.actual_heating_active = false;
+    stopped.room_c = stopped.setpoint_c + 0.45f;
+    stopped.base_requested_w = 2500.0f;
+    const auto out = evaluate(stopped, tuning(), {phase, stopped.setpoint_c, true});
+    assert(out.next.phase == Phase::INACTIVE);
+    assert(!out.force_comfort_stop && !out.floor_active && !out.warm_restart_intent);
+  }
+}
+
 int main() {
+  test_disabled_switch_restores_pre_v059_behaviour();
   test_elevated_minimum_stops_optional_extension_at_setpoint();
   test_elevated_minimum_preserves_real_demand_and_guards();
   test_elevated_stop_survives_input_loss_during_pending_restart();

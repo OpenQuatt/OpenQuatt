@@ -462,6 +462,7 @@ class Runtime {
     const bool run_cycle_active = applied_total > 0 || protection_hold || hp1_valve_defrost || hp2_valve_defrost ||
                                   hp1_oil_return || hp2_oil_return;
     oq_power_house_run_extension::Input run_ext_input;
+    run_ext_input.enabled = id(ph_run_extension_enabled).state;
     run_ext_input.cycle_active = run_cycle_active;
     run_ext_input.actual_heating_active = applied_total > 0;
     run_ext_input.inputs_valid = demand.valid && room_inputs_valid;
