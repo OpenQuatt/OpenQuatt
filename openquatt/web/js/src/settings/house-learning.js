@@ -7,7 +7,8 @@ import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
 import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsInfoToggle, renderSettingsSystemRow } from "./controls.js";
 import { configuredLinePowerAt, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
-import { houseLearningBatchReasonKey, selectDisplayedHouseLine } from "./house-learning-readiness.js";
+import { proposedHouseLineSettings, renderHouseLearningAdvice } from "./house-learning-advice.js";
+import { houseLearningBatchReasonKey, selectDisplayedHouseLine, usableHouseLinePreview } from "./house-learning-readiness.js";
 import { getSettingsSwitchModel } from "./field-models.js";
 
 const metric = (value, unit = "") => value != null && Number.isFinite(Number(value))
@@ -106,11 +107,13 @@ function learningStatusPending(status = state.houseLearningStatus) {
 }
 
 function houseLearningLine(status = state.houseLearningStatus) {
+  const fresh = canAssessModel(status) && !learningStatusPending(status);
+  const check = status?.batchCheck;
   return { h: status?.hBatch, t0: status?.t0Batch,
     cov00: status?.batchFit?.cov00 ?? status?.cov00, cov01: status?.batchFit?.cov01 ?? status?.cov01, cov11: status?.batchFit?.cov11 ?? status?.cov11,
-    ready: canAssessModel(status) && !learningStatusPending(status) && status.batchAdviceReady,
+    fresh, ready: fresh && (status.manualLineRestore == null ? status.batchAdviceReady : check?.passed === true),
     referenceRoomC: status?.referenceRoomC, batchStatus: status?.batchStatus,
-    fit: status?.batchFit, preview: status?.batchPreview };
+    fit: status?.batchFit, check, preview: status?.batchPreview, settings: status?.manualLineProposal };
 }
 
 function renderCurrentLearningStatus() {
@@ -422,8 +425,9 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     status.rlsSamples ? t(status.rlsSamples === 1 ? "houseLearning.model.acceptedPeriodOne" : "houseLearning.model.acceptedPeriodMany", { count: formatNumber(status.rlsSamples) }) : "",
   ].filter(Boolean).join("\n\n");
   const learnedLine = houseLearningLine(status);
-  const dailyLine = selectDisplayedHouseLine(learnedLine);
-  const dailyModel = modelAssessment(status, dailyLine.h > 0 && Number.isFinite(dailyLine.t0), learnedLine.ready);
+  const dailyLine = learnedLine.check && status.manualLineRestore != null ? learnedLine : selectDisplayedHouseLine(learnedLine);
+  const dailyModel = state.houseLearningRetest ? t("houseLearning.advice.retesting")
+    : modelAssessment(status, dailyLine.h > 0 && Number.isFinite(dailyLine.t0), learnedLine.ready);
   // RLS readiness does not independently validate heat capacity. Keep this model
   // provisional until the firmware can provide that separate validation.
   const thermalModel = modelAssessment(status, status.uRls > 0 && status.cRlsWhPerK > 0,
@@ -461,7 +465,8 @@ function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.h
     state.houseLearningChartLoading, state.houseLearningChartError,
     Boolean(state.settingsAdvancedOpen?.["house-learning-readiness"]),
     state.houseLearningStatus?.records === 0 && state.houseLearningStatus.journalStatus === "cleared",
-    houseLearningLine(),
+    houseLearningLine(), state.houseLearningStatus?.manualLineRestore, state.houseLearningStatus?.manualLineRetesting,
+    state.houseLearningRetest, state.houseLearningLineNotice,
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
@@ -477,12 +482,34 @@ function renderHouseLearningDataActions(busy, resetOnly = false) {
 // The measurement card is always open: the chart loads by itself, the button reloads it.
 function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
   const status = state.houseLearningStatus;
+  const previous = state.houseLearningRetest;
+  const retesting = Boolean(previous);
+  const lineStatus = previous ?? status;
   const records = state.houseLearningChart ?? (status?.records === 0 && status.journalStatus === "cleared" ? [] : null);
-  const chart = records !== null ? renderHouseLearningChart(
-    records,
-    { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
-    houseLearningLine(),
-  ) : "";
+  const configured = { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") };
+  const learned = houseLearningLine(lineStatus);
+  const preview = usableHouseLinePreview(learned.preview);
+  const proposal = records?.length && (retesting || learned.fresh)
+    ? learned.check ? {
+      h: learned.h, t0: learned.t0, checkMinC: learned.check.minC, checkMaxC: learned.check.maxC,
+      cov00: learned.cov00, cov01: learned.cov01, cov11: learned.cov11, settings: learned.settings,
+      checkDays: learned.fit?.checkDays, referenceRoomC: learned.referenceRoomC, check: learned.check,
+    } : preview && { ...preview, settings: learned.settings } : null;
+  const notice = { stored: t("houseLearning.advice.applied"), restored: t("houseLearning.advice.restored"),
+    refused: t("houseLearning.advice.refused"), uncertain: t("houseLearning.advice.uncertain") }[state.houseLearningLineNotice];
+  const advice = retesting || typeof status?.manualLineRestore === "boolean" || notice
+    ? renderHouseLearningAdvice(configured, proposal, {
+      canRestore: !retesting && status?.manualLineRestore === true && !statusIsStale(status),
+      busy, notice, retesting, applyPending: status?.manualLineRetesting,
+    }) : "";
+  const shown = advice && proposal?.h > 0 && Number.isFinite(proposal.t0) ? proposal : null;
+  const settings = shown && proposedHouseLineSettings(configured.coldC, shown);
+  const chart = records === null ? "" : renderHouseLearningChart(records, configured, {
+    ...learned,
+    ready: !retesting && learned.ready,
+    retesting,
+    proposal: settings ? { ...shown, h: settings.ratedW / (settings.zeroC - settings.coldC), t0: settings.zeroC } : shown,
+  });
   return `<div class="oq-settings-section-head">
     <div class="oq-house-learning-heading"><h3>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h3><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t("houseLearning.chart.refresh"))}</button></div>
     <p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p>
@@ -490,7 +517,7 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
   <div class="oq-house-learning-chart-panel">
   ${state.houseLearningChartError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningChartError))}</p>` : ""}
   ${records === null && !state.houseLearningChartError ? `<p class="oq-settings-action-note" role="status">${escapeHtml(t("houseLearning.chart.loading"))}</p>` : ""}
-  ${chart}${state.houseLearningChart !== null && state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">${escapeHtml(t("houseLearning.chart.loadedAt", { date: formatDateTime(state.houseLearningChartFetchedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }))}</p>` : ""}
+  ${advice}${chart}${state.houseLearningChart !== null && state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">${escapeHtml(t("houseLearning.chart.loadedAt", { date: formatDateTime(state.houseLearningChartFetchedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }))}</p>` : ""}
   </div>`;
 }
 
@@ -535,7 +562,7 @@ function patchLearningMarkup(node, markup) {
   const selector = control === "houseLearningEnabled" ? '[data-control-key="houseLearningEnabled"]'
     : ["house-learning-window", "house-learning-readiness", "house-learning-thermal", "house-learning-chart", "house-learning-shadow"].includes(info)
     ? `[data-info-id="${info}"]`
-    : ["load-house-learning-chart", "download-house-learning"].includes(action) ? `[data-oq-action="${action}"]`
+    : ["load-house-learning-chart", "download-house-learning", "apply-house-line", "restore-house-line"].includes(action) ? `[data-oq-action="${action}"]`
     : focused && active.dataset?.oqButtonKey === "houseLearningReset" ? '[data-oq-button-key="houseLearningReset"]'
     : focused && ["house-learning-technical", "house-learning-readiness"].includes(active.dataset?.settingsAdvanced) ? `summary[data-settings-advanced="${active.dataset.settingsAdvanced}"]` : null;
   const point = focused && active.dataset?.oqHouseLearningTip;

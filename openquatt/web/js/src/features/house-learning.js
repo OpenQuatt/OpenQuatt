@@ -107,6 +107,11 @@ export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = pe
     && (ranges.every(value => value === null)
       || ranges.every(Number.isFinite) && fit.train_min_c <= fit.train_p10_c
         && fit.train_p10_c <= fit.train_p90_c && fit.train_p90_c <= fit.train_max_c);
+  const check = payload.batch_check;
+  const proposal = payload.manual_line_proposal;
+  const validCheck = validCounts && validRanges && fit.holdout_days >= 1 && typeof check?.passed === "boolean"
+    && [check.min_c, check.max_c, check.min_spread_c, check.error_w, check.error_limit_w].every(Number.isFinite)
+    && check.min_c <= check.max_c && check.min_spread_c > 0 && check.error_w >= 0 && check.error_limit_w >= 0;
   const preview = payload.batch_preview;
   const validPreview = preview && [preview.segments, preview.days].every(value => Number.isInteger(value) && value >= 0 && value <= 128)
     && preview.days <= preview.segments && preview.segments <= payload.records
@@ -135,6 +140,16 @@ export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = pe
       trainCount: fit.train_segments, checkCount: fit.holdout_segments,
       trainDays: fit.train_days, checkDays: fit.holdout_days,
       p10: fit.train_p10_c, p90: fit.train_p90_c, minC: fit.train_min_c, maxC: fit.train_max_c, ...(Object.hasOwn(fit, "cov_00") ? { cov00: numberOrNull(fit.cov_00), cov01: numberOrNull(fit.cov_01), cov11: numberOrNull(fit.cov_11) } : {}),
+    } : null,
+    manualLineRestore: typeof payload.manual_line_restore === "boolean" ? payload.manual_line_restore : null,
+    manualLineRetesting: typeof payload.manual_line_retesting === "boolean" ? payload.manual_line_retesting : null,
+    manualLineProposal: proposal === undefined ? undefined
+      : proposal && [proposal.cold_c, proposal.rated_w, proposal.cutoff_c].every(Number.isFinite)
+        && proposal.rated_w > 0 && proposal.cutoff_c > proposal.cold_c
+        ? { coldC: proposal.cold_c, ratedW: proposal.rated_w, zeroC: proposal.cutoff_c } : null,
+    batchCheck: validCheck ? {
+      passed: check.passed, minC: check.min_c, maxC: check.max_c, minSpreadC: check.min_spread_c,
+      errorW: check.error_w, errorLimitW: check.error_limit_w,
     } : null,
     // Undefined means older firmware. Null means a present but unusable preview.
     batchPreview: Object.hasOwn(payload, "batch_preview") ? validPreview ? {
@@ -302,7 +317,62 @@ export async function downloadHouseLearningExport() {
   }
 }
 
-export function handleHouseLearningAction(action, button, pressNamedButton) {
+async function submitHouseLine(action, values) {
+  const request = (path, options) => fetchWithTimeout(getBasePath() + path,
+    { cache: "no-store", ...options }, 1800, "", async response => ({
+      code: response.status, body: response.ok ? await response.json() : null,
+    }));
+  const auth = await request("/auth/status");
+  if (!auth.body?.csrf_token) return "refused";
+  const path = "/openquatt/learning/line";
+  const posted = await request(path, { method: "POST",
+    body: new URLSearchParams({ action, ...values, csrf_token: auth.body.csrf_token }) });
+  if ([400, 401, 403, 409].includes(posted.code)) return "refused";
+  const ticket = posted.body?.ticket;
+  if (posted.code !== 202 || !Number.isInteger(ticket) || ticket <= 0 || ticket > 0xffffffff) return "uncertain";
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const { code, body } = await request(path + "?ticket=" + ticket);
+    if (code === 200 && body?.stored === true) return action === "restore" ? "restored" : "stored";
+    if (code !== 202) return code === 409 ? "refused" : "uncertain";
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  return "uncertain";
+}
+
+async function changeHouseLine(action, button, refreshEntities) {
+  if (state.busyAction || !button || button.disabled || state.houseLearningRetest
+      || action === "apply" && state.houseLearningStatus?.manualLineRetesting) return;
+  const data = button.dataset;
+  const values = { cold: data.coldC, rated: data.expectedRatedW, cutoff: data.expectedZeroC };
+  if (action === "apply") Object.assign(values, { proposed_rated: data.ratedW, proposed_cutoff: data.zeroC });
+  if (Object.values(values).some(value => !value?.trim() || !Number.isFinite(Number(value)))) return;
+  state.houseLearningLineNotice = "";
+  if (action === "restore" && typeof state.houseLearningStatus?.manualLineRetesting === "boolean")
+    state.houseLearningRetest = state.houseLearningStatus;
+  state.busyAction = "houseLearningLine";
+  render();
+  try {
+    state.houseLearningLineNotice = await submitHouseLine(action, values);
+  } catch {
+    state.houseLearningLineNotice = "uncertain";
+  }
+  if (state.houseLearningLineNotice !== "restored") state.houseLearningRetest = null;
+  try {
+    await refreshEntities(["houseColdTemp", "houseOutdoorMax", "housePower"]);
+    await refreshHouseLearningStatus({ force: true });
+  } catch {
+    // A failed readback is retried by normal polling, never by repeating the write.
+  } finally {
+    state.busyAction = "";
+    render();
+  }
+}
+
+export function handleHouseLearningAction(action, button, pressNamedButton, refreshEntities) {
+  if (action === "apply-house-line" || action === "restore-house-line") {
+    void changeHouseLine(action === "apply-house-line" ? "apply" : "restore", button, refreshEntities);
+    return true;
+  }
   if (action === "download-house-learning") {
     void downloadHouseLearningExport();
     return true;
@@ -352,6 +422,7 @@ export async function refreshHouseLearningStatus(options = {}) {
       if (response.status === 404) {
         state.houseLearningEndpointAvailable = false;
         state.houseLearningStatus = null;
+        state.houseLearningRetest = null;
         state.houseLearningStatusError = "";
       } else {
         if (!response.ok) {
@@ -366,6 +437,9 @@ export async function refreshHouseLearningStatus(options = {}) {
         if (shadowEpoch !== state.houseLearningShadowEpoch || state.busyAction
           || ["pending", "uncertain"].includes(state.houseLearningReset)) status.shadow = null;
         state.houseLearningStatus = status;
+        if (!status.enabled || status.records === 0 || status.manualLineRetesting === null
+            || state.houseLearningLineNotice === "restored" && status.manualLineRestore === false
+              && status.manualLineRetesting === false) state.houseLearningRetest = null;
         if (status.records === 0 && status.journalStatus === "cleared") {
           state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
           state.houseLearningChart = null;

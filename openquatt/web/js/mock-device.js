@@ -2394,9 +2394,9 @@
       ["Minimum runtime", 300, 300, 3600, 30, "s"],
       ["Compressor starts 2h warning limit", 6, 1, 20, 1, ""],
       ["Compressor starts 72h warning limit", 40, 1, 120, 1, ""],
-      ["Rated maximum house power", 4500, 500, 12000, 100, "W"],
+      ["Rated maximum house power", 4500, 1000, 15000, 10, "W"],
       ["House cold temp", -10, -25, 5, 0.5, "°C"],
-      ["Maximum heating outdoor temperature", 16, -10, 25, 1, "°C"],
+      ["Maximum heating outdoor temperature", 16, 5, 25, 0.5, "°C"],
       ["Power House temperature reaction", 3000, 0, 4000, 10, "W/K"],
       ["Power House comfort below setpoint", 0.1, 0, 2, 0.05, "°C"],
       ["Power House comfort above setpoint", 0.3, 0, 2, 0.05, "°C"],
@@ -5974,9 +5974,12 @@
     if (state.boiler !== "off") invalidReasons.push("boiler_heat");
     const legacyCount = Math.min(state.houseLearning.records, 4);
     const dailyCount = state.houseLearning.records - legacyCount;
-    const ready = invalidReasons.length === 0 && dailyCount >= 24;
+    const retesting = Date.now() < state.houseLearning.retestUntil;
+    const ready = !retesting && invalidReasons.length === 0 && dailyCount >= 24;
     return {
       schema: 1, mode: "passive", enabled, storage_ready: true,
+      manual_line_restore: mockLineCanRestore(),
+      manual_line_retesting: retesting,
       shadow_ttl_ms: enabled && ready ? 10000 : 0,
       shadow: { schema: 1, semantics: "one_step_from_observed_state", scope: "base_before_start_stop_dispatch",
         source: "actual", state_origin: "live_pre_tick", run_id: null, context_revision: 8, tick_ms: 10000,
@@ -5989,12 +5992,18 @@
       daily_record_count: dailyCount, legacy_record_count: legacyCount, reference_room_c: 20,
       collection: { batch_active: enabled && state.boiler === "off", batch_elapsed_s: enabled ? 9200 : 0, batch_target_s: 86400,
         batch_last_rejection: null, thermal_active: enabled && !invalidReasons.length, thermal_elapsed_s: enabled ? 420 : 0, thermal_target_s: 1800, thermal_intervals: state.houseLearning.rlsSamples },
-      batch_status: ready ? "advice_ready" : dailyCount < 9 || state.houseLearning.preview === "checks" ? "insufficient_data" : "insufficient_spread", batch_advice_ready: ready,
+      batch_status: retesting ? "fit_in_progress" : ready ? "advice_ready" : dailyCount < 9 || state.houseLearning.preview === "checks" ? "insufficient_data" : "insufficient_spread", batch_advice_ready: ready,
+      ...(ready ? {
+        batch_fit: { metadata_prepared: true, train_segments: dailyCount - 3, holdout_segments: 3,
+          train_days: dailyCount - 3, holdout_days: 3, train_p10_c: 4.5, train_p90_c: 11.5, train_min_c: 3.6, train_max_c: 12.4 },
+        batch_check: { passed: true, min_c: 4, max_c: 12, min_spread_c: 4, error_w: 120, error_limit_w: 300 },
+      } : {}),
       ...(state.houseLearning.preview === "checks" && dailyCount > 0 ? {
         batch_fit: { metadata_prepared: true, train_segments: 20, holdout_segments: 0,
           train_days: 20, holdout_days: 0, train_p10_c: 4.96, train_p90_c: 11.84, train_min_c: 4.4, train_max_c: 12.3 },
         batch_preview: { segments: 20, days: 20, h: 186.4, t0: 16.8, min_c: 4.4, max_c: 12.3 },
       } : {}),
+      ...(retesting ? { batch_preview: null } : {}),
       advice_ready: false, auto_apply_allowed: false,
       h_batch: ready ? 186.4 : null, t0_batch: ready ? 16.8 : null,
       u_rls: ready ? 179.2 : null, c_rls_wh_per_k: ready ? 7420 : null,
@@ -6067,6 +6076,48 @@
       json: async () => ({ text }),
       text: async () => String(text || ""),
     });
+  }
+
+  let mockLineReceipt;
+  let mockLineTicket = 0;
+  let mockLineStored = false;
+
+  function mockLineValues() {
+    return [
+      Number(getEntity("number", "House cold temp")?.value),
+      Number(getEntity("number", "Rated maximum house power")?.value),
+      Number(getEntity("number", "Maximum heating outdoor temperature")?.value),
+    ];
+  }
+
+  function mockLineCanRestore() {
+    return !!mockLineReceipt && mockLineValues().every((value, index) => value === mockLineReceipt.after[index]);
+  }
+
+  function mockLearningLine(url, method, body) {
+    if (method === "GET") {
+      if (!mockLineTicket || Number(url.searchParams.get("ticket")) !== mockLineTicket) return mockResponse(404, {});
+      return mockResponse(mockLineStored ? 200 : 409, { stored: mockLineStored });
+    }
+    const form = new URLSearchParams(body);
+    if (form.get("csrf_token") !== state.auth.csrfToken) return mockResponse(403, {});
+    const action = form.get("action");
+    const read = key => form.has(key) ? Number(form.get(key)) : NaN;
+    const current = mockLineValues();
+    const expected = [read("cold"), read("rated"), read("cutoff")];
+    const restore = action === "restore";
+    const target = restore ? mockLineReceipt?.before : [read("cold"), read("proposed_rated"), read("proposed_cutoff")];
+    mockLineStored = (action === "apply" || restore && mockLineCanRestore())
+      && expected.every((value, index) => value === current[index])
+      && !!target && target.every(Number.isFinite);
+    if (mockLineStored) {
+      mockLineReceipt = restore ? null : { before: current, after: target };
+      if (restore) state.houseLearning.retestUntil = Date.now() + 30000;
+      setNumber("Rated maximum house power", target[1]);
+      setNumber("Maximum heating outdoor temperature", target[2]);
+      notifyMockUpdated();
+    }
+    return mockResponse(202, { ticket: ++mockLineTicket });
   }
 
   function installFetchMock() {
@@ -6144,6 +6195,9 @@
       }
       if (url.pathname.endsWith("/openquatt/weather/forecast") && method === "GET") {
         return hasHouseLearningCapability() ? mockResponse(200, getWeatherForecastPayload()) : mockResponse(404, { ok: false });
+      }
+      if (url.pathname.endsWith("/openquatt/learning/line") && (method === "GET" || method === "POST")) {
+        return hasHouseLearningCapability() ? mockLearningLine(url, method, init?.body) : mockResponse(404, {});
       }
       if (url.pathname.endsWith("/openquatt/learning/status") && method === "GET") {
         return hasHouseLearningCapability()
@@ -6599,6 +6653,7 @@
       applyBoilerDevMode("on");
     } else if (action === "boiler-off") {
       applyBoilerDevMode("off");
+
     }
   });
 
