@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 936 329" overflow="hidden" role="img" aria-labelledby="title desc">
   <title id="title">Stap 7: eindcontrole</title>
-  <desc id="desc">Controleer alle aansluitingen voordat je de installatie opnieuw inschakelt.</desc>
+  <desc id="desc">Controleer of op M1 en eventueel M2 alleen A en B zijn aangesloten, GND vrij is en de losse G-ader van de buitenunitkabel afzonderlijk is geïsoleerd. Controleer de overige aansluitingen voordat je de installatie opnieuw inschakelt.</desc>
   <defs><clipPath id="step-clip"><rect width="936" height="329" rx="24" /></clipPath></defs>
   <image href="q-edition-kabels-stappen.svg" x="-32" y="-2532" width="1000" height="2901" clip-path="url(#step-clip)" />
 </svg>

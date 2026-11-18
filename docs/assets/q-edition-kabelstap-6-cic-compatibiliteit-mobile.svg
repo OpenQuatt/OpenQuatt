@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 800" role="img" aria-labelledby="title desc">
   <title id="title">Stap 6: Quatt-app via CiC (optioneel)</title>
-  <desc id="desc">Verbind M2 met een aparte RS485-kabel met de vrijgekomen Modbuspoort van de CiC. De koppeling geeft alleen buitenunitgegevens door aan de CiC, geen thermostaatgegevens.</desc>
+  <desc id="desc">Verbind optioneel A met A en B met B tussen de vrijgekomen Modbuspoort van de CiC en M2 van de HCQ. Gebruik een aparte RS485-kabel en laat G op de CiC en GND op M2 vrij. De koppeling geeft alleen buitenunitgegevens door aan de CiC, geen thermostaatgegevens.</desc>
   <style>
     text { font-family: Inter, "Segoe UI", Arial, sans-serif; fill: #111827; }
     .kicker { font-size: 14px; font-weight: 850; letter-spacing: 1.1px; fill: #ea580c; }
@@ -18,7 +18,7 @@
     <image href="q-edition-kabels-stappen.svg" width="1000" height="2901"/>
   </svg>
   <text x="215" y="438" text-anchor="middle" class="map">
-    <tspan fill="#b91c1c">A → A</tspan><tspan fill="#64748b">  ·  </tspan><tspan fill="#166534">G → GND</tspan><tspan fill="#64748b">  ·  </tspan><tspan fill="#1d4ed8">B → B</tspan>
+    <tspan fill="#b91c1c">A → A</tspan><tspan fill="#64748b"> · </tspan><tspan fill="#1d4ed8">B → B</tspan><tspan fill="#64748b"> · </tspan><tspan fill="#475569">G en GND vrij</tspan>
   </text>
   <circle cx="215" cy="468" r="22" fill="#ea580c"/>
   <path d="M215 457v22m-8-8 8 8 8-8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>

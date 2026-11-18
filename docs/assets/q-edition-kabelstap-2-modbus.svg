@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 936 405" overflow="hidden" role="img" aria-labelledby="title desc">
   <title id="title">Stap 2: Modbus</title>
-  <desc id="desc">Verplaats de buitenunitcommunicatie van A, G en B op de CiC naar M1 op de Heatpump Controller Q-edition (HCQ).</desc>
+  <desc id="desc">Sluit alleen A op A en B op B aan op M1 van de HCQ. Isoleer de losse groene G-ader afzonderlijk en laat GND vrij.</desc>
   <defs><clipPath id="step-clip"><rect width="936" height="405" rx="24" /></clipPath></defs>
   <image href="q-edition-kabels-stappen.svg" x="-32" y="-522" width="1000" height="2901" clip-path="url(#step-clip)" />
 </svg>
