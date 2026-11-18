@@ -9,6 +9,7 @@ import { state } from "../core/state.js";
 import { t } from "../i18n/index.js";
 import { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } from "../settings/house-learning.js";
 import { renderLearningExplanation } from "./learning-explanation.js";
+import { patchMeasurementArchive, renderMeasurementArchive } from "../settings/measurement-archive.js";
 
 // Messages appear as toasts, like in Settings; a patch picks up a message that arrives between renders.
 export function patchLearningView() {
@@ -26,6 +27,7 @@ export function patchLearningView() {
     return true;
   }
   if (weather && state.learningPanel === "configuration" && !patchWeatherSettings()) return false;
+  if (state.learningPanel === "diagnostics" && !patchMeasurementArchive()) return false;
   return hasEntity("houseLearningEnabled") ? patchHouseLearningSettingsStatus() : true;
 }
 
@@ -39,7 +41,7 @@ function renderLearningDiagnostics() {
     <h4 class="oq-learning-diagnostic-title">${escapeHtml(t("learningWorkspace.downloads"))}</h4>
     ${downloads}
   </section>` : "";
-  return renderHouseLearningSettings("diagnostics") + data;
+  return renderHouseLearningSettings("diagnostics") + renderMeasurementArchive() + data;
 }
 
 // Same layout as Settings: the panels sit in the side navigation, the content beside it.

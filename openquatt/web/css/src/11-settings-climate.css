@@ -132,6 +132,59 @@
 .oq-learning-download:last-child { padding-bottom: 0; }
 .oq-learning-download h5 { margin: 0 0 4px; color: var(--oq-helper-ink); font-size: .94rem; }
 .oq-learning-download p { margin: 0; color: var(--oq-helper-soft); font-size: .84rem; line-height: 1.5; }
+.oq-measurement-archive [hidden] { display: none; }
+.oq-archive-heading, .oq-archive-summary, .oq-archive-feedback {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 24px;
+}
+.oq-archive-heading h4 { margin: 0 0 4px; }
+.oq-archive-heading .oq-settings-compact-switch-row { flex: 0 0 auto; }
+.oq-measurement-archive p {
+  margin: 0;
+  color: var(--oq-helper-soft);
+  font-size: .875rem;
+  line-height: 1.45;
+}
+.oq-measurement-archive [data-oq-archive-empty] { margin-top: 14px; }
+.oq-archive-data {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--oq-helper-line);
+}
+.oq-archive-summary { flex-wrap: wrap; }
+.oq-archive-summary > .oq-helper-button--primary {
+  background: #c2410c;
+  border-color: #c2410c;
+  color: #fff;
+}
+.oq-archive-summary > .oq-helper-button--primary:not(:disabled):hover {
+  background: #9a3412;
+  border-color: #9a3412;
+}
+.oq-archive-label { color: var(--oq-helper-soft); font-size: .8rem; font-weight: 600; }
+.oq-archive-summary strong {
+  display: block;
+  margin: 3px 0 4px;
+  color: var(--oq-helper-ink);
+  font-size: 1.26rem;
+  letter-spacing: -.02em;
+  line-height: 1.25;
+}
+.oq-archive-feedback { margin-top: 12px; }
+.oq-archive-day { margin-top: 12px; color: var(--oq-helper-soft); font-size: .875rem; }
+.oq-archive-day summary { width: fit-content; padding: 6px 0; cursor: pointer; }
+.oq-archive-day form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 8px; }
+.oq-archive-day label { display: grid; gap: 6px; }
+.oq-archive-info ul { margin: 4px 0 8px; padding-inline-start: 20px; line-height: 1.45; }
+.oq-archive-info li + li { margin-top: 4px; }
+
+@media (max-width: 640px) {
+  .oq-archive-summary > button { width: 100%; }
+  .oq-archive-day form { align-items: stretch; flex-direction: column; }
+}
+
 .oq-house-learning-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .oq-house-learning-section-head h5 { margin: 0; color: var(--oq-helper-ink); font-size: 0.94rem; }
 .oq-house-learning-actions { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--oq-helper-line); }

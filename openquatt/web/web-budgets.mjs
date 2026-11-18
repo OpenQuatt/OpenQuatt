@@ -85,7 +85,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Manual house-line advice, apply, restore and recheck: +8,542 B raw / +2,835 B gzip versus dev acfe7df2.
     // Per-HP ODU firmware in telemetry previews and NL/EN disclosure: +575 B raw
     // versus dev acfe7df2 (Node 24.22.1); existing headroom and relative gzip limits unchanged.
-    raw: 1_496_532,
+    // Optional measurement archive and complete download: +9,345 B raw / +3,134 B gzip
+    // versus dev 7536e6bc (Node 24.14.1). Keep the existing raw headroom and relative gzip limits.
+    raw: 1_505_877,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -114,5 +116,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // content: +161 B CSS raw; preserves the 80 B raw headroom.
   // Learning workspace and curve display: +2,604 B raw against the same base.
   // Manual house-line advice: +444 B raw / +94 B gzip versus dev acfe7df2.
-  { file: "css/openquatt-app.css", raw: 228_969, gzipBaselineCeiling: 44_985 },
+  // Compact measurement archive layout: +1,162 B raw / +243 B gzip versus dev 7536e6bc.
+  { file: "css/openquatt-app.css", raw: 230_131, gzipBaselineCeiling: 44_985 },
 ];

@@ -117,6 +117,34 @@ nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet
 Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van
 passief leren gedeeld.
 
+### Meetarchief (experimenteel)
+
+In een Q-testbuild met het optionele pakket vind je **Meetarchief** onder
+**Diagnose en data**. De opname staat bij eerste gebruik uit en heeft een eigen
+schakelaar. De controller bewaart de blokken in flash terwijl je browser dicht
+is. Uitschakelen stopt de opname. Eerder bewaarde blokken blijven beschikbaar.
+
+De kaart toont de opnamestatus en de bewaarde meetperiode. Met **Hele archief
+downloaden** krijg je één JSON-bestand met alle bewaarde meetblokken en de
+weerdata bij die periode. De browser haalt de dagen één voor één op. Laat de
+pagina open tot de download start. Onder **Eén dag downloaden** kun je ook
+een losse dag (UTC) kiezen.
+
+Onder **Wat bewaart Meetarchief?** staat wat de controller vastlegt. Per blok
+bewaart hij de binnentemperatuur aan het begin en einde, de gemiddelde
+buitentemperatuur, de ingestelde kamertemperatuur, de aan het water afgegeven
+warmte en de bedrijfstoestand. Het bestand bevat ook de eindtijd, de blokduur
+en de geldige meetduur voor warmte en temperatuur. Met Weer aan staan de
+opgehaalde verwachtingen voor buitentemperatuur, windsnelheid en windrichting
+apart in de export, samen met beschikbare actuele windgegevens. Het bronnummer verwijst naar de meetroute in
+`heat_contexts`. Bij een bronwissel bewaart de controller het oude blok als
+verkorte periode. Ontbrekende warmte heeft een eigen waarde en is te
+onderscheiden van gemeten nul. De dagen in de volledige export hebben
+dezelfde opbouw als een losse dag.
+
+Een fabrieksreset wist de opname-instelling. De testbuild schermt oude
+meetblokken daarna af. Voor een nieuw archief moet de archiefruimte eerst
+worden gewist.
 
 ## Vooruitblik
 

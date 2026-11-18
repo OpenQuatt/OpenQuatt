@@ -17,6 +17,7 @@ import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChan
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleHouseLearningAction } from "../features/house-learning.js";
+import { handleMeasurementArchiveAction } from "../settings/measurement-archive.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
 import { handleFirmwareAction } from "../features/firmware-actions.js";
 import { updateFirmwareState, updateEnergyHistoryState } from "./feature-state.js";
@@ -48,6 +49,7 @@ const actionDelegates = [
   handleControlReplayAction,
   handleQuickStartAction,
   handleDebugRecordingAction,
+  handleMeasurementArchiveAction,
   (action, button) => handleHouseLearningAction(action, button, triggerNamedButton, refreshEntities),
   handleOduEepromDumpAction,
   handleOduDefrostAction,
