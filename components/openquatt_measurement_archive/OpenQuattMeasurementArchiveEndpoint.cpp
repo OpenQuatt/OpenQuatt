@@ -19,6 +19,10 @@ class DownloadHandler : public AsyncWebHandler {
            (raw->uri[length] == '\0' || raw->uri[length] == '?');
   }
   void handleRequest(AsyncWebServerRequest* request) override {
+    if (!archive_.downloads_ready()) {
+      request->send(503);
+      return;
+    }
     const auto* auth = archive_.web_auth();
     if (!auth || !auth->request_is_authenticated(request)) {
       request->requestAuthentication();
@@ -80,6 +84,13 @@ void export_error(httpd_req_t* request, const char* status, const char* error) {
 void MeasurementArchive::setup_endpoint() {
   if (web_server_base::global_web_server_base)
     web_server_base::global_web_server_base->add_handler(new DownloadHandler(*this));
+}
+
+void MeasurementArchive::enable_downloads() {
+#ifdef USE_WEBSERVER_AUTH
+  if (!web_auth_ || web_auth_->get_credential_source().empty()) return;
+#endif
+  downloads_ready_.store(true);
 }
 
 void MeasurementArchive::download(httpd_req_t* request, const char* date) {

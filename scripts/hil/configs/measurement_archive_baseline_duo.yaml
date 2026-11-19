@@ -9,7 +9,7 @@ esphome:
   includes:
     - measurement_archive_memory_probe.h
   on_boot:
-    priority: -100
+    priority: 251 # Register before WiFi and the web server start.
     then:
       - lambda: oq_archive_hil::setup(*id(oq_web_auth_store));
 

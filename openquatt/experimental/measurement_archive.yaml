@@ -20,7 +20,6 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          id(oq_measurement_archive_store).setup_endpoint();
           oq_ph_learning::runtime().set_archive_observer(
               [](const oq_power_house::learning::LearningSourceInput& input,
                  const oq_power_house::learning::CalorimetryResult& heat,
@@ -32,3 +31,4 @@ esphome:
           id(oq_weather_experiment).set_archive_observer([](const oq_weather::Series& series) {
             id(oq_measurement_archive_store).weather(series);
           });
+          id(oq_measurement_archive_store).enable_downloads();

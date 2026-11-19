@@ -41,6 +41,8 @@ void ArchiveEnabledSwitch::write_state(bool enabled) {
 }
 
 void MeasurementArchive::setup() {
+  // Queue the authenticated route before the web server starts its HTTPD task.
+  setup_endpoint();
   partition_ = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
   if (!partition_ || partition_->size < kEndOffset || !state_.allocate()) {
     enabled_switch_->publish_state(false);
@@ -211,22 +213,23 @@ void MeasurementArchive::observe(const LearningSourceInput& input, const Calorim
   sample.setpoint_c = fresh(input.setpoint_c, input.monotonic_ms) ? input.setpoint_c.value : NAN;
   sample.heat_w = heat.valid ? heat.heat_to_water_w : NAN;
   if (heat.valid && flow_source == Route::SYNTHESIZED_ZERO_FLOW) sample.flags |= SYNTHESIZED_ZERO_FLOW;
-  if (fresh(input.hp1.compressor_active, input.monotonic_ms) && input.hp1.compressor_active.value)
-    sample.flags |= HP1_RUNNING;
-  if (input.hp2.present && fresh(input.hp2.compressor_active, input.monotonic_ms) && input.hp2.compressor_active.value)
-    sample.flags |= HP2_RUNNING;
-  if (fresh(input.boiler_heat, input.monotonic_ms) && input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE)
-    sample.flags |= BOILER;
-  if (input.hp1.defrost_active.value || (input.hp2.present && input.hp2.defrost_active.value)) sample.flags |= DEFROST;
-  if (input.hp1.mode.value == HeatPumpMode::COOLING ||
-      (input.hp2.present && input.hp2.mode.value == HeatPumpMode::COOLING))
-    sample.flags |= COOLING;
+  const auto add_unit_operation = [&](const auto& unit, uint16_t running_flag) {
+    const bool compressor_valid = fresh(unit.compressor_active, input.monotonic_ms);
+    const bool defrost_valid = fresh(unit.defrost_active, input.monotonic_ms);
+    const bool mode_valid = fresh(unit.mode, input.monotonic_ms);
+    if (compressor_valid && unit.compressor_active.value) sample.flags |= running_flag;
+    if (defrost_valid && unit.defrost_active.value) sample.flags |= DEFROST;
+    if (mode_valid && unit.mode.value == HeatPumpMode::COOLING) sample.flags |= COOLING;
+    if (!compressor_valid || !defrost_valid || !mode_valid) sample.flags |= UNKNOWN_OPERATION;
+  };
+  add_unit_operation(input.hp1, HP1_RUNNING);
+  if (input.hp2.present) add_unit_operation(input.hp2, HP2_RUNNING);
+  const bool boiler_valid = fresh(input.boiler_heat, input.monotonic_ms);
+  if (boiler_valid && input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE) sample.flags |= BOILER;
   if (input.operation.active_limit) sample.flags |= LIMITED;
   if (input.operation.service_or_ota) sample.flags |= SERVICE;
   if (!input.operation.control_mode_valid || !input.operation.active_limit_valid ||
-      !input.operation.service_or_ota_valid || !fresh(input.boiler_heat, input.monotonic_ms) ||
-      !fresh(input.hp1.compressor_active, input.monotonic_ms) ||
-      (input.hp2.present && !fresh(input.hp2.compressor_active, input.monotonic_ms)))
+      !input.operation.service_or_ota_valid || !boiler_valid)
     sample.flags |= UNKNOWN_OPERATION;
   state.healthy = state.collector.observe(sample, emit);
   if (!state.healthy) {

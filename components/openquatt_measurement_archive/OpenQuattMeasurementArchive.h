@@ -4,6 +4,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/openquatt_web_auth/OpenQuattWebAuth.h"
+#include <atomic>
 #include <mutex>
 #include "PsramBuffer.h"
 #include "esp_partition.h"
@@ -34,7 +35,9 @@ class MeasurementArchive : public Component, public oq_measurement_archive::Flas
   }
   void set_enabled(bool enabled);
   void setup() override;
-  void setup_endpoint();
+  float get_setup_priority() const override { return setup_priority::DATA; }
+  void enable_downloads();
+  bool downloads_ready() const { return downloads_ready_.load(); }
   void download(httpd_req_t* request, const char* date);
   openquatt_web_auth::OpenQuattWebAuth* web_auth() const { return web_auth_; }
   void dump_config() override;
@@ -75,6 +78,8 @@ class MeasurementArchive : public Component, public oq_measurement_archive::Flas
   std::mutex index_mutex_;
   bool enabled_ = false, stored_enabled_ = false, preference_error_ = false;
   bool index_ready_ = false, orphaned_ = false;
+  std::atomic<bool> downloads_ready_{false};
+  void setup_endpoint();
   void publish_(const char* code);
 };
 
