@@ -589,6 +589,7 @@
     ["phComfortAbove", DOMAIN_NUMBER, "Power House comfort above setpoint", false],
     ["phDemandRiseTime", DOMAIN_NUMBER, "Power House demand rise time", false],
     ["phDemandFallTime", DOMAIN_NUMBER, "Power House demand fall time", false],
+    ["phRunExtensionEnabled", DOMAIN_SWITCH, "Power House run extension enabled"],
     ["phRunExtensionStopMargin", DOMAIN_NUMBER, "Power House run extension stop margin"],
     ["phRunExtensionRestartCooldown", DOMAIN_NUMBER, "Power House run extension restart cooldown"],
     ["phRunExtensionStatus", DOMAIN_TEXT_SENSOR, "Power House run extension status"],
@@ -901,6 +902,7 @@
     "phComfortAbove",
     "phDemandRiseTime",
     "phDemandFallTime",
+    "phRunExtensionEnabled",
     "phRunExtensionStopMargin",
     "phRunExtensionRestartCooldown",
     "phRunExtensionStatus",
@@ -1498,6 +1500,7 @@
   // Firmware-owned configuration snapshot, independent of settings backups.
   // Only non-sensitive persisted settings; live inputs and credentials stay out.
   export const DEBUG_CONFIGURATION_KEYS = [
+    "phRunExtensionEnabled",
     "phRunExtensionStopMargin",
     "phRunExtensionRestartCooldown",
     "roomTempSource",
@@ -2348,7 +2351,8 @@
         "phComfortAbove",
         "phDemandRiseTime",
         "phDemandFallTime",
-        "phRunExtensionStopMargin",
+        "phRunExtensionEnabled",
+    "phRunExtensionStopMargin",
         "phRunExtensionRestartCooldown",
       ],
     },

@@ -473,7 +473,13 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     return t(RUN_EXTENSION_STATUS_COPY[String(status || "").trim().toLowerCase()] || "runExtension.disabled");
   }
 
+  // Firmware without the switch always runs the extension, so a missing entity counts as enabled.
+  function isRunExtensionEnabled() {
+    return !hasEntity("phRunExtensionEnabled") || getSettingsSwitchModel("phRunExtensionEnabled").enabled;
+  }
+
   function getRunExtensionCurrentStatus() {
+    if (!isRunExtensionEnabled()) return t("runExtension.disabled");
     const status = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
     return status === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(status);
   }
@@ -521,11 +527,24 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     if (target) target.innerHTML = renderRunExtensionThresholds();
     const status = state.root?.querySelector("[data-oq-run-extension-status]");
     if (status) status.textContent = getRunExtensionCurrentStatus();
+    const section = state.root?.querySelector("[data-oq-run-extension-enabled]");
+    return !section?.dataset || section.dataset.oqRunExtensionEnabled === String(isRunExtensionEnabled());
   }
 
   export function renderPowerHouseRunExtensionField() {
+    const enabled = isRunExtensionEnabled();
+    let switchField = "";
+    if (hasEntity("phRunExtensionEnabled")) {
+      const { busy } = getSettingsSwitchModel("phRunExtensionEnabled");
+      switchField = renderSettingsFieldCard("phRunExtensionEnabled", t("runExtension.allow"), t("runExtension.allowCopy"), `
+        <div class="oq-settings-compact-switch-field">
+          ${renderSettingsCompactSwitchControl("phRunExtensionEnabled", t("runExtension.allow"), enabled, busy, t("common.on"), t("common.off"))}
+          ${renderSettingsSwitchCopy("phRunExtensionEnabled", enabled, t("runExtension.on"), t("runExtension.off"))}
+        </div>
+      `);
+    }
     return `
-      <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="${escapeHtml(t("runExtension.title"))}">
+      <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" data-oq-run-extension-enabled="${enabled}" aria-label="${escapeHtml(t("runExtension.title"))}">
         <div class="oq-run-extension-intro">
           <div class="oq-settings-subpanel-head">
             <h4>${escapeHtml(t("runExtension.title"))}</h4>
@@ -534,11 +553,16 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           <span class="oq-run-extension-status" data-oq-run-extension-status>${escapeHtml(getRunExtensionCurrentStatus())}</span>
         </div>
         <div class="oq-settings-grid">
+          ${switchField}
+          ${enabled ? `
           ${renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.marginDirection"))}</p>` })}
           ${renderSettingsNumberField("phRunExtensionRestartCooldown", t("runExtension.cooldown"), t("runExtension.cooldownCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.cooldownDirection"))}</p>` })}
+          ` : ""}
         </div>
+        ${enabled ? `
         <div class="oq-run-extension-summary" data-oq-run-extension-thresholds>${renderRunExtensionThresholds()}</div>
         <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
+        ` : ""}
       </section>
     `;
   }

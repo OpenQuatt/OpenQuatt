@@ -183,7 +183,7 @@ De app toont **Warmte terugnemen boven** naast de gewenste temperatuur en de tem
 
 Ook zonder extra opwarming kan de warmtepomp draaien om het warmteverlies van je woning te compenseren. Was de kamer langere tijd te koud, dan kan Power House al eerder extra warmte vragen en daarmee nog een tijdje doorgaan terwijl de kamer opwarmt. De app toont de gewenste temperatuur en **Extra warmte bij afkoeling onder** direct onder het veld.
 
-Langer doorverwarmen staat standaard aan; uitzetten kan met de schakelaar `Power House run extension enabled` in Home Assistant. Een lopende run kan bij weinig vraag op laag vermogen doorgaan tot de stopgrens; een stilstaande warmtepomp wordt niet gestart. Na een stop geldt dezelfde afkoelgrens voor iedere nieuwe start. De minimale looptijd kan een stop uitstellen.
+Langer doorverwarmen staat standaard aan; uitzetten kan hier met de schakelaar **Langer doorverwarmen inschakelen** (in Home Assistant: `Power House run extension enabled`). Staat hij uit, dan verdwijnen de stopgrens en de afkoelinstelling. Een lopende run kan bij weinig vraag op laag vermogen doorgaan tot de stopgrens; een stilstaande warmtepomp wordt niet gestart. Na een stop geldt dezelfde afkoelgrens voor iedere nieuwe start. De minimale looptijd kan een stop uitstellen.
 
 #### Langer doorverwarmen
 

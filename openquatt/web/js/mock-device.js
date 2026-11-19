@@ -2117,6 +2117,7 @@
       option: ["Auto", "Force CM0", "Force CM1", "Force CM98"],
     });
     setEntity("switch", "OpenQuatt Enabled", { value: true, state: true });
+    setEntity("switch", "Power House run extension enabled", { value: true, state: true });
     setEntity("switch", "Controlled warmup enabled", { value: false, state: false });
     setEntity("binary_sensor", "Controlled warmup active", { value: false, state: false });
     setEntity("sensor", "Controlled warmup intermediate target", { value: null, state: "unknown", uom: "°C" });
