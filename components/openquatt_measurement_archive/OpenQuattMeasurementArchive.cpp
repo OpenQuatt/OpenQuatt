@@ -41,7 +41,7 @@ void ArchiveEnabledSwitch::write_state(bool enabled) {
 }
 
 void MeasurementArchive::setup() {
-  // Queue the authenticated route before the web server starts its HTTPD task.
+  // Attach to the learning endpoint before its normal handler is registered.
   setup_endpoint();
   partition_ = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
   if (!partition_ || partition_->size < kEndOffset || !state_.allocate()) {
@@ -111,8 +111,14 @@ bool MeasurementArchive::write(uint32_t offset, const void* data, size_t size) {
          esp_partition_write(partition_, offset, data, size) == ESP_OK;
 }
 bool MeasurementArchive::erase(uint32_t offset) {
-  return partition_ && offset >= kMeasurementOffset && offset % kSectorBytes == 0 &&
-         offset <= kEndOffset - kSectorBytes && esp_partition_erase_range(partition_, offset, kSectorBytes) == ESP_OK;
+  return partition_ && offset >= kOffset && offset % kSectorBytes == 0 && offset <= kEndOffset - kSectorBytes &&
+         esp_partition_erase_range(partition_, offset, kSectorBytes) == ESP_OK;
+}
+
+uint64_t MeasurementArchive::live_contexts_() const {
+  const auto& state = state_[0];
+  // The measurement collector can have a bound slot before its next row lands.
+  return state.measurements.live_contexts() | state.weather.live_contexts() | context_bit(state.context);
 }
 
 template <typename T>
@@ -127,12 +133,18 @@ void MeasurementArchive::observe(const LearningSourceInput& input, const Calorim
   if (!index_ready_ || !healthy()) return;
   auto& state = state_[0];
   const auto emit = [&](Measurement row, uint32_t) {
-    if (!state.context) state.context = state.contexts.bind(state.context_bytes, state.context_size);
-    if (!state.context) return false;
-    if (state.new_session) row.flags |= NEW_SESSION;
     const std::lock_guard<std::mutex> guard(index_mutex_);
-    const bool saved = state.measurements.append(row, state.context);
-    if (saved) state.new_session = false;
+    const auto context_id =
+        state.context ? state.context : state.contexts.bind(state.context_bytes, state.context_size, live_contexts_());
+    if (!context_id) return false;
+    const bool registered = context_id != kUnregisteredContext;
+    if (registered) state.context = context_id;
+    if (state.new_session) row.flags |= NEW_SESSION;
+    const bool saved = state.measurements.append(row, context_id);
+    if (saved) {
+      state.new_session = false;
+      state.source_unregistered = !registered;
+    }
     return saved;
   };
   if (!enabled_ || input.operation.service_or_ota) {
@@ -236,7 +248,7 @@ void MeasurementArchive::observe(const LearningSourceInput& input, const Calorim
     publish_("storage_error");
     return;
   }
-  publish_("recording");
+  publish_(state.source_unregistered ? "recording_unregistered" : "recording");
 }
 
 void MeasurementArchive::weather(const oq_weather::Series& series) {
@@ -250,12 +262,6 @@ void MeasurementArchive::weather(const oq_weather::Series& series) {
   context.latitude = series.latitude;
   context.longitude = series.longitude;
   std::snprintf(context.model, sizeof(context.model), "%s", oq_weather::kModel);
-  const uint32_t context_id = state.contexts.bind(&context, sizeof(context));
-  if (!context_id) {
-    state.healthy = false;
-    publish_("storage_error");
-    return;
-  }
   Weather row{};
   row.epoch = series.fetched_epoch;
   size_t first = 0;
@@ -277,7 +283,8 @@ void MeasurementArchive::weather(const oq_weather::Series& series) {
   }
   {
     const std::lock_guard<std::mutex> guard(index_mutex_);
-    state.healthy = state.weather.append(row, context_id);
+    const auto context_id = state.contexts.bind(&context, sizeof(context), live_contexts_());
+    state.healthy = context_id && state.weather.append(row, context_id);
   }
   if (state.healthy)
     state.last_weather_epoch = row.epoch;

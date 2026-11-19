@@ -225,6 +225,7 @@ export default {
     waiting_sources: "Wacht op geldige meetbronnen",
     paused: "Opname gepauzeerd",
     recording: "Opname loopt",
+    recording_unregistered: "Opname loopt · meetbron tijdelijk onbekend",
     storage_unavailable: "Opslag niet beschikbaar",
     archive_unlinked: "Oude meetopname afgesloten. De opname-instelling ontbreekt.",
     storage_error: "Opname gestopt door een opslagfout",

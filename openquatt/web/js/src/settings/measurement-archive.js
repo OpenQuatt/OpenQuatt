@@ -16,6 +16,7 @@ const statusTranslations = new Map([
   ["waiting_sources", "measurementArchive.waiting_sources"],
   ["paused", "measurementArchive.paused"],
   ["recording", "measurementArchive.recording"],
+  ["recording_unregistered", "measurementArchive.recording_unregistered"],
   ["storage_unavailable", "measurementArchive.storage_unavailable"],
   ["storage_error", "measurementArchive.storage_error"],
   ["preference_error", "measurementArchive.preference_error"],

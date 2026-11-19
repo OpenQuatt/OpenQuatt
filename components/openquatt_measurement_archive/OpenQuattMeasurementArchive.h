@@ -13,6 +13,10 @@
 #include "includes/learning/oq_ph_passive_runtime_logic.h"
 #include "esphome/components/openquatt_weather/OpenQuattWeatherLogic.h"
 
+namespace esphome::openquatt_house_learning_status {
+class OpenQuattHouseLearningStatus;
+}
+
 namespace esphome::openquatt_measurement_archive {
 
 class MeasurementArchive;
@@ -29,6 +33,9 @@ class MeasurementArchive : public Component, public oq_measurement_archive::Flas
  public:
   void set_status(text_sensor::TextSensor* status) { status_ = status; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* auth) { web_auth_ = auth; }
+  void set_learning_endpoint(openquatt_house_learning_status::OpenQuattHouseLearningStatus* endpoint) {
+    learning_endpoint_ = endpoint;
+  }
   void set_switch(ArchiveEnabledSwitch* enabled_switch) {
     enabled_switch_ = enabled_switch;
     enabled_switch_->set_parent(this);
@@ -66,19 +73,21 @@ class MeasurementArchive : public Component, public oq_measurement_archive::Flas
     size_t context_size = 0;
     uint32_t flow_generation = 0, context = 0, source_revision = 0;
     uint32_t last_weather_epoch = 0;
-    bool healthy = false, new_session = true;
+    bool healthy = false, new_session = true, source_unregistered = false;
   };
   openquatt_common::PsramObjectArray<State, 1> state_;
   const esp_partition_t* partition_ = nullptr;
   text_sensor::TextSensor* status_ = nullptr;
   ArchiveEnabledSwitch* enabled_switch_ = nullptr;
   openquatt_web_auth::OpenQuattWebAuth* web_auth_ = nullptr;
-  // Index snapshots take this mutex for a bounded copy. Flash reads and
-  // HTTP transmission after the copy never lock the main loop.
+  openquatt_house_learning_status::OpenQuattHouseLearningStatus* learning_endpoint_ = nullptr;
+  // Readers copy indexes and validate the context revision under this mutex.
+  // Flash reads and HTTP transmission on HTTPD do not hold the mutex.
   std::mutex index_mutex_;
   bool enabled_ = false, stored_enabled_ = false, preference_error_ = false;
   bool index_ready_ = false, orphaned_ = false;
   std::atomic<bool> downloads_ready_{false};
+  uint64_t live_contexts_() const;
   void setup_endpoint();
   void publish_(const char* code);
 };

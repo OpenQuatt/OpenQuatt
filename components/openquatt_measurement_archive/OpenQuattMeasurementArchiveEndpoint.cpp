@@ -1,6 +1,7 @@
 #include "OpenQuattMeasurementArchive.h"
 #include "MeasurementArchiveExport.h"
 #include "OpenQuattHttpStatus.h"
+#include "esphome/components/openquatt_house_learning_status/OpenQuattHouseLearningStatus.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include <cstdio>
 
@@ -41,7 +42,7 @@ struct Export {
   SectorIndex weather[kWeatherSectors];
   uint8_t sector[kSectorBytes];
   Context context;
-  bool used_contexts[kContextCapacity]{};
+  bool used_contexts[kUnregisteredContext]{};
   char body[128 * 1024];
   size_t size = 0;
 
@@ -53,7 +54,7 @@ struct Export {
     return true;
   }
   bool block(const Measurement& r, uint32_t context_id, bool first) {
-    if (!context_id || context_id > kContextCapacity) return false;
+    if (!context_id || context_id > kUnregisteredContext) return false;
     used_contexts[context_id - 1] = true;
     return append("%s[%u,%u,%d,%d,%d,%d,%d,%u,%u,%u,%u]", first ? "" : ",", static_cast<unsigned>(r.epoch),
                   static_cast<unsigned>(context_id), static_cast<int>(r.heat_tenth_wh), r.room_start_centi,
@@ -82,8 +83,7 @@ void export_error(httpd_req_t* request, const char* status, const char* error) {
 }  // namespace
 
 void MeasurementArchive::setup_endpoint() {
-  if (web_server_base::global_web_server_base)
-    web_server_base::global_web_server_base->add_handler(new DownloadHandler(*this));
+  if (learning_endpoint_) learning_endpoint_->set_archive_handler(new DownloadHandler(*this));
 }
 
 void MeasurementArchive::enable_downloads() {
@@ -110,6 +110,7 @@ void MeasurementArchive::download(httpd_req_t* request, const char* date) {
   }
   auto& out = buffer[0];
   size_t measure_first, weather_first;
+  uint32_t context_revision;
   {
     const std::unique_lock<std::mutex> lock(index_mutex_, std::try_to_lock);
     if (!lock.owns_lock()) {
@@ -118,6 +119,7 @@ void MeasurementArchive::download(httpd_req_t* request, const char* date) {
     }
     measure_first = state_[0].measurements.copy_index(out.measurements);
     weather_first = state_[0].weather.copy_index(out.weather);
+    context_revision = state_[0].contexts.revision();
   }
   const uint32_t until = start + kDaySeconds;
   bool first = true;
@@ -136,7 +138,7 @@ void MeasurementArchive::download(httpd_req_t* request, const char* date) {
     return;
   }
   first = true;
-  for (size_t i = 0; i < kContextCapacity; ++i) {
+  for (size_t i = 0; i < kUnregisteredContext; ++i) {
     if (!out.used_contexts[i]) continue;
     HeatRoute route;
     if (!Contexts::read_heat_route(*this, i + 1, out.context, route) ||
@@ -165,6 +167,15 @@ void MeasurementArchive::download(httpd_req_t* request, const char* date) {
                                         return ok;
                                       }) ||
       !out.append("]}")) {
+    export_error(request, "503 Service Unavailable", R"({"error":"archive_snapshot_unavailable"})");
+    return;
+  }
+  bool consistent;
+  {
+    const std::unique_lock<std::mutex> lock(index_mutex_, std::try_to_lock);
+    consistent = lock.owns_lock() && state_[0].contexts.revision() == context_revision;
+  }
+  if (!consistent) {
     export_error(request, "503 Service Unavailable", R"({"error":"archive_snapshot_unavailable"})");
     return;
   }

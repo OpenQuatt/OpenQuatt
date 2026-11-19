@@ -108,6 +108,10 @@ struct __attribute__((packed)) Context {
 static_assert(sizeof(Context) == 1036);
 constexpr size_t kContextsPerSector = kSectorBytes / sizeof(Context);
 constexpr size_t kContextCapacity = kContextSectors * kContextsPerSector;
+constexpr uint32_t kUnregisteredContext = kContextCapacity + 1;
+static_assert(kContextCapacity <= 64);
+
+constexpr uint64_t context_bit(uint32_t id) { return id && id <= kContextCapacity ? uint64_t{1} << (id - 1) : 0; }
 
 template <typename Row>
 constexpr size_t rows_per_sector() {
@@ -126,8 +130,10 @@ struct Flash {
 
 struct SectorIndex {
   uint32_t sequence = 0, first_epoch = 0;
-  uint16_t used = 0, valid = 0;
+  uint8_t used = 0, valid = 0;
+  uint16_t context = 0;
 };
+static_assert(sizeof(SectorIndex) == 12);
 
 struct ArchivePeriod {
   uint32_t first_epoch = 0, last_epoch = 0;
@@ -136,6 +142,8 @@ struct ArchivePeriod {
 
 template <typename Row, size_t Sectors, uint32_t Offset, uint32_t Magic>
 class Ring {
+  static_assert(rows_per_sector<Row>() <= UINT8_MAX);
+
  public:
   bool open(Flash& flash, SectorIndex* index, uint8_t* scratch, uint32_t boot) {
     flash_ = &flash;
@@ -156,8 +164,10 @@ class Ring {
         continue;
       }
       auto& entry = index[i];
+      if (!header.context || header.context > kUnregisteredContext) return false;
       entry.sequence = header.sequence;
       entry.first_epoch = header.first_epoch;
+      entry.context = static_cast<uint16_t>(header.context);
       for (size_t row = 0; row < rows_per_sector<Row>(); ++row) {
         Row value;
         std::memcpy(&value, scratch + sizeof(Header) + row * sizeof(Row), sizeof(value));
@@ -184,7 +194,7 @@ class Ring {
   }
 
   bool append(Row row, uint32_t context) {
-    if (!healthy_ || !context || !row.epoch || row.epoch <= last_epoch_) return false;
+    if (!healthy_ || !context || context > kUnregisteredContext || !row.epoch || row.epoch <= last_epoch_) return false;
     if (active_ == Sectors || index_[active_].used == rows_per_sector<Row>() || context != context_) {
       if (sequence_ == UINT32_MAX) return fail_();
       const size_t next = next_sector_;
@@ -199,7 +209,7 @@ class Ring {
       next_sector_ = (next + 1) % Sectors;
       context_ = context;
       sequence_ = header.sequence;
-      index_[active_] = {sequence_, row.epoch, 0, 0};
+      index_[active_] = {sequence_, row.epoch, 0, 0, static_cast<uint16_t>(context)};
     }
     if (row.epoch < index_[active_].first_epoch) return false;
     seal(row);
@@ -252,6 +262,13 @@ class Ring {
     return result;
   }
   size_t count() const { return period().count; }
+  uint64_t live_contexts() const {
+    uint64_t result = 0;
+    if (!index_) return result;
+    for (size_t i = 0; i < Sectors; ++i)
+      if (index_[i].valid) result |= context_bit(index_[i].context);
+    return result;
+  }
 
   // Caller copies under the writer mutex. The reader then uses its own
   // scratch and checks the sector generation before using any captured slots.
@@ -311,8 +328,8 @@ class Ring {
 using Measurements = Ring<Measurement, kMeasurementSectors, kMeasurementOffset, 0x314D514F>;
 using WeatherHistory = Ring<Weather, kWeatherSectors, kWeatherOffset, 0x3157514F>;
 
-// Registry slots are immutable. A partial write consumes one slot. A full
-// registry stops new contexts rather than discarding metadata still referenced.
+// Slots remain immutable while either ring references them. Reclaim only
+// entire unreferenced sectors. The fallback ID has no flash slot.
 class Contexts {
  public:
   bool open(Flash& flash, uint8_t* scratch) {
@@ -320,14 +337,15 @@ class Contexts {
     scratch_ = scratch;
     return true;
   }
-  uint32_t bind(const void* bytes, size_t size) {
+  uint32_t revision() const { return revision_; }
+  uint32_t bind(const void* bytes, size_t size, uint64_t live) {
     if (!size || size > sizeof(Context::bytes)) return 0;
     size_t empty = kContextCapacity;
     for (size_t i = 0; i < kContextCapacity; ++i) {
       if (!flash_->read(offset_(i), scratch_, sizeof(Context))) return 0;
       Context value;
       std::memcpy(&value, scratch_, sizeof(value));
-      if (value.magic == 0xFFFFFFFF && empty == kContextCapacity) {
+      if (value.magic == 0xFFFFFFFF && empty == kContextCapacity && !(live & context_bit(i + 1))) {
         const auto* raw = reinterpret_cast<const uint8_t*>(&value);
         if (std::all_of(raw, raw + sizeof(value), [](uint8_t byte) { return byte == 0xFF; })) empty = i;
       }
@@ -335,7 +353,19 @@ class Contexts {
           std::memcmp(value.bytes, bytes, size) == 0)
         return i + 1;
     }
-    if (empty == kContextCapacity) return 0;
+    if (empty == kContextCapacity) {
+      constexpr uint64_t sector_slots = (uint64_t{1} << kContextsPerSector) - 1;
+      for (size_t sector = 0; sector < kContextSectors; ++sector) {
+        const size_t first = sector * kContextsPerSector;
+        if (live & (sector_slots << first)) continue;
+        // Readers reject a snapshot spanning any attempted slot reuse.
+        ++revision_;
+        if (!flash_->erase(offset_(first))) return 0;
+        empty = first;
+        break;
+      }
+      if (empty == kContextCapacity) return kUnregisteredContext;
+    }
     Context value{};
     value.magic = kMagic;
     value.schema = kSchema;
@@ -349,12 +379,13 @@ class Contexts {
   }
 
   static bool read_heat_route(Flash& flash, uint32_t id, Context& scratch, HeatRoute& route) {
+    route = {};
+    route.magic = 0;  // Legacy or temporarily unregistered context.
+    if (id == kUnregisteredContext) return true;
     if (id == 0 || id > kContextCapacity || !flash.read(offset_(id - 1), &scratch, sizeof(scratch)) ||
         scratch.magic != kMagic || scratch.schema != kSchema || scratch.size == 0 ||
         scratch.size > sizeof(scratch.bytes) || !verified(scratch))
       return false;
-    route = {};
-    route.magic = 0;  // Legacy context: source was not recorded.
     if (scratch.size >= sizeof(HeatRoute)) std::memcpy(&route, scratch.bytes, sizeof(route));
     if (route.magic != HeatRoute{}.magic) route.magic = 0;
     return true;
@@ -367,6 +398,7 @@ class Contexts {
   }
   Flash* flash_ = nullptr;
   uint8_t* scratch_ = nullptr;
+  uint32_t revision_ = 0;
 };
 
 struct Sample {

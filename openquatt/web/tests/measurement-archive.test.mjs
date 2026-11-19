@@ -48,6 +48,14 @@ test("nieuwe opname toont wachtstatus en download is nog uitgeschakeld", () => {
   assert.match(markup, /type="submit" disabled/);
 });
 
+test("opname zonder bronregistratie houdt de export beschikbaar", () => {
+  state.entities.measurementArchiveEnabled = { value: true };
+  state.entities.measurementArchiveStatus = { value: "recording_unregistered|1794873600|1794960000|42" };
+  const markup = renderLearningView();
+  assert.match(markup, /Opname loopt · meetbron tijdelijk onbekend/);
+  assert.match(markup, /data-oq-action="download-measurement-archive" >Hele archief downloaden/);
+});
+
 test("afgesloten archief biedt geen schakelaaractie of download", () => {
   state.entities.measurementArchiveEnabled = { value: false };
   state.entities.measurementArchiveStatus = { value: "archive_unlinked|0|0|0" };

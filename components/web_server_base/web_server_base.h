@@ -123,8 +123,9 @@ class WebServerBase final {
     // NOTE: Currently 1 header. If more are added, update in __init__.py:
     //   cg.add_define("WEB_SERVER_DEFAULT_HEADERS_COUNT", 1)
     DefaultHeaders::Instance().addHeader(ESPHOME_F("Access-Control-Allow-Origin"), ESPHOME_F("*"));
-    for (auto* handler : this->handlers_) this->server_->addHandler(handler);
     this->server_->begin();
+
+    for (auto* handler : this->handlers_) this->server_->addHandler(handler);
   }
   void deinit() {
     if (this->initialized_ == 0) return;  // unbalanced deinit()

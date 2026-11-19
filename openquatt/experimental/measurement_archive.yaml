@@ -8,6 +8,7 @@ external_components:
 openquatt_measurement_archive:
   id: oq_measurement_archive_store
   web_auth: oq_web_auth_store
+  learning_endpoint: oq_ph_learning_status_endpoint
   enabled_switch:
     name: "Measurement Archive enabled"
     entity_category: config

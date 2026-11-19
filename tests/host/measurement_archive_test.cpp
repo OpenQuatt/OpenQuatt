@@ -26,7 +26,7 @@ struct MemoryFlash : Flash {
     return !fail_write && !lose_ack;
   }
   bool erase(uint32_t at) override {
-    assert(at >= kMeasurementOffset && at + kSectorBytes <= data.size() && at % kSectorBytes == 0);
+    assert(at >= kOffset && at + kSectorBytes <= data.size() && at % kSectorBytes == 0);
     if (fail_erase) return false;
     std::fill_n(data.data() + at, kSectorBytes, 0xFF);
     return true;
@@ -172,17 +172,76 @@ void registry() {
   uint8_t scratch[kSectorBytes];
   registry.open(flash, scratch);
   const char key[] = "physical-profile-a";
-  assert(registry.bind(key, sizeof(key)) == 1);
-  assert(registry.bind(key, sizeof(key)) == 1);
+  constexpr uint64_t all_live = ~uint64_t{0};
+  assert(registry.bind(key, sizeof(key), 0) == 1);
+  assert(registry.bind(key, sizeof(key), all_live) == 1);
   flash.fail_write = true;
   const char second[] = "physical-profile-b";
-  assert(registry.bind(second, sizeof(second)) == 0);
+  assert(registry.bind(second, sizeof(second), context_bit(1)) == 0);
   flash.fail_write = false;
-  assert(registry.bind(second, sizeof(second)) == 3);
-  for (size_t i = 3; i < kContextCapacity; ++i) assert(registry.bind(&i, sizeof(i)) > 0);
+  assert(registry.bind(second, sizeof(second), context_bit(1)) == 3);
+  for (size_t i = 3; i < kContextCapacity; ++i) assert(registry.bind(&i, sizeof(i), 0) == i + 1);
   const char full[] = "full";
-  assert(registry.bind(full, sizeof(full)) == 0);
-  assert(registry.bind(key, sizeof(key)) == 1);
+  assert(registry.bind(full, sizeof(full), all_live) == kUnregisteredContext);
+  assert(registry.bind(key, sizeof(key), all_live) == 1);
+  assert(registry.revision() == 0);
+  const auto first_sector_free = all_live & ~uint64_t{7};
+  flash.fail_read = true;
+  assert(registry.bind(full, sizeof(full), first_sector_free) == 0);
+  assert(registry.revision() == 0);
+  flash.fail_read = false;
+  flash.fail_erase = true;
+  assert(registry.bind(full, sizeof(full), first_sector_free) == 0);
+  flash.fail_erase = false;
+  assert(registry.bind(full, sizeof(full), first_sector_free) == 1);
+  assert(registry.revision() == 2);
+  Context value;
+  HeatRoute route;
+  assert(Contexts::read_heat_route(flash, kUnregisteredContext, value, route) && !route.magic);
+  Open<Small, 3> overflow(flash);
+  assert(overflow.ring.append(make_row(0), kUnregisteredContext));
+  Open<Small, 3> after_restart(flash, 2);
+  assert(after_restart.ring.count() == 1 && !after_restart.ring.live_contexts());
+}
+
+void recycle_contexts() {
+  MemoryFlash flash;
+  uint8_t scratch[kSectorBytes];
+  std::fill(flash.data.begin() + kOffset, flash.data.begin() + kMeasurementOffset, 0xA5);
+  Contexts registry;
+  assert(registry.open(flash, scratch));
+  const char weather_key[] = "weather-only context";
+  const auto weather_context = registry.bind(weather_key, sizeof(weather_key), 0);
+  assert(weather_context == 1);
+  assert(registry.revision() == 1);
+  assert(flash.data[kOffset + kSectorBytes] == 0xA5);
+
+  Open<Small, 3> history(flash);
+  Open<WeatherHistory, kWeatherSectors> weather(flash);
+  Weather forecast{};
+  forecast.epoch = 1800000000U;
+  assert(weather.ring.append(forecast, weather_context));
+  for (unsigned i = 0; i < 120; ++i) {
+    const auto live = history.ring.live_contexts() | weather.ring.live_contexts();
+    HeatRoute route;
+    route.flow_endpoint = i;
+    const auto slot = registry.bind(&route, sizeof(route), live);
+    assert(slot && slot <= kContextCapacity && !(live & context_bit(slot)));
+    assert(history.ring.append(make_row(i), slot));
+  }
+  Open<Small, 3> restarted(flash, 2);
+  Open<WeatherHistory, kWeatherSectors> weather_restarted(flash, 2);
+  assert(weather_restarted.ring.live_contexts() == context_bit(weather_context));
+  assert(registry.bind(weather_key, sizeof(weather_key), ~uint64_t{0}) == weather_context);
+  assert(restarted.ring.live_contexts() == history.ring.live_contexts());
+  assert(restarted.ring.count() == 3);
+  assert(restarted.ring.visit(0, [&](const auto& row, const auto& header) {
+    Context stored;
+    HeatRoute route;
+    assert(Contexts::read_heat_route(flash, header.context, stored, route));
+    assert(route.flow_endpoint == (row.epoch - 1800000000U) / 300);
+    return true;
+  }));
 }
 
 void source_switch_with_legacy_record() {
@@ -191,7 +250,7 @@ void source_switch_with_legacy_record() {
   Contexts contexts;
   assert(contexts.open(flash, scratch));
   const uint8_t legacy_key[] = {3, 0, 0, 0};
-  const auto legacy = contexts.bind(legacy_key, sizeof(legacy_key));
+  const auto legacy = contexts.bind(legacy_key, sizeof(legacy_key), 0);
   HeatRoute pumps{};
   pumps.flow_source = 19;  // HP1 flow meter
   HeatRoute system = pumps;
@@ -199,8 +258,8 @@ void source_switch_with_legacy_record() {
   system.supply_source = 1;  // Local PT1000
   system.supply_endpoint = 123;
   system.supply_offset_c = -0.125f;
-  const auto pump_context = contexts.bind(&pumps, sizeof(pumps));
-  const auto system_context = contexts.bind(&system, sizeof(system));
+  const auto pump_context = contexts.bind(&pumps, sizeof(pumps), 0);
+  const auto system_context = contexts.bind(&system, sizeof(system), 0);
   assert(legacy == 1 && pump_context == 2 && system_context == 3);
   Open<Small, 3> recording(flash);
   assert(recording.ring.append(make_row(0), legacy));
@@ -215,9 +274,9 @@ void source_switch_with_legacy_record() {
     assert(collector.observe({sec * 1000ULL, 1800000000U + sec, system_context, 20, 5, 7200, 21, 0}, save));
 
   Open<Small, 3> restarted(flash, 2);
-  assert(contexts.bind(legacy_key, sizeof(legacy_key)) == legacy);
-  assert(contexts.bind(&pumps, sizeof(pumps)) == pump_context);
-  assert(contexts.bind(&system, sizeof(system)) == system_context);
+  assert(contexts.bind(legacy_key, sizeof(legacy_key), recording.ring.live_contexts()) == legacy);
+  assert(contexts.bind(&pumps, sizeof(pumps), recording.ring.live_contexts()) == pump_context);
+  assert(contexts.bind(&system, sizeof(system), recording.ring.live_contexts()) == system_context);
   unsigned count = 0;
   assert(restarted.ring.visit(0, [&](const Measurement& row, const Header& header) {
     assert(verified(row));
@@ -332,6 +391,7 @@ int main() {
   failures();
   every_powercut_boundary();
   registry();
+  recycle_contexts();
   source_switch_with_legacy_record();
   read_only_day_snapshot();
   full_retention();

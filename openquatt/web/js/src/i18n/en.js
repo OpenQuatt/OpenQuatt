@@ -224,6 +224,7 @@ export default {
     waiting_sources: "Waiting for valid measurement sources",
     paused: "Recording paused",
     recording: "Recording active",
+    recording_unregistered: "Recording · measurement source temporarily unknown",
     storage_unavailable: "Storage unavailable",
     archive_unlinked: "Previous recording locked. The recording setting is missing.",
     storage_error: "Recording stopped because of a storage error",

@@ -369,6 +369,8 @@ json::SerializationBuffer<> WebServer::get_config_json() {
 }
 
 void WebServer::setup() {
+  this->base_->init();
+
 #ifdef USE_LOGGER
   if (logger::global_logger != nullptr && this->expose_log_) {
     logger::global_logger->add_log_callback(
@@ -382,7 +384,6 @@ void WebServer::setup() {
   this->base_->add_handler(&this->events_);
 #endif
   this->base_->add_handler(this);
-  this->base_->init();
 
   // OTA is now handled by the web_server OTA platform
 

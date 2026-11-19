@@ -136,15 +136,42 @@ buitentemperatuur, de ingestelde kamertemperatuur, de aan het water afgegeven
 warmte en de bedrijfstoestand. Het bestand bevat ook de eindtijd, de blokduur
 en de geldige meetduur voor warmte en temperatuur. Met Weer aan staan de
 opgehaalde verwachtingen voor buitentemperatuur, windsnelheid en windrichting
-apart in de export, samen met beschikbare actuele windgegevens. Het bronnummer verwijst naar de meetroute in
-`heat_contexts`. Bij een bronwissel bewaart de controller het oude blok als
+apart in de export, samen met beschikbare actuele windgegevens. Het bronnummer
+verwijst per dag naar de meetroute in `heat_contexts`. Bij een bronwissel
+bewaart de controller het oude blok als
 verkorte periode. Ontbrekende warmte heeft een eigen waarde en is te
 onderscheiden van gemeten nul. De dagen in de volledige export hebben
-dezelfde opbouw als een losse dag.
+dezelfde opbouw als een losse dag. Meetarchief hergebruikt bronregistraties
+zodra de bijbehorende blokken uit de opslag zijn gerold. Als alle slots in
+gebruik zijn, blijft de opname lopen. Een nieuwe meetbron staat dan als
+`unknown` in de export tot er weer ruimte vrijkomt.
 
 Een fabrieksreset wist de opname-instelling. De testbuild schermt oude
 meetblokken daarna af. Voor een nieuw archief moet de archiefruimte eerst
-worden gewist.
+worden gewist. Dit kan via USB op een Q-controller met de standaard
+16 MiB-partitie-indeling. De wisopdracht verwijdert de oude meetopname
+definitief. Controleer eerst de partitie-indeling van de aangesloten controller
+met esptool 5 en het partitiescript van ESP-IDF. Vul de USB-poort van de
+controller in bij `OQ_USB_PORT`.
+
+```sh
+OQ_USB_PORT=/dev/tty.usbmodem…
+python -m esptool --chip esp32s3 --port "$OQ_USB_PORT" read-flash 0x8000 0x1000 partitions.bin
+python "$IDF_PATH/components/partition_table/gen_esp32part.py" partitions.bin
+```
+
+Controleer dat `openquatt_data` start op `0xA20000` en `6016K`
+(`0x5E0000`) groot is, zoals in
+[`openquatt_16mb.csv`](../../openquatt/partitions/openquatt_16mb.csv).
+Gebruik de volgende opdracht alleen bij die indeling. Die wist uitsluitend
+de gereserveerde archiefruimte.
+
+```sh
+python -m esptool --chip esp32s3 --port "$OQ_USB_PORT" erase-region 0xC00000 0x246000
+```
+
+Herstart de controller. Meetarchief staat weer op **Uit** en kan opnieuw
+worden ingeschakeld.
 
 ## Vooruitblik
 

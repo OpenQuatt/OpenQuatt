@@ -24,6 +24,10 @@ class OpenQuattHouseLearningStatus : public Component {
  public:
   void set_web_server(web_server::WebServer* web_server) { this->web_server_ = web_server; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* web_auth) { this->web_auth_ = web_auth; }
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  void set_archive_handler(AsyncWebHandler* handler) { this->archive_handler_ = handler; }
+  AsyncWebHandler* archive_handler() const { return this->archive_handler_; }
+#endif
 
   enum class LineResult : uint8_t { STORED, REFUSED, UNCERTAIN, QUEUED, UNKNOWN };
   using ChangeLine = uint8_t (*)(float, float, float, float, float, bool);
@@ -71,6 +75,9 @@ class OpenQuattHouseLearningStatus : public Component {
 
   web_server::WebServer* web_server_{nullptr};
   openquatt_web_auth::OpenQuattWebAuth* web_auth_{nullptr};
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  AsyncWebHandler* archive_handler_{nullptr};
+#endif
   PsramBuffer<char> status_buffer_{};
   PsramBuffer<char> export_buffer_{};
   mutable PsramBuffer<char> request_buffer_{};
