@@ -712,6 +712,30 @@ void test_elevated_minimum_preserves_real_demand_and_guards() {
   }
 }
 
+void test_oil_return_active_prevents_stop_at_setpoint() {
+  // Verify that when oil_return_active is true, the stop_at_setpoint guard is disabled.
+  for (int level : {2, 3, 10}) {
+    Input in = base_input();
+    in.minimum_viable_level = level;
+    in.room_c = 20.6f;
+    in.base_requested_w = in.minimum_viable_w;
+    State state{Phase::RUNNING, 20.5f, true};
+    const auto real_demand = evaluate(in, tuning(), state);
+    assert(!real_demand.force_comfort_stop && !real_demand.floor_active);
+
+    // Below minimum with oil return active should create a floor but not trigger forced stop on setpoint.
+    in.base_requested_w = 900.0f;
+    in.room_c = 20.49f;
+    in.oil_return_active = true;
+    const auto below = evaluate(in, tuning(), state);
+    assert(below.floor_active && !below.force_comfort_stop);
+    in.room_c = 20.5f;
+    const auto after = evaluate(in, tuning(), below.next);
+    // With oil return active, the stop_at_setpoint guard should be disabled, so no forced comfort stop.
+    assert(!after.force_comfort_stop);
+  }
+}
+
 void test_elevated_stop_survives_input_loss_during_pending_restart() {
   Input in = base_input();
   in.setpoint_c = 19.5f;
@@ -760,6 +784,7 @@ void test_elevated_stop_survives_input_loss_during_pending_restart() {
 int main() {
   test_elevated_minimum_stops_optional_extension_at_setpoint();
   test_elevated_minimum_preserves_real_demand_and_guards();
+  test_oil_return_active_prevents_stop_at_setpoint();
   test_elevated_stop_survives_input_loss_during_pending_restart();
   test_configurable_restart_and_cold_edge();
   test_cold_room_intent_releases_wait();

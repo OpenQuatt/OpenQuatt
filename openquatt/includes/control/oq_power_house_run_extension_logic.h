@@ -31,6 +31,7 @@ struct Input {
   float minimum_viable_w = NAN;
   int minimum_viable_level = 0;
   float water_limit_factor = NAN;
+  bool oil_return_active = false;  // Added to allow oil‑return safeguard
 };
 
 struct Tuning {
@@ -108,7 +109,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
                             state.phase == Phase::WARM_RESTART;
   const bool elevated_minimum = in.minimum_viable_level > 1 && pmin_valid(in.minimum_viable_w) &&
                                 std::isfinite(in.base_requested_w) && in.base_requested_w < in.minimum_viable_w;
-  const bool stop_at_setpoint = elevated_minimum || (state.stop_at_setpoint && comfort_hold);
+  const bool stop_at_setpoint = elevated_minimum || (state.stop_at_setpoint && comfort_hold) && !in.oil_return_active;
   const float comfort_stop_c =
       std::isfinite(in.setpoint_c) ? in.setpoint_c + (stop_at_setpoint ? 0.0f : stop_margin_c) : NAN;
   const float cold_edge_c = oq_heat_intent::room_cold_edge_c(in.setpoint_c, tuning.room_resume_delta_c);

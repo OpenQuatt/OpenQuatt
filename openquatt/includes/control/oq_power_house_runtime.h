@@ -455,6 +455,7 @@ class Runtime {
     run_ext_input.base_requested_w = base_requested_w;
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.minimum_viable_level = minimum_viable_level;
+    run_ext_input.oil_return_active == hp1_oil_return || hp2_oil_return;
     if (applied_total > 0) {
       const auto active_minimum = oq_power_house_dispatch::minimum_active_candidate(dispatch_input, dispatch_tuning);
       run_ext_input.minimum_viable_w = active_minimum.valid ? active_minimum.thermal_w : NAN;
