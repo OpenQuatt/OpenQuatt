@@ -20,7 +20,7 @@ class DownloadHandler : public AsyncWebHandler {
   }
   void handleRequest(AsyncWebServerRequest* request) override {
     if (!archive_.downloads_ready()) {
-      request->send(503);
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE);
       return;
     }
     const auto* auth = archive_.web_auth();
