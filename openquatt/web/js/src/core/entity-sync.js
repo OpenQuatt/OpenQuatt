@@ -13,7 +13,7 @@ import { getDefaultAppView, getUrlAppView, setAppView } from "./navigation.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
 import { getInstallationMonitoringModel, syncInstallationMonitoringDetailsState } from "./installation-monitoring.js";
 import { getIncidentMonitoringFailureUpdate, getIncidentMonitoringSuccessUpdate, getIncidentMonitoringUnsupportedUpdate } from "./incident-monitoring.js";
-import { ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
+import { ODU_FIRMWARE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
 import { beginDeviceReconnect, clearDeviceReconnect, isRestartRefreshActive, markDeviceReconnectRecovered, reconcileOtaEvidence, reconcileRestartEvidence } from "./device-reconnect.js";
 import { getSettingsRenderSignature } from "./render-signatures.js";
 import { isSystemSettingsGroupActive } from "./surface-state.js";
@@ -37,6 +37,8 @@ import {
 } from "./usage-telemetry-preview.js";
 import { render } from "./render-scheduler.js";
 import { fetchWithTimeout } from "./browser-utils.js";
+
+  const ODU_GENERATION_STATUS_KEYS = [...ODU_GENERATION_KEYS, ...ODU_FIRMWARE_KEYS];
 
   export function scheduleOverviewPrefetch() {
     if (state.nativeOpen || state.appView !== "settings") {
@@ -240,6 +242,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "hpGeneration",
       "electricalCurrentLimit",
       ...ODU_GENERATION_KEYS,
+      ...ODU_FIRMWARE_KEYS,
       ...ODU_GENERATION_VARIANT_KEYS,
       ...ODU_GENERATION_DETECT_KEYS,
       "boilerCvAssistEnabled",
@@ -1326,7 +1329,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       : [];
     const quickStartGenerationKeys = state.quickStartModalOpen
       && (state.currentStep === "generation" || state.currentStep === "confirm")
-      ? ODU_GENERATION_KEYS
+      ? ODU_GENERATION_STATUS_KEYS
       : [];
     const settingsStorageKeys = shouldRefreshSettingsStorageForCurrentSurface()
       ? getSettingsStorageRefreshKeys()
@@ -1363,7 +1366,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
               ...(isCurveMode() ? CURVE_POINTS.map((point) => point.key) : POWER_HOUSE_KEYS),
             ]
           : ["setupComplete", ...HEADER_ENTITY_KEYS, "strategy", ...staticKeys];
-    const generationBefore = ODU_GENERATION_KEYS.map(getEntityValue).join();
+    const generationBefore = ODU_GENERATION_STATUS_KEYS.map(getEntityValue).join();
     if (state.systemModal === "silent-settings") keys.push(...FREQUENCY_CAP_KEYS, ...FREQUENCY_MINIMUM_KEYS);
 
     state.entitySyncInFlight = true;
@@ -1469,7 +1472,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       if (shouldDeferSupplementary && !state.nativeOpen) {
         schedulePrimeSupplementaryData(getSupplementaryPrimeDelayMs(syncView));
       }
-      if (generationBefore !== ODU_GENERATION_KEYS.map(getEntityValue).join()) {
+      if (generationBefore !== ODU_GENERATION_STATUS_KEYS.map(getEntityValue).join()) {
         render();
         return;
       }

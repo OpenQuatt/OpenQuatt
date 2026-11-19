@@ -4,7 +4,7 @@ import { buildEntityPath } from "../core/domain-helpers.js";
 import { setEntityBackupValue } from "../core/entity-backup.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { refreshEntities } from "../core/entity-sync.js";
-import { ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS } from "../core/odu-generation.js";
+import { ODU_FIRMWARE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS } from "../core/odu-generation.js";
 import { state } from "../core/state.js";
 import { shouldInitializeQuickStartPerformanceTelemetryChoice, waitForPerformanceTelemetryChoiceConfirmation } from "../core/performance-telemetry-domain.js";
 import { shouldInitializeQuickStartUsageTelemetryChoice, waitForUsageTelemetryChoiceConfirmation } from "../core/usage-telemetry-domain.js";
@@ -25,6 +25,7 @@ import { formatNumber, t } from "../i18n/index.js";
         ...TOPOLOGY_HINT_KEYS,
         "hpGeneration",
         ...ODU_GENERATION_KEYS,
+        ...ODU_FIRMWARE_KEYS,
         ...ODU_GENERATION_DETECT_KEYS,
       ])];
     }
