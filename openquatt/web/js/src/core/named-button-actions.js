@@ -1,7 +1,7 @@
 import { INSTALLATION_MONITORING_STATE_KEYS } from "./config.js";
 import { getEntityValue, hasEntity } from "./entity-store.js";
 import { triggerIncidentAction, triggerNamedButton, triggerNamedButtonGroup } from "./entity-write-actions.js";
-import { normalizeDetectedOduGeneration, ODU_CUSTOMER_MODEL_CODE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
+import { normalizeDetectedOduGeneration, ODU_CUSTOMER_MODEL_CODE_KEYS, ODU_FIRMWARE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
 import { state } from "./state.js";
 import { t } from "../i18n/index.js";
 
@@ -171,6 +171,7 @@ function triggerOduGenerationDetection(detectKeys) {
   const generationKeys = detectIndexes.map((index) => ODU_GENERATION_KEYS[index]);
   const refreshKeys = detectIndexes.flatMap((index) => [
     ODU_GENERATION_KEYS[index],
+    ODU_FIRMWARE_KEYS[index],
     ODU_GENERATION_VARIANT_KEYS[index],
     ODU_CUSTOMER_MODEL_CODE_KEYS[index],
   ]);

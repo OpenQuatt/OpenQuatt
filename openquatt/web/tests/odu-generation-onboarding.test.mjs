@@ -17,6 +17,8 @@ const {
 } = await import("../js/src/core/odu-generation.js");
 const {
   getOduGenerationChoiceMeta,
+  getOduGenerationDetectionModel,
+  renderOduFirmwareSummary,
   renderOduGenerationDetectionStatus,
 } = await import("../js/src/features/odu-generation-ui.js");
 const { state } = await import("../js/src/core/state.js");
@@ -32,7 +34,9 @@ function textEntity(value) {
   return { value, state: value };
 }
 
-function resetGenerationState({ topology = "single", selected = "V1.5", hp1 = "V1.5", hp2 = null } = {}) {
+function resetGenerationState({
+  topology = "single", selected = "V1.5", hp1 = "V1.5", hp2 = null, firmware1 = null, firmware2 = null,
+} = {}) {
   state.entities = {
     installationTopology: textEntity(topology),
     hpGeneration: {
@@ -42,6 +46,8 @@ function resetGenerationState({ topology = "single", selected = "V1.5", hp1 = "V
     },
     hp1Generation: textEntity(hp1),
     hp1GenerationDetect: textEntity(""),
+    ...(firmware1 === null ? {} : { hp1OduFirmware: textEntity(firmware1) }),
+    ...(firmware2 === null ? {} : { hp2OduFirmware: textEntity(firmware2) }),
     ...(hp2 === null
       ? {}
       : {
@@ -141,10 +147,10 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
 
   const markup = renderOduGenerationDetectionStatus();
 
-  assert.match(markup, /HP1/);
-  assert.match(markup, /Quatt ODU V1/);
-  assert.match(markup, /HP2/);
-  assert.match(markup, /Quatt ODU V1\.5/);
+  assert.match(markup, /Buitenunit 1/);
+  assert.match(markup, />V1<\/strong>/);
+  assert.match(markup, /Buitenunit 2/);
+  assert.match(markup, />V1\.5<\/strong>/);
   assert.match(markup, /Gemengde Duo/);
   assert.match(markup, /Advies V1/);
   assert.match(markup, /V1 wordt aanbevolen; V1\.5 is geselecteerd/);
@@ -170,7 +176,7 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   state.busyAction = "odu-generation-detect-all";
   const groupPendingMarkup = renderOduGenerationDetectionStatus();
   assert.match(groupPendingMarkup, /OpenQuatt leest de buitenunits opnieuw uit/);
-  assert.doesNotMatch(groupPendingMarkup, />Unknown</);
+  assert.doesNotMatch(groupPendingMarkup, />Onbekend</);
 });
 
 test("Unknown blijft zichtbaar, toont geen aanbevolen badge en behoudt handmatige fallback", () => {
@@ -178,11 +184,46 @@ test("Unknown blijft zichtbaar, toont geen aanbevolen badge en behoudt handmatig
 
   const markup = renderOduGenerationDetectionStatus();
 
-  assert.match(markup, />Unknown</);
+  assert.match(markup, />Onbekend</);
   assert.match(markup, /geen versie geadviseerd/i);
   assert.equal(getOduGenerationChoiceMeta("V2", "V2", ""), "Geselecteerd");
   assert.match(installationSource, /renderSettingsChoiceOption\(/);
   assert.equal(state.entities.hpGeneration.value, "V2");
+});
+
+test("Duo toont per buitenunit de uitgelezen generatie en eigen firmwareversie", () => {
+  resetGenerationState({ topology: "duo", selected: "V1.5", hp1: "V2", hp2: "V2", firmware1: "2.02", firmware2: "2.01" });
+
+  const model = getOduGenerationDetectionModel();
+  for (const markup of [renderOduFirmwareSummary(model), renderOduGenerationDetectionStatus()]) {
+    assert.match(markup, /data-oq-odu-generation="hp1">\s*<span[^>]*>Buitenunit 1<\/span>\s*<div[^>]*>\s*<strong>V2<\/strong>\s*<span[^>]*>Firmware 2\.02</);
+    assert.match(markup, /data-oq-odu-generation="hp2">\s*<span[^>]*>Buitenunit 2<\/span>\s*<div[^>]*>\s*<strong>V2<\/strong>\s*<span[^>]*>Firmware 2\.01</);
+  }
+  assert.equal(model.recommendation, "V2");
+  assert.equal(state.entities.hpGeneration.value, "V1.5");
+
+  state.busyAction = "odu-generation-detect-all";
+  assert.doesNotMatch(renderOduGenerationDetectionStatus(), /Firmware/);
+});
+
+test("Single toont de generatie ook als de firmwareversie ontbreekt of ongeldig is", () => {
+  for (const firmware1 of [null, "255.255"]) {
+    resetGenerationState({ hp1: "V1", hp2: "V2", firmware1, firmware2: "2.02" });
+
+    const summary = renderOduFirmwareSummary(getOduGenerationDetectionModel());
+    const detection = renderOduGenerationDetectionStatus();
+    assert.match(summary, />V1<\/strong>/);
+    assert.match(detection, />V1<\/strong>/);
+    assert.doesNotMatch(summary + detection, /Buitenunit 2|Firmware/);
+  }
+});
+
+test("een uitgelezen firmwareversie vult een onbekende generatie niet in", () => {
+  resetGenerationState({ hp1: "Unknown", firmware1: "1.34" });
+  const model = getOduGenerationDetectionModel();
+
+  assert.match(renderOduFirmwareSummary(model), />Onbekend<\/strong>\s*<span[^>]*>Firmware 1\.34</);
+  assert.equal(model.recommendation, "");
 });
 
 test("geselecteerde uniforme detectie krijgt één gecombineerde badge", () => {

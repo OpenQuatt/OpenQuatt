@@ -494,9 +494,9 @@
 }
 
 .oq-gen-badge.is-success {
-  background: rgba(21, 128, 61, 0.08);
-  border-color: rgba(21, 128, 61, 0.18);
-  color: #15803d;
+  background: var(--oq-helper-modal-success-background);
+  border-color: var(--oq-helper-modal-success-border);
+  color: var(--oq-helper-modal-success-ink);
 }
 
 .oq-gen-reset {
@@ -562,28 +562,79 @@
   margin-bottom: 18px;
 }
 
-.oq-gen-units {
-  display: grid;
-  gap: 0;
-  margin-top: 12px;
+.oq-gen-summary {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--oq-helper-line);
 }
 
-.oq-gen-units.is-duo {
-  grid-template-columns: 1fr;
+.oq-gen-units {
+  display: grid;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oq-gen-summary .oq-gen-units {
+  margin-top: 8px;
 }
 
 .oq-gen-unit {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
   padding: 8px 0;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.oq-gen-unit + .oq-gen-unit {
+  border-top: 1px solid var(--oq-helper-line);
 }
 
 .oq-gen-unit:first-child {
-  border-top: 0;
-  padding-top: 2px;
+  padding-top: 0;
 }
 
 .oq-gen-unit:last-child {
-  padding-bottom: 2px;
+  padding-bottom: 0;
+}
+
+.oq-gen-unit-label {
+  color: var(--oq-helper-soft);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.oq-gen-unit-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  color: var(--oq-helper-ink);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.oq-gen-unit-firmware {
+  color: var(--oq-helper-soft);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 641px) {
+  .oq-gen-units.is-duo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .oq-gen-unit {
+    padding-block: 0;
+  }
+
+  .oq-gen-unit + .oq-gen-unit {
+    padding-inline-start: 16px;
+    border-top: 0;
+    border-inline-start: 1px solid var(--oq-helper-line);
+  }
 }
 
 @media (max-width: 640px) {
@@ -592,12 +643,9 @@
     flex-direction: column;
   }
 
-  .oq-gen-units.is-duo {
-    grid-template-columns: 1fr;
-  }
-
-  .oq-gen-unit + .oq-gen-unit {
-    border-top: 1px solid var(--oq-helper-line);
+  .oq-gen-hd {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 
