@@ -16,12 +16,15 @@ constexpr uint32_t kMeasurementOffset = kOffset + kContextSectors * kSectorBytes
 constexpr size_t kMeasurementSectors = 359;
 constexpr uint32_t kWeatherOffset = kMeasurementOffset + kMeasurementSectors * kSectorBytes;
 constexpr size_t kWeatherSectors = 207;
-constexpr uint32_t kEndOffset = kWeatherOffset + kWeatherSectors * kSectorBytes;
+constexpr uint32_t kSolarOffset = kWeatherOffset + kWeatherSectors * kSectorBytes;
+constexpr size_t kSolarSectors = 87;
+constexpr uint32_t kEndOffset = kSolarOffset + kSolarSectors * kSectorBytes;
 constexpr uint16_t kSchema = 1;
 constexpr uint32_t kRetentionS = 180U * 86400U;
 constexpr int16_t kMissingTemperature = INT16_MIN;
 constexpr int32_t kMissingHeat = INT32_MIN;
 constexpr uint16_t kMissingWind = UINT16_MAX;
+constexpr uint16_t kMissingSolar = UINT16_MAX;
 
 enum Flags : uint16_t {
   HP1_RUNNING = 1U << 0,
@@ -92,6 +95,14 @@ struct __attribute__((packed)) Weather {
 };
 static_assert(sizeof(Weather) == 48);
 
+// Sidecar keyed by the weather receipt, so existing weather records remain readable.
+struct __attribute__((packed)) SolarRadiation {
+  uint32_t epoch;
+  uint16_t wm2[5], reserved;
+  uint32_t crc;
+};
+static_assert(sizeof(SolarRadiation) == 20);
+
 struct __attribute__((packed)) Header {
   uint32_t magic;
   uint16_t schema, row_size;
@@ -119,6 +130,7 @@ constexpr size_t rows_per_sector() {
 }
 static_assert((kMeasurementSectors - 1) * rows_per_sector<Measurement>() >= 180U * 288U);
 static_assert((kWeatherSectors - 1) * rows_per_sector<Weather>() >= 180U * 96U);
+static_assert((kSolarSectors - 1) * rows_per_sector<SolarRadiation>() >= 180U * 96U);
 
 // All offsets are relative to the existing openquatt_data partition.
 struct Flash {
@@ -327,6 +339,7 @@ class Ring {
 
 using Measurements = Ring<Measurement, kMeasurementSectors, kMeasurementOffset, 0x314D514F>;
 using WeatherHistory = Ring<Weather, kWeatherSectors, kWeatherOffset, 0x3157514F>;
+using SolarHistory = Ring<SolarRadiation, kSolarSectors, kSolarOffset, 0x3153514F>;
 
 // Slots remain immutable while either ring references them. Reclaim only
 // entire unreferenced sectors. The fallback ID has no flash slot.

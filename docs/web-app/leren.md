@@ -135,8 +135,15 @@ bewaart hij de binnentemperatuur aan het begin en einde, de gemiddelde
 buitentemperatuur, de ingestelde kamertemperatuur, de aan het water afgegeven
 warmte en de bedrijfstoestand. Het bestand bevat ook de eindtijd, de blokduur
 en de geldige meetduur voor warmte en temperatuur. Met Weer aan staan de
-opgehaalde verwachtingen voor buitentemperatuur, windsnelheid en windrichting
-apart in de export, samen met beschikbare actuele windgegevens. Het bronnummer
+opgehaalde verwachtingen voor buitentemperatuur, windsnelheid, windrichting en
+zoninstraling apart in de export, samen met beschikbare actuele windgegevens.
+Zoninstraling staat in `solar` met dezelfde ophaaltijd als de bijbehorende
+weerupdate. De vijf waarden zijn globale instraling op een horizontaal vlak
+in W/m². Elke waarde geldt voor het uur dat op het vermelde tijdstip eindigt.
+Een ontbrekende waarde staat als `null`. Koppel een zonrij aan een bestaande
+weerupdate op ophaaltijd. Een oudere weerupdate heeft geen zonrij. Bij een
+onleesbaar zonarchief blijft de gewone export beschikbaar en krijgt
+`solar_available` de waarde `false`. Het bronnummer
 verwijst per dag naar de meetroute in `heat_contexts`. Bij een bronwissel
 bewaart de controller het oude blok als
 verkorte periode. Ontbrekende warmte heeft een eigen waarde en is te
@@ -167,7 +174,7 @@ Gebruik de volgende opdracht alleen bij die indeling. Die wist uitsluitend
 de gereserveerde archiefruimte.
 
 ```sh
-python -m esptool --chip esp32s3 --port "$OQ_USB_PORT" erase-region 0xC00000 0x246000
+python -m esptool --chip esp32s3 --port "$OQ_USB_PORT" erase-region 0xC00000 0x29D000
 ```
 
 Herstart de controller. Meetarchief staat weer op **Uit** en kan opnieuw

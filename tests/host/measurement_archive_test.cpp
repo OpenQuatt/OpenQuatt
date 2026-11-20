@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <string>
 #include <vector>
 #include "components/openquatt_measurement_archive/MeasurementArchive.h"
 #include "components/openquatt_measurement_archive/MeasurementArchiveExport.h"
@@ -343,10 +344,48 @@ void read_only_day_snapshot() {
   assert(exported.empty());
 }
 
+void solar_after_upgrade_and_interrupted_write() {
+  MemoryFlash flash;
+  Open<WeatherHistory, kWeatherSectors> weather(flash);
+  Weather legacy{};
+  legacy.epoch = 1800000000U;
+  legacy.current_direction_centi = 9000;
+  assert(weather.ring.append(legacy, 2));
+  Open<SolarHistory, kSolarSectors> solar(flash);
+  assert(solar.ring.count() == 0);
+  const SolarRadiation entry{legacy.epoch + 900, {0, kMissingSolar, 1, 500, 1200}, 0, 0};
+  assert(solar.ring.append(entry, kUnregisteredContext));
+  auto incomplete = entry;
+  incomplete.epoch += 900;
+  flash.fail_write = true;
+  flash.cut_after = 7;
+  assert(!solar.ring.append(incomplete, kUnregisteredContext));
+  flash.fail_write = false;
+  Open<WeatherHistory, kWeatherSectors> weather_reopened(flash, 2);
+  assert(weather_reopened.ring.count() == 1);
+  assert(weather_reopened.ring.visit(0, [&](auto& row, auto&) { return row.current_direction_centi == 9000; }));
+  Open<SolarHistory, kSolarSectors> reopened(flash, 2);
+  assert(reopened.ring.count() == 1 && reopened.ring.last_epoch() == entry.epoch);
+  std::string json;
+  const auto append = [&](auto format, auto... args) {
+    char buf[64];
+    const int size = std::snprintf(buf, sizeof(buf), format, args...);
+    assert(size > 0 && static_cast<size_t>(size) < sizeof(buf));
+    json.append(buf, static_cast<size_t>(size));
+    return true;
+  };
+  assert(reopened.ring.visit(0, [&](auto& row, auto&) { return export_solar_forecast(row, true, append); }));
+  assert(json == "[1800000900,1800000000,0,null,1,500,1200]");
+  incomplete.epoch += 900;
+  assert(reopened.ring.append(incomplete, kUnregisteredContext));
+  assert(reopened.ring.count() == 2);
+}
+
 void full_retention() {
   MemoryFlash flash;
   Open<Measurements, kMeasurementSectors> recorded(flash);
   Open<WeatherHistory, kWeatherSectors> weather(flash);
+  Open<SolarHistory, kSolarSectors> solar(flash);
   constexpr unsigned days = 194;
   for (unsigned i = 0; i < days * 288; ++i) {
     assert(recorded.ring.append(make_row(i), 1));
@@ -357,6 +396,8 @@ void full_retention() {
       row.current_speed_centi = 1234;
       row.current_direction_centi = 35950;
       assert(weather.ring.append(row, 2));
+      const SolarRadiation radiation{row.epoch, {0, 100, kMissingSolar, 700, 900}, 0, 0};
+      assert(solar.ring.append(radiation, kUnregisteredContext));
     }
   }
   Open<Measurements, kMeasurementSectors> rebooted(flash, 2);
@@ -382,6 +423,14 @@ void full_retention() {
     return true;
   }));
   assert(n_weather == 180 * 96);
+  Open<SolarHistory, kSolarSectors> solar_reboot(flash, 2);
+  unsigned n_solar = 0;
+  assert(solar_reboot.ring.visit(cutoff, [&](auto& row, auto& header) {
+    assert(header.context == kUnregisteredContext && row.wm2[0] == 0 && row.wm2[2] == kMissingSolar);
+    ++n_solar;
+    return true;
+  }));
+  assert(n_solar == n_weather);
   for (size_t i = 0; i < kOffset; ++i) assert(flash.data[i] == 0xFF);
   std::printf("PASS retention: 194 days, %u measurements, %u forecasts, %zu bytes reserved\n", count, n_weather,
               static_cast<size_t>(kEndOffset - kOffset));
@@ -394,5 +443,6 @@ int main() {
   recycle_contexts();
   source_switch_with_legacy_record();
   read_only_day_snapshot();
+  solar_after_upgrade_and_interrupted_write();
   full_retention();
 }

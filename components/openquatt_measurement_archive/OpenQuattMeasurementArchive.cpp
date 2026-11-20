@@ -55,14 +55,16 @@ void MeasurementArchive::setup() {
   state.contexts.open(*this, state.scratch);
   state.healthy = state.measurements.open(*this, state.measurement_index, state.scratch, boot) &&
                   state.weather.open(*this, state.weather_index, state.scratch, boot);
+  state.solar_opened = state.healthy && state.solar.open(*this, state.solar_index, state.scratch, boot);
+  if (state.healthy && !state.solar_opened) ESP_LOGW(TAG, "Solar radiation storage unavailable");
   state.last_weather_epoch = state.weather.last_epoch();
   uint8_t stored = 0;
   const auto loaded = read_enabled(stored);
   preference_error_ = (loaded != ESP_OK && loaded != ESP_ERR_NVS_NOT_FOUND) || stored > 1;
-  const bool has_saved_data = state.measurements.last_epoch() || state.weather.last_epoch();
-  // Factory reset clears NVS, but leaves the data partition in place.
-  // Do not resume or disclose a previous installation's measurements.
-  if (has_saved_data && (loaded != ESP_OK || stored > 1)) {
+  const bool has_saved_data = state.measurements.last_epoch() || state.weather.last_epoch() || state.solar.last_epoch();
+  // Factory reset clears NVS, but leaves the data partition in place. An
+  // unreadable solar ring cannot establish that the archive is empty either.
+  if ((has_saved_data || (state.healthy && !state.solar_opened)) && (loaded != ESP_OK || stored > 1)) {
     orphaned_ = loaded == ESP_ERR_NVS_NOT_FOUND;
     enabled_switch_->publish_state(false);
     publish_(orphaned_ ? "archive_unlinked" : "storage_error");
@@ -273,7 +275,13 @@ void MeasurementArchive::weather(const oq_weather::Series& series) {
   row.current_direction_centi = series.current_wind.valid && series.current_wind.direction_valid
                                     ? std::lround(series.current_wind.direction_deg * 100)
                                     : kMissingWind;
+  SolarRadiation radiation{};
+  radiation.epoch = row.epoch;
+  bool has_solar = false;
   for (size_t i = 0; i < 5; ++i) {
+    const bool solar_valid = series.solar_valid_mask & (uint64_t{1} << (first + i));
+    radiation.wm2[i] = solar_valid ? series.solar_wm2[first + i] : kMissingSolar;
+    has_solar |= solar_valid;
     row.outside_centi[i] = temperature(series.temperature[first + i]);
     row.speed_centi[i] = std::lround(series.wind_mps[first + i] * 100);
     const bool direction_valid = series.wind_direction_valid_mask & (uint64_t{1} << (first + i));
@@ -285,11 +293,14 @@ void MeasurementArchive::weather(const oq_weather::Series& series) {
     const std::lock_guard<std::mutex> guard(index_mutex_);
     const auto context_id = state.contexts.bind(&context, sizeof(context), live_contexts_());
     state.healthy = context_id && state.weather.append(row, context_id);
+    if (state.healthy) {
+      state.last_weather_epoch = row.epoch;
+      if (has_solar && state.solar.healthy() && radiation.epoch > state.solar.last_epoch() &&
+          !state.solar.append(radiation, kUnregisteredContext))
+        ESP_LOGW(TAG, "Solar radiation storage unavailable until restart");
+    }
   }
-  if (state.healthy)
-    state.last_weather_epoch = row.epoch;
-  else
-    publish_("storage_error");
+  if (!state.healthy) publish_("storage_error");
 }
 
 }  // namespace esphome::openquatt_measurement_archive

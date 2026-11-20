@@ -218,7 +218,7 @@ export default {
     fieldsTemperature: "Binnentemperatuur aan het begin en einde, gemiddelde buitentemperatuur en de ingestelde kamertemperatuur.",
     fieldsHeat: "Warmte afgegeven aan het water (Wh), de meetbron en hoe lang de warmte- en temperatuurmetingen geldig waren.",
     fieldsOperation: "Bedrijfstoestand, zoals draaiende warmtepompen, koelen, ontdooien en bijverwarming.",
-    fieldsWeather: "Met Weer aan bewaart de controller ook opgehaalde verwachtingen voor buitentemperatuur, windsnelheid en windrichting, plus actuele windgegevens als die beschikbaar zijn.",
+    fieldsWeather: "Met Weer aan bewaart de controller ook opgehaalde verwachtingen voor buitentemperatuur, wind en zoninstraling, plus actuele windgegevens als die beschikbaar zijn.",
     off: "Opname uit",
     waiting: "Wacht op het eerste meetblok",
     waiting_clock: "Wacht op een geldige klok",

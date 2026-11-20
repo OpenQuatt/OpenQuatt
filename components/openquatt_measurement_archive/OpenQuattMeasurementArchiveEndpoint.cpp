@@ -40,6 +40,7 @@ class DownloadHandler : public AsyncWebHandler {
 struct Export {
   SectorIndex measurements[kMeasurementSectors];
   SectorIndex weather[kWeatherSectors];
+  SectorIndex solar[kSolarSectors];
   uint8_t sector[kSectorBytes];
   Context context;
   bool used_contexts[kUnregisteredContext]{};
@@ -109,7 +110,9 @@ void MeasurementArchive::download(httpd_req_t* request, const char* date) {
     return;
   }
   auto& out = buffer[0];
-  size_t measure_first, weather_first;
+  size_t measure_first, weather_first, solar_first = 0;
+  ArchivePeriod weather_period;
+  bool solar_opened;
   uint32_t context_revision;
   {
     const std::unique_lock<std::mutex> lock(index_mutex_, std::try_to_lock);
@@ -119,6 +122,9 @@ void MeasurementArchive::download(httpd_req_t* request, const char* date) {
     }
     measure_first = state_[0].measurements.copy_index(out.measurements);
     weather_first = state_[0].weather.copy_index(out.weather);
+    weather_period = state_[0].weather.period();
+    solar_opened = state_[0].solar_opened;
+    if (solar_opened) solar_first = state_[0].solar.copy_index(out.solar);
     context_revision = state_[0].contexts.revision();
   }
   const uint32_t until = start + kDaySeconds;
@@ -165,10 +171,39 @@ void MeasurementArchive::download(httpd_req_t* request, const char* date) {
                                         const bool ok = out.forecast(row, first);
                                         first = false;
                                         return ok;
-                                      }) ||
-      !out.append("]}")) {
+                                      })) {
     export_error(request, "503 Service Unavailable", R"({"error":"archive_snapshot_unavailable"})");
     return;
+  }
+  first = true;
+  const uint32_t solar_from = std::max(start, weather_period.first_epoch);
+  const uint32_t solar_until = weather_period.last_epoch < until ? weather_period.last_epoch + 1 : until;
+  const size_t weather_body_end = out.size;
+  bool complete_solar = false;
+  if (out.append(
+          R"(],"solar_fields":["fetched_epoch_s","first_hour_epoch_s","hour_0_w_m2","hour_1_w_m2","hour_2_w_m2","hour_3_w_m2","hour_4_w_m2"],"solar":[)")) {
+    const size_t solar_body_start = out.size;
+    const bool solar_available =
+        solar_opened && (solar_from >= solar_until ||
+                         SolarHistory::visit_snapshot(*this, out.solar, solar_first, solar_from, solar_until,
+                                                      out.sector, [&](const SolarRadiation& row, const Header&) {
+                                                        const bool ok = export_solar_forecast(
+                                                            row, first, [&](auto format, auto... args) {
+                                                              return out.append(format, args...);
+                                                            });
+                                                        first = false;
+                                                        return ok;
+                                                      }));
+    if (!solar_available) out.size = solar_body_start;
+    complete_solar = out.append(solar_available ? R"(],"solar_available":true})" : R"(],"solar_available":false})");
+  }
+  if (!complete_solar) {
+    // The original day export also fits without the optional solar data.
+    out.size = weather_body_end;
+    if (!out.append("]}")) {
+      export_error(request, "503 Service Unavailable", R"({"error":"archive_snapshot_unavailable"})");
+      return;
+    }
   }
   bool consistent;
   {

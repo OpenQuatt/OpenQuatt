@@ -31,4 +31,19 @@ inline bool utc_day(const char* date, uint32_t& start) {
   return true;
 }
 
+// The worker archives the hour containing the receipt and the four following
+// knots. Each GHI sample is the mean for the hour ending at that knot.
+template <typename Append>
+bool export_solar_forecast(const SolarRadiation& row, bool first, Append append) {
+  constexpr uint32_t hour_s = 3600;
+  if (!append("%s[%u,%u", first ? "" : ",", static_cast<unsigned>(row.epoch),
+              static_cast<unsigned>(row.epoch - row.epoch % hour_s)))
+    return false;
+  for (size_t i = 0; i < 5; ++i) {
+    const uint16_t value = row.wm2[i];
+    if (!(value == kMissingSolar ? append(",null") : append(",%u", static_cast<unsigned>(value)))) return false;
+  }
+  return append("]");
+}
+
 }  // namespace oq_measurement_archive

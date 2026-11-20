@@ -64,16 +64,19 @@ class MeasurementArchive : public Component, public oq_measurement_archive::Flas
   struct State {
     oq_measurement_archive::Measurements measurements;
     oq_measurement_archive::WeatherHistory weather;
+    oq_measurement_archive::SolarHistory solar;
     oq_measurement_archive::Contexts contexts;
     oq_measurement_archive::Collector collector;
     oq_measurement_archive::SectorIndex measurement_index[oq_measurement_archive::kMeasurementSectors];
     oq_measurement_archive::SectorIndex weather_index[oq_measurement_archive::kWeatherSectors];
+    oq_measurement_archive::SectorIndex solar_index[oq_measurement_archive::kSolarSectors];
     uint8_t scratch[oq_measurement_archive::kSectorBytes];
     uint8_t context_bytes[sizeof(oq_measurement_archive::Context::bytes)]{};
     size_t context_size = 0;
     uint32_t flow_generation = 0, context = 0, source_revision = 0;
     uint32_t last_weather_epoch = 0;
     bool healthy = false, new_session = true, source_unregistered = false;
+    bool solar_opened = false;
   };
   openquatt_common::PsramObjectArray<State, 1> state_;
   const esp_partition_t* partition_ = nullptr;

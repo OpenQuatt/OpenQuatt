@@ -83,6 +83,12 @@ inline bool parse_json(const char* data, size_t size, uint8_t* arena, size_t are
   const auto direction = root["hourly"]["wind_direction_10m"].as<ArduinoJson::JsonArrayConst>();
   const bool direction_schema =
       std::strcmp(root["hourly_units"]["wind_direction_10m"] | "", "°") == 0 && direction.size() == kHours;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  const auto solar = root["hourly"]["shortwave_radiation"].as<ArduinoJson::JsonArrayConst>();
+  const bool solar_schema =
+      std::strcmp(root["hourly_units"]["shortwave_radiation"] | "", "W/m²") == 0 && solar.size() == kHours;
+  candidate.solar_valid_mask = 0;
+#endif
   if (times.size() != kHours || temperatures.size() != kHours || wind.size() != kHours) return false;
   candidate.fetched_epoch = fetched_epoch;
   candidate.fetched_ms = fetched_ms;
@@ -95,6 +101,15 @@ inline bool parse_json(const char* data, size_t size, uint8_t* arena, size_t are
     candidate.temperature[i] = temperatures[i].as<float>();
     candidate.wind_mps[i] = wind[i].as<float>();
     candidate.wind_direction_deg[i] = NAN;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    if (solar_schema && solar[i].is<double>()) {
+      const double radiation = solar[i].as<double>();
+      if (std::isfinite(radiation) && radiation >= 0 && radiation <= 2000) {
+        candidate.solar_wm2[i] = static_cast<uint16_t>(std::lround(radiation));
+        candidate.solar_valid_mask |= uint64_t{1} << i;
+      }
+    }
+#endif
     if (direction_schema && direction[i].is<double>() && valid_wind_direction(direction[i].as<double>())) {
       candidate.wind_direction_deg[i] = direction[i].as<float>();
       candidate.wind_direction_valid_mask |= uint64_t{1} << i;

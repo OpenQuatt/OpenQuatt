@@ -114,6 +114,14 @@ function dayPayload(epoch, measurements) {
   };
 }
 
+test("archive help describes solar irradiance in Dutch and English", () => {
+  state.entities.measurementArchiveEnabled = { value: true };
+  state.entities.measurementArchiveStatus = { value: "recording|1794873600|1794960000|42" };
+  assert.match(renderLearningView(), /zoninstraling/);
+  setLocale("en", { persist: false });
+  assert.match(renderLearningView(), /solar irradiance/);
+});
+
 test("180 days become one file with every saved block and its heat route", async (t) => {
   const count = 180 * 288;
   const last = start + (count - 1) * 300;
@@ -156,11 +164,15 @@ test("a gap does not invalidate a download, and new blocks stay outside the snap
     dayPayload(start + daySeconds, []),
     dayPayload(last, [[last, 1], [last + 300, 1]]),
   ];
+  days[2].solar_fields = ["fetched_epoch_s", "first_hour_epoch_s", "hour_0_w_m2", "hour_1_w_m2", "hour_2_w_m2", "hour_3_w_m2", "hour_4_w_m2"];
+  days[2].solar = [[last, last, 0, null, 10, 100, 200]];
   t.mock.method(globalThis, "fetch", async () => ({ ok: true, json: async () => days.shift() }));
   const blob = await assembleMeasurementArchive({ first: start, last, count: 2 },
     new AbortController().signal, () => {});
   const file = JSON.parse(await blob.text());
   assert.deepEqual(file.days.map((day) => day.measurements), [[[start, 1]], [], [[last, 1]]]);
+  assert.equal(file.days[0].solar, undefined);
+  assert.deepEqual(file.days[2].solar, [[last, last, 0, null, 10, 100, 200]]);
 });
 
 test("a missing block prevents saving a misleading complete download", async (t) => {

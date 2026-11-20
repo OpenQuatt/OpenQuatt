@@ -42,9 +42,9 @@ struct OpenQuattFlashLayout {
   static constexpr uint32_t CHANGE_LOG_OFFSET = HOUSE_LEARNING_END_OFFSET;
   static constexpr size_t CHANGE_LOG_SECTOR_COUNT = 3U;
   static constexpr uint32_t CHANGE_LOG_END_OFFSET = CHANGE_LOG_OFFSET + (CHANGE_LOG_SECTOR_COUNT * SECTOR_SIZE);
-  // Optional measurement archive: context registry and two independent rings.
+  // Optional measurement archive: context registry and separate data rings.
   static constexpr uint32_t MEASUREMENT_ARCHIVE_OFFSET = 0x1E0000;
-  static constexpr size_t MEASUREMENT_ARCHIVE_SECTOR_COUNT = 16U + 359U + 207U;
+  static constexpr size_t MEASUREMENT_ARCHIVE_SECTOR_COUNT = 16U + 359U + 207U + 87U;
   static constexpr uint32_t MEASUREMENT_ARCHIVE_END_OFFSET =
       MEASUREMENT_ARCHIVE_OFFSET + MEASUREMENT_ARCHIVE_SECTOR_COUNT * SECTOR_SIZE;
 };

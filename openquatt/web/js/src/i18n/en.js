@@ -217,7 +217,7 @@ export default {
     fieldsTemperature: "Indoor temperature at the start and end, average outdoor temperature and the room temperature setting.",
     fieldsHeat: "Heat delivered to the water (Wh), its measurement source, and how long heat and temperature readings were valid.",
     fieldsOperation: "Operating state, such as running heat pumps, cooling, defrost and auxiliary heating.",
-    fieldsWeather: "With Weather enabled, the controller also saves downloaded forecasts for outdoor temperature, wind speed and wind direction, plus current wind data when available.",
+    fieldsWeather: "With Weather enabled, the controller also saves downloaded forecasts for outdoor temperature, wind and solar irradiance, plus current wind data when available.",
     off: "Recording off",
     waiting: "Waiting for the first measurement block",
     waiting_clock: "Waiting for a valid clock",
