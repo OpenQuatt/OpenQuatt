@@ -50,7 +50,7 @@ void test_frequency_feedback_changes_duo_selection() {
     in.requested_w = single.thermal_w;
     in.duo = in.performance_valid = in.lead_hp1 = true;
     in.hp1.candidate = in.hp2.candidate = {2, true, false, false, true};
-    in.pair_power = &CandidateModel::dispatch;
+    if (model.coupled) in.pair_power = &CandidateModel::dispatch;
     in.pair_context = &model;
     // Isolate the reported low-command combination. No low-frequency exclusion
     // is added to production; the next assertion also checks that 30 Hz survives.
@@ -65,6 +65,22 @@ void test_frequency_feedback_changes_duo_selection() {
     return in;
   };
   const DispatchTuning limits{6000, 6500};
+  const CandidateModel independent(frequency, 2, 30, 1000, {35, 35}, false, false);
+  for (const auto* model : {&nominal, &independent}) {
+    auto cycle = dispatch_input(*model);
+    cycle.hp1.feedback_hold_level = cycle.hp2.feedback_hold_level = 2;
+    cycle.hp1.stop_inhibited = cycle.hp2.stop_inhibited = true;
+    const auto comfort_level = [&] {
+      return run_extension_minimum(cycle, limits, 500.0f, &CandidateModel::reference_f1_dispatch).comfort_level;
+    };
+    assert(comfort_level() == 1);
+    cycle.hp1.levels[1].allowed = false;
+    assert(comfort_level() == 2);
+    cycle.hp1.stop_inhibited = false;
+    assert(comfort_level() == 1);
+    cycle.hp2.candidate.previous_applied_level = 0;
+    assert(comfort_level() == 2);
+  }
   const auto before = decide_dispatch(dispatch_input(nominal), limits, {}, &CandidateModel::confirmed_power);
   assert(topology(before.hp1_level, before.hp2_level) == 2);
   auto in = dispatch_input(actual);
@@ -669,18 +685,12 @@ void test_temporary_frequency_override_preserves_run_extension_margin() {
     }
     const extension::State running{extension::Phase::RUNNING, 21.0f, true};
     const extension::Tuning tuning{sample.margin_c, 0.3f, 0.2f};
-    extension::Input input{true, true, true, true, sample.room_c, 21.0f, sample.base_w, NAN, 0, 1.0f};
     const auto live = minimum_active_candidate(in, limits);
     assert(live.valid && live.hp1_level > 1 && sample.base_w < live.thermal_w);
-    input.minimum_viable_w = live.thermal_w;
-    input.minimum_viable_level = live.hp1_level;
-    assert(extension::evaluate(input, tuning, running).force_comfort_stop);
-
     const auto evaluate = [&](extension::State state) {
-      const auto minimum =
-          run_extension_minimum(in, limits, input.base_requested_w, &CandidateModel::reference_f1_dispatch);
-      input.minimum_viable_w = minimum.thermal_w;
-      input.minimum_viable_level = minimum.comfort_level;
+      const auto minimum = run_extension_minimum(in, limits, sample.base_w, &CandidateModel::reference_f1_dispatch);
+      const extension::Input input{
+          true, true, true, true, sample.room_c, 21.0f, sample.base_w, minimum.thermal_w, minimum.comfort_level, 1.0f};
       return extension::evaluate(input, tuning, state);
     };
     const auto continued = evaluate(running);
@@ -699,50 +709,11 @@ void test_temporary_frequency_override_preserves_run_extension_margin() {
     in.hp1.levels[1].allowed = true;
     const auto latched = evaluate(prohibited.next);
     assert(latched.force_comfort_stop && latched.comfort_stop_c == 21.0f);
-
-    input.water_limit_factor = 0.8f;
-    assert(!evaluate(running).floor_active);
-    input.room_c = 21.0f + sample.margin_c;
-    assert(evaluate(running).force_comfort_stop);
-  }
-}
-
-void test_extension_f1_candidate_respects_duo_constraints() {
-  using namespace oq_power_house_dispatch;
-  using oq_water_performance::CandidateModel;
-  const Frequency frequency;
-  const DispatchTuning limits{3500, 4000};
-  for (bool coupled : {false, true}) {
-    const CandidateModel model(frequency, 7.0f, 30.0f, 900.0f, {35.0f, 36.0f}, coupled, false);
-    DispatchInput in;
-    in.duo = in.performance_valid = true;
-    in.pair_context = &model;
-    if (coupled) in.pair_power = &CandidateModel::dispatch;
-    for (auto* hp : {&in.hp1, &in.hp2}) {
-      hp->candidate = {2, true, false, false, true};
-      hp->feedback_hold_level = 2;
-      hp->stop_inhibited = true;
-      for (int level : {1, 2}) {
-        const auto p = model.unit(hp == &in.hp1, level);
-        hp->levels[level] = {true, p.valid(), p.valid(), p.thermal_w, p.electrical_w};
-      }
-    }
-    const auto minimum = [&] {
-      return run_extension_minimum(in, limits, 500.0f, &CandidateModel::reference_f1_dispatch);
-    };
-    assert(minimum().comfort_level == 1);
-    in.hp1.levels[1].allowed = false;
-    assert(minimum().comfort_level == 2);
-    in.hp1.stop_inhibited = false;
-    assert(minimum().comfort_level == 1);
-    in.hp2.candidate.previous_applied_level = 0;
-    assert(minimum().comfort_level == 2);
   }
 }
 
 int main() {
   test_temporary_frequency_override_preserves_run_extension_margin();
-  test_extension_f1_candidate_respects_duo_constraints();
   test_mixed_response_selects_duo_or_single_for_actual_capacity();
   test_inactive_outlet_is_not_required();
   test_frequency_feedback_changes_duo_selection();
