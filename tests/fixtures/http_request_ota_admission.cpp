@@ -62,10 +62,17 @@ std::shared_ptr<Container> image_get() {
 }
 class OtaHttpRequestComponent {
  public:
-  std::string url_, md5_computed_, md5_expected_;
+  struct Request {
+    std::string url, md5_computed, md5_expected;
+  };
+  std::unique_ptr<Request> request_;
   uint8_t response = 139;
-  void set_url(const std::string& value) { url_ = value; }
-  void set_md5(const std::string& value) { md5_expected_ = value; }
+  Request& get_request() {
+    if (!request_) request_ = std::make_unique<Request>();
+    return *request_;
+  }
+  void set_url(const std::string& value) { get_request().url = value; }
+  void set_md5(const std::string& value) { get_request().md5_expected = value; }
   void notify_state_(ota::OTAState state, float, uint8_t) {
     if (state == ota::OTA_STARTED) ++starts;
     if (state == ota::OTA_ERROR) ++errors;

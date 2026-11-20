@@ -11,17 +11,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeSseCompatibilityTest(unittest.TestCase):
-    def test_formatter_preserves_native_httpd_sse_and_reset_between_configs(self) -> None:
+    def test_generated_patch_preserves_native_httpd_sse_and_reset_between_configs(self) -> None:
         from esphome.const import __version__
         from esphome.helpers import copy_file_if_changed
 
         expected = (ROOT / ".github/requirements-esphome.txt").read_text().strip().removeprefix("esphome==")
         self.assertEqual(__version__, expected)
-        modules = {}
-        for name in ["core_four_decimals", "http_request_update_source"]:
-            spec = util.spec_from_file_location(name, ROOT / "components/web_server_base" / f"{name}.py")
-            modules[name] = util.module_from_spec(spec)
-            spec.loader.exec_module(modules[name])
+        spec = util.spec_from_file_location(
+            "http_request_update_source", ROOT / "components/web_server_base/http_request_update_source.py"
+        )
+        patch = util.module_from_spec(spec)
+        spec.loader.exec_module(patch)
         installed = resources.files("esphome.components.web_server_idf")
         sdk_paths = {
             ("esphome", "components", "web_server_idf", name): Path(str(installed.joinpath(name)))
@@ -70,12 +70,7 @@ class NativeSseCompatibilityTest(unittest.TestCase):
                 return "copied"
 
             writer = SimpleNamespace(copy_src_tree=copy_sources)
-            installers = [
-                modules["core_four_decimals"].install_four_decimal_patch,
-                modules["http_request_update_source"].install_update_source_patch,
-            ]
-            for install in installers:
-                install(core, writer)
+            patch.install_update_source_patch(core, writer)
             hook = writer.copy_src_tree
             for _ in range(2):
                 self.assertEqual(writer.copy_src_tree(), "copied")
@@ -83,15 +78,13 @@ class NativeSseCompatibilityTest(unittest.TestCase):
                 self.assertEqual(core.relative_src_path(*cpp_parts).read_text(), expected_cpp)
                 self.assertEqual(core.relative_src_path(*header_parts).read_bytes(), originals[header_parts])
                 for name in ["helpers.cpp", "helpers.h"]:
-                    source = core.relative_src_path("esphome", "core", name).read_text()
-                    expected_source = modules["core_four_decimals"]._transform(
-                        name, originals[("esphome", "core", name)].decode())[0]
-                    self.assertEqual(source, expected_source)
+                    parts = ("esphome", "core", name)
+                    self.assertEqual(core.relative_src_path(*parts).read_bytes(), originals[parts])
                 for name in ["http_request_update.cpp", "http_request_update.h"]:
                     parts = ("esphome", "components", "http_request", "update", name)
-                    expected_source = modules["http_request_update_source"]._transform(name, originals[parts].decode())[0]
+                    expected_source = patch._transform(name, originals[parts].decode())[0]
                     self.assertEqual(core.relative_src_path(*parts).read_text(), expected_source)
-                expected_ota = modules["http_request_update_source"]._transform(
+                expected_ota = patch._transform(
                     "ota_http_request.cpp", originals[ota_parts].decode())[0]
                 self.assertEqual(core.relative_src_path(*ota_parts).read_text(), expected_ota)
 
@@ -100,8 +93,7 @@ class NativeSseCompatibilityTest(unittest.TestCase):
             for parts, source in originals.items():
                 self.assertEqual(core.relative_src_path(*parts).read_bytes(), source)
             build = build / "next-config"
-            for install in installers:
-                install(core, writer)
+            patch.install_update_source_patch(core, writer)
             self.assertIs(writer.copy_src_tree, hook)
             writer.copy_src_tree()
             self.assertEqual(core.relative_src_path(*cpp_parts).read_text(), expected_cpp)

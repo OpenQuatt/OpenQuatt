@@ -32,9 +32,9 @@ so the late codegen workaround in `openquatt_web_auth` is no longer required.
 The upstream component sources are identical between 2026.10.0b1 and
 2026.10.0; the existing local patches are retained.
 
-The build-local four-decimal formatter backport from ESPHome #20800 remains
-active on 2026.10.0. The installed final helper sources are checked by the regression
-test before use; see ../web_server/README.md for scope and removal criteria.
+ESPHome 2026.11.0 includes the four-decimal formatter from ESPHome #20800.
+OpenQuatt uses that upstream code and adapts socket accounting for the
+native HTTPD backend in 2026.11.1.
 
 ESPHome 2026.10.0 includes the 4512-byte HTTPD task stack from
 [ESPHome #21038](https://github.com/esphome/esphome/pull/21038). The local
@@ -47,7 +47,5 @@ ESPHome 2026.10.0 includes the state-SSE JSON lifetime change from
 `core_sse_json.py` backport and its hook have been removed. The upstream
 implementation releases the JSON arena before socket I/O and guards generation
 against recursive writes on the same session. Task-stack capacities and tail
-allocation policy remain unchanged. The remaining build-local formatter hook preserves
-that upstream SSE code; the regression test checks their composition against
-the installed final sources. The earlier b4 hardware measurements remain historical
-evidence and do not replace runtime validation of the final release.
+allocation policy remain unchanged. The regression test verifies that the
+build-local manifest patch leaves the native SSE and core formatter sources intact.

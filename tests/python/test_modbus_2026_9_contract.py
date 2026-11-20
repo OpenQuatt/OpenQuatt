@@ -33,12 +33,11 @@ def entity_block(source: str, marker: str) -> str:
 
 
 class Modbus20269ContractTest(unittest.TestCase):
-    def test_esphome_pin_matches_reviewed_2026_10_final(self) -> None:
-        # Retain the 2026.9 Modbus API contract on the reviewed 2026.10 final.
-        self.assertEqual(REQUIREMENTS.strip(), "esphome==2026.10.0")
-        self.assertIn("min_version: 2026.10.0", BASE_COMMON)
+    def test_esphome_pin_matches_selected_2026_11_release(self) -> None:
+        self.assertEqual(REQUIREMENTS.strip(), "esphome==2026.11.1")
+        self.assertIn("min_version: 2026.11.1", BASE_COMMON)
         web_base = (ROOT / "components/web_server_base/__init__.py").read_text()
-        self.assertIn('if __version__ != "2026.10.0":', web_base)
+        self.assertIn('if __version__ != "2026.11.1":', web_base)
 
     def test_regular_online_polling_is_10s_and_offline_probe_is_30s(self) -> None:
         self.assertIn('oq_modbus_update_interval_s: "10"', SUBSTITUTIONS)

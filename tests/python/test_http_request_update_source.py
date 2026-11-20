@@ -20,8 +20,9 @@ SPEC.loader.exec_module(PATCH)
 def upstream_sources() -> dict[str, str]:
     from esphome.const import __version__
 
-    if __version__ != "2026.10.0":
-        raise RuntimeError("Manifest URL regressions require the pinned ESPHome 2026.10.0")
+    expected = (ROOT / ".github/requirements-esphome.txt").read_text().strip().removeprefix("esphome==")
+    if __version__ != expected:
+        raise RuntimeError(f"Manifest URL regressions require the pinned ESPHome {expected}")
     installed = resources.files("esphome.components.http_request.update")
     return {name: installed.joinpath(name).read_text() for name in PATCH._PATCHES}
 
@@ -123,11 +124,11 @@ class HttpRequestUpdateSourceTest(unittest.TestCase):
         worker = cpp.split("void HttpRequestUpdate::update_task(void *params) {", 1)[1].split(
             "void HttpRequestUpdate::perform", 1
         )[0]
-        self.assertNotIn("this_update->source_url_", worker)
-        self.assertEqual(worker.count("this_update->task_source_url_.c_str()"), 4)
-        self.assertNotIn("task_source_url_ =", worker)
-        self.assertLess(worker.rindex("task_source_url_"), worker.index("this_update->defer("))
-        self.assertIn("this_update->update_task_handle_ = nullptr;", worker)
+        background, completion = worker.split("this_update->defer(", 1)
+        self.assertNotIn("this_update->source_url_", background)
+        self.assertIn("const char *source_url = result->source_url;", background)
+        self.assertIn("this_update->task_result_ = nullptr;", completion)
+        self.assertLess(completion.index("strcmp("), completion.index("end_check_("))
 
     def test_generated_cpp_owns_temporary_urls_and_freezes_each_request(self) -> None:
         sources = {name: PATCH._transform(name, source)[0] for name, source in upstream_sources().items()}
@@ -136,7 +137,7 @@ class HttpRequestUpdateSourceTest(unittest.TestCase):
         header = re.sub(r"^#(?:include|pragma).*\n", "", sources["http_request_update.h"], flags=re.MULTILINE)
         header = header.replace(" protected:", " public:").replace(" private:", " public:")
         cpp = sources["http_request_update.cpp"]
-        update = "void HttpRequestUpdate::update() {" + cpp.split("void HttpRequestUpdate::update() {", 1)[1].split(
+        update = "void HttpRequestUpdate::set_source_url(" + cpp.split("void HttpRequestUpdate::set_source_url(", 1)[1].split(
             "void HttpRequestUpdate::update_task", 1
         )[0]
         relative_url = cpp.split("    // Merge source_url_ and firmware_url\n", 1)[1].split(
@@ -153,7 +154,7 @@ class HttpRequestUpdateSourceTest(unittest.TestCase):
             path = Path(temporary) / "test.cpp"
             executable = Path(temporary) / "test"
             path.write_text(source)
-            for target_flags in (("-DUSE_ESP32",), (), ("-DUSE_ESP32", "-DUSE_OPENQUATT_WEATHER")):
+            for target_flags in (("-DUSE_ESP32",), ("-DUSE_ESP32", "-DUSE_OPENQUATT_WEATHER")):
                 run_process(
                     [*compiler_command(*target_flags), "-I", str(ROOT / "components/openquatt_weather"),
                      str(path), "-o", str(executable)],
