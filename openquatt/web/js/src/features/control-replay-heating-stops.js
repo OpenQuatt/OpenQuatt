@@ -31,6 +31,14 @@ export function getHeatingStopReasonMeta(reason) {
 // writes exactly three context records immediately before the command record.
 export function attachHeatingStopSnapshots(events) {
   return events.map((event, index) => {
+    if (event.event_type === "ph_topology_comparison") {
+      const previous = events[index - 1];
+      if (previous?.event_type === "ph_candidate_heat" && Number.isInteger(event.seq) && previous.seq === event.seq - 1
+        && previous.subject === event.subject && previous.reason === event.reason && previous.cm === event.cm
+        && previous.flags === event.flags && previous.from === event.from && previous.to === event.to) {
+        return { ...event, _oq_candidate_heat: previous };
+      }
+    }
     if (event.event_type !== "source_stop" || !(Number(event.flags) & 32) || !reasons[event.reason]) return event;
     const context = events.slice(index - 3, index);
     if (context.length !== 3 || context.some((item, offset) =>

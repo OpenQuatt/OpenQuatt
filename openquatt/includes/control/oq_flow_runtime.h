@@ -25,20 +25,26 @@ class Runtime {
 #else
     const float hp2_flow_lph = NAN;
 #endif
-#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+#if OQ_TOPOLOGY_DUO || (defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1)
     auto primary = oq_sources::hp1.flow;
 #endif
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V1") {
+    const bool controller_primary = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
+    if (controller_primary) {
       hp1_flow_lph = id(flow_rate_controller).state;
 #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
       primary = oq_sources::current_controller_filtered_flow();
+#elif OQ_TOPOLOGY_DUO
+      primary = {};
 #endif
     }
 #endif
+#if OQ_TOPOLOGY_DUO && !OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    constexpr bool controller_primary = false;
+#endif
     const auto selected =
         oq_flow_control::local_flow_selection(OQ_TOPOLOGY_DUO, hp1_flow_lph, hp2_flow_lph, mismatch_threshold_lph);
-#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+#if OQ_TOPOLOGY_DUO || (defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1)
 #if OQ_TOPOLOGY_DUO
     const auto& secondary = oq_sources::hp2.flow;
 #else
@@ -46,6 +52,14 @@ class Runtime {
 #endif
     oq_sources::local_flow =
         oq_flow_control::local_flow_receipt(selected, primary, hp1_flow_lph, secondary, hp2_flow_lph);
+#if OQ_TOPOLOGY_DUO
+    const uint8_t contributors =
+        (selected.primary ? (controller_primary ? 4U : 1U) : 0U) | (selected.secondary ? 2U : 0U);
+    if (contributors != oq_sources::peer_aggregate_contributors || !oq_sources::local_flow.valid) {
+      oq_sources::peer_aggregate_changed_ms = oq_sources::monotonic_ms();
+    }
+    oq_sources::peer_aggregate_contributors = contributors;
+#endif
 #endif
     return selected.value;
   }

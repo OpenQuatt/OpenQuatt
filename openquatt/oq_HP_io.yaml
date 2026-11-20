@@ -111,6 +111,11 @@ modbus_controller:
             oq_sources::${hp_id}.working_mode.invalidate();
             oq_sources::${hp_id}.compressor_frequency.invalidate();
             oq_sources::${hp_id}.status_2108.invalidate();
+            #if OQ_TOPOLOGY_DUO
+            oq_sources::${hp_id}.pump_feedback.invalidate();
+            oq_sources::${hp_id}.pump_evidence_revoked_ms = oq_sources::monotonic_ms();
+            oq_sources::${hp_id}.flow_evidence_revoked_ms = oq_sources::${hp_id}.pump_evidence_revoked_ms;
+            #endif
             oq_sources::${hp_id}.defrost.invalidate();
             oq_sources::${hp_id}.status_2119.invalidate();
             oq_sources::${hp_id}.water_in.invalidate();
@@ -1336,6 +1341,13 @@ sensor:
       then:
         - lambda: |-
             id(${hp_id}_pump_feedback_last_update_ms) = millis();
+            #if OQ_TOPOLOGY_DUO
+            auto& receipts = oq_sources::${hp_id};
+            if (id(${hp_id}_is_online)) {
+              oq_peer_pump::record_feedback(receipts.pump_feedback, receipts.pump_evidence_revoked_ms, x,
+                                            oq_sources::monotonic_ms());
+            }
+            #endif
 
   - platform: template
     id: ${hp_id}_pump_ipwm_feedback
@@ -1381,7 +1393,13 @@ sensor:
     filters:
       - multiply: 0.618
       - lambda: |-
+          #if OQ_TOPOLOGY_DUO
+          auto& receipts = oq_sources::${hp_id};
+          oq_peer_pump::record_flow(receipts.flow, receipts.flow_evidence_revoked_ms, x,
+                                  id(oq_flow_setpoint_lph).state, oq_sources::monotonic_ms(), id(${hp_id}_is_online));
+          #else
           oq_sources::${hp_id}.flow.observe(x, oq_sources::monotonic_ms(), !isnan(x));
+          #endif
           return x;
     on_value:
       then:
@@ -1515,7 +1533,13 @@ sensor:
             oq_sources::${hp_id}.status_2108.invalidate();
             return x;
           }
-          oq_sources::${hp_id}.status_2108.observe(x, oq_sources::monotonic_ms(), !isnan(x));
+          const uint64_t received_ms = oq_sources::monotonic_ms();
+          #if OQ_TOPOLOGY_DUO
+          auto& receipts = oq_sources::${hp_id};
+          oq_peer_pump::record_status(receipts.status_2108, receipts.pump_evidence_revoked_ms, x, received_ms);
+          #else
+          oq_sources::${hp_id}.status_2108.observe(x, received_ms, !isnan(x));
+          #endif
           return x;
     on_value:
       then:

@@ -56,6 +56,11 @@ select:
     restore_value: true
     options: [Outdoor unit, CIC]
     initial_option: Outdoor unit
+    on_value:
+      - lambda: |-
+          #if OQ_TOPOLOGY_DUO
+          oq_sources::peer_flow_source_changed_ms = oq_sources::monotonic_ms();
+          #endif
 
   - platform: template
     name: "Outdoor Unit Flow Mode"
@@ -67,6 +72,11 @@ select:
     restore_value: true
     options: [Flowmeter HP1, Flowmeter HP2, Local aggregate HP1/HP2]
     initial_option: Local aggregate HP1/HP2
+    on_value:
+      - lambda: |-
+          #if OQ_TOPOLOGY_DUO
+          oq_sources::peer_flow_source_changed_ms = oq_sources::monotonic_ms();
+          #endif
 
   - platform: template
     name: "Outside Temperature Source"

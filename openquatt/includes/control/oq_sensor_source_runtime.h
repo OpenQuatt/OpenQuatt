@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <array>
 #include <string>
 
 #include "oq_flow_pump_logic.h"
@@ -109,6 +110,35 @@ class Runtime {
                                                         uint32_t ha_stale_s) const {
     return {this->room_control_input_(false, ot_room_fresh, ha_stale_s),
             this->room_control_input_(true, ot_setpoint_fresh, ha_stale_s)};
+  }
+
+  // Read the configured producers before using a cached start command. A
+  // newer input can arrive between publications of the selected sensors.
+  std::array<oq_input_source::NumericSample, 2> current_room_inputs(bool ot_room_fresh, bool ot_setpoint_fresh,
+                                                                    uint32_t ha_stale_s) const {
+    if (!id(room_temp_source).has_state() || !id(room_setpoint_source).has_state()) return {};
+    const auto temperature_sources =
+        live_room_temperature_sources(static_cast<uint32_t>(millis()), ha_stale_s, ot_room_fresh);
+    const auto room_source = parse_source(id(room_temp_source).current_option());
+    const auto setpoint_source = parse_source(id(room_setpoint_source).current_option());
+    auto room = oq_input_source::sample_for(room_source, temperature_sources);
+    auto setpoint = oq_input_source::sample_for(setpoint_source, room_sources(ot_setpoint_fresh, true));
+    if (room_source == oq_input_source::Source::OPENTHERM) {
+      const auto receipt = id(oq_ot_slave_hub).master_room_temperature_receipt();
+      room = oq_input_source::numeric_sample(ot_room_fresh && receipt.valid, receipt.received, receipt.value);
+    }
+    if (setpoint_source == oq_input_source::Source::OPENTHERM) {
+      const auto receipt = id(oq_ot_slave_hub).master_room_setpoint_receipt();
+      setpoint =
+          oq_input_source::room_setpoint_sample(ot_setpoint_fresh && receipt.valid, receipt.received, receipt.value);
+    }
+    if (room_source == oq_input_source::Source::CIC)
+      room.valid =
+          room.valid && oq_sources::current_receipt_matches(id(cic_component).room_temperature_receipt(), room.value);
+    if (setpoint_source == oq_input_source::Source::CIC)
+      setpoint.valid = setpoint.valid &&
+                       oq_sources::current_receipt_matches(id(cic_component).room_setpoint_receipt(), setpoint.value);
+    return {room, setpoint};
   }
 
   // Register this on every source-selector and CIC URL on_value callback. It
@@ -418,11 +448,7 @@ class Runtime {
       return NAN;
     }
     const auto configured = parse_source(id(room_temp_source).current_option());
-    auto sources = room_sources(opentherm_fresh, false);
-    // Live input: a constant room temperature stays usable while the HA
-    // ingress heartbeat arrives, and goes stale when the link drops.
-    sources.ha = sample(ha_live_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha), now_ms, ha_stale_s),
-                        id(thermostat_room_temp_ha));
+    const auto sources = live_room_temperature_sources(now_ms, ha_stale_s, opentherm_fresh);
     const auto selected = oq_input_source::select_direct(configured, sources, true, now_ms, hold_ms, room_hold_);
     id(oq_room_temp_selected_hold_active) = selected.held;
     const oq_sources::SourceConfigurationKey configuration{
@@ -840,6 +866,15 @@ class Runtime {
       sources.mqtt =
           sample(mqtt_valid(id(mqtt_room_temperature_valid), id(mqtt_room_temperature)), id(mqtt_room_temperature));
     }
+    return sources;
+  }
+
+  oq_input_source::NumericSources live_room_temperature_sources(uint32_t now_ms, uint32_t ha_stale_s,
+                                                                bool opentherm_fresh) const {
+    auto sources = room_sources(opentherm_fresh, false);
+    // A constant HA room temperature stays usable while its heartbeat arrives.
+    sources.ha = sample(ha_live_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha), now_ms, ha_stale_s),
+                        id(thermostat_room_temp_ha));
     return sources;
   }
 

@@ -755,9 +755,45 @@ void test_elevated_stop_survives_input_loss_during_pending_restart() {
   in.room_c = 19.49f;
   assert(evaluate(in, zero_margin, wait).warm_restart_intent);
 }
+void test_pending_setpoint_restart_checks_room_again_before_first_command() {
+  Input input = base_input();
+  input.cycle_active = false;
+  input.actual_heating_active = false;
+  input.setpoint_c = 20.0f;
+  input.room_c = 19.99f;
+  input.base_requested_w = 4560.0f;
+  State waiting;
+  waiting.phase = Phase::WAIT_WARM_RESTART;
+  waiting.last_setpoint_c = input.setpoint_c;
+  waiting.cycle_armed = true;
+  waiting.stop_at_setpoint = true;
+
+  const Tuning zero_margin{0.4f, 0.2f, 0.0f};
+  const auto preflow = evaluate(input, zero_margin, waiting);
+  assert(preflow.warm_restart_intent);
+  assert(!pending_setpoint_restart_blocked(preflow.next, true, 19.99f, 20.0f, zero_margin));
+  assert(pending_setpoint_restart_blocked(preflow.next, true, 20.03f, 20.0f, zero_margin));
+  assert(pending_setpoint_restart_blocked(preflow.next, true, 20.0f, 20.0f, zero_margin));
+  assert(pending_setpoint_restart_blocked(preflow.next, false, 19.99f, 20.0f, zero_margin));
+  assert(pending_setpoint_restart_blocked(preflow.next, true, NAN, 20.0f, zero_margin));
+  assert(pending_setpoint_restart_blocked(preflow.next, true, 19.99f, NAN, zero_margin));
+  assert(!pending_setpoint_restart_blocked(preflow.next, true, 19.95f, 20.0f, zero_margin));
+  assert(!pending_setpoint_restart_blocked(preflow.next, true, 20.03f, 20.5f, zero_margin));
+
+  State ordinary_restart = preflow.next;
+  ordinary_restart.stop_at_setpoint = false;
+  assert(!pending_setpoint_restart_blocked(ordinary_restart, true, 20.03f, 20.0f, zero_margin));
+  State running = preflow.next;
+  running.phase = Phase::RUNNING;
+  assert(!pending_setpoint_restart_blocked(running, true, 20.03f, 20.0f, zero_margin));
+  const Tuning setback_tuning{0.4f, 0.2f, 0.1f};
+  assert(pending_setpoint_restart_blocked(preflow.next, true, 19.90f, 19.95f, setback_tuning));
+  assert(!pending_setpoint_restart_blocked(preflow.next, true, 19.84f, 19.95f, setback_tuning));
+}
 }  // namespace
 
 int main() {
+  test_pending_setpoint_restart_checks_room_again_before_first_command();
   test_elevated_minimum_stops_optional_extension_at_setpoint();
   test_elevated_minimum_preserves_real_demand_and_guards();
   test_elevated_stop_survives_input_loss_during_pending_restart();

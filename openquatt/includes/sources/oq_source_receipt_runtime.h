@@ -16,12 +16,21 @@ struct HeatPumpReceipts {
   RawFloatReceipt water_out;
   RawFloatReceipt flow;
   RawFloatReceipt outside;
+#if OQ_TOPOLOGY_DUO
+  RawFloatReceipt pump_feedback;
+  uint64_t pump_evidence_revoked_ms = 0;
+  uint64_t flow_evidence_revoked_ms = 0;
+#endif
 };
 
 inline HeatPumpReceipts hp1{};
 
 #if OQ_TOPOLOGY_DUO
 inline HeatPumpReceipts hp2{};
+inline uint8_t peer_aggregate_contributors = 0;
+inline uint64_t peer_aggregate_changed_ms = 0;
+inline uint64_t peer_flow_target_changed_ms = 0;
+inline uint64_t peer_flow_source_changed_ms = 0;
 #endif
 
 enum class LocalOutsideRoute : uint8_t { NONE = 0, HP1, HP2, COMPOSITE };
@@ -58,6 +67,9 @@ inline LocalOutsideSelection local_outside_selection{};
 inline RawFloatReceipt local_supply_ds18b20{};
 inline RawFloatReceipt local_supply_pt1000{};
 inline RawFloatReceipt ha_water_supply{};
+#endif
+
+#if OQ_TOPOLOGY_DUO || (defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1)
 inline RawFloatReceipt local_flow{};
 #endif
 

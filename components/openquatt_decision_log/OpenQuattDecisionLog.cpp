@@ -1182,6 +1182,12 @@ const char* OpenQuattDecisionLog::event_type_to_string_(uint8_t value) {
       return "hp_stop_confirmed";
     case EVENT_HEATING_STOP_CONTEXT:
       return "heating_stop_context";
+    case EVENT_PH_TOPOLOGY_COMPARISON:
+      return "ph_topology_comparison";
+    case EVENT_PH_COMFORT_MINIMUM:
+      return "ph_comfort_minimum";
+    case EVENT_PH_CANDIDATE_HEAT:
+      return "ph_candidate_heat";
     default:
       return "unknown";
   }

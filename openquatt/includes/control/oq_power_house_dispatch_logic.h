@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include "oq_hp_candidate_logic.h"
 #include "oq_compressor_movement_logic.h"
@@ -119,7 +120,14 @@ struct DispatchTuning {
   float defrost_boost_min_w = 0.0f;
   int defrost_boost_steps = 1;
   bool defrost_boost_min_exclusive = false;
+  float hp1_circulation_w = NAN, hp2_circulation_w = NAN;
 };
+inline bool circulation_cost_available(const DispatchTuning& tuning) {
+  // Both peers need comparable evidence. Two confirmed zeros keep legacy ordering.
+  return std::isfinite(tuning.hp1_circulation_w) && std::isfinite(tuning.hp2_circulation_w) &&
+         tuning.hp1_circulation_w >= 0.0f && tuning.hp2_circulation_w >= 0.0f &&
+         (tuning.hp1_circulation_w > 0.0f || tuning.hp2_circulation_w > 0.0f);
+}
 
 inline bool defrost_boost_demand_allowed(float requested_w, const DispatchTuning& tuning) {
   if (!std::isfinite(requested_w) || requested_w <= 0.0f || !std::isfinite(tuning.defrost_boost_min_w) ||
@@ -128,21 +136,45 @@ inline bool defrost_boost_demand_allowed(float requested_w, const DispatchTuning
   return tuning.defrost_boost_min_exclusive ? requested_w > tuning.defrost_boost_min_w
                                             : requested_w >= tuning.defrost_boost_min_w;
 }
+struct EconomicCandidate {
+  bool valid = false;
+  uint8_t hp1_level = 0, hp2_level = 0;
+  float thermal_w = NAN, electrical_w = NAN, economic_w = NAN;
+};
+struct EconomicComparison {
+  EconomicCandidate single, duo, chosen;
+};
 struct DispatchDecision {
   int hp1_level = 0, hp2_level = 0, owner_hp = 0;
   Reason reason = Reason::IDLE;
   float capacity_w = 0.0f, deficit_w = 0.0f;
   float expected_w = NAN;
   bool output_valid = false, saturated = false;
+  EconomicComparison economic_comparison;
 };
 struct Candidate {
   bool valid = false, model_valid = false;
   int hp1_level = 0, hp2_level = 0;
   float thermal_w = 0.0f, electrical_w = 0.0f, error_w = 0.0f, over_soft_w = 0.0f;
+  float circulation_w = 0.0f;
   int level_moves = 0, active_count = 0, balance_gap = 0;
   int modulation_hz = -1, starts = 0, stops = 0;
   bool single_on_lead = false;
+
+  float economic_w() const {
+    if (circulation_w == 0.0f) return electrical_w;
+    return electrical_w + std::min(circulation_w, std::numeric_limits<float>::max() - electrical_w);
+  }
 };
+inline EconomicCandidate economic_candidate(const Candidate& candidate) {
+  if (!candidate.valid) return {};
+  return {true,
+          static_cast<uint8_t>(candidate.hp1_level),
+          static_cast<uint8_t>(candidate.hp2_level),
+          candidate.thermal_w,
+          candidate.electrical_w,
+          candidate.economic_w()};
+}
 inline int topology(int hp1_level, int hp2_level) { return (hp1_level > 0 ? 1 : 0) + (hp2_level > 0 ? 1 : 0); }
 inline int owner(int hp1_level, int hp2_level) {
   return hp1_level > 0 && hp2_level <= 0 ? 1 : hp2_level > 0 && hp1_level <= 0 ? 2 : 0;
@@ -239,6 +271,8 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
   result.valid = true;
   result.error_w = std::fabs(result.thermal_w - target_w);
   result.over_soft_w = std::max(0.0f, result.electrical_w - tuning.soft_limit_w);
+  if (in.duo && result.active_count == 1 && circulation_cost_available(tuning))
+    result.circulation_w = result.hp1_level > 0 ? tuning.hp2_circulation_w : tuning.hp1_circulation_w;
   result.level_moves =
       std::abs(result.hp1_level - applied_level(in.hp1)) + std::abs(result.hp2_level - applied_level(in.hp2));
   const int previous_hp1 = applied_level(in.hp1), previous_hp2 = applied_level(in.hp2);
@@ -255,7 +289,8 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
 }
 inline bool better_candidate(const Candidate& a, const Candidate& b) {
   if (std::fabs(a.over_soft_w - b.over_soft_w) > 1.0f) return a.over_soft_w < b.over_soft_w;
-  if (std::fabs(a.electrical_w - b.electrical_w) > 1.0f) return a.electrical_w < b.electrical_w;
+  const float a_economic_w = a.economic_w(), b_economic_w = b.economic_w();
+  if (std::fabs(a_economic_w - b_economic_w) > 1.0f) return a_economic_w < b_economic_w;
   if (std::fabs(a.error_w - b.error_w) > 1.0f) return a.error_w < b.error_w;
   if (a.starts != b.starts) return a.starts < b.starts;
   if (a.stops != b.stops) return a.stops < b.stops;
@@ -440,10 +475,16 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
     // Duo cannot safely run (including a forced stop or peak limit), Single
     // remains available even if it cannot cover the complete heat request.
     const Candidate single = pick_topology(in, tuning, target_w, 1, tie_band_w, duo.valid, confirmed_power);
+    out.economic_comparison.single = economic_candidate(single);
+    out.economic_comparison.duo = economic_candidate(duo);
     Candidate best;
     const bool have_best = single.valid || duo.valid;
     if (single.valid && duo.valid) {
-      const Candidate* preferred = duo.electrical_w < single.electrical_w ? &duo : &single;
+      bool prefer_duo = duo.economic_w() < single.economic_w();
+      // Keep the raw soft-limit preference before comparing circulation costs.
+      if (circulation_cost_available(tuning) && std::fabs(duo.over_soft_w - single.over_soft_w) > 1.0f)
+        prefer_duo = duo.over_soft_w < single.over_soft_w;
+      const Candidate* preferred = prefer_duo ? &duo : &single;
       const Candidate* alternate = preferred == &duo ? &single : &duo;
       best = alternate->error_w + heat_advantage_w < preferred->error_w ? *alternate : *preferred;
     } else if (single.valid)
@@ -464,7 +505,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
       const bool owner_swap =
           current.active_count == 1 && best.active_count == 1 && ((current.hp1_level > 0) != (best.hp1_level > 0));
       const bool change_allowed = !topology_change || best.error_w + heat_advantage_w < current.error_w ||
-                                  best.electrical_w + power_margin_w < current.electrical_w;
+                                  best.economic_w() + power_margin_w < current.economic_w();
       const bool defrost_hold = owner_swap && (tail_active(state.hp1_defrost, in.now_ms, kDefrostHoldMs) ||
                                                tail_active(state.hp2_defrost, in.now_ms, kDefrostHoldMs));
       const bool oil_hold =
@@ -481,7 +522,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
         reason = Reason::BETTER_HEAT;
       else if (current.over_soft_w > best.over_soft_w + 40.0f)
         reason = Reason::SOFT_GUARD;
-      else if (current.electrical_w > best.electrical_w + (topology_change ? power_margin_w : 150.0f))
+      else if (current.economic_w() > best.economic_w() + (topology_change ? power_margin_w : 150.0f))
         reason = Reason::LESS_POWER;
       else
         keep_current = true, reason = Reason::KEEP_CURRENT;
@@ -546,7 +587,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
       for (int level = 1; level <= kMaxLevel; ++level) {
         const auto candidate = make_candidate(in, tuning, in.lead_hp1 ? level : 0, in.lead_hp1 ? 0 : level, target_w);
         if (candidate.valid && candidate.error_w <= chosen.error_w + keep_margin_w &&
-            candidate.electrical_w <= chosen.electrical_w + power_margin_w &&
+            candidate.economic_w() <= chosen.economic_w() + power_margin_w &&
             candidate.over_soft_w <= chosen.over_soft_w + 1.0f &&
             (!lead.valid || candidate.error_w < lead.error_w ||
              (candidate.error_w == lead.error_w && better_candidate(candidate, lead))))
@@ -568,6 +609,7 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
         if (retained.valid) chosen = retained, reason = Reason::KEEP_CURRENT;
       }
     }
+    out.economic_comparison.chosen = economic_candidate(chosen);
     finish(chosen, reason);
   }
   return out;
