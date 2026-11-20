@@ -479,7 +479,10 @@ void test_duo_circulation_economics_at_electrical_limits() {
 
 struct V15FieldFrequency {
   oq_odu::Variant performance_variant(bool) const { return oq_odu::Variant::V1_5; }
-  int automatic_frequency_hz(bool, int, int level) const { return oq_odu::V1_HEATING_DEMAND_REFERENCE_HZ[level]; }
+  int automatic_frequency_hz(bool, int, int level) const {
+    const auto& reference_hz = oq_odu::V1_HEATING_DEMAND_REFERENCE_HZ;
+    return level >= 0 && level < static_cast<int>(reference_hz.size()) ? reference_hz[level] : -1;
+  }
 };
 
 void test_duo_circulation_replays_1203_field_vector() {
@@ -488,6 +491,7 @@ void test_duo_circulation_replays_1203_field_vector() {
     CandidateModel model{V15FieldFrequency{}, 3.9f, 31.67f, 793.512f, {36.4f, 36.4f}, true, false};
     mutable unsigned pair_calls = 0;
   } field;
+  assert(!field.model.unit(true, 11).valid() && !field.model.unit(false, 20).valid());
   auto in = input(true);
   in.now_ms = 900000;
   in.requested_w = 3993;
