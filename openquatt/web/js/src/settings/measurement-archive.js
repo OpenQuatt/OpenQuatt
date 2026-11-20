@@ -1,6 +1,7 @@
 import { createCancellationController, downloadBlobFile } from "../core/browser-utils.js";
 import { getEntityValue, hasEntity } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
+import { getLearningPanelHref } from "../core/navigation.js";
 import { state } from "../core/state.js";
 import { archiveDate, archiveDownloadPath, assembleMeasurementArchive } from "../features/measurement-archive-export.js";
 import { formatDateTime, formatNumber, getIntlLocale, t } from "../i18n/index.js";
@@ -41,8 +42,7 @@ function archiveModel() {
     snapshot: hasRecords ? { first, last, count } : null,
     firstDay: hasRecords ? archiveDate(first) : "",
     lastDay: hasRecords ? archiveDate(last) : "",
-    empty: locked ? "" : t(!toggle.enabled && code === "off" ? "measurementArchive.emptyOff" : "measurementArchive.empty"),
-    toggle, locked,
+    toggle, locked, empty: code === "off" && !hasRecords,
   };
 }
 
@@ -61,17 +61,42 @@ const progressText = () => exportRequest
   ? t("measurementArchive.progress", { done: formatNumber(exportRequest.done), total: formatNumber(exportRequest.total) })
   : exportFeedback === null ? "" : t(exportFeedback);
 
+function archiveLink(panel, target, key) {
+  return `<a class="oq-learning-section-link" href="${escapeHtml(getLearningPanelHref(panel))}" data-oq-action="select-learning-panel" data-learning-panel="${panel}" data-learning-target="${target}">${label(key)}</a>`;
+}
+
+export function renderMeasurementArchiveSettings() {
+  if (!supported()) return "";
+  const { status, toggle, locked } = archiveModel();
+  return `<section class="oq-settings-section oq-measurement-archive" data-oq-measurement-archive>
+    <div class="oq-settings-section-head">
+      <h3 id="measurement-archive-settings" tabindex="-1">${label("measurementArchive.title")}</h3>
+    </div>
+    <div class="oq-archive-heading">
+      <div>
+        <h4 class="oq-archive-setting-label" id="measurement-archive-switch-label">${label("measurementArchive.enable")}</h4>
+        <p>${label("measurementArchive.settingsCopy")}</p>
+      </div>
+      <div data-oq-archive-switch>
+        ${renderSettingsCompactSwitchControl(switchKey, t("measurementArchive.enable"), toggle.enabled, toggle.busy || locked, null, null, true, "measurement-archive-switch-label")}
+      </div>
+    </div>
+    ${archiveLink("diagnostics", "measurement-archive-data", "measurementArchive.viewArchive")}
+    <p class="oq-settings-action-note" data-oq-archive-lock role="status" ${locked ? "" : "hidden"}>${locked ? escapeHtml(status) : ""}</p>
+  </section>`;
+}
+
 export function renderMeasurementArchive() {
   if (!supported()) return "";
-  const { status, snapshot, firstDay, lastDay, empty, toggle, locked } = archiveModel();
+  const { status, snapshot, firstDay, lastDay, empty } = archiveModel();
   const inProgress = Boolean(exportRequest);
   return `<section class="oq-settings-section oq-measurement-archive" data-oq-measurement-archive>
     <div class="oq-archive-heading">
-      <div><h4 class="oq-learning-diagnostic-title">${label("measurementArchive.title")}</h4>
+      <div><h4 class="oq-learning-diagnostic-title" id="measurement-archive-data" tabindex="-1">${label("measurementArchive.title")}</h4>
         <p data-oq-archive-status role="status">${escapeHtml(status)}</p></div>
-      ${renderSettingsCompactSwitchControl(switchKey, t("measurementArchive.enable"), toggle.enabled, toggle.busy || locked, null, null, false)}
+      ${archiveLink("configuration", "measurement-archive-settings", "measurementArchive.configureRecording")}
     </div>
-    <p data-oq-archive-empty ${snapshot || !empty ? "hidden" : ""}>${escapeHtml(empty)}</p>
+    <p data-oq-archive-empty ${empty ? "" : "hidden"}>${label("measurementArchive.empty")}</p>
     <div class="oq-archive-data" data-oq-archive-data ${snapshot ? "" : "hidden"}>
       <div class="oq-archive-summary">
         <div>
@@ -79,7 +104,7 @@ export function renderMeasurementArchive() {
           <strong data-oq-archive-period>${snapshot ? escapeHtml(periodText(snapshot)) : ""}</strong>
           <p data-oq-archive-count>${snapshot ? escapeHtml(measureCount(snapshot)) : ""}</p>
         </div>
-        <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="download-measurement-archive" ${inProgress ? "disabled" : ""}>${label("measurementArchive.downloadAll")}</button>
+        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-measurement-archive" ${inProgress ? "disabled" : ""}>${label("measurementArchive.downloadAll")}</button>
       </div>
       <details class="oq-archive-day">
         <summary>${label("measurementArchive.chooseDay")}</summary>
@@ -118,12 +143,26 @@ export function patchMeasurementArchive() {
   const panel = state.root?.querySelector("[data-oq-measurement-archive]");
   if (Boolean(panel) !== supported()) return false;
   if (!panel) return true;
-  const { status, snapshot, firstDay, lastDay, empty, toggle, locked } = archiveModel();
-  const control = panel.querySelector(`[data-control-key="${switchKey}"]`);
+  const { status, snapshot, firstDay, lastDay, toggle, locked, empty } = archiveModel();
+  if (state.learningPanel === "configuration") {
+    const control = panel.querySelector(`[data-control-key="${switchKey}"]`);
+    const pill = panel.querySelector("[data-oq-switch-pill]");
+    if (!control || !pill) return false;
+    control.disabled = toggle.busy || locked;
+    control.setAttribute("aria-checked", String(toggle.enabled));
+    control.setAttribute("aria-label", toggle.ariaLabel);
+    control.dataset.controlState = toggle.nextState;
+    control.classList.toggle("is-on", toggle.enabled);
+    const label = toggle.enabled ? t("common.on") : t("common.off");
+    if (pill.textContent !== label) pill.textContent = label;
+    pill.classList.toggle("is-on", toggle.enabled);
+    patchText(panel, "[data-oq-archive-lock]", locked ? status : "").hidden = !locked;
+    return true;
+  }
   const input = panel.querySelector("[name=date]");
-  if (!control || !input) return false;
+  if (!input) return false;
   patchText(panel, "[data-oq-archive-status]", status);
-  patchText(panel, "[data-oq-archive-empty]", empty).hidden = Boolean(snapshot) || !empty;
+  panel.querySelector("[data-oq-archive-empty]").hidden = !empty;
   patchText(panel, "[data-oq-archive-period]", snapshot ? periodText(snapshot) : "");
   patchText(panel, "[data-oq-archive-count]", snapshot ? measureCount(snapshot) : "");
   const inProgress = Boolean(exportRequest);
@@ -132,11 +171,6 @@ export function patchMeasurementArchive() {
   panel.querySelector('[data-oq-action="cancel-measurement-archive-download"]').hidden = !inProgress;
   patchText(panel, "[data-oq-archive-progress]", progressText());
   panel.querySelector("[data-oq-archive-feedback]").hidden = !inProgress && exportFeedback === null;
-  control.disabled = toggle.busy || locked;
-  control.setAttribute("aria-checked", String(toggle.enabled));
-  control.setAttribute("aria-label", toggle.ariaLabel);
-  control.dataset.controlState = toggle.nextState;
-  control.classList.toggle("is-on", toggle.enabled);
   if (document.activeElement !== input && (!input.value || input.value === input.max || input.value < firstDay || input.value > lastDay)) {
     input.value = lastDay;
   }

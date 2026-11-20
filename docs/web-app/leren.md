@@ -10,8 +10,8 @@ update vanaf de eerdere versie die altijd uit startte, wordt leren ingeschakeld.
 - **Uitleg** laat met illustraties zien wat OpenQuatt meet, wat het leert en hoe Vooruitblik rekent.
 - **Leren** toont de meetvoortgang, dagmetingen en woninglijn.
 - **Vooruitblik** toont het temperatuurscenario en de weersverwachting.
-- **Instellingen** groepeert passief leren, leerdata wissen en de weerinstellingen.
-- **Diagnose en data** toont modelwaarden, broninformatie, warmtevraag en de export van leerdata.
+- **Instellingen** groepeert passief leren, de weerinstellingen en de schakelaar voor Meetarchief.
+- **Diagnose en data** toont de warmtevraag, broninformatie en opties om leerdata en Meetarchief te beheren.
 
 ## Twee meetperioden
 
@@ -110,21 +110,21 @@ en modelwaarden. Bij de woninglijn geeft `H` aan hoeveel extra vermogen per
 graad kouder nodig is. `T₀` is de buitentemperatuur waarbij de geschatte
 warmtevraag nul wordt. De regeling gebruikt die waarde niet als schakelgrens.
 
-Via **Diagnose en data → Leerdata downloaden** bewaar je een lokale JSON-export.
-**Instellingen → Leerdata wissen** pauzeert het leren en wist de leerhistorie. Bij een fysieke
-ombouw van Single naar Duo of omgekeerd wis je de leerdata voordat je de
-nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet.
+Onder **Diagnose en data → Leerdata** kun je de leerdata downloaden als JSON.
+**Leerdata wissen** wist daar de leerhistorie en pauzeert passief leren. Het
+Meetarchief blijft bewaard. Bij een fysieke ombouw van Single naar Duo of
+omgekeerd wis je de leerdata voordat je de nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet.
 Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van
 passief leren gedeeld.
 
 ### Meetarchief (experimenteel)
 
-In een Q-testbuild met het optionele pakket vind je **Meetarchief** onder
-**Diagnose en data**. De opname staat bij eerste gebruik uit en heeft een eigen
-schakelaar. De controller bewaart de blokken in flash terwijl je browser dicht
-is. Uitschakelen stopt de opname. Eerder bewaarde blokken blijven beschikbaar.
+In een Q-testbuild met het optionele pakket zet je de opname aan onder
+**Instellingen → Meetarchief**. Bij eerste gebruik staat de opname uit. De
+controller bewaart de blokken terwijl je browser dicht is. Uitschakelen stopt
+de opname en laat eerder bewaarde blokken beschikbaar.
 
-De kaart toont de opnamestatus en de bewaarde meetperiode. Met **Hele archief
+Onder **Diagnose en data → Meetarchief** staan de opnamestatus en de bewaarde meetperiode. Met **Hele archief
 downloaden** krijg je één JSON-bestand met alle bewaarde meetblokken en de
 weerdata bij die periode. De browser haalt de dagen één voor één op. Laat de
 pagina open tot de download start. Onder **Eén dag downloaden** kun je ook

@@ -21,7 +21,10 @@ test.beforeEach(() => {
 });
 
 test("reguliere Q-firmware toont geen opnamebediening of download", () => {
-  assert.doesNotMatch(renderLearningView(), /data-oq-measurement-archive|measurement-archive\/download/);
+  for (const panel of ["configuration", "diagnostics"]) {
+    state.learningPanel = panel;
+    assert.doesNotMatch(renderLearningView(), /data-oq-measurement-archive|measurement-archive\/download/);
+  }
 });
 
 test("opt-in blijft zichtbaar als opname uit staat en oudere blokken zijn te downloaden", () => {
@@ -35,6 +38,13 @@ test("opt-in blijft zichtbaar als opname uit staat en oudere blokken zijn te dow
   assert.doesNotMatch(markup, /type="submit" disabled/);
   assert.match(markup, /data-oq-action="download-measurement-archive" >Hele archief downloaden/);
   assert.match(markup, /<details class="oq-archive-day">/);
+  assert.match(markup, /data-learning-panel="configuration" data-learning-target="measurement-archive-settings">Opname instellen/);
+  assert.doesNotMatch(markup, /data-control-key="measurementArchiveEnabled"/);
+  state.learningPanel = "configuration";
+  const settings = renderLearningView();
+  assert.match(settings, /data-control-key="measurementArchiveEnabled"[\s\S]*aria-checked="false"[\s\S]*aria-labelledby="measurement-archive-switch-label"/);
+  assert.match(settings, /data-learning-panel="diagnostics" data-learning-target="measurement-archive-data">Bekijk meetarchief/);
+  assert.doesNotMatch(settings, /data-oq-action="download-measurement-archive"/);
   state.learningPanel = "forecast";
   assert.doesNotMatch(renderLearningView(), /data-oq-measurement-archive/);
 });
@@ -61,9 +71,12 @@ test("afgesloten archief biedt geen schakelaaractie of download", () => {
   state.entities.measurementArchiveStatus = { value: "archive_unlinked|0|0|0" };
   const markup = renderLearningView();
   assert.match(markup, /Oude meetopname afgesloten/);
-  assert.match(markup, /data-control-key="measurementArchiveEnabled"[\s\S]+?disabled/);
   assert.match(markup, /data-oq-archive-data hidden/);
   assert.match(markup, /type="submit" disabled/);
+  state.learningPanel = "configuration";
+  const settings = renderLearningView();
+  assert.match(settings, /data-control-key="measurementArchiveEnabled"[^>]+disabled/);
+  assert.match(settings, /data-oq-archive-lock role="status"[^>]*>Oude meetopname afgesloten/);
 });
 
 test("de webapp meldt een opslagfout wanneer uitschakelen alleen in RAM lukte", async (t) => {

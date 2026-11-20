@@ -247,7 +247,7 @@ export function renderSettingsSwitchPill(key, enabled, onLabel = t("common.on"),
   return `<span class="oq-settings-toggle-state${enabled ? " is-on" : ""}" data-oq-switch-pill="${escapeHtml(key)}" data-on-label="${escapeHtml(onLabel)}" data-off-label="${escapeHtml(offLabel)}">${escapeHtml(enabled ? onLabel : offLabel)}</span>`;
 }
 
-export function renderSettingsCompactSwitchControl(key, title, enabled, busy, onLabel = null, offLabel = null, showStatus = true) {
+export function renderSettingsCompactSwitchControl(key, title, enabled, busy, onLabel = null, offLabel = null, showStatus = true, labelledBy = null) {
   const resolvedOnLabel = onLabel ?? t("common.on");
   const resolvedOffLabel = offLabel ?? t("common.off");
   const model = getSettingsSwitchModel(key, { title, enabled, busy, onLabel: resolvedOnLabel, offLabel: resolvedOffLabel });
@@ -266,6 +266,7 @@ export function renderSettingsCompactSwitchControl(key, title, enabled, busy, on
         data-off-label="${escapeHtml(offLabel)}"
         aria-checked="${model.enabled ? "true" : "false"}"
         aria-label="${escapeHtml(model.ariaLabel)}"
+        ${labelledBy ? `aria-labelledby="${escapeHtml(labelledBy)}"` : ""}
         ${model.busy ? "disabled" : ""}
       >
         <span class="oq-settings-toggle-switch-track" aria-hidden="true">

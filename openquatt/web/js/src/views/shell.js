@@ -149,7 +149,8 @@ export function renderSettingsView() {
       state.nativeOpen ||
       !["settings", "learning"].includes(state.appView) ||
       state.renderedAppView !== state.appView ||
-      (state.appView === "settings" && state.renderedSettingsGroup !== state.settingsGroup)
+      (state.appView === "settings" && state.renderedSettingsGroup !== state.settingsGroup) ||
+      (state.appView === "learning" && state.renderedLearningPanel !== state.learningPanel)
     ) {
       return null;
     }
@@ -163,6 +164,7 @@ export function renderSettingsView() {
     return {
       view: state.appView,
       group: state.settingsGroup,
+      learningPanel: state.learningPanel,
       left: Number(window.scrollX || scroller?.scrollLeft || 0),
       top,
     };
@@ -180,7 +182,8 @@ export function renderSettingsView() {
         token !== state.settingsPageScrollRestoreToken ||
         state.nativeOpen ||
         state.appView !== scrollState.view ||
-        (state.appView === "settings" && state.settingsGroup !== scrollState.group)
+        (state.appView === "settings" && state.settingsGroup !== scrollState.group) ||
+        (state.appView === "learning" && state.learningPanel !== scrollState.learningPanel)
       ) {
         return;
       }
@@ -270,6 +273,7 @@ export function renderSettingsView() {
       restoreModalContinuity(state.root, modalContinuity);
       state.renderedAppView = "native";
       state.renderedSettingsGroup = "";
+      state.renderedLearningPanel = "";
       state.settingsRenderSignature = "";
       state.headerRenderSignature = getHeaderRenderSignature();
       updateMqttState({ mqttSensorsModalRenderSignature: "" });
@@ -326,6 +330,7 @@ export function renderSettingsView() {
     restoreFocusedSettingsField(focusedSettingsField);
     state.renderedAppView = state.appView;
     state.renderedSettingsGroup = state.appView === "settings" ? state.settingsGroup : "";
+    state.renderedLearningPanel = state.appView === "learning" ? state.learningPanel : "";
     state.settingsRenderSignature = state.appView === "settings" ? getSettingsRenderSignature() : "";
     state.headerRenderSignature = getHeaderRenderSignature();
     updateMqttState({

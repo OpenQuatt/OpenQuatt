@@ -9,7 +9,7 @@ import { state } from "../core/state.js";
 import { t } from "../i18n/index.js";
 import { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } from "../settings/house-learning.js";
 import { renderLearningExplanation } from "./learning-explanation.js";
-import { patchMeasurementArchive, renderMeasurementArchive } from "../settings/measurement-archive.js";
+import { patchMeasurementArchive, renderMeasurementArchive, renderMeasurementArchiveSettings } from "../settings/measurement-archive.js";
 
 // Messages appear as toasts, like in Settings; a patch picks up a message that arrives between renders.
 export function patchLearningView() {
@@ -27,21 +27,12 @@ export function patchLearningView() {
     return true;
   }
   if (weather && state.learningPanel === "configuration" && !patchWeatherSettings()) return false;
-  if (state.learningPanel === "diagnostics" && !patchMeasurementArchive()) return false;
+  if ((state.learningPanel === "configuration" || state.learningPanel === "diagnostics") && !patchMeasurementArchive()) return false;
   return hasEntity("houseLearningEnabled") ? patchHouseLearningSettingsStatus() : true;
 }
 
 function renderLearningPanelLink(id, label, icon, active) {
   return `<a class="oq-settings-group-button oq-learning-link${active ? " is-active" : ""}" href="${escapeHtml(getLearningPanelHref(id))}" data-oq-action="select-learning-panel" data-learning-panel="${id}"${active ? ' aria-current="page"' : ""}>${renderOqIcon(icon, "oq-settings-group-button-icon")}<span class="oq-settings-group-button-label">${escapeHtml(label)}</span></a>`;
-}
-
-function renderLearningDiagnostics() {
-  const downloads = renderHouseLearningSettings("export");
-  const data = downloads ? `<section class="oq-settings-section">
-    <h4 class="oq-learning-diagnostic-title">${escapeHtml(t("learningWorkspace.downloads"))}</h4>
-    ${downloads}
-  </section>` : "";
-  return renderHouseLearningSettings("diagnostics") + renderMeasurementArchive() + data;
 }
 
 // Same layout as Settings: the panels sit in the side navigation, the content beside it.
@@ -59,8 +50,8 @@ export function renderLearningView() {
     : t("houseLearning.panel.title");
   const panel = explanation ? renderLearningExplanation()
     : forecast ? (weather ? renderWeatherOutlook() : "")
-    : configuration ? renderHouseLearningSettings("configuration") + renderWeatherSettings()
-    : diagnostics ? renderLearningDiagnostics()
+    : configuration ? renderHouseLearningSettings("configuration") + renderWeatherSettings() + renderMeasurementArchiveSettings()
+    : diagnostics ? renderHouseLearningSettings("diagnostics") + renderHouseLearningSettings("export") + renderMeasurementArchive()
     : renderHouseLearningSettings();
   const loading = state.loadingEntities || (hasEntity("houseLearningEnabled") && !state.houseLearningEndpointChecked);
   const statusError = forecast && !weather
