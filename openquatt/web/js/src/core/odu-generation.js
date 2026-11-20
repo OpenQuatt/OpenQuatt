@@ -1,4 +1,5 @@
 export const ODU_GENERATION_KEYS = ["hp1Generation", "hp2Generation"];
+export const ODU_FIRMWARE_KEYS = ["hp1OduFirmware", "hp2OduFirmware"];
 export const ODU_GENERATION_DETECT_KEYS = ["hp1GenerationDetect", "hp2GenerationDetect"];
 export const ODU_GENERATION_VARIANT_KEYS = ["hp1GenerationVariant", "hp2GenerationVariant"];
 export const ODU_CUSTOMER_MODEL_CODE_KEYS = ["hp1CustomerModelCode", "hp2CustomerModelCode"];
@@ -10,7 +11,16 @@ export function normalizeDetectedOduGeneration(value) {
   return KNOWN_ODU_GENERATIONS.has(normalized) ? normalized : "Unknown";
 }
 
-function createHeatPumpDetection(index, available, value, detectAvailable) {
+export function normalizeOduFirmwareVersion(value) {
+  const match = /^(\d{1,3})\.(\d{1,3})$/.exec(String(value ?? "").trim());
+  if (!match) return null;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  if (major > 255 || minor > 255 || (major === 0 && minor === 0) || (major === 255 && minor === 255)) return null;
+  return `${major}.${String(minor).padStart(2, "0")}`;
+}
+
+function createHeatPumpDetection(index, available, value, detectAvailable, firmware) {
   const generation = normalizeDetectedOduGeneration(value);
   return {
     index,
@@ -19,6 +29,7 @@ function createHeatPumpDetection(index, available, value, detectAvailable) {
     available: Boolean(available),
     detectAvailable: Boolean(detectAvailable),
     generation,
+    firmwareVersion: normalizeOduFirmwareVersion(firmware),
     known: Boolean(available) && generation !== "Unknown",
   };
 }
@@ -29,17 +40,19 @@ export function createOduGenerationDetectionModel({
   hp1Available = false,
   hp1Generation = "",
   hp1DetectAvailable = false,
+  hp1Firmware = "",
   hp2Available = false,
   hp2Generation = "",
   hp2DetectAvailable = false,
+  hp2Firmware = "",
 } = {}) {
   const normalizedTopology = String(topology || "").trim().toLowerCase();
   const topologyKnown = normalizedTopology === "single" || normalizedTopology === "duo";
   const duo = normalizedTopology === "duo";
   const includeHp2 = duo || (!topologyKnown && hp2Available);
   const heatPumps = [
-    createHeatPumpDetection(1, hp1Available, hp1Generation, hp1DetectAvailable),
-    ...(includeHp2 ? [createHeatPumpDetection(2, hp2Available, hp2Generation, hp2DetectAvailable)] : []),
+    createHeatPumpDetection(1, hp1Available, hp1Generation, hp1DetectAvailable, hp1Firmware),
+    ...(includeHp2 ? [createHeatPumpDetection(2, hp2Available, hp2Generation, hp2DetectAvailable, hp2Firmware)] : []),
   ];
   const available = heatPumps.some((heatPump) => heatPump.available);
   const complete = topologyKnown && available && heatPumps.every((heatPump) => heatPump.known);

@@ -85,9 +85,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // Manual house-line advice, apply, restore and recheck: +8,542 B raw / +2,835 B gzip versus dev acfe7df2.
     // Per-HP ODU firmware in telemetry previews and NL/EN disclosure: +575 B raw
     // versus dev acfe7df2 (Node 24.22.1); existing headroom and relative gzip limits unchanged.
+    // Detected ODU generation and firmware in installation settings: +714 B raw versus dev 7536e6bc (Node 24.22.1).
     // Power House run-extension switch, hidden tuning fields when off and NL/EN copy:
-    // +1,799 B raw / +438 B gzip versus v0.59.0 (Node 22.23.4); existing headroom and relative gzip limits unchanged.
-    raw: 1_498_331,
+    // +1,799 B raw / +438 B gzip (Node 22.23.4); existing headroom and relative gzip limits unchanged.
+    raw: 1_499_045,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -116,5 +117,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // content: +161 B CSS raw; preserves the 80 B raw headroom.
   // Learning workspace and curve display: +2,604 B raw against the same base.
   // Manual house-line advice: +444 B raw / +94 B gzip versus dev acfe7df2.
-  { file: "css/openquatt-app.css", raw: 228_969, gzipBaselineCeiling: 44_985 },
+  // Responsive ODU identity rows and detection status: +531 B raw versus dev 7536e6bc.
+  { file: "css/openquatt-app.css", raw: 229_500, gzipBaselineCeiling: 44_985 },
 ];
