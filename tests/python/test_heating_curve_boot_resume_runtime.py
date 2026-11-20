@@ -195,7 +195,7 @@ Defrost hp2_odu_defrost;
 #endif
 namespace openquatt_decision_log {
 enum { REASON_UNKNOWN, REASON_HP_FAULT, REASON_CANDIDATE_UNAVAILABLE, REASON_CANDIDATE_IN_REST,
-       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE, REASON_CANDIDATE_IN_DEFROST };
+       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE, REASON_CANDIDATE_IN_DEFROST, REASON_PH_COMFORT_HOLD };
 }
 struct Cycle {
   struct { uint32_t now_ms=clock_ms; } config;
@@ -203,6 +203,7 @@ struct Cycle {
   int request_mode_code=2;
   bool manual_service_active=false,request_thermal_active=true;
   bool cooling_stop_armed=false,restart_by_minimum_off_time=false,cooling_stop_planned=false;
+  bool ph_restart_blocked=false;
   uint8_t duo_defrost_start_block_mask=0;
   struct { bool confirmation_pending=false; uint32_t remaining_ms=0; } cooling;
   std::string request_mode_option="Heating";

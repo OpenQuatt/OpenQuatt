@@ -767,6 +767,17 @@ class Runtime {
   float run_extension_comfort_stop_c() const { return this->run_ext_comfort_stop_c_; }
   float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
 
+  bool pending_setpoint_restart_blocked(bool ot_room_fresh, bool ot_setpoint_fresh, uint32_t ha_stale_s) const {
+    if (this->run_extension_state_.phase != oq_power_house_run_extension::Phase::WARM_RESTART ||
+        !this->run_extension_state_.stop_at_setpoint)
+      return false;
+    const auto [room, setpoint] =
+        oq_sensor_source::runtime().current_room_inputs(ot_room_fresh, ot_setpoint_fresh, ha_stale_s);
+    return oq_power_house_run_extension::pending_setpoint_restart_blocked(
+        this->run_extension_state_, room.valid && setpoint.valid, room.value, setpoint.value,
+        {0.0f, id(ph_run_extension_restart_cooldown_c).state, std::max(0.0f, id(ph_comfort_band_below_c).state)});
+  }
+
  private:
   std::array<oq_compressor_feedback::Snapshot, 2> observe_compressor_feedback_(
       const oq_frequency_runtime::Context& frequency, uint32_t now_ms) {

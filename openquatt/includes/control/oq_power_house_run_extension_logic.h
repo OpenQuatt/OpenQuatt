@@ -82,6 +82,20 @@ inline bool water_floor_allowed(float water_limit_factor) {
 
 inline State reset_state() { return {}; }
 
+inline bool setpoint_dropped(float setpoint_c, float previous_setpoint_c) {
+  return std::isfinite(setpoint_c) && std::isfinite(previous_setpoint_c) && setpoint_c < previous_setpoint_c - 0.01f;
+}
+
+inline bool pending_setpoint_restart_blocked(const State& state, bool room_inputs_valid, float room_c, float setpoint_c,
+                                             const Tuning& tuning) {
+  if (state.phase != Phase::WARM_RESTART || !state.stop_at_setpoint) return false;
+  if (!room_inputs_valid || !std::isfinite(room_c) || !std::isfinite(setpoint_c) || room_c >= setpoint_c) return true;
+  if (!setpoint_dropped(setpoint_c, state.last_setpoint_c)) return false;
+  const float cooldown_c = std::isfinite(tuning.restart_cooldown_c) ? tuning.restart_cooldown_c : kRestartHysteresisC;
+  return room_c >
+         std::max(setpoint_c - cooldown_c, oq_heat_intent::room_cold_edge_c(setpoint_c, tuning.room_resume_delta_c));
+}
+
 inline float compute_house_deficit_w(float base_capped_w, float capacity_w, bool output_valid,
                                      float fallback_deficit_w) {
   if (std::isfinite(base_capped_w) && std::isfinite(capacity_w) && output_valid) {
@@ -124,8 +138,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   const bool usable = in.inputs_valid && in.heating_allowed && room_finite && thresholds_finite;
 
   // Setpoint tracking: a relevant drop cancels a pending warm restart intent.
-  const bool setpoint_drop = std::isfinite(in.setpoint_c) && std::isfinite(state.last_setpoint_c) &&
-                             (in.setpoint_c < state.last_setpoint_c - 0.01f);
+  const bool setpoint_drop = setpoint_dropped(in.setpoint_c, state.last_setpoint_c);
   State next = state;
   next.stop_at_setpoint = stop_at_setpoint;
 
