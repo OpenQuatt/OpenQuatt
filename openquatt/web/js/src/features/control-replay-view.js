@@ -1302,15 +1302,28 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       next: "",
     };
     switch (eventType) {
-      case "ph_topology_comparison":
+      case "ph_topology_comparison": {
+        const flags = Number(event.flags);
+        const basis = (flags >> 1) & 7;
+        const fallback = ["—", t("controlReplay.phWaterSupply"), "HP1", "HP2"][flags >> 6 & 3];
+        const water = basis === 1 ? t("controlReplay.phWaterSeries")
+          : basis >= 2 && basis <= 6 ? t("controlReplay.phWaterIndependent", {
+            cause: t(`controlReplay.phWaterCause${basis}`),
+            hp1: flags & 16 ? t("controlReplay.phWaterOwn") : fallback,
+            hp2: flags & 32 ? t("controlReplay.phWaterOwn") : fallback,
+          }) : "";
+        const watts = value => value === -32768 ? "—" : value;
+        const heat = event._oq_candidate_heat;
         return {
           title: t("controlReplay.phCompared"),
-          summary: t("controlReplay.phComparedWatts", { solo: event.value_a, duo: event.value_b, demand: event.threshold_a }),
-          detail: [event._oq_candidate_heat && t("controlReplay.phComparedHeat", { solo: event._oq_candidate_heat.value_a,
-            duo: event._oq_candidate_heat.value_b, chosen: event._oq_candidate_heat.threshold_a }),
-            t(Number(event.flags) & 1 ? "controlReplay.phPriced" : "controlReplay.phUnpriced")].filter(Boolean).join(" "),
+          summary: t("controlReplay.phComparedWatts", { solo: watts(event.value_a), duo: watts(event.value_b), demand: watts(event.threshold_a) }),
+          detail: [heat && t("controlReplay.phComparedHeat", { solo: watts(heat.value_a),
+            duo: watts(heat.value_b), chosen: watts(heat.threshold_a) }),
+            event.value_a !== -32768 && t(flags & 1 ? "controlReplay.phPriced" : "controlReplay.phUnpriced"),
+            water].filter(Boolean).join(" "),
           next: "",
         };
+      }
       case "ph_comfort_minimum": {
         const flags = Number(event.flags);
         const units = mask => ["HP1", "HP2"].filter((_, i) => mask & (1 << i)).join(", ") || "—";
@@ -1318,7 +1331,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
           title: t("controlReplay.phMinimum"),
           summary: t("controlReplay.phMinimumWatts", { demand: event.value_a === -32768 ? "—" : event.value_a,
             minimum: event.value_b === -32768 ? "—" : event.value_b, level: event.threshold_a > 0 ? `F${event.threshold_a}` : "—" }),
-          detail: t("controlReplay.phMinimumLevels", { allowed: units(flags & 3), held: units((flags >> 2) & 3) }),
+          detail: [t("controlReplay.phMinimumLevels", { allowed: units(flags & 3), held: units((flags >> 2) & 3) }),
+            flags & 128 ? t("controlReplay.phMinimumModel", { units: units((flags >> 4) & 3) }) : ""].filter(Boolean).join(" "),
           next: "",
         };
       }

@@ -81,6 +81,43 @@ inline std::array<Prediction, 2> series(const std::array<oq_odu::Variant, 2>& va
   const auto first = solve(variants[0], hz[0], outside_c, inlet_c, flow_lph);
   return {first, first.valid() ? solve(variants[1], hz[1], outside_c, first.outlet_c, flow_lph) : Prediction{}};
 }
+enum class WaterBasis : uint8_t {
+  SERIES = 1,
+  DEFROST,
+  INLET_STALE,
+  FLOW_STALE,
+  INLET_INVALID,
+  FLOW_OUTSIDE_RANGE,
+};
+
+inline WaterBasis water_basis(bool defrost, bool inlet_fresh, bool flow_fresh, float inlet_c, float flow_lph) {
+  if (defrost) return WaterBasis::DEFROST;
+  if (!inlet_fresh) return WaterBasis::INLET_STALE;
+  if (!flow_fresh) return WaterBasis::FLOW_STALE;
+  if (!std::isfinite(inlet_c)) return WaterBasis::INLET_INVALID;
+  if (!(flow_lph >= 300 && flow_lph <= 3000)) return WaterBasis::FLOW_OUTSIDE_RANGE;
+  return WaterBasis::SERIES;
+}
+
+struct WaterReference {
+  float outlet_c;
+  bool own_outlet;
+};
+
+struct WaterSources {
+  WaterBasis basis = WaterBasis::SERIES;
+  bool own_hp1 = false;
+  bool own_hp2 = false;
+
+  uint8_t decision_log_flags(bool priced, uint8_t fallback_route) const {
+    // Bit 0 retains its old meaning. Bits 1–3 are zero in old records.
+    const auto flags = (priced ? 1U : 0U) | (static_cast<uint8_t>(basis) << 1);
+    if (basis == WaterBasis::SERIES) return flags;
+    return flags | (own_hp1 ? 0x10U : 0U) | (own_hp2 ? 0x20U : 0U) |
+           (own_hp1 && own_hp2 ? 0U : (fallback_route & 3U) << 6);
+  }
+};
+
 // One control-tick snapshot. Only HP1 rows are reused; no pair matrix or heap allocation.
 struct CandidateModel {
   std::array<oq_odu::Variant, 2> variants;

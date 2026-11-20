@@ -145,10 +145,23 @@ test("Power House decisions distinguish a circulation estimate, an unknown cost 
     const withHeat = attachHeatingStopSnapshots([heat, { ...comparison, seq: 4 }]).at(-1);
     assert.match(replay.getDecisionEventCopy(withHeat).detail, /3900.*4300.*4110/);
     assert.equal(attachHeatingStopSnapshots([heat, { ...comparison, seq: 5 }]).at(-1)._oq_candidate_heat, undefined);
+    const mixed = { ...comparison, seq: 4, flags: 87, value_b: -32768 };
+    const mixedHeat = { ...heat, flags: mixed.flags, value_b: -32768 };
+    const withSources = replay.getDecisionEventCopy(attachHeatingStopSnapshots([mixedHeat, mixed]).at(-1));
+    assert.match(withSources.summary, /1011.*—/);
+    assert.match(withSources.detail, locale === "nl" ? /inlaat onbruikbaar.*eigen uitlaat.*systeemaanvoer/
+      : /inlet unavailable.*own outlet.*system supply/);
+    const unavailableSolo = replay.getDecisionEventCopy({ ...mixed, value_a: -32768 });
+    assert.doesNotMatch(unavailableSolo.detail, locale === "nl" ? /circulatieverbruik/ : /circulation/);
+    assert.match(replay.getDecisionEventCopy({ ...comparison, flags: 2 }).detail,
+      locale === "nl" ? /gekoppelde inlaat/ : /connected inlet/);
     const comfort = replay.getDecisionEventCopy({ event_type: "ph_comfort_minimum", reason: "ph_comfort_stop",
       flags: 9, value_a: 3800, value_b: -32768, threshold_a: 0 });
     assert.match(comfort.detail, /HP1.*HP2/);
     assert.match(comfort.summary, /3800.*—.*—/);
+    const comfortWithModel = replay.getDecisionEventCopy({ event_type: "ph_comfort_minimum", reason: "ph_comfort_stop",
+      flags: 137 + 32, value_a: 3800, value_b: 4100, threshold_a: 2 });
+    assert.match(comfortWithModel.detail, locale === "nl" ? /schatting op F1: HP2/ : /estimates at F1: HP2/);
     assert.doesNotMatch(priced.title + unknown.detail + comfort.summary, /controlReplay\.|source_stop/);
   }
 });

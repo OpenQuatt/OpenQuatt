@@ -620,6 +620,19 @@ void test_startup_oil_and_restart_closed_loop() {
   }
 }
 int main() {
+  using oq_water_performance::water_basis;
+  using oq_water_performance::WaterBasis;
+  assert(water_basis(false, true, true, 34.0f, 300.0f) == WaterBasis::SERIES);
+  assert(water_basis(false, true, true, 34.0f, 3000.0f) == WaterBasis::SERIES);
+  assert(water_basis(true, false, false, NAN, NAN) == WaterBasis::DEFROST);
+  assert(water_basis(false, false, true, 34.0f, 800.0f) == WaterBasis::INLET_STALE);
+  assert(water_basis(false, true, false, 34.0f, 800.0f) == WaterBasis::FLOW_STALE);
+  assert(water_basis(false, true, true, NAN, 800.0f) == WaterBasis::INLET_INVALID);
+  assert(water_basis(false, true, true, 34.0f, NAN) == WaterBasis::FLOW_OUTSIDE_RANGE);
+  assert(water_basis(false, true, true, 34.0f, 299.0f) == WaterBasis::FLOW_OUTSIDE_RANGE);
+  assert(water_basis(false, true, true, 34.0f, 3001.0f) == WaterBasis::FLOW_OUTSIDE_RANGE);
+  const oq_water_performance::WaterSources mixed{WaterBasis::INLET_STALE, true, false};
+  assert(mixed.decision_log_flags(true, 1) == 87);
   test_mixed_response_selects_duo_or_single_for_actual_capacity();
   test_inactive_outlet_is_not_required();
   test_frequency_feedback_changes_duo_selection();
