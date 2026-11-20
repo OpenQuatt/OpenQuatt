@@ -61,7 +61,22 @@ class LearningReceiptContractTest(unittest.TestCase):
         )
         observations = re.findall(r"oq_sources::\$\{hp_id\}\.[a-z0-9_]+\.observe\((.*?)\);", HP_IO, re.DOTALL)
         self.assertEqual(len(observations), 9)
-        self.assertTrue(all("oq_sources::monotonic_ms()" in observation for observation in observations))
+        status = entity_block(HP_IO, "${hp_id}_status_2108_raw")
+        self.assertIn("const uint64_t received_ms = oq_sources::monotonic_ms();", status)
+        self.assertIn("status_2108.observe(x, received_ms,", status)
+        self.assertIn("record_status(receipts.status_2108, receipts.pump_evidence_revoked_ms, x, received_ms)", status)
+        self.assertEqual(sum("oq_sources::monotonic_ms()" in observation for observation in observations), 8)
+        feedback = entity_block(HP_IO, "${hp_id}_pump_ipwm_feedback_raw")
+        self.assertIn(
+            "record_feedback(receipts.pump_feedback, receipts.pump_evidence_revoked_ms, x, oq_sources::monotonic_ms())",
+            " ".join(feedback.split()),
+        )
+        flow = entity_block(HP_IO, "${hp_id}_flow")
+        self.assertIn(
+            "record_flow(receipts.flow, receipts.flow_evidence_revoked_ms, x, "
+            "id(oq_flow_setpoint_lph).state, oq_sources::monotonic_ms(), id(${hp_id}_is_online))",
+            " ".join(flow.split()),
+        )
 
     def test_defrost_receipt_is_bound_to_r2118_parser(self) -> None:
         defrost = entity_block(HP_IO, "${hp_id}_defrost")
@@ -77,6 +92,7 @@ class LearningReceiptContractTest(unittest.TestCase):
         receipt_names = (
             "working_mode",
             "compressor_frequency",
+            "pump_feedback",
             "status_2108",
             "defrost",
             "status_2119",
@@ -87,7 +103,13 @@ class LearningReceiptContractTest(unittest.TestCase):
         )
         for name in receipt_names:
             self.assertIn(f"oq_sources::${{hp_id}}.{name}.invalidate();", offline)
-        self.assertNotIn("oq_sources::monotonic_ms()", offline)
+        # Disconnect time invalidates the price window. It must never refresh a physical receipt.
+        revoked = "oq_sources::${hp_id}.pump_evidence_revoked_ms = oq_sources::monotonic_ms();"
+        self.assertIn(revoked, offline)
+        self.assertNotIn("oq_sources::monotonic_ms()", offline.replace(revoked, ""))
+        self.assertNotIn(".observe(", offline)
+        self.assertNotIn(".revoke(", offline)
+        self.assertNotRegex(offline, r"\.received_ms\s*=")
 
         status = entity_block(HP_IO, "${hp_id}_status_2108_raw")
         offline_guard = status.index("if (!id(${hp_id}_is_online)) {")
