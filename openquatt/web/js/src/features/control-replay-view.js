@@ -1302,6 +1302,26 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       next: "",
     };
     switch (eventType) {
+      case "ph_topology_comparison":
+        return {
+          title: t("controlReplay.phCompared"),
+          summary: t("controlReplay.phComparedWatts", { solo: event.value_a, duo: event.value_b, demand: event.threshold_a }),
+          detail: [event._oq_candidate_heat && t("controlReplay.phComparedHeat", { solo: event._oq_candidate_heat.value_a,
+            duo: event._oq_candidate_heat.value_b, chosen: event._oq_candidate_heat.threshold_a }),
+            t(Number(event.flags) & 1 ? "controlReplay.phPriced" : "controlReplay.phUnpriced")].filter(Boolean).join(" "),
+          next: "",
+        };
+      case "ph_comfort_minimum": {
+        const flags = Number(event.flags);
+        const units = mask => ["HP1", "HP2"].filter((_, i) => mask & (1 << i)).join(", ") || "—";
+        return {
+          title: t("controlReplay.phMinimum"),
+          summary: t("controlReplay.phMinimumWatts", { demand: event.value_a === -32768 ? "—" : event.value_a,
+            minimum: event.value_b === -32768 ? "—" : event.value_b, level: event.threshold_a > 0 ? `F${event.threshold_a}` : "—" }),
+          detail: t("controlReplay.phMinimumLevels", { allowed: units(flags & 3), held: units((flags >> 2) & 3) }),
+          next: "",
+        };
+      }
       case "source_start":
         return {
         title: isCoolingModeEvent ? t("controlReplay.evCoolStarted", { subject }) : t("controlReplay.evHpStarted", { subject }),
@@ -1758,7 +1778,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   function mapDecisionEventToControlWorkingItem(event, selectedWindow, nowMs) {
     const eventType = String(event?.event_type || "");
     const reasonCode = String(event?.reason || "unknown");
-    if (!eventType || eventType === "boot_marker" || eventType === "heating_stop_context" || event?._oq_hidden) {
+    if (!eventType || eventType === "boot_marker" || eventType === "heating_stop_context" || eventType === "ph_candidate_heat" || event?._oq_hidden) {
       return null;
     }
     if ((eventType === "defrost_seen_start" || eventType === "defrost_seen_clear") && Number(event?._oq_context_cm ?? event?.cm) === 5) {

@@ -20,6 +20,9 @@
 #include "oq_sensor_source_runtime.h"
 #endif
 #include "oq_power_house_dispatch_logic.h"
+#if OQ_TOPOLOGY_DUO
+#include "oq_power_house_peer_pump_runtime.h"
+#endif
 #include "oq_thermal_request_logic.h"
 #include "oq_power_house_run_extension_logic.h"
 #include "oq_warmup_runtime.h"
@@ -125,6 +128,9 @@ class Runtime {
     const auto frequency = oq_frequency_runtime::capture();
     const auto feedback = this->observe_compressor_feedback_(frequency, now_ms);
 
+#if OQ_TOPOLOGY_DUO
+    const auto circulation = oq_peer_pump::observe(this->peer_pumps_);
+#endif
     const auto cadence = oq_power_house::decide_cadence(now_ms, id(oq_ph_request_last_loop_ms), config.loop_ms);
     if (config.loop_ms == 0 || (!cadence.due && this->startup_phase_ == oq_power_house::StartupPhase::READY)) return;
 
@@ -484,6 +490,19 @@ class Runtime {
     const bool comfort_was_active =
         this->run_extension_state_.phase == oq_power_house_run_extension::Phase::COMFORT_STOP ||
         this->run_extension_state_.phase == oq_power_house_run_extension::Phase::WAIT_WARM_RESTART;
+    namespace log = esphome::openquatt_decision_log;
+    if (run_ext_input.actual_heating_active && !comfort_was_active && run_ext_decision.force_comfort_stop &&
+        run_ext_decision.next.phase == oq_power_house_run_extension::Phase::COMFORT_STOP) {
+      // Snapshot the decision even if minimum runtime delays the standby command.
+      const uint8_t flags =
+          (dispatch_input.hp1.levels[1].allowed ? 1 : 0) | (dispatch_input.hp2.levels[1].allowed ? 2 : 0) |
+          (dispatch_input.hp1.feedback_hold_level ? 4 : 0) | (dispatch_input.hp2.feedback_hold_level ? 8 : 0);
+      id(oq_decision_log)
+          .emit(log::EVENT_PH_COMFORT_MINIMUM, log::SUBJECT_SYSTEM, log::REASON_PH_COMFORT_STOP, log::SEVERITY_NORMAL,
+                id(oq_control_mode_code), log::STATE_ACTIVE, log::STATE_IDLE,
+                log::heating_stop::encode(base_requested_w), log::heating_stop::encode(run_ext_input.minimum_viable_w),
+                run_ext_input.minimum_viable_level, 0, flags);
+    }
     if (run_ext_decision.next.phase != this->last_run_ext_phase_) {
       ESP_LOGI("quatt.strategy", "ph run extension %s -> %s (room %.2f stop %.2f restart %.2f base %.0f floor %.0f)",
                oq_power_house_run_extension::phase_name(this->last_run_ext_phase_),
@@ -544,6 +563,8 @@ class Runtime {
                               warmup_power);
     oq_power_house_dispatch::PendingSinglePower pending_single;
 #if OQ_TOPOLOGY_DUO
+    dispatch_tuning.hp1_circulation_w = circulation.hp1.watts;
+    dispatch_tuning.hp2_circulation_w = circulation.hp2.watts;
     if (duo && request_active && ((retained_hp1 > 0) != (retained_hp2 > 0))) {
       const bool hp1_running = retained_hp1 > 0;
       const auto& running = hp1_running ? dispatch_input.hp1 : dispatch_input.hp2;
@@ -558,6 +579,41 @@ class Runtime {
     const auto dispatch = oq_power_house_dispatch::decide_dispatch(
         dispatch_input, dispatch_tuning, this->dispatch_state_, &oq_water_performance::CandidateModel::confirmed_power,
         pending_single);
+#if OQ_TOPOLOGY_DUO
+    const auto& comparison = dispatch.economic_comparison;
+    const bool selected_heating = dispatch.hp1_level > 0 || dispatch.hp2_level > 0;
+    if (selected_heating && comparison.single.valid && comparison.duo.valid && comparison.chosen.valid) {
+      const bool priced = circulation.hp1.available() && circulation.hp2.available();
+      const uint8_t mask = (dispatch.hp1_level > 0 ? 1 : 0) | (dispatch.hp2_level > 0 ? 2 : 0);
+      const uint8_t key = mask | (priced ? 4 : 0);
+      if (key != this->last_comparison_key_) {
+        const auto state = [](int count) {
+          return count == 2 ? log::STATE_DUO : count == 1 ? log::STATE_SINGLE : log::STATE_IDLE;
+        };
+        const auto emit = [&](uint8_t type, float single, float duo, float reference) {
+          id(oq_decision_log)
+              .emit(type,
+                    mask == 3   ? log::SUBJECT_BOTH
+                    : mask == 1 ? log::SUBJECT_HP1
+                                : log::SUBJECT_HP2,
+                    static_cast<uint8_t>(dispatch.reason), log::SEVERITY_NORMAL, id(oq_control_mode_code),
+                    state((retained_hp1 > 0) + (retained_hp2 > 0)),
+                    state((dispatch.hp1_level > 0) + (dispatch.hp2_level > 0)), log::heating_stop::encode(single),
+                    log::heating_stop::encode(duo), log::heating_stop::encode(reference), 0, priced ? 1 : 0);
+        };
+        emit(log::EVENT_PH_CANDIDATE_HEAT, comparison.single.thermal_w, comparison.duo.thermal_w,
+             comparison.chosen.thermal_w);
+        emit(log::EVENT_PH_TOPOLOGY_COMPARISON, comparison.single.economic_w, comparison.duo.economic_w, requested_w);
+        ESP_LOGD("quatt.strategy", "PH single F%u/F%u %.0f W heat %.0f W raw; duo F%u/F%u %.0f W heat %.0f W raw",
+                 comparison.single.hp1_level, comparison.single.hp2_level, comparison.single.thermal_w,
+                 comparison.single.electrical_w, comparison.duo.hp1_level, comparison.duo.hp2_level,
+                 comparison.duo.thermal_w, comparison.duo.electrical_w);
+      }
+      this->last_comparison_key_ = key;
+    } else if (!selected_heating) {
+      this->last_comparison_key_ = 0;
+    }
+#endif
     if (log_warmup_power) {
       ESP_LOGI("quatt.warmup",
                "power path=%s room=%.2f final=%.2f step=%.2f boost=%.2f effective=%.2f kp=%.0f below=%.2f base=%.0f "
@@ -650,6 +706,10 @@ class Runtime {
     this->dispatch_state_ = {};
     this->compressor_feedback_ = {};
     this->last_optimizer_reason_.clear();
+#if OQ_TOPOLOGY_DUO
+    this->peer_pumps_ = {};
+    this->last_comparison_key_ = 0;
+#endif
     this->intent_state_ = {};
     this->demand_state_ = {};
     this->was_warming_ = false;
@@ -809,6 +869,10 @@ class Runtime {
     this->demand_state_ = {saved.last_w, input.now_ms - 1U, saved.comfort_memory_c};
     ESP_LOGI("quatt.strategy", "Power House demand memory restored after planned restart");
   }
+#if OQ_TOPOLOGY_DUO
+  oq_peer_pump::DuoEstimator peer_pumps_{};
+  uint8_t last_comparison_key_{0};
+#endif
   bool boot_demand_checked_{false};
   esphome::openquatt_decision_log::heating_stop::Snapshot stop_snapshot_;
   void publish_startup_wait_(uint32_t now_ms, float requested_w) {

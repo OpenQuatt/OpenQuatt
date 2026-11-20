@@ -42,6 +42,10 @@ het laatst gemeten warmtepompvermogen en de gebruikte temperatuur- of vermogensg
 De waarden horen bij het besluit; het pompvermogen is de laatst beschikbare meting
 vóór de stopopdracht. Ontbrekende waarden blijven onbekend. Oudere records krijgen
 geen achteraf ingevulde meetwaarden.
+Bij een comfortstop van Power House toont de Beslislog de warmtevraag en de laagste haalbare combinatie bij het oorspronkelijke besluit. Je ziet ook voor welke units de frequentie-instellingen F1 toelieten en welke units tijdelijk op hun stand moesten blijven terwijl de compressor reageerde.
+
+Bij een nieuwe keuze tussen één en twee compressoren toont Power House het verwachte elektrische vermogen van beide opties. Voor twee V1.5-buitenunits met een vast debietdoel kan de regeling het circulatieverbruik van de andere buitenunit meerekenen. De gekozen debietbron moet een buitenunit zijn of een combinatie van buitenunitmeters. Pompfeedback, relaisstatus en debiet moeten voldoende lang overeenkomen. Bij een CiC- of Q-controllerdebiet gebruikt de regeling de oorspronkelijke vermogensvergelijking. Wanneer die gegevens ontbreken, zie je dat bij de vergelijking. De start- en stopopdrachten en de bevestigde compressorreactie staan afzonderlijk in de tijdlijn.
+
 Na een stop kan de kamer nog opwarmen door opgeslagen warmte en kan de circulatiepomp
 nalopen. Dat telt niet als een nieuwe compressorstart of extra stop.
 

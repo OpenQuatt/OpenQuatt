@@ -50,6 +50,11 @@ select:
       - Local
       - Outdoor unit
     initial_option: Auto
+    on_value:
+      - lambda: |-
+          #if OQ_TOPOLOGY_DUO
+          oq_sources::peer_flow_source_changed_ms = oq_sources::monotonic_ms();
+          #endif
 
   - platform: template
     id: oq_controller_flow_meter

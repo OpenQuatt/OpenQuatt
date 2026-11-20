@@ -65,8 +65,10 @@ inline float value_or_zero(float value) { return isnan(value) ? 0.0f : value; }
 
 inline float nonnegative(float value) { return value < 0.0f ? 0.0f : value; }
 
+constexpr float kLegacyIdleBaseW = 5.150232354845286f;
+
 inline float hp_input_power(const HpElectricalInputs& in) {
-  const float power_w = 5.150232354845286f +
+  const float power_w = kLegacyIdleBaseW +
                         (value_or_zero(in.voltage_v) * value_or_zero(in.current_a) * 1.1240096401010435f) +
                         (value_or_zero(in.fan_speed) * -0.04858859969715763f) +
                         (in.pump_relay_known && in.pump_relay_running ? value_or_zero(in.pump_power_w) : 0.0f) +

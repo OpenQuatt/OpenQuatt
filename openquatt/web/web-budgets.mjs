@@ -86,7 +86,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Per-HP ODU firmware in telemetry previews and NL/EN disclosure: +575 B raw
     // versus dev acfe7df2 (Node 24.22.1); existing headroom and relative gzip limits unchanged.
     // Detected ODU generation and firmware in installation settings: +714 B raw versus dev 7536e6bc (Node 24.22.1).
-    raw: 1_497_246,
+    // PH candidate comparison and comfort-stop evidence in both languages: +2,470 B raw / +729 B gzip vs f0da4507.
+    raw: 1_499_716,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

@@ -3,10 +3,22 @@
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
+#include <string>
 
 #include "../../openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
 #include "../../openquatt/includes/control/oq_power_house_run_extension_logic.h"
+
+namespace {
+struct GenerationSelect {
+  bool has_state() const { return true; }
+  std::string current_option() const { return "V1.5"; }
+} hp_generation;
+}  // namespace
+
+#define id(value) value
+#include "../../openquatt/includes/performance/oq_water_performance.h"
+#undef id
 
 namespace {
 using namespace oq_power_house_dispatch;
@@ -181,6 +193,16 @@ void test_feedback_hold_prefers_upshift_before_starting_peer() {
     pending_single = {3000.0f, 450.0f};
     const auto waiting = check(4, 0);
     assert(waiting.expected_w == 2000.0f);
+    // A pending Single and an allowed upshift still use their raw watts.
+    running.levels[4].electrical_w = 250.0f;
+    limits.soft_limit_w = limits.peak_limit_w = 500.0f;
+    limits.hp1_circulation_w = limits.hp2_circulation_w = 100.0f;
+    check(4, 0);
+    pending_single = {3000.0f, 501.0f};
+    check(5, 0);
+    pending_single = {3000.0f, 450.0f};
+    running.levels[4].electrical_w = 450.0f;
+    limits = tuning();
     in.requested_w = 2500.0f;
     idle.levels[1].thermal_w = 500.0f;
     check(4, 1);
@@ -385,6 +407,152 @@ void test_single_and_failures() {
   out = decide_dispatch(in, cfg, {});
   assert(isfinite(out.capacity_w));
 }
+void test_duo_circulation_economics_at_electrical_limits() {
+  constexpr float peer_w = 35.0f;
+  struct Scenario {
+    float single_w, duo_w, peak_w;
+    int expected_active;
+  };
+  const Scenario scenarios[] = {
+      {990, 1010, 1900, 1},                         // Prefer the smaller raw-soft excess.
+      {962, 981, 1900, 2},                          // Below soft, use economic cost.
+      {1005, 1020, 1900, 1}, {990, 1010, 1000, 1},  // Peak eligibility uses raw electrical watts.
+      {990, 1010, 1010, 1},  {990, 1001, 1900, 2},  // A 1 W raw-soft difference is a tie.
+      {990, 1002, 1900, 1},
+  };
+  auto in = input(true);
+  in.requested_w = 4000;
+  in.hp1.candidate = {1, true, false, false, true};
+  in.hp2.candidate = {6, true, false, false, true};
+  for (const auto& scenario : scenarios) {
+    for (auto* unit : {&in.hp1, &in.hp2}) {
+      unit->levels = {};
+      unit->levels[1] = {true, true, true, 2000, scenario.duo_w / 2, 30};
+      unit->levels[6] = {true, true, true, 4000, scenario.single_w, 67};
+    }
+    DispatchTuning limits{1000, scenario.peak_w};
+    limits.hp1_circulation_w = limits.hp2_circulation_w = 0;
+    const auto uncorrected = decide_dispatch(in, limits, {});
+    assert(topology(uncorrected.hp1_level, uncorrected.hp2_level) == 1);
+    limits.hp1_circulation_w = peer_w;
+    for (float invalid : {NAN, INFINITY, -1.0f}) {
+      limits.hp2_circulation_w = invalid;
+      const auto unknown = decide_dispatch(in, limits, {});
+      assert(unknown.hp1_level == uncorrected.hp1_level && unknown.hp2_level == uncorrected.hp2_level &&
+             unknown.reason == uncorrected.reason && unknown.capacity_w == uncorrected.capacity_w);
+      const auto& single = unknown.economic_comparison.single;
+      assert(single.valid && single.electrical_w == single.economic_w);
+    }
+    limits.hp2_circulation_w = peer_w;
+    const auto corrected = decide_dispatch(in, limits, {});
+    assert(topology(corrected.hp1_level, corrected.hp2_level) == scenario.expected_active);
+    const auto& comparison = corrected.economic_comparison;
+    assert(comparison.single.valid && comparison.single.electrical_w == scenario.single_w &&
+           comparison.single.economic_w == scenario.single_w + peer_w);
+    assert(comparison.duo.valid == (scenario.duo_w <= scenario.peak_w));
+    const auto& chosen = comparison.chosen;
+    assert(chosen.valid && chosen.electrical_w <= scenario.peak_w && chosen.thermal_w == 4000);
+    assert(chosen.hp1_level == corrected.hp1_level && chosen.hp2_level == corrected.hp2_level);
+  }
+
+  // A thermal improvement beyond the existing threshold still takes precedence.
+  DispatchTuning limits{1000, 1900};
+  limits.hp1_circulation_w = limits.hp2_circulation_w = peer_w;
+  in.hp1.levels[1] = in.hp2.levels[1] = {true, true, true, 2250, 505, 30};
+  in.requested_w = 4500;
+  const auto thermal = decide_dispatch(in, limits, {});
+  assert(thermal.hp1_level == 1 && thermal.hp2_level == 1 && thermal.expected_w == 4500);
+  const auto idle_cost = make_candidate(in, limits, 0, 0, 0);
+  assert(idle_cost.economic_w() == 0);
+
+  // A confirmed zero on one unit is a known cost and the idle peer determines the addend.
+  limits.hp1_circulation_w = 0;
+  const auto first = make_candidate(in, limits, 6, 0, 4000);
+  const auto second = make_candidate(in, limits, 0, 6, 4000);
+  assert(first.valid && first.economic_w() == first.electrical_w + peer_w);
+  assert(second.valid && second.economic_w() == second.electrical_w);
+  in.duo = false;
+  const auto single = make_candidate(in, limits, 6, 0, 4000);
+  assert(single.valid && single.economic_w() == single.electrical_w);
+  assert(!decide_dispatch(in, limits, {}).economic_comparison.chosen.valid);
+}
+
+struct V15FieldFrequency {
+  oq_odu::Variant performance_variant(bool) const { return oq_odu::Variant::V1_5; }
+  int automatic_frequency_hz(bool, int, int level) const { return oq_odu::V1_HEATING_DEMAND_REFERENCE_HZ[level]; }
+};
+
+void test_duo_circulation_replays_1203_field_vector() {
+  using oq_water_performance::CandidateModel;
+  struct FieldModel {
+    CandidateModel model{V15FieldFrequency{}, 3.9f, 31.67f, 793.512f, {36.4f, 36.4f}, true, false};
+    mutable unsigned pair_calls = 0;
+  } field;
+  auto in = input(true);
+  in.now_ms = 900000;
+  in.requested_w = 3993;
+  in.hp1.candidate = {2, true, false, false, true};
+  in.hp2.candidate = {1, true, false, false, true};
+  in.pair_power = [](const void* context, int first, int second) {
+    const auto& field = *static_cast<const FieldModel*>(context);
+    ++field.pair_calls;
+    return CandidateModel::dispatch(&field.model, first, second);
+  };
+  in.pair_context = &field;
+  const ConfirmedPower confirmed_power = [](const void* context, int first, int second, float nominal_w) {
+    return CandidateModel::confirmed_power(&static_cast<const FieldModel*>(context)->model, first, second, nominal_w);
+  };
+  for (bool first : {true, false}) {
+    auto& unit = first ? in.hp1 : in.hp2;
+    for (int level = 1; level <= 10; ++level) {
+      const auto p = field.model.unit(first, level);
+      unit.levels[level] = {
+          true,           p.valid(),
+          p.valid(),      p.thermal_w,
+          p.electrical_w, static_cast<uint8_t>(V15FieldFrequency{}.automatic_frequency_hz(first, 2, level))};
+    }
+  }
+
+  DispatchTuning limits{3400, 3650};
+  const auto uncorrected = decide_dispatch(in, limits, {}, confirmed_power);
+  assert(uncorrected.hp1_level == 6 && uncorrected.hp2_level == 0);
+  const unsigned uncorrected_pair_calls = field.pair_calls;
+
+  limits.hp1_circulation_w = limits.hp2_circulation_w = 35.15f;
+  field.pair_calls = 0;
+  const auto corrected = decide_dispatch(in, limits, {}, confirmed_power);
+  assert(corrected.hp1_level == 2 && corrected.hp2_level == 1);
+  assert(field.pair_calls == uncorrected_pair_calls);
+  assert(corrected.capacity_w == uncorrected.capacity_w);
+  const auto& comparison = corrected.economic_comparison;
+  assert(comparison.duo.valid && comparison.duo.electrical_w == comparison.duo.economic_w);
+  assert(comparison.single.valid &&
+         std::fabs(comparison.single.electrical_w + 35.15f - comparison.single.economic_w) < 0.01f);
+
+  // A brief dip at the Solo/Duo boundary after six hours at steady demand.
+  // Feed back dispatched levels on each tick; the hydraulic test fixture is fixed.
+  auto running = in;
+  DispatchState state;
+  for (uint32_t elapsed_s = 0; elapsed_s <= 6 * 3600 + 120; elapsed_s += 10) {
+    running.now_ms = in.now_ms + elapsed_s * 1000;
+    running.requested_w = elapsed_s >= 6 * 3600 && elapsed_s < 6 * 3600 + 60 ? 3993 : 4224;
+    state = observe_protection(
+        state, {running.now_ms, false, false, false, applied_level(running.hp1), applied_level(running.hp2)});
+    const auto next = decide_dispatch(running, limits, state, confirmed_power);
+    assert(next.hp1_level > 0 && next.hp2_level > 0);
+    running.hp1.candidate.previous_applied_level = next.hp1_level;
+    running.hp2.candidate.previous_applied_level = next.hp2_level;
+  }
+
+  limits.hp2_circulation_w = NAN;
+  const auto stale = decide_dispatch(in, limits, {}, confirmed_power);
+  assert(stale.hp1_level == 6 && stale.hp2_level == 0 && stale.reason == uncorrected.reason);
+
+  limits.hp2_circulation_w = 35.15f;
+  in.hp2.candidate.must_stop = true;
+  const auto stopped = decide_dispatch(in, limits, {}, confirmed_power);
+  assert(stopped.hp1_level == 6 && stopped.hp2_level == 0 && !stopped.economic_comparison.duo.valid);
+}
 void test_duo_holds_and_boost() {
   auto in = input(true);
   auto cfg = tuning();
@@ -468,5 +636,7 @@ int main() {
   test_performance_supply_fallback();
   test_single_and_failures();
   test_duo_holds_and_boost();
+  test_duo_circulation_economics_at_electrical_limits();
+  test_duo_circulation_replays_1203_field_vector();
   return 0;
 }

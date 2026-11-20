@@ -129,3 +129,26 @@ test("context records are hidden, cooling keeps its original meaning, timeline a
   assert.match(html, /&lt;script&gt;/);
   assert.doesNotMatch(replay.getDecisionEventCopy({ event_type: "source_stop", reason: "dew_stop", subject: "HP1", cm: 5 }).title, /kamer|stooklijn/);
 });
+
+test("Power House decisions distinguish a circulation estimate, an unknown cost and a delayed comfort stop", async () => {
+  const source = await readFile(new URL("../js/src/features/control-replay-view.js", import.meta.url), "utf8");
+  const replay = await loadReplayHarness(source);
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale);
+    const comparison = { event_type: "ph_topology_comparison", subject: "BOTH", to: "duo",
+      reason: "less_power", cm: 2, value_a: 1011, value_b: 990, threshold_a: 3993 };
+    const priced = replay.getDecisionEventCopy({ ...comparison, flags: 1 });
+    const unknown = replay.getDecisionEventCopy({ ...comparison, flags: 0 });
+    assert.match(priced.summary, /3993.*1011.*990/);
+    assert.notEqual(priced.detail, unknown.detail);
+    const heat = { ...comparison, event_type: "ph_candidate_heat", seq: 3, value_a: 3900, value_b: 4300, threshold_a: 4110 };
+    const withHeat = attachHeatingStopSnapshots([heat, { ...comparison, seq: 4 }]).at(-1);
+    assert.match(replay.getDecisionEventCopy(withHeat).detail, /3900.*4300.*4110/);
+    assert.equal(attachHeatingStopSnapshots([heat, { ...comparison, seq: 5 }]).at(-1)._oq_candidate_heat, undefined);
+    const comfort = replay.getDecisionEventCopy({ event_type: "ph_comfort_minimum", reason: "ph_comfort_stop",
+      flags: 9, value_a: 3800, value_b: -32768, threshold_a: 0 });
+    assert.match(comfort.detail, /HP1.*HP2/);
+    assert.match(comfort.summary, /3800.*—.*—/);
+    assert.doesNotMatch(priced.title + unknown.detail + comfort.summary, /controlReplay\.|source_stop/);
+  }
+});

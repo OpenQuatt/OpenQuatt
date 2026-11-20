@@ -1119,6 +1119,11 @@ select:
     restore_value: true
     options: ["V1", "V1.5", "V2"]
     initial_option: V1.5
+    on_value:
+      - lambda: |-
+          #if OQ_TOPOLOGY_DUO && OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+          oq_sources::peer_flow_source_changed_ms = oq_sources::monotonic_ms();
+          #endif
 
   - platform: template
     name: "Debug Level"
