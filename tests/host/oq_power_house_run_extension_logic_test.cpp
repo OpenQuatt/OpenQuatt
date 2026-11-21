@@ -755,9 +755,69 @@ void test_elevated_stop_survives_input_loss_during_pending_restart() {
   in.room_c = 19.49f;
   assert(evaluate(in, zero_margin, wait).warm_restart_intent);
 }
+void test_disabled_switch_restores_pre_v059_behaviour() {
+  // Switched off: no floor below Pmin, no comfort stop and no restart latch.
+  Input in = base_input();
+  in.enabled = false;
+  const State extending{Phase::EXTENDING, in.setpoint_c, true};
+  const auto running = evaluate(in, tuning(), extending);
+  assert(running.next.phase == Phase::INACTIVE && !running.next.cycle_armed);
+  assert(!running.floor_active && !running.force_comfort_stop);
+
+  in.room_c = in.setpoint_c + tuning().stop_margin_c + 0.3f;
+  assert(!evaluate(in, tuning(), extending).force_comfort_stop);
+
+  // An ordinary stop followed by demand well above the old restart threshold.
+  for (const auto phase : {Phase::RUNNING, Phase::EXTENDING, Phase::WAIT_WARM_RESTART, Phase::COMFORT_STOP}) {
+    Input stopped = base_input();
+    stopped.enabled = false;
+    stopped.cycle_active = stopped.actual_heating_active = false;
+    stopped.room_c = stopped.setpoint_c + 0.45f;
+    stopped.base_requested_w = 2500.0f;
+    const auto out = evaluate(stopped, tuning(), {phase, stopped.setpoint_c, true});
+    assert(out.next.phase == Phase::INACTIVE);
+    assert(!out.force_comfort_stop && !out.floor_active && !out.warm_restart_intent);
+  }
+}
+
+void test_switch_toggled_mid_cycle_takes_effect_on_next_tick() {
+  // Disabled publishes no thresholds the control no longer uses.
+  Input off = base_input();
+  off.enabled = false;
+  const auto disabled = evaluate(off, tuning(), {});
+  assert(!std::isfinite(disabled.comfort_stop_c) && !std::isfinite(disabled.warm_restart_c));
+
+  // Off while held stopped or waiting: the hold is released at once, so normal
+  // demand may restart the compressor (pre-v0.59 behaviour, intended).
+  for (const auto phase : {Phase::COMFORT_STOP, Phase::WAIT_WARM_RESTART, Phase::WARM_RESTART}) {
+    Input stopped = off;
+    stopped.cycle_active = stopped.actual_heating_active = false;
+    stopped.room_c = stopped.setpoint_c + 0.3f;
+    const auto out = evaluate(stopped, tuning(), {phase, stopped.setpoint_c, true, true});
+    assert(out.next.phase == Phase::INACTIVE && !out.force_comfort_stop && !out.warm_restart_intent);
+    assert(!out.next.cycle_armed && !out.next.stop_at_setpoint);
+  }
+
+  // On again during a running cycle with the room at or above the stop
+  // threshold: the comfort stop is requested on the very next tick.
+  State state = evaluate(off, tuning(), {Phase::EXTENDING, off.setpoint_c, true}).next;
+  Input on = base_input();
+  on.room_c = on.setpoint_c + tuning().stop_margin_c;
+  const auto resumed = evaluate(on, tuning(), state);
+  assert(resumed.next.phase == Phase::COMFORT_STOP && resumed.force_comfort_stop);
+  assert(std::isfinite(resumed.comfort_stop_c) && std::isfinite(resumed.warm_restart_c));
+
+  // On again below the stop threshold simply re-arms the running cycle.
+  on.room_c = on.setpoint_c - 0.05f;
+  const auto below = evaluate(on, tuning(), state);
+  assert(below.next.cycle_armed && !below.force_comfort_stop);
+}
+
 }  // namespace
 
 int main() {
+  test_disabled_switch_restores_pre_v059_behaviour();
+  test_switch_toggled_mid_cycle_takes_effect_on_next_tick();
   test_elevated_minimum_stops_optional_extension_at_setpoint();
   test_elevated_minimum_preserves_real_demand_and_guards();
   test_elevated_stop_survives_input_loss_during_pending_restart();

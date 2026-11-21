@@ -257,6 +257,7 @@ test("input en live patches houden herstartvoorvertoning actueel zonder de invoe
   state.root = { querySelector(selector) {
     if (selector === "[data-oq-power-house-comfort-thresholds]") return comfort;
     if (selector === "[data-oq-run-extension-status]") return null;
+    if (selector === "[data-oq-run-extension-enabled]") return null;
     assert.equal(selector, "[data-oq-run-extension-thresholds]");
     return preview;
   } };
@@ -418,4 +419,51 @@ test("live status blijft actueel tijdens invoer zonder de voorvertoning te beves
     patchRunExtensionThresholds();
     assert.equal(status.textContent, "Stop requested");
   } finally { state.root = previousRoot; setLocale("nl", { persist: false }); }
+});
+
+test("run-extension switch hides tuning fields when off and shows them when on", () => {
+  const entities = (enabled) => ({
+    phRunExtensionEnabled: { value: enabled, state: enabled },
+    phRunExtensionStopMargin: numberEntity(0.5, "°C"),
+    phRunExtensionRestartCooldown: numberEntity(0.2, "°C"),
+    roomSetpoint: numberEntity(20.5, "°C"),
+    phRunExtensionStatus: { value: "extending", state: "extending" },
+  });
+  resetSettingsState(entities(true));
+  let markup = renderPowerHouseRunExtensionField();
+  assert.match(markup, /data-oq-settings-field="phRunExtensionEnabled"/);
+  assert.match(markup, /data-oq-field="phRunExtensionStopMargin"/);
+  assert.match(markup, /data-oq-run-extension-enabled="true"/);
+  assert.match(markup, /Doorverwarmen op minimumvermogen/);
+
+  resetSettingsState(entities(false));
+  markup = renderPowerHouseRunExtensionField();
+  assert.match(markup, /data-oq-settings-field="phRunExtensionEnabled"/);
+  assert.doesNotMatch(markup, /data-oq-field="phRunExtensionStopMargin"/);
+  assert.doesNotMatch(markup, /data-oq-field="phRunExtensionRestartCooldown"/);
+  assert.doesNotMatch(markup, /data-oq-run-extension-thresholds/);
+  assert.match(markup, /data-oq-run-extension-enabled="false"/);
+  assert.match(markup, /Uitgeschakeld/);
+  try {
+    setLocale("en", { persist: false });
+    assert.match(renderPowerHouseRunExtensionField(), /Enable extended heating/);
+  } finally {
+    setLocale("nl", { persist: false });
+  }
+});
+
+test("run-extension patch reports a structure change when the switch flips", () => {
+  resetSettingsState({ phRunExtensionEnabled: { value: true, state: true }, phRunExtensionStopMargin: numberEntity(0.5, "°C") });
+  const markup = renderPowerHouseRunExtensionField();
+  const dataset = { oqRunExtensionEnabled: /data-oq-run-extension-enabled="(\w+)"/.exec(markup)[1] };
+  const section = { dataset };
+  const previousRoot = state.root;
+  state.root = { querySelector: (selector) => selector === "[data-oq-run-extension-enabled]" ? section : null };
+  try {
+    assert.equal(patchRunExtensionThresholds(), true);
+    state.entities.phRunExtensionEnabled = { value: false, state: false };
+    assert.equal(patchRunExtensionThresholds(), false);
+  } finally {
+    state.root = previousRoot;
+  }
 });

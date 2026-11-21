@@ -70,6 +70,10 @@ export default {
     unknown: "Status unknown",
   },
   runExtension: {
+    allow: "Enable extended heating",
+    allowCopy: "On by default. Turn this off when an external heat demand (for example from Home Assistant) already decides when the heat pump starts and stops. Off means: no minimum output after the desired temperature, no separate stop temperature and no cool-down wait before the heat pump may start again.",
+    on: "On: the heat pump may keep heating at low output until the stop temperature.",
+    off: "Off: Power House controls starting and stopping without extended heating.",
     extending: "Extended heating at minimum output",
     comfortStop: "Stop requested",
     waitRestart: "Waiting to cool down",

@@ -71,6 +71,10 @@ export default {
     unknown: "Status onbekend",
   },
   runExtension: {
+    allow: "Langer doorverwarmen inschakelen",
+    allowCopy: "Staat standaard aan. Zet dit uit als een externe warmtevraag (bijvoorbeeld uit Home Assistant) al bepaalt wanneer de warmtepomp start en stopt. Uit betekent: geen minimumvermogen na de gewenste temperatuur, geen eigen stopgrens en geen wachttijd voor afkoeling voordat de warmtepomp weer mag starten.",
+    on: "Aan: de warmtepomp mag op laag vermogen doorverwarmen tot de stopgrens.",
+    off: "Uit: Power House regelt starten en stoppen zonder langer doorverwarmen.",
     extending: "Doorverwarmen op minimumvermogen",
     comfortStop: "Stop aangevraagd",
     waitRestart: "Wacht op afkoeling",
