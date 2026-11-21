@@ -368,10 +368,14 @@ void solar_after_upgrade_and_interrupted_write() {
   assert(reopened.ring.count() == 1 && reopened.ring.last_epoch() == entry.epoch);
   std::string json;
   const auto append = [&](auto format, auto... args) {
-    char buf[64];
-    const int size = std::snprintf(buf, sizeof(buf), format, args...);
-    assert(size > 0 && static_cast<size_t>(size) < sizeof(buf));
-    json.append(buf, static_cast<size_t>(size));
+    if constexpr (sizeof...(args) == 0) {
+      json.append(format);
+    } else {
+      char buf[64];
+      const int size = std::snprintf(buf, sizeof(buf), format, args...);
+      assert(size > 0 && static_cast<size_t>(size) < sizeof(buf));
+      json.append(buf, static_cast<size_t>(size));
+    }
     return true;
   };
   assert(reopened.ring.visit(0, [&](auto& row, auto&) { return export_solar_forecast(row, true, append); }));
