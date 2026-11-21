@@ -71,12 +71,13 @@ struct ProtectionObservation {
   bool hp1_valve_defrost = false, hp2_valve_defrost = false, oil_return = false;
   int hp1_applied_level = 0, hp2_applied_level = 0;
 };
+using PairPower = std::array<float, 2> (*)(const void*, int, int);
 struct DispatchInput {
   uint32_t now_ms = 0;
   float requested_w = NAN;
   bool duo = false, performance_valid = false, lead_hp1 = true;
   HpInput hp1, hp2;
-  std::array<float, 2> (*pair_power)(const void*, int, int) = nullptr;
+  PairPower pair_power = nullptr;
   const void* pair_context = nullptr;
 };
 using ConfirmedPower = float (*)(const void*, int, int, float);
@@ -195,7 +196,8 @@ inline bool electrical_limits_valid(const DispatchTuning& tuning) {
          tuning.peak_limit_w >= tuning.soft_limit_w;
 }
 inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& tuning, int hp1_level, int hp2_level,
-                                float target_w, bool allow_feedback_upshift = false) {
+                                float target_w, bool allow_feedback_upshift = false,
+                                PairPower reference_f1_power = nullptr) {
   Candidate result;
   result.hp1_level = hp1_level;
   result.hp2_level = in.duo ? hp2_level : 0;
@@ -205,18 +207,20 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
   if (!electrical_limits_valid(tuning) || !std::isfinite(target_w) || target_w < 0.0f || result.hp1_level < 0 ||
       result.hp2_level < 0 || result.hp1_level > kMaxLevel || result.hp2_level > kMaxLevel)
     return result;
+  const auto pair_power = reference_f1_power != nullptr ? reference_f1_power : in.pair_power;
   auto add_hp = [&](const HpInput& hp, int level) {
     // Score only topologies the actuator can actually apply during its existing holds.
     if (hp.fixed_level > 0 && applied_level(hp) > 0 && !hp.candidate.must_stop && level != hp.fixed_level) return false;
     // Let the ODU respond before another modulation change; this never forbids
     // a stop allowed by the existing runtime and safety gates below.
-    if (level > 0 && hp.feedback_hold_level > 0 && applied_level(hp) > 0 && !hp.candidate.must_stop &&
-        level != hp.feedback_hold_level && !(allow_feedback_upshift && level > hp.feedback_hold_level))
+    if (reference_f1_power == nullptr && level > 0 && hp.feedback_hold_level > 0 && applied_level(hp) > 0 &&
+        !hp.candidate.must_stop && level != hp.feedback_hold_level &&
+        !(allow_feedback_upshift && level > hp.feedback_hold_level))
       return false;
     if (level <= 0) return !hp.stop_inhibited || applied_level(hp) <= 0 || hp.candidate.must_stop;
     if (!hp_may_serve(hp)) return false;
     const auto& estimate = hp.levels[level];
-    if (in.pair_power != nullptr) return estimate.allowed;
+    if (pair_power != nullptr) return estimate.allowed;
     if (!estimate.allowed || !estimate.thermal_valid || !estimate.electrical_valid ||
         !std::isfinite(estimate.thermal_w) || !std::isfinite(estimate.electrical_w) || estimate.thermal_w < 0.0f ||
         estimate.electrical_w < 0.0f)
@@ -226,8 +230,8 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
     return true;
   };
   if (!add_hp(in.hp1, result.hp1_level) || !add_hp(in.hp2, result.hp2_level)) return result;
-  if (in.pair_power != nullptr) {
-    const auto power = in.pair_power(in.pair_context, result.hp1_level, result.hp2_level);
+  if (pair_power != nullptr) {
+    const auto power = pair_power(in.pair_context, result.hp1_level, result.hp2_level);
     result.thermal_w = power[0];
     result.electrical_w = power[1];
   }
@@ -290,6 +294,13 @@ inline Candidate upshift_held_single(const DispatchInput& in, const DispatchTuni
   }
   return best;
 }
+inline bool preserves_active_topology(const DispatchInput& in, int first, int second) {
+  if (!in.duo) return true;
+  const auto retained = oq_hp_candidate::preserve_active_topology_during_suspect(
+      {first, second, sanitized_candidate(in.hp1), sanitized_candidate(in.hp2), true});
+  return retained.hp1_level == first && retained.hp2_level == second;
+}
+
 inline Candidate minimum_active_candidate(const DispatchInput& in, const DispatchTuning& tuning) {
   Candidate minimum;
   const int hp1_max = applied_level(in.hp1) > 0 ? kMaxLevel : 0;
@@ -297,11 +308,7 @@ inline Candidate minimum_active_candidate(const DispatchInput& in, const Dispatc
   for (int first = 0; first <= hp1_max; ++first) {
     for (int second = 0; second <= hp2_max; ++second) {
       // Extension may retain active units, never borrow the minimum of an idle peer.
-      if (in.duo) {
-        const auto retained = oq_hp_candidate::preserve_active_topology_during_suspect(
-            {first, second, sanitized_candidate(in.hp1), sanitized_candidate(in.hp2), true});
-        if (retained.hp1_level != first || retained.hp2_level != second) continue;
-      }
+      if (!preserves_active_topology(in, first, second)) continue;
       const auto candidate = make_candidate(in, tuning, first, second, 0.0f);
       if (!candidate.valid || candidate.active_count == 0 || candidate.thermal_w <= 0.0f) continue;
       const int highest_level = std::max(first, second);
@@ -312,6 +319,33 @@ inline Candidate minimum_active_candidate(const DispatchInput& in, const Dispatc
   }
   return minimum;
 }
+
+struct RunExtensionMinimum {
+  float thermal_w = NAN;
+  int comfort_level = 0;
+};
+
+inline RunExtensionMinimum run_extension_minimum(const DispatchInput& in, const DispatchTuning& tuning,
+                                                 float base_requested_w, PairPower reference_f1_power) {
+  const auto minimum = minimum_active_candidate(in, tuning);
+  if (!minimum.valid) return {};
+  const int level = std::max(minimum.hp1_level, minimum.hp2_level);
+  if (level <= 1 || !(base_requested_w < minimum.thermal_w)) return {minimum.thermal_w, level};
+
+  // The floor follows live dispatch. Only keep the comfort margin when F1 would
+  // be feasible at no more heat without an unconfirmed override or modulation hold.
+  const int hp1_max = applied_level(in.hp1) > 0 ? 1 : 0;
+  const int hp2_max = in.duo && applied_level(in.hp2) > 0 ? 1 : 0;
+  for (int first = 0; first <= hp1_max; ++first) {
+    for (int second = 0; second <= hp2_max; ++second) {
+      if (first + second == 0 || !preserves_active_topology(in, first, second)) continue;
+      const auto f1 = make_candidate(in, tuning, first, second, 0.0f, false, reference_f1_power);
+      if (f1.valid && f1.thermal_w > 0.0f && f1.thermal_w <= minimum.thermal_w) return {minimum.thermal_w, 1};
+    }
+  }
+  return {minimum.thermal_w, level};
+}
+
 inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tuning, float target_w, int active_count,
                                float tie_band_w, bool require_confirmed = false,
                                ConfirmedPower confirmed_power = nullptr) {
