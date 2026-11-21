@@ -45,7 +45,7 @@ class WeatherParserRuntimeTest(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         cls.binary = Path(cls.directory.name) / "weather-parser"
         result = run_process(compiler_command(
-            "-I", str(ROOT), "-I", str(include),
+            "-DUSE_OPENQUATT_MEASUREMENT_ARCHIVE", "-I", str(ROOT), "-I", str(include),
             str(ROOT / "tests/fixtures/weather/parser_runtime.cpp"), "-o", str(cls.binary),
         ), timeout=COMPILE_TIMEOUT_SECONDS, capture_output=True, text=True)
         if result.returncode != 0:
@@ -119,6 +119,28 @@ class WeatherParserRuntimeTest(unittest.TestCase):
                 payload = forecast()
                 payload["current"][key] = value
                 self.assertEqual(self.parse(payload)[:3], (True, False, 0), (key, value))
+
+    def solar(self, payload):
+        result = run_process([str(self.binary), "1800000000", "8192", "solar"], timeout=RUN_TIMEOUT_SECONDS,
+                             input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                             capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return [int(value) for value in result.stdout.split()]
+
+    def test_optional_solar_values_fit_existing_arena_and_distinguish_zero_from_missing(self):
+        payload = wind_forecast()
+        payload["hourly_units"]["shortwave_radiation"] = "W/m²"
+        payload["hourly"]["shortwave_radiation"] = [0, 337.6, None, -1, 2001, "50", True] + [1200.2] * 29
+        flags = ((1 << 36) - 1) ^ sum(1 << bit for bit in range(2, 7))
+        actual = self.solar(payload)
+        self.assertEqual(actual[:4], [1, flags, 0, 338])
+        self.assertEqual(actual[-1], 1200)
+        self.assertEqual(self.solar(wind_forecast())[:2], [1, 0])
+        payload["hourly_units"]["shortwave_radiation"] = "kWh/m²"
+        self.assertEqual(self.solar(payload)[:2], [1, 0])
+        payload["hourly_units"]["shortwave_radiation"] = "W/m²"
+        payload["hourly"]["shortwave_radiation"].pop()
+        self.assertEqual(self.solar(payload)[:2], [1, 0])
 
     def wind(self, payload, epoch=1800000000):
         result = run_process([str(self.binary), str(epoch), "8192", "wind"], timeout=RUN_TIMEOUT_SECONDS,

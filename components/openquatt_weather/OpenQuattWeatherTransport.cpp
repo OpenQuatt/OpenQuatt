@@ -96,6 +96,9 @@ bool OpenQuattWeather::fetch_() {
     length = std::snprintf(state.path, sizeof(state.path),
                            "/v1/forecast?latitude=%.5f&longitude=%.5f&models=%s"
                            "&hourly=temperature_2m,wind_speed_10m,wind_direction_10m"
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+                           ",shortwave_radiation"
+#endif
                            "&current=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_direction_10m"
                            "&wind_speed_unit=ms"
                            "&forecast_hours=36&timezone=UTC&timeformat=unixtime&temperature_unit=celsius",

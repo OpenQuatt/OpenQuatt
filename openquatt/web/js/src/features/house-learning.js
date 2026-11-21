@@ -491,9 +491,11 @@ export function isHouseLearningResetConfirmed(status = state.houseLearningStatus
 
 export async function resetHouseLearningData(pressNamedButton, options = {}) {
   if (state.houseLearningReset === "pending" || state.busyAction) return false;
-  const confirmReset = options.confirmReset || (() => window.confirm(
-    t("houseLearning.reset.confirm"),
-  ));
+  const confirmReset = options.confirmReset || (() => {
+    const archiveNote = hasEntity("measurementArchiveEnabled") && hasEntity("measurementArchiveStatus")
+      ? ` ${t("houseLearning.reset.archiveKept")}` : "";
+    return window.confirm(t("houseLearning.reset.confirm") + archiveNote);
+  });
   if (!confirmReset()) return false;
   invalidateWeatherForecast();
   clearShadowRefresh();

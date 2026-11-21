@@ -67,6 +67,11 @@ const viewActionHandlers = {
     state.learningPanel = panel;
     syncUrlAppView("push");
     render();
+    const target = button.dataset.learningTarget && state.root?.querySelector(`#${button.dataset.learningTarget}`);
+    if (target) {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: "start" });
+    }
     if (panel === "forecast") void refreshWeatherForecast();
     if (panel !== "forecast" && panel !== "explanation") void syncEntities({ forceFast: true });
   },

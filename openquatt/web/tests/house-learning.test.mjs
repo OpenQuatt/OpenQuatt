@@ -550,6 +550,26 @@ test("annuleren verstuurt geen reset en een geweigerde reset blijft als fout zic
   assert.match(renderHouseLearningStatusMarkup(), /HTTP 500/);
 });
 
+test("wisbevestiging noemt model, pauze en behoud van het beschikbare Meetarchief", async (t) => {
+  state.busyAction = state.houseLearningReset = "";
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  const confirmations = [];
+  window.confirm = (message) => { confirmations.push(message); return false; };
+  t.after(() => { delete window.confirm; });
+  const press = async () => assert.fail("Annuleren mag geen wisopdracht versturen");
+  assert.equal(await resetHouseLearningData(press), false);
+  assert.doesNotMatch(confirmations.at(-1), /Meetarchief/);
+
+  state.entities.measurementArchiveEnabled = switchEntity(false);
+  state.entities.measurementArchiveStatus = { value: "off|0|0|0" };
+  assert.equal(await resetHouseLearningData(press), false);
+  assert.match(confirmations.at(-1), /geleerde woningmodel.*Passief leren wordt gepauzeerd.*Meetarchief blijft bewaard/);
+
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.equal(await resetHouseLearningData(press), false);
+  assert.match(confirmations.at(-1), /learned home model.*Passive learning is paused.*measurement archive is kept/);
+});
+
 test("reset negeert een oude status en meldt pas succes na leeg, gepauzeerd en gewist journal", async () => {
   document.hidden = false;
   state.appView = "learning";
@@ -1033,7 +1053,8 @@ test("meetgegevens staan open in een eigen kaart onder het leerpaneel", () => {
   assert.doesNotMatch(diagnostics, /data-oq-button-key="houseLearningReset"/);
   const settings = renderHouseLearningSettings("configuration");
   assert.match(settings, /role="switch"[\s\S]*data-control-key="houseLearningEnabled"[\s\S]*aria-checked="true"/);
-  assert.match(settings, /data-oq-button-key="houseLearningReset"/);
+  assert.doesNotMatch(settings, /data-oq-button-key="houseLearningReset"/);
+  assert.match(renderHouseLearningSettings("export"), /download-house-learning[\s\S]*data-oq-button-key="houseLearningReset"/);
 });
 
 test("een gewist leerjournaal toont de lege grafiek zonder export te laden", () => {
@@ -1073,7 +1094,7 @@ test("mislukte grafieklading houdt beheer bereikbaar en Vernieuwen probeert opni
   assert.match(html, /Meetgegevens niet beschikbaar/);
   assert.doesNotMatch(html, /Meetgegevens laden…/);
   assert.match(renderHouseLearningSettings("export"), /data-oq-action="download-house-learning"/);
-  assert.match(renderHouseLearningSettings("configuration"), /data-oq-button-key="houseLearningReset"/);
+  assert.match(renderHouseLearningSettings("export"), /data-oq-button-key="houseLearningReset"/);
   assert.doesNotMatch(html, /oq-house-learning-chart-wrap/);
   let requests = 0;
   globalThis.fetch = async () => { requests += 1; return { ok: true, json: async () => ({ schema: 1, mode: "passive", record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"], records: [] }) }; };
@@ -1926,15 +1947,14 @@ test("RLS-fitgereedheid vervangt geen onafhankelijke warmteopslagvalidatie", () 
 });
 
 
-test("verplaatste instellingen en diagnose behouden onzekere resetmeldingen", () => {
+test("onzekere resetmelding staat bij Leerdata wissen", () => {
   state.entities = { houseLearningEnabled: switchEntity(true), houseLearningReset: {} };
   state.houseLearningEndpointAvailable = true;
   state.houseLearningReset = "uncertain";
   state.houseLearningResetError = "Wissen is niet bevestigd.";
+  assert.match(renderHouseLearningSettings("export"), /houseLearningReset[\s\S]*role="alert">Wissen is niet bevestigd/);
   for (const section of ["configuration", "diagnostics"]) {
-    const html = renderHouseLearningSettings(section);
-    assert.match(html, /role="alert">Wissen is niet bevestigd/);
-    assert.doesNotMatch(html, /class="oq-house-learning-thermal"/);
+    assert.doesNotMatch(renderHouseLearningSettings(section), /Wissen is niet bevestigd/);
   }
 });
 

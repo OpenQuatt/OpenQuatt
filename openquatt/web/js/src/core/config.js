@@ -99,6 +99,8 @@
     ["usageTelemetryInstallationId", DOMAIN_TEXT_SENSOR, "Usage statistics installation ID"],
     ["houseLearningEnabled", DOMAIN_SWITCH, "Power House Passive Learning"],
     ["houseLearningReset", DOMAIN_BUTTON, "Power House Learning Reset"],
+    ["measurementArchiveEnabled", DOMAIN_SWITCH, "Measurement Archive enabled"],
+    ["measurementArchiveStatus", DOMAIN_TEXT_SENSOR, "Meetarchief"],
     ["weatherLocation", DOMAIN_TEXT, "Weather Location"],
     ["weatherEnabled", DOMAIN_SWITCH, "Weather Passive Experiment"],
     ["weatherStatus", DOMAIN_TEXT_SENSOR, "Weather Experiment Status"],
