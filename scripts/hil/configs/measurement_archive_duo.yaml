@@ -1,7 +1,7 @@
-# HCQ lab firmware, with the optional package installed and recording initially off.
+# HCQ lab firmware for measurement archive tests.
 substitutions:
   oq_archive_hil_profile: "archive-candidate"
+  oq_include_measurement_archive: "true"
 
 packages:
   hil_base: !include measurement_archive_baseline_duo.yaml
-  measurement_archive: !include ../../../openquatt/experimental/measurement_archive.yaml

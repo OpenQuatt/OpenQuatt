@@ -71,7 +71,12 @@ void MeasurementArchive::setup() {
     return;
   }
   index_ready_ = state.healthy;
-  enabled_ = stored_enabled_ = index_ready_ && loaded == ESP_OK && stored == 1;
+  if (index_ready_ && loaded == ESP_ERR_NVS_NOT_FOUND) {
+    // A new archive starts recording only after its setting is durable.
+    preference_error_ = !save_enabled(true);
+    stored = preference_error_ ? 0 : 1;
+  }
+  enabled_ = stored_enabled_ = index_ready_ && !preference_error_ && stored == 1;
   enabled_switch_->publish_state(enabled_);
   publish_(!state.healthy ? "storage_error" : enabled_ ? "waiting" : "off");
 }
