@@ -1,6 +1,7 @@
 # HCQ lab firmware for measurement archive tests.
 substitutions:
   oq_archive_hil_profile: "archive-candidate"
+  oq_include_measurement_archive: "true"
 
 packages:
   hil_base: !include measurement_archive_baseline_duo.yaml

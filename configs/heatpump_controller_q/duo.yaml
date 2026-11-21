@@ -4,6 +4,7 @@
 substitutions:
   # Topology is hard-pinned by the release target; hardware/network ownership lives in their packages.
   oq_topology_build_flag: "-DOQ_TOPOLOGY_DUO=1"
+  oq_include_measurement_archive: "true" # The instrumented HIL baseline overrides this.
 
 esphome:
   build_path: ../../../.esphome/build/heatpump_controller_q_duo
@@ -17,4 +18,6 @@ packages:
   openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
   openquatt_topology_duo: !include ../../openquatt/topology/duo.yaml
   openquatt_weather: !include ../../openquatt/experimental/weather_outside_source.yaml
-  openquatt_measurement_archive: !include ../../openquatt/experimental/measurement_archive.yaml
+  openquatt_measurement_archive: !include
+    file: ../../openquatt/experimental/measurement_archive.yaml
+    condition: "${oq_include_measurement_archive}"

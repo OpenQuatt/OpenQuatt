@@ -102,6 +102,14 @@ bronpaden en het buildpad aan deze mapdiepte aan. De overlays mogen nooit
 rechtstreeks `duo.yaml` includen: dat draagt de productie-identiteit en zou
 een mDNS-conflict met een echte productiecontroller veroorzaken.
 
+Voor de geheugenproef van Meetarchief bouw je op dezelfde bronrevisie
+`measurement_archive_baseline_duo.yaml` zonder Meetarchief en
+`measurement_archive_duo.yaml` met Meetarchief. Beide bestanden staan in
+`scripts/hil/configs/` en gebruiken dezelfde geheugenprobe, weerfunctie en
+labidentiteit. De baseline laat het Meetarchief-pakket weg tijdens het bouwen.
+Controleer na het opstarten het profiel `archive-baseline` of `archive-candidate`
+en voer dezelfde weer-, API- en webbelasting uit voor beide builds.
+
 ## Read-only rooktest
 
 Controleer bereikbaarheid, firmware, heap en ODU-protocoldiagnostiek zonder

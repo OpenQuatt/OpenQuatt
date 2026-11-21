@@ -65,6 +65,24 @@ class QConfigCompositionContractTest(unittest.TestCase):
                 sensors = {str(item["id"]): item for item in config["sensor"] if "id" in item}
                 self.assertIn("current_outside_temperature()", str(sensors["outside_temp_selected"]["lambda"]))
 
+    @unittest.skipUnless(importlib.util.find_spec("esphome"), "ESPHome is required for package composition")
+    def test_archive_hil_baseline_excludes_recorder_and_candidate_includes_it(self) -> None:
+        from esphome.config import read_config
+        from esphome.core import CORE
+
+        self.addCleanup(CORE.reset)
+        for target, has_archive in (("measurement_archive_baseline_duo.yaml", False),
+                                    ("measurement_archive_duo.yaml", True)):
+            with self.subTest(target=target):
+                CORE.reset()
+                CORE.config_path = ROOT / "scripts/hil/configs" / target
+                config = read_config({})
+                self.assertIsNotNone(config)
+                self.assertEqual("openquatt_measurement_archive" in config, has_archive)
+                self.assertEqual(config["esphome"]["name"], "openquatt-test")
+                self.assertEqual(config["esphome"]["project"]["name"], "openquatt.test")
+                self.assertIn("openquatt_weather", config)
+
     def test_release_targets_only_pin_topology(self) -> None:
         for target, flag in (
             (SINGLE_TARGET, '-DOQ_TOPOLOGY_DUO=0'),
