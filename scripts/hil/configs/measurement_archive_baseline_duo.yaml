@@ -1,6 +1,7 @@
 # Shared instrumented baseline for the physical archive memory test.
 substitutions:
   oq_archive_hil_profile: "archive-baseline"
+  oq_include_measurement_archive: "false"
 
 packages:
   hil_base: !include base_duo.yaml

@@ -119,10 +119,11 @@ passief leren gedeeld.
 
 ### Meetarchief (experimenteel)
 
-In een Q-testbuild met het optionele pakket zet je de opname aan onder
-**Instellingen → Meetarchief**. Bij eerste gebruik staat de opname uit. De
-controller bewaart de blokken terwijl je browser dicht is. Uitschakelen stopt
-de opname en laat eerder bewaarde blokken beschikbaar.
+Op Heatpump Controller Q Single en Duo staat het Meetarchief bij een nieuw
+archief standaard aan. De controller bewaart de blokken lokaal, ook als de
+browser dicht is. Onder **Instellingen → Meetarchief** kun je de opname uitzetten.
+Eerder bewaarde blokken blijven beschikbaar. Je keuze blijft bewaard bij een
+herstart of update.
 
 Onder **Diagnose en data → Meetarchief** staan de opnamestatus en de bewaarde meetperiode. Met **Hele archief
 downloaden** krijg je één JSON-bestand met alle bewaarde meetblokken en de
@@ -153,7 +154,7 @@ zodra de bijbehorende blokken uit de opslag zijn gerold. Als alle slots in
 gebruik zijn, blijft de opname lopen. Een nieuwe meetbron staat dan als
 `unknown` in de export tot er weer ruimte vrijkomt.
 
-Een fabrieksreset wist de opname-instelling. De testbuild schermt oude
+Een fabrieksreset wist de opname-instelling. De firmware schermt oude
 meetblokken daarna af. Voor een nieuw archief moet de archiefruimte eerst
 worden gewist. Dit kan via USB op een Q-controller met de standaard
 16 MiB-partitie-indeling. De wisopdracht verwijdert de oude meetopname
@@ -177,8 +178,7 @@ de gereserveerde archiefruimte.
 python -m esptool --chip esp32s3 --port "$OQ_USB_PORT" erase-region 0xC00000 0x29D000
 ```
 
-Herstart de controller. Meetarchief staat weer op **Uit** en kan opnieuw
-worden ingeschakeld.
+Herstart de controller. Het nieuwe Meetarchief begint automatisch met opnemen.
 
 ## Vooruitblik
 
