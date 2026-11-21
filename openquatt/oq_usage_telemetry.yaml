@@ -51,6 +51,8 @@ openquatt_usage_telemetry:
   connection: "${oq_connection}"
   quatt_hybrid_generation_select: hp_generation
   water_supply_source_select: water_supply_source
+  hp1_odu_firmware: hp1_pcb_firmware_raw
+  hp2_odu_firmware: ${secondary_hp_id}_pcb_firmware_raw
   flow_source_select: flow_source
   heating_strategy_select: oq_heat_control_mode
   room_temperature_source_select: room_temp_source

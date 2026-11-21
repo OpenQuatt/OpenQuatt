@@ -144,6 +144,7 @@ export function createSettingsState() {
     oduRuntimeFrequencyLastFetchAt: 0,
     oduRuntimeFrequencyFetchPromise: null,
     houseLearningStatus: null,
+    houseLearningRetest: null,
     houseLearningEndpointAvailable: false,
     houseLearningEndpointChecked: false,
     houseLearningEndpointChecking: false,

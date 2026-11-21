@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -11,6 +13,7 @@
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "esphome/components/select/select.h"
+#include "esphome/components/sensor/sensor.h"
 #include "esp_partition.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -27,10 +30,16 @@ class ChunkedTextWriter;
 
 class OpenQuattEnergyHistory : public Component {
  public:
+  static constexpr size_t DAILY_COUNTER_COUNT = 7;
+
   void set_enabled_switch(switch_::Switch* enabled_switch) { this->enabled_switch_ = enabled_switch; }
   void set_clock(time::RealTimeClock* clock) { this->clock_ = clock; }
   void set_hourly_retention_select(select::Select* hourly_retention_select) {
     this->hourly_retention_select_ = hourly_retention_select;
+  }
+
+  void set_daily_counters(std::array<sensor::Sensor*, DAILY_COUNTER_COUNT> counters) {
+    this->daily_counters_ = counters;
   }
 
   void setup() override;
@@ -39,9 +48,7 @@ class OpenQuattEnergyHistory : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  void capture_day_totals(float electrical_input_kwh, float heating_input_kwh, float cooling_input_kwh,
-                          float heatpump_heat_output_kwh, float heatpump_cooling_output_kwh,
-                          float boiler_heat_output_kwh, float system_heat_output_kwh);
+  void capture_day_totals();
   bool force_flush();
   void clear_history();
   void refresh_hourly_retention();
@@ -163,6 +170,8 @@ class OpenQuattEnergyHistory : public Component {
 
   ExternalState* state_() { return this->external_state_storage_.data(); }
   const ExternalState* state_() const { return this->external_state_storage_.data(); }
+  void setup_daily_counters_();
+  uint32_t observe_daily_date_(const ESPTime& now);
   bool enabled_() const;
   bool time_is_valid_() const;
   uint64_t current_time_ms_() const;
@@ -236,6 +245,9 @@ class OpenQuattEnergyHistory : public Component {
   switch_::Switch* enabled_switch_{nullptr};
   select::Select* hourly_retention_select_{nullptr};
   time::RealTimeClock* clock_{nullptr};
+  std::array<sensor::Sensor*, DAILY_COUNTER_COUNT> daily_counters_{};
+  std::bitset<DAILY_COUNTER_COUNT> daily_counters_ready_{};
+  uint32_t daily_counter_date_{0};
   const esp_partition_t* flash_partition_{nullptr};
   std::string csrf_token_;
 

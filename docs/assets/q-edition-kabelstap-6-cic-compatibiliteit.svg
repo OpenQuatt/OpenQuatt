@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 936 405" overflow="hidden" role="img" aria-labelledby="title desc">
   <title id="title">Stap 6: Quatt-app via CiC (optioneel)</title>
-  <desc id="desc">Verbind M2 met een aparte RS485-kabel met de vrijgekomen Modbuspoort van de CiC. De koppeling geeft alleen buitenunitgegevens door aan de CiC, geen thermostaatgegevens.</desc>
+  <desc id="desc">Verbind optioneel A met A en B met B tussen de vrijgekomen Modbuspoort van de CiC en M2 van de HCQ. Gebruik een aparte RS485-kabel en laat G op de CiC en GND op M2 vrij. De koppeling geeft alleen buitenunitgegevens door aan de CiC, geen thermostaatgegevens.</desc>
   <defs><clipPath id="step-clip"><rect width="936" height="405" rx="24" /></clipPath></defs>
   <image href="q-edition-kabels-stappen.svg" x="-32" y="-2111" width="1000" height="2901" clip-path="url(#step-clip)" />
 </svg>

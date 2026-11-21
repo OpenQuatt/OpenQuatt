@@ -76,6 +76,8 @@
     ["preferredConnection", DOMAIN_SELECT, "Preferred Connection"],
     ["hp1Generation", DOMAIN_TEXT_SENSOR, "HP1 - ODU generation"],
     ["hp2Generation", DOMAIN_TEXT_SENSOR, "HP2 - ODU generation"],
+    ["hp1OduFirmware", DOMAIN_TEXT_SENSOR, "HP1 - ODU PCB firmware version"],
+    ["hp2OduFirmware", DOMAIN_TEXT_SENSOR, "HP2 - ODU PCB firmware version"],
     ["hp1CompressorLevelProfile", DOMAIN_TEXT_SENSOR, "HP1 - Compressor level profile"],
     ["hp2CompressorLevelProfile", DOMAIN_TEXT_SENSOR, "HP2 - Compressor level profile"],
     ["hp1GenerationVariant", DOMAIN_TEXT_SENSOR, "HP1 - ODU generation variant"],
@@ -109,6 +111,7 @@
     ["openquattEnabled", DOMAIN_SWITCH, "OpenQuatt Enabled"],
     ["auxHeatSourcePresent", DOMAIN_SWITCH, "Auxiliary heat source connected"],
     ["boilerCvAssistEnabled", DOMAIN_SWITCH, "Boiler assist enabled"],
+    ["boilerDefrostAssistEnabled", DOMAIN_SWITCH, "Boiler assist during defrost"],
     ["boilerFaultFallbackEnabled", DOMAIN_SWITCH, "Boiler fallback on heat-pump fault"],
     ["boilerConnection", DOMAIN_SELECT, "Boiler connection"],
     ["otbConnectionAutoSelected", DOMAIN_BINARY_SENSOR, "OTB - Boiler Connection Auto-selected"],
@@ -1166,6 +1169,7 @@
   export const BOILER_SETTING_KEYS = [
     "auxHeatSourcePresent",
     "boilerConnection",
+    "boilerDefrostAssistEnabled",
     "boilerFaultFallbackEnabled",
   ];
   export const CIC_POLLING_SETTING_KEYS = ["cicPollingEnabled", "cicFeedUrl", "cicDataStale"];

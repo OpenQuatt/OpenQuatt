@@ -13,6 +13,7 @@
 #include "esp_system.h"
 #include "esp_private/startup_internal.h"
 #include "esphome/components/ota/ota_backend.h"
+#include "esphome/core/preferences.h"
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "../boiler/oq_otb_telemetry.h"
@@ -21,6 +22,7 @@
 #include "../learning/oq_ph_learning_live_logic.h"
 #include "../learning/oq_ph_learning_persistence_logic.h"
 #include "oq_ph_learning_json.h"
+#include "oq_ph_manual_line_settings.h"
 #include "oq_ph_shadow_demand_logic.h"
 #include "oq_power_house_runtime.h"
 #include "oq_ph_daily_record_quality_json.h"
@@ -36,6 +38,7 @@ namespace oq_ph_learning {
 
 using namespace oq_power_house::learning;
 using esphome::openquatt_common::OpenQuattFlashLayout;
+namespace manual_line = oq_power_house::manual_line;
 
 #if !defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_ESP32S3_RTCDATA_IN_FAST_MEM) || \
     defined(CONFIG_ULP_COPROC_ENABLED)
@@ -263,6 +266,100 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                              LearningStatus::MIXED_CONTEXT, state.learner.last_epoch_s);
       reset_segment(day);
     }
+  }
+
+  void load_manual_line_settings() {
+    if (esphome::global_preferences == nullptr) return;
+    manual_line_pref_ = esphome::global_preferences->make_preference<manual_line::Receipt>(0x6D484C51U, true);
+    manual_line_backup_pref_ = esphome::global_preferences->make_preference<manual_line::Receipt>(0x6D484C52U, true);
+    manual_cold_pref_ = id(house_cold_temp_c).make_entity_preference<float>();
+    manual_power_pref_ = id(house_rated_power_w).make_entity_preference<float>();
+    manual_cutoff_pref_ = id(house_zero_power_temp_c).make_entity_preference<float>();
+    manual_settings_ready_ = true;
+    manual_line::Receipt primary, backup;
+    const bool primary_valid = read_manual_receipt_(manual_line_pref_, primary);
+    const bool backup_valid = read_manual_receipt_(manual_line_backup_pref_, backup);
+    if (primary_valid || backup_valid) {
+      // The primary is written first. Repair only the other copy so the
+      // selected receipt remains available if this repair is interrupted.
+      manual_line_receipt_ = primary_valid ? primary : backup;
+      if (!primary_valid || !backup_valid || !primary.matches(backup)) {
+        auto& stale = primary_valid ? manual_line_backup_pref_ : manual_line_pref_;
+        const bool queued = stale.save(&manual_line_receipt_);
+        flush_manual_preferences_();
+        report_manual_storage_(queued && verify_manual_receipt_(stale, manual_line_receipt_));
+      }
+    }
+    const auto fallback =
+        manual_line_receipt_.pending() ? manual_line::pending_source(manual_line_receipt_) : manual_settings_();
+    load_manual_number_(id(house_cold_temp_c), manual_cold_pref_, fallback.cold_c);
+    load_manual_number_(id(house_rated_power_w), manual_power_pref_, fallback.rated_w);
+    load_manual_number_(id(house_zero_power_temp_c), manual_cutoff_pref_, fallback.zero_c);
+    if (manual_line_receipt_.pending()) {
+      const auto active = manual_settings_();
+      const auto fallback = manual_line::recovery_fallback(manual_line_receipt_, active);
+      if (manual_storage_uncertain_) {
+        // A coherent pair already on flash needs no rollback. A split pair
+        // must stay out of the control loop until the journal can be repaired.
+        if (!(active == manual_line::pending_target(manual_line_receipt_))) publish_manual_settings_(fallback);
+        return;
+      }
+      const auto result = manual_line::finish_pending(
+          manual_line_receipt_, active, [this](const auto& receipt) { return this->save_manual_receipt_(receipt); },
+          [this](const auto& values) { return this->save_manual_settings_(values); });
+      if (result == manual_line::Result::PENDING) publish_manual_settings_(fallback);
+    }
+  }
+
+  void set_manual_line_number(esphome::number::Number& number, float value) {
+    if (!manual_settings_ready_ || !std::isfinite(value)) return;
+    // Keep the coherent values shown in the UI before saving an independent edit.
+    if (!manual_line::prepare_manual_edit(
+            manual_line_receipt_, manual_settings_(), manual_storage_uncertain_,
+            [this](const auto& receipt) { return this->save_manual_receipt_(receipt); },
+            [this](const auto& settings) { return this->save_manual_settings_(settings); }))
+      return;
+
+    auto& preference = &number == &id(house_cold_temp_c)     ? manual_cold_pref_
+                       : &number == &id(house_rated_power_w) ? manual_power_pref_
+                                                             : manual_cutoff_pref_;
+    if (!preference.save(&value)) return;
+    // The web app confirms this published value. Publish only after our key is durable.
+    flush_manual_preferences_();
+    float stored = NAN;
+    if (!read_manual_preference_(preference, stored) || stored != value) return;
+    number.publish_state(value);
+  }
+
+  manual_line::Result change_manual_line(const manual_line::Settings& expected, const manual_line::Settings& target,
+                                         bool restore) {
+    using manual_line::Result;
+    const auto current = manual_settings_();
+    if (!manual_settings_ready_ || manual_storage_uncertain_ || !(current == expected) ||
+        !manual_settings_in_range_(current) || id(oq_runtime_polling_paused).state || id(oq_control_mode_code) >= 99)
+      return Result::REFUSED;
+    const auto receipt_writer = [this](const auto& receipt) { return this->save_manual_receipt_(receipt); };
+    const auto settings_writer = [this](const auto& values) { return this->save_manual_settings_(values); };
+    const auto publish_result = [this](Result result) {
+      if (result == Result::DONE && storage_) {
+        auto& state = storage_[0];
+        publish_status_(state, id(oq_ph_learning_enabled).state, state.tick.now_epoch_s, manual_line_restorable_(),
+                        manual_line_proposal_(state.summary.batch, manual_settings_().cold_c));
+      }
+      return result;
+    };
+    if (restore)
+      return publish_result(manual_line::restore(manual_line_receipt_, current, receipt_writer, settings_writer));
+    if (!storage_ || !id(oq_ph_learning_enabled).state) return Result::REFUSED;
+    const auto& state = storage_[0];
+    const auto& batch = state.learner.batch_result;
+    if (!state.learner.initialized || state.learner.blocked || state.reset_requested || state.restart_prepared ||
+        state.measurement_context_changed || state.evaluation_policy_changed || state.learner.fit_pending ||
+        state.learner.fit_running || !state.tick.context_valid || batch.context_revision != state.context_revision)
+      return Result::REFUSED;
+    if (!manual_settings_in_range_(target) || !(target == manual_line_proposal_(batch, current.cold_c)))
+      return Result::REFUSED;
+    return publish_result(manual_line::apply(manual_line_receipt_, current, target, receipt_writer, settings_writer));
   }
 
   void tick() {
@@ -539,6 +636,104 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
 #endif
 
  private:
+  static manual_line::Settings manual_settings_() {
+    return {id(house_cold_temp_c).state, id(house_rated_power_w).state, id(house_zero_power_temp_c).state};
+  }
+
+  template <typename Value>
+  static bool read_manual_preference_(esphome::ESPPreferenceObject& preference, Value& stored) {
+    // ESPHome gives the same result for an absent key and a temporary NVS read error.
+    return preference.load(&stored) || preference.load(&stored);
+  }
+
+  static void load_manual_number_(esphome::number::Number& number, esphome::ESPPreferenceObject& preference,
+                                  float fallback) {
+    float stored = NAN;
+    const float value = read_manual_preference_(preference, stored) && std::isfinite(stored) ? stored : fallback;
+    if (std::isfinite(value) && number.state != value) number.publish_state(value);
+  }
+
+  static float manual_setting_value_(const esphome::number::Number& number, float value) {
+    const float min = number.traits.get_min_value(), max = number.traits.get_max_value();
+    const float step = number.traits.get_step();
+    if (!std::isfinite(value) || value < min || value > max || !(step > 0.0f)) return NAN;
+    return min + std::round((value - min) / step) * step;
+  }
+
+  static bool manual_settings_in_range_(const manual_line::Settings& settings) {
+    return settings.valid() && std::isfinite(manual_setting_value_(id(house_rated_power_w), settings.rated_w)) &&
+           std::isfinite(manual_setting_value_(id(house_zero_power_temp_c), settings.zero_c));
+  }
+
+  static manual_line::Settings manual_line_proposal_(const AdviceResult& batch, float cold_c) {
+    const auto* line = batch.manual_proposal();
+    if (line == nullptr) return {};
+    return {cold_c, manual_setting_value_(id(house_rated_power_w), house_line_power_w(*line, cold_c)),
+            manual_setting_value_(id(house_zero_power_temp_c), line->zero_power_temp_c)};
+  }
+
+  static void publish_manual_settings_(const manual_line::Settings& settings) {
+    if (id(house_rated_power_w).state != settings.rated_w) id(house_rated_power_w).publish_state(settings.rated_w);
+    if (id(house_zero_power_temp_c).state != settings.zero_c)
+      id(house_zero_power_temp_c).publish_state(settings.zero_c);
+  }
+
+  static void flush_manual_preferences_() {
+    // On ESP32, sync attempts every queued key and clears the queue, including
+    // when another NVS write fails. The following loads read our own keys.
+    static_cast<void>(esphome::global_preferences->sync());
+  }
+
+  static bool read_manual_receipt_(esphome::ESPPreferenceObject& preference, manual_line::Receipt& stored) {
+    return read_manual_preference_(preference, stored) && stored.valid();
+  }
+
+  static bool verify_manual_receipt_(esphome::ESPPreferenceObject& preference, const manual_line::Receipt& receipt) {
+    manual_line::Receipt stored;
+    return read_manual_receipt_(preference, stored) && stored.matches(receipt);
+  }
+
+  void report_manual_storage_(bool verified) {
+    manual_storage_uncertain_ = !verified;
+    if (!verified)
+      ESP_LOGW("openquatt.house_learning", "House line recovery record not confirmed; retry a manual edit");
+  }
+
+  bool save_manual_receipt_(const manual_line::Receipt& receipt) {
+    if (esphome::global_preferences == nullptr) return false;
+    const bool primary_queued = manual_line_pref_.save(&receipt);
+    const bool backup_queued = manual_line_backup_pref_.save(&receipt);
+    flush_manual_preferences_();
+    // Write the two number keys only once both recovery records are durable.
+    const bool verified = primary_queued && backup_queued && verify_manual_receipt_(manual_line_pref_, receipt) &&
+                          verify_manual_receipt_(manual_line_backup_pref_, receipt);
+    report_manual_storage_(verified);
+    return verified;
+  }
+
+  bool save_manual_settings_(const manual_line::Settings& settings) {
+    if (esphome::global_preferences == nullptr ||
+        !std::isfinite(manual_setting_value_(id(house_rated_power_w), settings.rated_w)) ||
+        !std::isfinite(manual_setting_value_(id(house_zero_power_temp_c), settings.zero_c)))
+      return false;
+    const bool power_queued = manual_power_pref_.save(&settings.rated_w);
+    const bool cutoff_queued = manual_cutoff_pref_.save(&settings.zero_c);
+    flush_manual_preferences_();
+    if (!power_queued || !cutoff_queued) return false;
+    float rated = NAN, cutoff = NAN;
+    if (!read_manual_preference_(manual_power_pref_, rated) || !read_manual_preference_(manual_cutoff_pref_, cutoff) ||
+        rated != settings.rated_w || cutoff != settings.zero_c)
+      return false;
+    publish_manual_settings_(settings);
+    return true;
+  }
+
+  esphome::ESPPreferenceObject manual_line_pref_, manual_line_backup_pref_;
+  esphome::ESPPreferenceObject manual_cold_pref_, manual_power_pref_, manual_cutoff_pref_;
+  bool manual_settings_ready_ = false;
+  manual_line::Receipt manual_line_receipt_;
+  bool manual_storage_uncertain_ = false;
+
   static void clear_daily_resume_status_(RuntimeStorage& state) {
     state.daily_resume_status = state.daily_resume_reason = "none";
     state.pending_daily_heat_initialized = false;
@@ -1074,7 +1269,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                                                   state.input.context_revision, now_ms, gate);
   }
 
-  static void publish_status_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
+  static void publish_status_(RuntimeStorage& state, bool enabled, uint32_t epoch, bool can_restore = false,
+                              const manual_line::Settings& proposal = manual_line::Settings()) {
     auto& summary = state.summary;
     JsonWriter json(state.json, sizeof(state.json));
     struct ReasonName {
@@ -1172,6 +1368,37 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.number(summary.batch.train_min_c);
     json.add(",\"train_max_c\":");
     json.number(summary.batch.train_max_c);
+    json.add(",\"cov_00\":");
+    json.number(summary.batch.candidate_available ? summary.batch.candidate_cov_00 : NAN);
+    json.add(",\"cov_01\":");
+    json.number(summary.batch.candidate_available ? summary.batch.candidate_cov_01 : NAN);
+    json.add(",\"cov_11\":");
+    json.number(summary.batch.candidate_available ? summary.batch.candidate_cov_11 : NAN);
+    json.add("}");
+    const bool retesting = state.evaluation_policy_changed || state.learner.fit_pending || state.learner.fit_running;
+    json.add(",\"manual_line_restore\":%s,\"manual_line_retesting\":%s", can_restore ? "true" : "false",
+             retesting ? "true" : "false");
+    if (enabled && proposal.valid()) {
+      json.add(",\"manual_line_proposal\":{\"cold_c\":");
+      json.number(proposal.cold_c);
+      json.add(",\"rated_w\":");
+      json.number(proposal.rated_w);
+      json.add(",\"cutoff_c\":");
+      json.number(proposal.zero_c);
+      json.add("}");
+    } else {
+      json.add(",\"manual_line_proposal\":null");
+    }
+    json.add(",\"batch_check\":{\"passed\":%s,\"min_c\":", summary.batch.line_checked ? "true" : "false");
+    json.number(summary.batch.checked_min_c);
+    json.add(",\"max_c\":");
+    json.number(summary.batch.checked_max_c);
+    json.add(",\"min_spread_c\":");
+    json.number(kMinCheckedSpreadC);
+    json.add(",\"error_w\":");
+    json.number(summary.batch.checked_error_w);
+    json.add(",\"error_limit_w\":");
+    json.number(summary.batch.checked_error_limit_w);
     json.add("}");
     const auto& preview = summary.batch.preview;
     json.add(",\"batch_preview\":{\"h\":");
@@ -1183,6 +1410,12 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     json.number(preview.min_c);
     json.add(",\"max_c\":");
     json.number(preview.max_c);
+    json.add(",\"cov_00\":");
+    json.number(preview.available ? preview.cov_00 : NAN);
+    json.add(",\"cov_01\":");
+    json.number(preview.available ? preview.cov_01 : NAN);
+    json.add(",\"cov_11\":");
+    json.number(preview.available ? preview.cov_11 : NAN);
     json.add("}");
     json.add(",\"u_rls\":");
     json.number(summary.thermal.accepted_samples > 0 ? summary.thermal.heat_loss_w_per_k : NAN);
@@ -1281,7 +1514,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
   }
 
-  static void publish_paused_status_(RuntimeStorage& state) {
+  void publish_paused_status_(RuntimeStorage& state) {
     state.summary = passive_runtime_summary(state.learner, oq_sources::monotonic_ms());
     const auto clock = id(oq_time).now();
     publish_(state, false, clock.is_valid() ? clock.timestamp : 0U);
@@ -1293,8 +1526,13 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     id(oq_ph_learning_status_endpoint).publish_export_json(RESET_PENDING, sizeof(RESET_PENDING) - 1U);
   }
 
-  static void publish_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
-    publish_status_(state, enabled, epoch);
+  bool manual_line_restorable_() const {
+    return !manual_storage_uncertain_ && manual_line_receipt_.can_restore(manual_settings_());
+  }
+
+  void publish_(RuntimeStorage& state, bool enabled, uint32_t epoch) {
+    publish_status_(state, enabled, epoch, manual_line_restorable_(),
+                    manual_line_proposal_(state.summary.batch, manual_settings_().cold_c));
     publish_export_(state, enabled, epoch);
   }
 

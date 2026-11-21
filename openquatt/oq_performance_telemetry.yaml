@@ -26,6 +26,8 @@ openquatt_performance_telemetry:
     name: "Performance model validation prompt handled"
     internal: true
   generation_select: hp_generation
+  hp1_odu_firmware: hp1_pcb_firmware_raw
+  hp2_odu_firmware: ${secondary_hp_id}_pcb_firmware_raw
   outside_temp_sensor: outside_temp_selected
   flow_sensor: flow_rate_selected
   firmware_version: "${project_version}"

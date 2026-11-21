@@ -5,6 +5,18 @@ RUNTIME = (ROOT / "openquatt/includes/control/oq_power_house_runtime.h").read_te
 DISPATCH_LOGIC = (ROOT / "openquatt/includes/control/oq_power_house_dispatch_logic.h").read_text()
 RUN_EXTENSION_LOGIC = (ROOT / "openquatt/includes/control/oq_power_house_run_extension_logic.h").read_text()
 class PowerHouseDemandContractTest(unittest.TestCase):
+    def test_missing_compressor_feedback_does_not_disable_dispatch_model(self):
+        gate = RUNTIME.split("dispatch_input.performance_valid =", 1)[1].split(";", 1)[0]
+        self.assertNotIn("feedback[", gate)
+        self.assertIn("!active_model_missing", gate)
+        self.assertIn("any_servable_candidate", gate)
+
+    def test_infeasible_current_pair_leaves_valid_alternatives_available(self):
+        missing = RUNTIME.split("const bool active_model_missing =", 1)[1].split(";", 1)[0]
+        self.assertNotIn("current_power", missing)
+        settling = RUNTIME.split("const bool may_settle =", 1)[1].split(";", 1)[0]
+        self.assertIn("current_power.valid()", settling)
+
     def test_watt_request_reaches_dispatch_without_normalized_control(self) -> None:
         core = (ROOT / "openquatt/includes/control/oq_power_house_demand_logic.h").read_text()
         for source in (core, RUNTIME, DISPATCH_LOGIC):
@@ -25,6 +37,19 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("dispatch_tuning.defrost_boost_min_exclusive = true;", RUNTIME)
         self.assertIn("roundf(${oq_defrost_comp_min_f}) - 1.0f", YAML)
         self.assertIn("roundf(${oq_defrost_comp_min_f}) - 0.5f", YAML)
+
+    def test_compressor_response_learning_releases_after_cold_start(self) -> None:
+        # session_active remains true throughout a normal heating request.
+        # Only the transient sampling/assist/blocked state may suppress learning.
+        capture = RUNTIME.split("const bool may_learn =", 1)[1].split("const auto snapshot =", 1)[0]
+        self.assertNotIn("oq_cold_start_session_active", capture)
+        for state in ("oq_cold_start_pending", "oq_cold_start_hp_blocked", "oq_cold_start_assist_active"):
+            self.assertIn(f"!id({state})", capture)
+
+    def test_compressor_response_receipt_age_uses_source_clock(self) -> None:
+        capture = RUNTIME.split("const auto snapshot = this->compressor_feedback_", 1)[1].split("if (snapshot.response_changed)", 1)[0]
+        self.assertIn("receipt_now - raw.compressor_frequency.received_ms", capture)
+        self.assertNotIn("now_ms - raw.compressor_frequency.received_ms", capture)
 
     def test_demand_delegates_to_runtime(self) -> None:
         yaml = YAML

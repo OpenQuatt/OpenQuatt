@@ -12,7 +12,7 @@ import { getDebugRecordingStatusCopy, getDebugRecordingStatusLabel } from "../fe
 import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel, getInstallationTopology } from "../features/device-context.js";
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getConnectivityStatus, getEspTemperatureLabel } from "../features/header-status.js";
-import { getOduGenerationChoiceMeta, getOduGenerationDetectionModel, renderOduGenerationDetectionStatus } from "../features/odu-generation-ui.js";
+import { getOduGenerationChoiceMeta, getOduGenerationDetectionModel, renderOduFirmwareSummary, renderOduGenerationDetectionStatus } from "../features/odu-generation-ui.js";
 import { getOduRuntimeFrequencyHpIndexes } from "../features/odu-runtime-frequency.js";
 import { getWebServerLogStatusLabel } from "../features/webserver-logs.js";
 import { BOILER_OPENTHERM_CAPABILITY, getBoilerOpenThermCapability, getSupportedBoilerConnectionOptions } from "./boiler.js";
@@ -664,7 +664,8 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
     const model = getSettingsSelectModel("hpGeneration");
     const canEdit = model.available && model.options.length > 0;
 
-    if (!currentLabel && !canEdit) {
+    const oduSummary = renderOduFirmwareSummary(getOduGenerationDetectionModel());
+    if (!currentLabel && !canEdit && !oduSummary) {
       return "";
     }
 
@@ -679,15 +680,16 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
               <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settingsInstallation.genCurrent"))}</p>
               <strong class="oq-settings-quickstart-status-value">${escapeHtml(currentLabel || t("settingsInstallation.genUnknown"))}</strong>
             </div>
-          <button
-            class="oq-helper-button oq-helper-button--ghost"
-            type="button"
-            data-oq-action="open-generation-modal"
-            ${!canEdit || model.busy ? "disabled" : ""}
-          >
-            ${escapeHtml(t("settingsInstallation.genAdjust"))}
-          </button>
+            <button
+              class="oq-helper-button oq-helper-button--ghost"
+              type="button"
+              data-oq-action="open-generation-modal"
+              ${!canEdit || model.busy ? "disabled" : ""}
+            >
+              ${escapeHtml(t("settingsInstallation.genAdjust"))}
+            </button>
           </div>
+          ${oduSummary}
         </div>
       `,
     );
@@ -715,6 +717,9 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
     const boilerPowerEntityAvailable = hasEntity("boilerRatedHeatPower");
     const boilerMeta = getNumberMeta("boilerRatedHeatPower");
     const boilerValue = getInputDraftValue("boilerRatedHeatPower");
+    const defrostAssistSettingAvailable = hasEntity("boilerDefrostAssistEnabled");
+    const defrostAssistEnabled = defrostAssistSettingAvailable && isEntityActive("boilerDefrostAssistEnabled");
+    const defrostAssistBusy = state.loadingEntities || state.busyAction === "switch-boilerDefrostAssistEnabled";
     const fallbackSettingAvailable = hasEntity("boilerFaultFallbackEnabled");
     const fallbackEnabled = fallbackSettingAvailable && isEntityActive("boilerFaultFallbackEnabled");
     const fallbackBusy = state.loadingEntities || state.busyAction === "switch-boilerFaultFallbackEnabled";
@@ -895,6 +900,22 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
                   t("settingsInstallation.assistTitle"),
                   assistEnabled,
                   assistBusy,
+                )}
+              </div>
+            `,
+            "oq-settings-field--compact",
+          ) : ""}
+          ${sourcePresent && defrostAssistSettingAvailable ? renderSettingsFieldCard(
+            "boilerDefrostAssistEnabled",
+            t("settingsInstallation.defrostAssistTitle"),
+            t("settingsInstallation.defrostAssistCopy"),
+            `
+              <div class="oq-settings-compact-switch-field">
+                ${renderSettingsCompactSwitchControl(
+                  "boilerDefrostAssistEnabled",
+                  t("settingsInstallation.defrostAssistTitle"),
+                  defrostAssistEnabled,
+                  defrostAssistBusy,
                 )}
               </div>
             `,

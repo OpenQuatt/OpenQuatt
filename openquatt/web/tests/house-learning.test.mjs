@@ -46,6 +46,8 @@ test.afterEach(() => {
   state.controlError = "";
   state.controlNotice = "";
   state.houseLearningStatus = null;
+  state.houseLearningRetest = null;
+  state.houseLearningLineNotice = "";
   state.houseLearningEndpointAvailable = false;
   state.houseLearningEndpointChecked = false;
   state.houseLearningEndpointChecking = false;
@@ -126,6 +128,138 @@ function statusPayload(overrides = {}) {
     ...overrides,
   };
 }
+
+test("woninglijnadvies en grafiek tonen dezelfde lijn bij een voorlopig voorstel", (context) => {
+  const entities = state.entities;
+  context.after(() => { state.entities = entities; });
+  state.entities = {
+    houseLearningEnabled: switchEntity(true),
+    houseColdTemp: { value: -10 },
+    houseOutdoorMax: { value: 16, min_value: 5, max_value: 25, step: 0.5 },
+    housePower: { value: 7020, min_value: 1000, max_value: 15000, step: 10 },
+  };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningChart = [{ startEpoch: 1700000000, endEpoch: 1700086400, recordKind: 1, outsideC: 5, heatW: 2800 }];
+  const payload = statusPayload({
+    enabled: true, journal_status: "restored", reference_room_c: 20, manual_line_restore: false,
+    batch_status: "ready", batch_advice_ready: true, records: 29, h_batch: 242.986, t0_batch: 16.4804,
+    batch_fit: { metadata_prepared: true, train_segments: 26, holdout_segments: 3, train_days: 26, holdout_days: 3,
+      train_min_c: 1.43502, train_p10_c: 1.9738, train_p90_c: 11.7135, train_max_c: 12.3412,
+      cov_00: 10000, cov_01: 0, cov_11: 0 },
+    batch_check: { passed: false, min_c: 0.818111, max_c: 6.82557, min_spread_c: 4, error_w: 725.431, error_limit_w: 300 },
+    batch_preview: { h: 245.184, t0: 16.4723, min_c: 0.818111, max_c: 12.3412, days: 29, segments: 29 },
+  });
+  state.houseLearningStatus = normalizeHouseLearningStatus(payload);
+  const rendered = renderHouseLearningSettings();
+  assert.match(rendered, /data-rated-w="6430" data-zero-c="16.5"/);
+  assert.match(rendered, /<strong>6,43 kW<\/strong>/);
+  assert.match(rendered, /Bij -10 °C<\/dt><dd>6,43 kW<\/dd>/);
+  assert.match(rendered, /Bij 16,5 °C<\/dt><dd>0 kW<\/dd>/);
+  assert.match(rendered, /chart-line--learned-dashed/);
+  assert.match(rendered, /chart-swatch--interval/);
+  assert.match(rendered, /95%/);
+  assert.doesNotMatch(rendered, /6,49 kW|29 bruikbare dagmetingen, gewogen/);
+
+  state.houseLearningStatus = normalizeHouseLearningStatus({ ...payload, batch_check: null, batch_advice_ready: false });
+  const preview = renderHouseLearningSettings();
+  assert.match(preview, /data-rated-w="6490" data-zero-c="16.5"/);
+  assert.match(preview, /Bij -10 °C<\/dt><dd>6,49 kW<\/dd>/);
+
+  state.houseLearningStatus = normalizeHouseLearningStatus({ ...payload, manual_line_restore: undefined, batch_advice_ready: false });
+  const legacy = renderHouseLearningSettings();
+  assert.match(legacy, /Bij -10 °C<\/dt><dd>6,49 kW<\/dd>/);
+  assert.doesNotMatch(legacy, /data-oq-action="apply-house-line"/);
+
+  // The display precision of the fit would put this value on the wrong side of a 10 W rounding step.
+  state.houseLearningStatus = normalizeHouseLearningStatus({ ...payload, h_batch: 250, t0_batch: 16.26,
+    manual_line_proposal: { cold_c: -10, rated_w: 6560, cutoff_c: 16.5 } });
+  const exact = renderHouseLearningSettings();
+  assert.match(exact, /data-rated-w="6560" data-zero-c="16.5"/);
+  assert.match(exact, /Bij -10 °C<\/dt><dd>6,56 kW<\/dd>/);
+  state.entities.houseColdTemp.value = -9;
+  assert.doesNotMatch(renderHouseLearningSettings(), /data-oq-action="apply-house-line"/);
+
+  state.entities.houseColdTemp.value = -10;
+  state.houseLearningStatus = normalizeHouseLearningStatus({ ...payload, batch_status: "no_holdout_improvement",
+    batch_advice_ready: false, batch_check: { ...payload.batch_check, passed: true, error_w: 100 } });
+  const checked = renderHouseLearningSettings();
+  assert.match(checked, /chart-line--learned"/);
+  assert.match(checked, /onafhankelijke controledagen goedgekeurd/);
+});
+
+test("Terugzetten behoudt het vorige advies tot een verse, afgeronde toets", async (context) => {
+  const entities = state.entities;
+  const view = state.appView;
+  context.after(() => { state.entities = entities; state.appView = view; });
+  state.appView = "learning";
+  state.houseLearningEndpointAvailable = true;
+  state.entities = {
+    houseLearningEnabled: switchEntity(true),
+    houseColdTemp: { value: -10 },
+    houseOutdoorMax: { value: 16.5, min_value: 5, max_value: 25, step: 0.5 },
+    housePower: { value: 6430, min_value: 1000, max_value: 15000, step: 10 },
+  };
+  state.houseLearningChart = [{ startEpoch: 1700000000, endEpoch: 1700086400, recordKind: 1, outsideC: 5, heatW: 2800 }];
+  const previous = statusPayload({
+    enabled: true, journal_status: "restored", reference_room_c: 20, records: 29,
+    manual_line_restore: true, manual_line_retesting: false, batch_status: "no_holdout_improvement",
+    h_batch: 242.986, t0_batch: 16.4804,
+    batch_fit: { metadata_prepared: true, train_segments: 26, holdout_segments: 3, train_days: 26, holdout_days: 3,
+      train_min_c: 1.43502, train_p10_c: 1.9738, train_p90_c: 11.7135, train_max_c: 12.3412 },
+    batch_check: { passed: false, min_c: 0.818111, max_c: 6.82557, min_spread_c: 4, error_w: 725.431, error_limit_w: 300 },
+    batch_preview: { h: 245.184, t0: 16.4723, min_c: 0.818111, max_c: 12.3412, days: 29, segments: 29 },
+  });
+  state.houseLearningStatus = normalizeHouseLearningStatus(previous);
+
+  let status = previous;
+  let writes = 0;
+  context.mock.method(globalThis, "fetch", async (url, options) => {
+    if (url === "/auth/status") return Response.json({ csrf_token: "test-token" });
+    if (url === "/openquatt/learning/status") return Response.json(status);
+    if (url === "/openquatt/learning/line?ticket=12") return Response.json({ stored: true });
+    assert.equal(url, "/openquatt/learning/line");
+    assert.equal(options.method, "POST");
+    assert.equal(options.body.get("action"), "restore");
+    writes += 1;
+    return Response.json({ ticket: 12 }, { status: 202 });
+  });
+  const button = { dataset: { coldC: "-10", expectedRatedW: "6430", expectedZeroC: "16.5", ratedW: "6430", zeroC: "16.5" } };
+  handleHouseLearningAction("restore-house-line", button, null, async () => {
+    state.entities.housePower.value = 7020;
+    state.entities.houseOutdoorMax.value = 16;
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(state.houseLearningLineNotice, "restored");
+
+  const assertRetained = () => {
+    const html = renderHouseLearningSettings();
+    assert.match(html, /Modelstatus · Wordt opnieuw getoetst/);
+    assert.match(html, /role="status">Wordt opnieuw getoetst/);
+    assert.match(html, /Vorige waarden teruggezet/);
+    assert.match(html, /<strong>6,43 kW<\/strong>/);
+    assert.match(html, /Bij -10 °C<\/dt><dd>6,43 kW<\/dd>/);
+    assert.match(html, /chart-line--learned-dashed/);
+    assert.match(html, /data-oq-action="apply-house-line"[^>]*\sdisabled>Overnemen/);
+    assert.doesNotMatch(html, /6,49 kW|Nog geen geleerde woninglijn/);
+  };
+  assertRetained(); // A response that still describes the previous active line.
+  status = { ...previous, manual_line_restore: false, manual_line_retesting: true, batch_status: "fit_in_progress",
+    h_batch: null, t0_batch: null, batch_check: null, batch_preview: null };
+  await refreshHouseLearningStatus({ force: true });
+  assertRetained();
+  status = { ...status, batch_preview: previous.batch_preview };
+  await refreshHouseLearningStatus({ force: true });
+  assertRetained(); // The provisional fit is back, the separate checks are still running.
+  handleHouseLearningAction("apply-house-line", button);
+  assert.equal(writes, 1);
+
+  status = { ...previous, manual_line_restore: false, manual_line_retesting: false, h_batch: 244.5, t0_batch: 16.5 };
+  await refreshHouseLearningStatus({ force: true });
+  const complete = renderHouseLearningSettings();
+  assert.doesNotMatch(complete, /Wordt opnieuw getoetst|data-oq-action="apply-house-line"[^>]*\sdisabled/);
+  assert.match(complete, /data-oq-action="apply-house-line"/);
+  assert.match(complete, /Bij -10 °C<\/dt><dd>6,48 kW<\/dd>/);
+});
 
 test("passieve leerstatus normaliseert onbeschikbare getallen naar null", () => {
   const status = normalizeHouseLearningStatus(statusPayload());
@@ -1049,6 +1183,7 @@ test("preview-reset pauzeert leren en bevestigt gewiste opslag zoals de firmware
   const mockState = { boiler: "off", houseLearning: { records: 32, rlsSamples: 174, resetCount: 0, journalStatus: "ready" } };
   const mock = runInNewContext(`${functionSource("handleButtonPress")}\n${functionSource("getHouseLearningStatusPayload")}\n({ handleButtonPress, getHouseLearningStatusPayload })`, {
     state: mockState,
+    mockLineCanRestore: () => false,
     isSwitchEnabled: (name) => name === "Power House Passive Learning" ? enabled : true,
     setSwitch: (name, value) => { assert.equal(name, "Power House Passive Learning"); enabled = value; },
     getEntity: (domain) => ({ value: domain === "text_sensor" ? "CM2 - Heatpump" : 50 }),
@@ -1312,6 +1447,7 @@ test("preview export en status beschrijven expliciet dagmetingen naast legacyhis
   };
   const mock = runInNewContext(`${functionSource("getHouseLearningStatusPayload")}\n${functionSource("getHouseLearningExportPayload")}\n({ getHouseLearningStatusPayload, getHouseLearningExportPayload })`, {
     state: { boiler: "off", houseLearning: { records: 32, rlsSamples: 174, journalStatus: "ready" } },
+    mockLineCanRestore: () => false,
     isSwitchEnabled: () => true, getEntity: () => ({ value: "CM2 - Heatpump" }),
   });
   const status = normalizeHouseLearningStatus(mock.getHouseLearningStatusPayload());
@@ -1319,6 +1455,7 @@ test("preview export en status beschrijven expliciet dagmetingen naast legacyhis
   const records = normalizeHouseLearningExport(mock.getHouseLearningExportPayload());
   assert.equal(status.collection.batch.targetSeconds, 86400);
   assert.equal(status.collection.thermal.targetSeconds, 1800);
+  assert.equal(status.batchCheck?.passed, true);
   assert.equal(records.filter((record) => record.recordKind === 1).length, status.dailyRecordCount);
   assert.equal(records.filter((record) => record.recordKind === 0).length, status.legacyRecordCount);
   for (const record of records.filter((record) => record.recordKind === 1)) {
@@ -1799,4 +1936,25 @@ test("verplaatste instellingen en diagnose behouden onzekere resetmeldingen", ()
     assert.match(html, /role="alert">Wissen is niet bevestigd/);
     assert.doesNotMatch(html, /class="oq-house-learning-thermal"/);
   }
+});
+
+test("95% confidence band renders for ready fit, 2-day preview and 1-point fan", async () => {
+  const { renderHouseLearningChart } = await import("../js/src/settings/house-learning-chart.js");
+  const conf = { coldC: -10, zeroC: 20, ratedW: 6000 };
+  const ready = normalizeHouseLearningStatus(statusPayload({ h_batch: 200, t0_batch: 18, batch_advice_ready: true, batch_fit: { metadata_prepared: true, train_segments: 18, holdout_segments: 3, train_days: 18, holdout_days: 3, train_p10_c: 4, train_p90_c: 12, train_min_c: 2, train_max_c: 14, cov_00: 10000, cov_01: -500, cov_11: 30 } }));
+  const readyHtml = renderHouseLearningChart([], conf, { h: ready.hBatch, t0: ready.t0Batch, cov00: ready.batchFit.cov00, cov01: ready.batchFit.cov01, cov11: ready.batchFit.cov11, ready: true });
+  assert.match(readyHtml, /oq-house-learning-chart-interval/);
+  assert.match(readyHtml, /95% Interval/);
+  const earlyRecords = [{ outsideC: 4, heatW: 3200, recordKind: 1, startEpoch: 1, endEpoch: 2 }, { outsideC: 10, heatW: 2000, recordKind: 1, startEpoch: 3, endEpoch: 4 }];
+  const earlyHtml = renderHouseLearningChart(earlyRecords, conf, { ready: false });
+  assert.match(earlyHtml, /oq-house-learning-chart-interval/);
+  assert.match(earlyHtml, /Onzekerheidsband|Uncertainty band/);
+  const bandTag = (h) => { const i = h.indexOf("oq-house-learning-chart-interval"); return h.slice(h.lastIndexOf("<", i), h.indexOf(">", i) + 1); };
+  assert.ok(bandTag(earlyHtml).length > 10);
+  const fanFallbackHtml = renderHouseLearningChart([{ outsideC: 4, heatW: 3200, recordKind: 1, startEpoch: 1, endEpoch: 2 }, { outsideC: 5, heatW: 3000, recordKind: 1, startEpoch: 3, endEpoch: 4 }], conf, { ready: false });
+  assert.notEqual(bandTag(earlyHtml), bandTag(fanFallbackHtml));
+  const threePtHtml = renderHouseLearningChart([...earlyRecords, { outsideC: 7, heatW: 2650, recordKind: 1, startEpoch: 5, endEpoch: 6 }], conf, { ready: false });
+  assert.ok(bandTag(threePtHtml).length > 10);
+  const onePt = renderHouseLearningChart([{ outsideC: 8, heatW: 2400, recordKind: 1, startEpoch: 1, endEpoch: 2 }], conf, { ready: false });
+  assert.match(onePt, /oq-house-learning-chart-interval/);
 });

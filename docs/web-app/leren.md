@@ -90,6 +90,19 @@ Onder de grafiek staan de geschatte warmtevraag bij −10 °C en de
 buitentemperatuur waarbij de geleerde lijn 0 kW bereikt. Buiten het gemeten
 bereik rekent de webapp de lijnen door.
 
+### Woninglijnadvies overnemen
+
+Boven de grafiek vergelijkt **Woninglijnadvies** het ingestelde vermogen bij
+de koude referentietemperatuur en de stookgrens met het voorstel. Bij een
+voorlopig voorstel staat **Schatting**. Als de lijn op aparte dagen is
+getoetst, zie je het getoetste temperatuurbereik.
+
+Met **Overnemen** pas je beide instellingen tegelijk aan. Je kunt ook een
+voorlopig voorstel kiezen. Met **Vorige waarden terugzetten** maak je de
+wijziging ongedaan zolang de overgenomen instellingen nog actief zijn.
+Tijdens de nieuwe toets blijven de groene lijn en het laatste voorstel
+zichtbaar en is **Overnemen** tijdelijk uitgeschakeld.
+
 ## Details en leerdata
 
 Onder **Diagnose en data → Bronnen en technische details** vind je de bronstatus, watertemperaturen

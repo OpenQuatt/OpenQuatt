@@ -3,6 +3,8 @@ import test from "node:test";
 import { setLocale } from "../js/src/i18n/index.js";
 
 globalThis.__OQ_PREVIEW__ = false;
+const { state } = await import("../js/src/core/state.js");
+const { renderHouseLearningAdvice } = await import("../js/src/settings/house-learning-advice.js");
 const { getHouseLearningChartModel, normalizeHouseLearningExport, renderHouseLearningChart } = await import("../js/src/settings/house-learning-chart.js");
 
 const payload = {
@@ -13,6 +15,49 @@ const payload = {
 };
 
 test.afterEach(() => setLocale("nl", { persist: false, applyDocument: false, notify: false }));
+
+test("woninglijnadvies toont de waarden die Overnemen daadwerkelijk instelt", (context) => {
+  const entities = state.entities;
+  context.after(() => { state.entities = entities; });
+  state.entities = {
+    housePower: { min_value: 1000, max_value: 15000, step: 10 },
+    houseOutdoorMax: { min_value: 5, max_value: 25, step: 0.5 },
+  };
+  const configured = { coldC: -10, zeroC: 16, ratedW: 7020 };
+  const proposal = { h: 248.8, t0: 16.395, checkMinC: 0.82, checkMaxC: 5.2, checkDays: 3, referenceRoomC: 20,
+    check: { passed: true, minSpreadC: 4 } };
+  const nl = renderHouseLearningAdvice(configured, proposal);
+  assert.match(nl, /7,02 kW/);
+  assert.match(nl, /6,57 kW/);
+  assert.match(nl, /16,5 °C/);
+  assert.match(nl, /Getoetst op 3 aparte dagen.*0,82 tot 5,2 °C buiten/);
+  assert.match(nl, /data-rated-w="6570" data-zero-c="16.5"\s+data-cold-c="-10" data-expected-rated-w="7020" data-expected-zero-c="16"/);
+  assert.match(nl, /Overnemen/);
+  assert.doesNotMatch(nl, /preview|Voorstel overgenomen/);
+  assert.equal(nl.match(/>Schatting</g)?.length, 2);
+  const adopted = { ...configured, ratedW: 6570, zeroC: 16.5 };
+  const after = renderHouseLearningAdvice(adopted, proposal, { canRestore: true, notice: "Voorstel overgenomen." });
+  assert.match(after, /Voorstel overgenomen\./);
+  assert.match(after, /Vorige waarden terugzetten/);
+  assert.match(renderHouseLearningAdvice(adopted, null, { canRestore: true }), /Vorige waarden terugzetten/);
+  assert.doesNotMatch(renderHouseLearningAdvice({ ...adopted, ratedW: 6600 }, proposal),
+    /Vorige waarden terugzetten/);
+  const narrow = renderHouseLearningAdvice(configured, {
+    ...proposal, checkMaxC: 2.26, check: { passed: false, minSpreadC: 4 },
+  });
+  assert.match(narrow, /vergelijkbare buitentemperaturen/);
+  assert.match(narrow, /aria-describedby="oq-house-line-advice-warning"/);
+  assert.match(narrow, /data-oq-action="apply-house-line"/);
+  const untested = renderHouseLearningAdvice(configured, { h: proposal.h, t0: proposal.t0 });
+  assert.match(untested, /nog niet getoetst op aparte dagen/);
+  assert.doesNotMatch(untested, /Getoetst op/);
+  assert.match(untested, /data-oq-action="apply-house-line"/);
+  assert.doesNotMatch(renderHouseLearningAdvice(configured, { ...proposal, h: 10000 }), /data-oq-action/);
+  assert.equal(renderHouseLearningAdvice(configured, { ...proposal, h: null }), "");
+  assert.equal(renderHouseLearningAdvice({ ...configured, ratedW: null }, proposal), "");
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.match(renderHouseLearningAdvice(configured, proposal), /6\.57 kW.*Use suggestion/s);
+});
 
 test("batchexport gebruikt alleen de firmwarekolommen en verwerpt ontbrekende waarden", () => {
   assert.deepEqual(normalizeHouseLearningExport(payload), [{ startEpoch: 1700000000, endEpoch: 1700014400, outsideC: 5.2, heatW: 2200, recordKind: 0 }, { startEpoch: 1700020000, endEpoch: 1700034400, outsideC: 8.1, heatW: 1650, recordKind: 0 }]);

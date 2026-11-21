@@ -24,6 +24,8 @@ Een wijziging wordt direct opgeslagen. Daarna toont een melding de oude en de ni
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende warmtebron, stille uren, watergrenzen en compressorinstellingen.
 
+Bij **Quatt Hybrid-versie** staat de ingestelde generatie boven de uitgelezen generatie en firmwareversie per buitenunit. Via **Aanpassen** kun je de buitenunits opnieuw laten detecteren.
+
 #### Elektrische ingangsgrens
 
 Bij `Elektrische ingangsgrens` stel je met `Maximale gezamenlijke netstroom` de gezamenlijke stroomgrens van de buitenunits in. De standaard blijft 16 A voor Single en Duo V1/V1.5 en 20 A voor Duo V2 (de officiële Quatt Duo-specificatie); de kaart toont het indicatieve vermogen bij 230 V als benadering. Hoger instellen kan tot de absolute OpenQuatt-bovengrens (20 respectievelijk 26 A, afgeleid van 2 × de gepubliceerde maximale stroom per buitenunit) en alleen bij betrouwbaar gedetecteerde buitenunits van dezelfde familie. Een waarde boven de standaard waarschuwt direct en vraagt een expliciete bevestiging met oude en nieuwe waarde; alleen een zwaardere installatieautomaat plaatsen is niet voldoende. `Standaardwaarde herstellen` zet de actuele standaardwaarde opnieuw in. Ook een backup met een grens boven de standaard vermeldt dit expliciet bij het herstellen. Power House houdt er vooraf en via gemeten vermogen rekening mee; stooklijn en koelen alleen via gemeten vermogen. Deze instelling is een softwarematige regelgrens, geen elektrische beveiliging; korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.
@@ -33,6 +35,18 @@ Bij `Elektrische ingangsgrens` stel je met `Maximale gezamenlijke netstroom` de 
 Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk voor `Hybride verwarmen bij vermogenstekort` en `Overnemen wanneer de warmtepomp niet beschikbaar is`. Overname staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
 
 Tijdens Quick Start kan een gedetecteerde OpenTherm-ketel automatisch als **OpenTherm (OTB)** worden ingesteld. Na afronden blijft een onverwachte OpenTherm-ketel geblokkeerd totdat je de aansluiting corrigeert. Controleer daarom de getoonde aansluiting voordat je afrondt.
+
+#### Meeverwarmen tijdens ontdooien
+
+Tijdens een ontdooicyclus levert de buitenunit tijdelijk geen warmte en zakt de aanvoertemperatuur. Met `Meeverwarmen tijdens ontdooien` mag de aanvullende warmtebron die dip opvangen: zodra een buitenunit ontdooien meldt, houdt de warmtebron de aanvoer rond de temperatuur van vlak vóór het ontdooien. Het doel ligt 3 °C boven die waarde, zodat de warmtebron niet meteen weer afslaat, en blijft altijd minstens 3 °C onder de ingestelde maximale watertemperatuur. Daardoor grijpt de watertemperatuurbeveiliging niet in en wordt de warmtepomp niet teruggeregeld. Na het ontdooien loopt de hulp nog 1 minuut door. Zo krijgt ook een tweede buitenunit die kort daarna ontdooit hulp. Daarna beslist de normale hybride regeling weer zelf, volgens haar eigen voorwaarden. Per ontdooimelding is er één hulpsessie van maximaal 15 minuten. Om pendelen te voorkomen start de hulp pas als de melding 10 seconden aanhoudt, duurt een gestarte sessie minimaal 1 minuut en begint een volgende sessie op zijn vroegst 2 minuten na de vorige.
+
+Terwijl de warmtebron zelf verwarmt, en tot 5 minuten daarna, bevat de aanvoer warmte van die bron. Die temperatuur telt dan niet als waarde van vlak vóór het ontdooien. Een ontdooiing in die periode krijgt geen hulp.
+
+De hulp vereist een echte aanvoersensor na de warmtebron. Valt de aanvoermeting terug op de uitgaande temperatuur van de warmtepomp, dan blijft de hulp uit: die waarde zakt tijdens het ontdooien en ziet de warmte van de warmtebron niet.
+
+De optie staat standaard uit en werkt los van `Hybride verwarmen bij vermogenstekort`: je kunt alleen tijdens het ontdooien laten meeverwarmen terwijl hybride verwarmen uit blijft. Ze wijzigt geen andere instellingen en kost tijdens het ontdooien extra gas of stroom. Zonder de optie verandert een ontdooicyclus niets aan de aansturing van de warmtebron. De buitenunit blijft zelf eigenaar van de ontdooicyclus.
+
+Houd er rekening mee dat warmte van de aanvullende warmtebron de dagmeting van [Leren](leren.md) onderbreekt, tenzij er een aanvoersensor na de warmtebron is waargenomen. Op dagen met veel ontdooicycli kan deze optie daardoor minder bruikbare leerdagen opleveren.
 
 #### Opstarten met koud water
 

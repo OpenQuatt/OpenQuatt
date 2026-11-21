@@ -10,8 +10,8 @@ important discussions and relevant diffs before making user-facing claims.
 - Write simple, concise Dutch. Group related firmware and UI work by user
   outcome; improvements to existing features are not new introductions.
 - Follow the preceding release's thematic layout, not a mandatory New/Fixed
-  taxonomy. Aim for 250-400 words on GitHub/Tweakers and 80-140 on Discord;
-  essential upgrade warnings may need more space. Patch notes are shorter.
+  taxonomy. Aim for 250-400 words on GitHub, Tweakers and Discord; essential
+  upgrade warnings may need more space. Patch notes are shorter.
 - Put breaking changes, changed defaults, backup/recovery actions and data loss
   early. Mention longer updates or extra restarts when the candidate requires
   them; do not copy a one-time migration warning into every subsequent release.
@@ -97,16 +97,30 @@ Deliver raw UBB in `.txt`, not Markdown. Use closed `[h1]`, `[h2]`, `[h3]`,
 
 ## Discord Markdown
 
-Use a bold title, 3-5 short bullets, essential upgrade warnings and a release
-link. No full duplicate of GitHub, logo or large headings.
+Use the same content and thematic sections as Tweakers, converted to Discord
+Markdown: a `##` title, introduction, essential warning, `###` sections with the
+same emoji headings, `-` bullets, and the release and changelog links. No logo.
+
+A Discord message holds at most 2000 characters. When the text is longer, split
+it at a section heading into consecutive messages, marked in the working file
+with a line `--- bericht 2 ---`. Keep the title, introduction and warning in the
+first message and the links in the last.
 
 ```text
-**OpenQuatt vX.Y.Z**
+## OpenQuatt vX.Y.Z
 
-- **[Thema]:** [Praktische verbetering.]
-- [Andere hoofdwijziging.]
+[Korte introductie.]
 
-**Let op:** [Essentiële actie, indien van toepassing.]
+**Let op bij deze update:** [Alleen relevante acties.]
 
-**Release en volledige notes:** https://github.com/OpenQuatt/OpenQuatt/releases/tag/vX.Y.Z
+### 🏠 [Belangrijkste thema]
+
+- [Wijziging.]
+
+### 🔧 Kleinere verbeteringen
+
+- [Wijziging.]
+
+**Release notes en download:** https://github.com/OpenQuatt/OpenQuatt/releases/tag/vX.Y.Z
+**Volledige changelog:** https://github.com/OpenQuatt/OpenQuatt/compare/vBASE...vX.Y.Z
 ```

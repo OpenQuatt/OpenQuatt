@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 720" role="img" aria-labelledby="title desc">
   <title id="title">Stap 2: Modbus naar M1</title>
-  <desc id="desc">Verplaats Modbus A, G en B van de CiC naar de primaire Modbuspoort M1.</desc>
+  <desc id="desc">Sluit alleen A op A en B op B aan op M1 van de HCQ. Isoleer de losse groene G-ader afzonderlijk en laat GND vrij.</desc>
   <style>
     text { font-family: Inter, "Segoe UI", Arial, sans-serif; fill: #111827; }
     .kicker { font-size: 14px; font-weight: 850; letter-spacing: 1.2px; fill: #ea580c; }
@@ -16,7 +16,7 @@
     <image href="q-edition-kabels-stappen.svg" width="1000" height="2901"/>
   </svg>
   <text x="215" y="394" text-anchor="middle" class="map">
-    <tspan fill="#b91c1c">A → A</tspan><tspan fill="#64748b">  ·  </tspan><tspan fill="#166534">G → GND</tspan><tspan fill="#64748b">  ·  </tspan><tspan fill="#1d4ed8">B → B</tspan>
+    <tspan fill="#b91c1c">A → A</tspan><tspan fill="#64748b"> · </tspan><tspan fill="#1d4ed8">B → B</tspan><tspan fill="#64748b"> · </tspan><tspan fill="#475569">GND vrij</tspan>
   </text>
   <circle cx="215" cy="425" r="22" fill="#ea580c"/>
   <path d="M215 414v22m-8-8 8 8 8-8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>

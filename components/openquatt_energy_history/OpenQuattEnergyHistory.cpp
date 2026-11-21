@@ -395,6 +395,7 @@ void OpenQuattEnergyHistory::setup() {
     }
   }
 
+  this->setup_daily_counters_();
   web_server_base::global_web_server_base->add_handler(new OpenQuattEnergyHistoryRequestHandler(this));
 }
 
@@ -1335,22 +1336,52 @@ void OpenQuattEnergyHistory::clear_hour_records_() {
       EnergyHistoryValues{UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH, UNKNOWN_WH};
 }
 
-void OpenQuattEnergyHistory::capture_day_totals(float electrical_input_kwh, float heating_input_kwh,
-                                                float cooling_input_kwh, float heatpump_heat_output_kwh,
-                                                float heatpump_cooling_output_kwh, float boiler_heat_output_kwh,
-                                                float system_heat_output_kwh) {
+void OpenQuattEnergyHistory::setup_daily_counters_() {
+  this->observe_daily_date_(this->clock_->now());
+  this->clock_->add_on_time_sync_callback([this] { this->observe_daily_date_(this->clock_->now()); });
+  for (size_t index = 0; index < this->daily_counters_.size(); ++index) {
+    this->daily_counters_[index]->add_on_state_callback([this, index](float state) {
+      // TotalDailyEnergy publishes zero on its scheduled reset, even for idle channels.
+      if (state == 0.0f && this->observe_daily_date_(this->clock_->now()) != 0U) {
+        this->daily_counters_ready_.set(index);
+      }
+    });
+  }
+}
+
+uint32_t OpenQuattEnergyHistory::observe_daily_date_(const ESPTime& now) {
+  if (!now.is_valid()) {
+    return 0U;
+  }
+  const uint32_t date_key = (static_cast<uint32_t>(now.year) * 10000U) + (static_cast<uint32_t>(now.month) * 100U) +
+                            static_cast<uint32_t>(now.day_of_month);
+  if (this->daily_counter_date_ == 0U) {
+    // At boot the existing ESPHome preferences supply the same-day totals.
+    this->daily_counters_ready_.set();
+  } else if (this->daily_counter_date_ != date_key) {
+    // The clock can cross midnight before ESPHome runs the individual counter resets.
+    this->daily_counters_ready_.reset();
+  }
+  this->daily_counter_date_ = date_key;
+  return date_key;
+}
+
+void OpenQuattEnergyHistory::capture_day_totals() {
   if (!this->runtime_storage_ready() || !this->enabled_() || this->clock_ == nullptr) {
     return;
   }
   const auto now = this->clock_->now();
-  if (!now.is_valid()) {
+  const uint32_t date_key = this->observe_daily_date_(now);
+  if (date_key == 0U || !this->daily_counters_ready_.all()) {
     return;
   }
-  const uint32_t date_key = (static_cast<uint32_t>(now.year) * 10000U) + (static_cast<uint32_t>(now.month) * 100U) +
-                            static_cast<uint32_t>(now.day_of_month);
-  const auto values =
-      this->pack_values_(electrical_input_kwh, heating_input_kwh, cooling_input_kwh, heatpump_heat_output_kwh,
-                         heatpump_cooling_output_kwh, boiler_heat_output_kwh, system_heat_output_kwh);
+
+  std::array<float, DAILY_COUNTER_COUNT> kwh;
+  for (size_t index = 0; index < kwh.size(); ++index) {
+    auto* counter = this->daily_counters_[index];
+    kwh[index] = counter->has_state() ? counter->state : NAN;
+  }
+  const auto values = this->pack_values_(kwh[0], kwh[1], kwh[2], kwh[3], kwh[4], kwh[5], kwh[6]);
   if (!record_has_values_(values)) {
     return;
   }

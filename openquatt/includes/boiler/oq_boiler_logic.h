@@ -15,6 +15,7 @@ enum CommandSource : uint8_t {
   COMMAND_SOURCE_HEATING_CURVE = 3,
   COMMAND_SOURCE_FALLBACK = 4,
   COMMAND_SOURCE_COLD_START = 5,
+  COMMAND_SOURCE_DEFROST_ASSIST = 6,
 };
 
 enum BlockReason : uint8_t {
@@ -67,6 +68,25 @@ struct BoilerStartThermalDecision {
   uint8_t state = BOILER_START_THERMAL_IDLE;
   float safe_ceiling_c = NAN;
 };
+
+inline BoilerStartThermalDecision evaluate_boiler_start_water_limit(bool opentherm_selected,
+                                                                    bool boiler_temperature_fresh,
+                                                                    float boiler_temperature_c,
+                                                                    float maximum_water_temperature_c) {
+  if (!opentherm_selected) {
+    return BoilerStartThermalDecision{BOILER_START_THERMAL_NOT_APPLICABLE, NAN};
+  }
+  if (!boiler_temperature_fresh || !isfinite(boiler_temperature_c) || !isfinite(maximum_water_temperature_c) ||
+      maximum_water_temperature_c <= 0.0f) {
+    return BoilerStartThermalDecision{BOILER_START_THERMAL_UNKNOWN, NAN};
+  }
+
+  // Match the threshold at which the measured system supply inhibits the boiler.
+  return BoilerStartThermalDecision{
+      boiler_temperature_c >= maximum_water_temperature_c ? BOILER_START_THERMAL_HOT : BOILER_START_THERMAL_SAFE,
+      maximum_water_temperature_c,
+  };
+}
 
 inline BoilerStartThermalDecision evaluate_boiler_start_thermal_state(
     bool opentherm_selected, bool boiler_temperature_fresh, float boiler_temperature_c, float system_supply_c,
@@ -275,7 +295,14 @@ inline bool relay_must_be_off(bool opentherm_selected, bool startup_probe_active
 inline bool relay_target_control_applies(uint8_t source, bool opentherm_selected) {
   if (opentherm_selected) return false;
   return source == COMMAND_SOURCE_POWER_HOUSE || source == COMMAND_SOURCE_HEATING_CURVE ||
-         source == COMMAND_SOURCE_COLD_START;
+         source == COMMAND_SOURCE_COLD_START || source == COMMAND_SOURCE_DEFROST_ASSIST;
+}
+
+// Which user permission covers a CM3 assist command. The optional defrost
+// assist is its own permission, so it works without normal boiler assist and
+// normal boiler assist does not enable it.
+inline bool assist_permission_for_source(uint8_t source, bool assist_enabled, bool defrost_assist_enabled) {
+  return source == COMMAND_SOURCE_DEFROST_ASSIST ? defrost_assist_enabled : assist_enabled;
 }
 
 inline uint8_t refine_opentherm_transport_block_reason(uint8_t block_reason, bool opentherm_selected,
@@ -306,6 +333,8 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   decision.blocked = false;
   decision.block_reason = BLOCK_NONE;
 
+  const bool start_requested = command.heat_request && !input.output_active;
+
   if (input.hard_trip_active) {
     decision.force_off = true;
     decision.block_reason = BLOCK_WATER_TEMP_HARD_TRIP;
@@ -319,7 +348,7 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
     decision.force_off = true;
     decision.block_reason = BLOCK_FALLBACK_DISABLED;
   } else if ((command.source == COMMAND_SOURCE_POWER_HOUSE || command.source == COMMAND_SOURCE_HEATING_CURVE ||
-              command.source == COMMAND_SOURCE_COLD_START) &&
+              command.source == COMMAND_SOURCE_COLD_START || command.source == COMMAND_SOURCE_DEFROST_ASSIST) &&
              !input.assist_enabled) {
     decision.force_off = true;
     decision.block_reason = BLOCK_ASSIST_DISABLED;
@@ -341,16 +370,12 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   } else if (command.source == COMMAND_SOURCE_FALLBACK && !input.fallback_outputs_safe) {
     decision.force_off = true;
     decision.block_reason = BLOCK_HP_STOP_UNCONFIRMED;
-  } else if (command.heat_request && !input.output_active &&
-             input.boiler_start_thermal_state == BOILER_START_THERMAL_HOT) {
+  } else if (start_requested && input.boiler_start_thermal_state == BOILER_START_THERMAL_HOT) {
     decision.force_off = true;
     decision.block_reason = BLOCK_BOILER_TOO_HOT_FOR_START;
-  } else if (command.heat_request && !input.output_active && command.source == COMMAND_SOURCE_COMMISSIONING &&
+  } else if (start_requested && command.source == COMMAND_SOURCE_COMMISSIONING &&
              input.boiler_start_thermal_state == BOILER_START_THERMAL_UNKNOWN) {
-    // A service test may only energize an OpenTherm boiler after proving the
-    // chosen operating point is thermally suitable. Normal CM3/CM4 operation
-    // retains the existing supply-temperature fail-safe when optional ID25 is
-    // unsupported or temporarily unavailable.
+    // The service test needs a verified starting temperature for its operating point.
     decision.force_off = true;
     decision.block_reason = BLOCK_BOILER_TEMPERATURE_UNAVAILABLE;
   } else if (!command.demand_present) {

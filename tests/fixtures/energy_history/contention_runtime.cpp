@@ -1,3 +1,5 @@
+#include <array>
+#include <bitset>
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -150,11 +152,27 @@ struct Clock {
     bool is_valid() const { return true; }
   } sample;
   Time now() const { return sample; }
+  void add_on_time_sync_callback(std::function<void()> callback) { this->on_sync = std::move(callback); }
+  std::function<void()> on_sync;
+};
+
+using ESPTime = Clock::Time;
+
+struct Counter {
+  float state{0.0f};
+  bool has_state() const { return true; }
+  void add_on_state_callback(std::function<void(float)> callback) { this->on_state = std::move(callback); }
+  void publish(float value) {
+    this->state = value;
+    this->on_state(value);
+  }
+  std::function<void(float)> on_state;
 };
 
 class OpenQuattEnergyHistory {
  public:
   static constexpr uint32_t UNKNOWN_WH = UINT32_MAX;
+  static constexpr size_t DAILY_COUNTER_COUNT = 7;
   static constexpr size_t HOURLY_SLOT_COUNT = 168;
   static constexpr size_t FLASH_SLOT_SIZE = 64;
   static constexpr size_t HOUR_FLASH_SLOT_SIZE = 1024;
@@ -197,6 +215,10 @@ class OpenQuattEnergyHistory {
   Clock clock;
   SemaphoreHandle_t hour_state_mutex_{&mutex};
   Clock* clock_{&clock};
+  std::array<Counter, DAILY_COUNTER_COUNT> sensor_states{};
+  std::array<Counter*, DAILY_COUNTER_COUNT> daily_counters_{};
+  std::bitset<DAILY_COUNTER_COUNT> daily_counters_ready_{};
+  uint32_t daily_counter_date_{0};
   size_t pending_sample_count_{0};
   size_t hour_flash_slot_count_{0};
   bool history_enabled{true};
@@ -229,6 +251,10 @@ class OpenQuattEnergyHistory {
   std::function<void()> while_import_writes;
 
   OpenQuattEnergyHistory() {
+    for (size_t index = 0; index < daily_counters_.size(); ++index) {
+      daily_counters_[index] = &sensor_states[index];
+    }
+    setup_daily_counters_();
     flash.after_write = [this](const void* data) {
       EnergyHistoryRecord record{};
       std::memcpy(&record, data, sizeof(record));
@@ -303,9 +329,20 @@ class OpenQuattEnergyHistory {
   }
 
   void capture(int day, int hour, float electricity) {
+    const bool next_day = day != clock.sample.day_of_month;
     clock.sample.day_of_month = day;
     clock.sample.hour = hour;
-    capture_day_totals(electricity, electricity, 0, 2 * electricity, 0, 0, 2 * electricity);
+    if (next_day) {
+      for (auto& counter : sensor_states) {
+        counter.publish(0.0f);
+      }
+    }
+    const std::array<float, DAILY_COUNTER_COUNT> values{electricity, electricity,    0, 2 * electricity, 0,
+                                                        0,           2 * electricity};
+    for (size_t index = 0; index < values.size(); ++index) {
+      sensor_states[index].publish(values[index]);
+    }
+    capture_day_totals();
   }
 
   EnergyHistoryHourRecord hour(uint32_t date, uint8_t hour) const {
@@ -346,6 +383,29 @@ int main() {
     assert(after_boundary.values.electrical_input_wh == 20 && !after_boundary.includes_recovered_energy);
     history.loop();
     assert(history.hour(day, 18).values.electrical_input_wh == 20);
+  }
+
+  {
+    OpenQuattEnergyHistory history;
+    history.capture(14, 23, 0.5f);
+    history.clock.sample.day_of_month = 15;
+    history.clock.sample.hour = 0;
+    history.capture_day_totals();
+    assert(history.active_date_key_ == day && history.day_writes.empty());
+
+    // A capture that sees a mix of yesterday's and reset counters must also wait.
+    for (size_t index = 0; index + 1 < history.sensor_states.size(); ++index) {
+      history.sensor_states[index].publish(0.0f);
+    }
+    history.capture_day_totals();
+    assert(history.active_date_key_ == day && history.day_writes.empty());
+
+    history.sensor_states.back().publish(0.0f);
+    history.capture_day_totals();
+    assert(history.day_writes.size() == 1 && history.day_writes[0].wh == 500);
+    assert(history.hour(day + 1, 0).values.electrical_input_wh == 0);
+    history.capture(15, 0, 0.012f);
+    assert(history.hour(day + 1, 0).values.electrical_input_wh == 12);
   }
 
   {

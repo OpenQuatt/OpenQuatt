@@ -517,6 +517,13 @@
 }
 
 .oq-house-learning-readiness { padding: 16px 18px; border: 1px solid var(--oq-helper-line); border-radius: 12px; background: color-mix(in srgb, var(--oq-helper-card) 80%, var(--oq-helper-line)); color: var(--oq-helper-soft); font-size: 0.84rem; line-height: 1.45; }
+.oq-house-learning-advice-table { width: 100%; max-width: 42rem; border-collapse: collapse; margin: 8px 0; text-align: start; }
+.oq-house-learning-advice-table th, .oq-house-learning-advice-table td { padding: 8px 10px 8px 0; text-align: start; vertical-align: top; }
+.oq-house-learning-advice-table thead th { color: var(--oq-helper-soft); font-size: 0.8rem; }
+.oq-house-learning-advice-table tbody tr { border-top: 1px solid var(--oq-helper-line); }
+.oq-house-learning-advice-table strong { color: var(--oq-helper-ink); }
+.oq-house-learning-advice-table small { display: block; color: var(--oq-helper-soft); font-size: 0.75rem; }
+.oq-house-learning-advice-action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
 .oq-house-learning-readiness-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .oq-house-learning-readiness h5 { margin: 0; color: var(--oq-helper-ink); font-size: 0.94rem; }
 .oq-house-learning-readiness p { margin: 4px 0 0; max-width: 760px; }
@@ -563,6 +570,10 @@
 .oq-house-learning-chart-swatch { width: 18px; height: 3px; border-radius: 2px; background: #2563eb; }
 .oq-house-learning-chart-swatch--records { width: 8px; height: 8px; border-radius: 50%; background: #ea580c; }
 .oq-house-learning-chart-swatch--learned { background: #16a34a; }
+.oq-house-learning-chart-swatch--interval { width: 8px; height: 8px; border-radius: 50%; background: rgba(22, 163, 74, 0.4); border: 1px solid #16a34a; }
+.oq-helper-shell--dark .oq-house-learning-chart-swatch--interval { background: rgba(74, 222, 128, 0.3); border: 1px solid #4ade80; }
+.oq-house-learning-chart-interval { fill: rgba(22, 163, 74, 0.12); stroke: none; }
+.oq-helper-shell--dark .oq-house-learning-chart-interval { fill: rgba(74, 222, 128, 0.10); stroke: none; }
 .oq-house-learning-chart-freshness { margin: -5px 0 0; color: var(--oq-helper-faint); font-size: 0.78rem; }
 .oq-house-learning-chart-empty { display: grid; place-items: center; min-height: 150px; gap: 5px; padding: 22px; border-radius: 14px; background: color-mix(in srgb, var(--oq-helper-surface) 82%, var(--oq-helper-line)); color: var(--oq-helper-soft); text-align: center; }
 .oq-house-learning-chart-empty strong { color: var(--oq-helper-ink); }

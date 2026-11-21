@@ -123,7 +123,8 @@ class Runtime {
     const uint32_t minimum_off_ms = opentherm_selected ? config.otb_min_off_ms : config.relay_min_off_ms;
     const oq_boiler::ControllerInput input{
         id(oq_aux_heat_source_present).state,
-        id(oq_boiler_assist_enabled).state,
+        oq_boiler::assist_permission_for_source(command.source, id(oq_boiler_assist_enabled).state,
+                                                id(oq_boiler_defrost_assist_enabled).state),
         id(oq_boiler_fault_fallback_enabled).state,
         supply_valid,
         flow_valid,
@@ -197,7 +198,8 @@ class Runtime {
                                                                        bool opentherm_selected, float supply_c,
                                                                        float target_c, uint32_t now_ms,
                                                                        const Config& config) {
-    if (!command.heat_request && command.source != oq_boiler::COMMAND_SOURCE_COMMISSIONING) return {};
+    const bool commissioning = command.source == oq_boiler::COMMAND_SOURCE_COMMISSIONING;
+    if (!command.heat_request && !commissioning) return {};
     float maximum_c = id(max_water_temp_limit_c).state;
     if (isnan(maximum_c)) maximum_c = 60.0f;
     maximum_c = fmaxf(25.0f, fminf(maximum_c, 75.0f));
@@ -210,6 +212,10 @@ class Runtime {
     const bool boiler_temperature_fresh = false;
     const float boiler_temperature_c = NAN;
 #endif
+    if (!commissioning) {
+      return oq_boiler::evaluate_boiler_start_water_limit(opentherm_selected, boiler_temperature_fresh,
+                                                          boiler_temperature_c, maximum_c);
+    }
     return oq_boiler::evaluate_boiler_start_thermal_state(opentherm_selected, boiler_temperature_fresh,
                                                           boiler_temperature_c, supply_c, target_c, maximum_c);
   }

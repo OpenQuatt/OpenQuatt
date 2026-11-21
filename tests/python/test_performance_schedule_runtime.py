@@ -37,7 +37,7 @@ struct Clock {
 };
 class OpenQuattPerformanceTelemetry {
  public:
-  struct MinuteRecord { uint32_t start_s=0; int generation=1; };
+  struct MinuteRecord { uint32_t start_s=0; int generation=1; std::array<uint16_t,2> odu_firmware{}; };
   struct Minute { uint32_t start_s=0; int samples=0; bool invalid=false; } minute_;
   static constexpr uint32_t SAMPLE_SECONDS=10, MINUTE_SECONDS=60;
   static constexpr size_t RECORDS_PER_BATCH=15;

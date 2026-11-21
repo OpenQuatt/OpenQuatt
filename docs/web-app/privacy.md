@@ -6,8 +6,8 @@ Je kiest afzonderlijk of je gebruiksstatistieken en prestatiemetingen deelt. Ope
 
 | Keuze | Wat wordt gedeeld? | Standaard bij een nieuwe Quick Start |
 | --- | --- | --- |
-| Gebruiksstatistieken | Technische systeemstatus, firmwareversie, gekozen functies en communicatiebetrouwbaarheid. Bij een echte firmwarecrash kan ook een technisch crashrapport worden verstuurd. | Aan; je kunt dit vóór afronden uitzetten. |
-| Prestatiemetingen | Stabiele verwarmingsmetingen voor validatie van het prestatiemodel. | Uit; je kunt dit zelf aanzetten. |
+| Gebruiksstatistieken | Technische systeemstatus, OpenQuatt- en ODU-firmwareversies, gekozen functies en communicatiebetrouwbaarheid. Bij een echte firmwarecrash kan ook een technisch crashrapport worden verstuurd. | Aan; je kunt dit vóór afronden uitzetten. |
+| Prestatiemetingen | Stabiele verwarmingsmetingen en ODU-firmwareversies per warmtepomp voor validatie van het prestatiemodel. | Uit; je kunt dit zelf aanzetten. |
 
 Het uurbericht met gebruiksstatistieken bevat geen wachtwoorden, Wi-Fi-netwerknaam, lokale IP-adressen, ingestelde temperaturen of gewone logregels. De installatie krijgt een willekeurig ID om berichten van dezelfde installatie te herkennen. De loggingserver ziet technisch het bron-IP-adres van een verbinding; OpenQuatt slaat dit IP-adres niet op.
 
@@ -49,6 +49,11 @@ Je kunt delen later altijd wijzigen via **Instellingen → Gegevens delen**.
 Bij ingeschakelde gebruiksstatistieken verstuurt OpenQuatt na afronden vrijwel direct en daarna ongeveer ieder uur een bericht. Uitzetten stopt nieuwe uurberichten; er wordt geen wachtrij voor later opgebouwd. Uitzetten verwijdert niet automatisch eerder ontvangen berichten uit de loggingserver. Het installatie-ID blijft bewaard wanneer je delen uitzet of de firmware bijwerkt.
 
 Bij ingeschakelde prestatiemetingen worden maximaal 15 complete minuutrecords per bericht iedere 15 minuten vanaf de controllerstart verstuurd. De planning volgt de verstreken tijd sinds opstarten, niet de kwartieren van de klok.
+
+Beide berichten bevatten de laatst uitgelezen ODU-firmwareversie per warmtepomp,
+bijvoorbeeld `"2.02"`. Een onbekende versie wordt als `null` gedeeld. De
+gegevenspreview toont dit ook; oudere firmware kan de benodigde lokale waarde
+nog niet aanbieden.
 
 ### Zo controleer je dat het gelukt is
 

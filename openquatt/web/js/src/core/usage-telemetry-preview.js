@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "./browser-utils.js";
 import { getEntityValue, isDeviceTimeValid } from "./entity-store.js";
+import { normalizeOduFirmwareVersion, ODU_FIRMWARE_KEYS } from "./odu-generation.js";
 import { state } from "./state.js";
 import { t } from "../i18n/index.js";
 
@@ -20,6 +21,7 @@ export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "hpGeneration",
   "waterSupplySource",
   "localWaterSupplyTempSource",
+  ...ODU_FIRMWARE_KEYS,
   "flowSource",
   "qFlowSource",
   "strategy",
@@ -206,6 +208,8 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
       Object.prototype.hasOwnProperty.call(values, "localWaterSupplyTempSource"),
       values.hardwareProfileText === "heatpump_controller_q",
     ),
+    odu_fw: (values.installationTopology === "duo" ? [values.hp1OduFirmware, values.hp2OduFirmware] : [values.hp1OduFirmware])
+      .map(normalizeOduFirmwareVersion),
     flow_source_config: flowSourceConfigWireValue(values.flowSource, values.qFlowSource, qSourceAvailable),
     heating_strategy: heatingStrategyWireValue(values.strategy),
     room_temperature_source: configuredSourceWireValue(values.roomTempSource),

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 650" role="img" aria-labelledby="title desc">
   <title id="title">Stap 7: eindcontrole en inschakelen</title>
-  <desc id="desc">Controleer M1, OTT, precies één ketelroute en de overige aansluitingen. Voed daarna de HCQ en schakel de buitenunits in.</desc>
+  <desc id="desc">Controleer of op M1 en eventueel M2 alleen A en B zijn aangesloten, GND vrij is en de losse G-ader van de buitenunitkabel afzonderlijk is geïsoleerd. Controleer ook OTT, precies één ketelroute en de overige aansluitingen. Voed daarna de HCQ en schakel de buitenunits in.</desc>
   <style>
     text { font-family: Inter, "Segoe UI", Arial, sans-serif; fill: #111827; }
     .kicker { font-size: 14px; font-weight: 850; letter-spacing: 1.2px; fill: #ea580c; }
@@ -15,14 +15,16 @@
     <image href="q-edition-kabels-stappen.svg" width="1000" height="2901"/>
   </svg>
   <circle cx="35" cy="350" r="12" fill="#dcfce7"/><path d="M29 350l5 5 9-11" fill="none" stroke="#15803d" stroke-width="3"/>
-  <text x="57" y="356" class="item">M1: A → A, G → GND en B → B.</text>
+  <text x="57" y="344" class="item">M1: A → A, B → B. GND blijft vrij.</text>
+  <text x="57" y="364" class="item">Isoleer de losse G-ader afzonderlijk.</text>
   <circle cx="35" cy="396" r="12" fill="#dcfce7"/><path d="M29 396l5 5 9-11" fill="none" stroke="#15803d" stroke-width="3"/>
   <text x="57" y="390" class="item">OTT is aangesloten.</text>
   <text x="57" y="410" class="item">De ketel via OTB óf R1, nooit beide.</text>
   <circle cx="35" cy="442" r="12" fill="#dcfce7"/><path d="M29 442l5 5 9-11" fill="none" stroke="#15803d" stroke-width="3"/>
   <text x="57" y="448" class="item">Q en alle overige stekkers zitten stevig vast.</text>
   <circle cx="35" cy="488" r="12" fill="#dcfce7"/><path d="M29 488l5 5 9-11" fill="none" stroke="#15803d" stroke-width="3"/>
-  <text x="57" y="494" class="item">M2 is alleen voor Quatt-app via CiC aangesloten.</text>
+  <text x="57" y="482" class="item">M2 (optioneel, Quatt-app via CiC):</text>
+  <text x="57" y="502" class="item">A → A, B → B. G en GND blijven vrij.</text>
   <rect x="20" y="536" width="390" height="88" rx="14" fill="#166534"/>
   <text x="215" y="571" text-anchor="middle" class="finish">Voed de HCQ via USB.</text>
   <text x="215" y="598" text-anchor="middle" class="finish">Schakel daarna de Quatt-buitenunit(s) in.</text>
