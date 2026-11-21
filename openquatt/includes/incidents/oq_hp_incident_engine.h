@@ -62,6 +62,8 @@ class HpIncidentEngine {
     if (!hard_fault_before && hard_fault_after) {
       // A complete or partial stop confirmation predating the fault cannot
       // authorize CM4. Re-arm the stop command and its feedback generations.
+      stopped_read_streak_ = 0U;
+      update_stop_timeout(observation.now_ms);
       invalidate_stop_confirmation_();
     }
     refresh_derived();
@@ -142,6 +144,7 @@ class HpIncidentEngine {
       // route.
       link_loss_revalidation_armed_ = false;
       stopped_read_streak_ = 0U;
+      update_stop_timeout(observation.now_ms);
       if (stop_requested_) {
         run_state_ = run_state_ == RunState::STOP_UNCONFIRMED ? RunState::STOP_UNCONFIRMED : RunState::STOPPING;
       } else if ((run_state_ == RunState::START_REQUESTED || run_state_ == RunState::WAIT_MODE ||
@@ -174,6 +177,7 @@ class HpIncidentEngine {
 
     if (!observation.stop_mode_confirmed) {
       stopped_read_streak_ = 0U;
+      update_stop_timeout(observation.now_ms);
       if (stop_requested_ && run_state_ != RunState::STOP_UNCONFIRMED) {
         run_state_ = RunState::STOPPING;
       }
@@ -189,6 +193,9 @@ class HpIncidentEngine {
       return;
     }
 
+    if (stopped_read_streak_ == 0U) {
+      first_stopped_read_at_ms_ = observation.now_ms;
+    }
     stopped_read_streak_ = saturating_increment(stopped_read_streak_);
     if (stopped_read_streak_ >= std::max<uint8_t>(1U, tuning_.stop_confirm_reads)) {
       run_state_ = RunState::STOPPED;
@@ -396,12 +403,25 @@ class HpIncidentEngine {
       }
     }
 
-    if (stop_request_initialized_ && run_state_ != RunState::STOPPED &&
-        elapsed_at_least(now_ms, stop_requested_at_ms_, tuning_.stop_confirm_timeout_ms)) {
-      run_state_ = RunState::STOP_UNCONFIRMED;
-      compressor_running_confirmed_ = false;
-      stop_confirmation_pending_ = false;
+    update_stop_timeout(now_ms);
+  }
+
+  void update_stop_timeout(uint32_t now_ms) {
+    if (!stop_request_initialized_ || run_state_ == RunState::STOPPED ||
+        !elapsed_at_least(now_ms, stop_requested_at_ms_, tuning_.stop_confirm_timeout_ms)) {
+      return;
     }
+    // A regular stop with timely standby/zero-speed feedback may wait for
+    // the next poll. STOPPING still requires the full streak before a restart
+    // or fallback. The first reading anchors this window across retries.
+    if (run_state_ == RunState::STOPPING && !stop_confirmation_pending_ && !start_timed_out_ &&
+        link_state_ == LinkState::HEALTHY && stopped_read_streak_ > 0U &&
+        !elapsed_at_least(now_ms, first_stopped_read_at_ms_, tuning_.stop_confirm_read_grace_ms)) {
+      return;
+    }
+    run_state_ = RunState::STOP_UNCONFIRMED;
+    compressor_running_confirmed_ = false;
+    stop_confirmation_pending_ = false;
   }
 
   void observe_complete_link_round(uint32_t now_ms) {
@@ -459,6 +479,8 @@ class HpIncidentEngine {
       missed_link_rounds_ = saturating_increment(missed_link_rounds_);
     }
 
+    // End the read grace before a confirmed loss can arm new stop revalidation.
+    update_stop_timeout(now_ms);
     if (link_suspect_started_ && missed_link_rounds_ >= std::max<uint8_t>(1U, tuning_.link_lost_rounds) &&
         elapsed_at_least(now_ms, link_suspect_since_ms_, tuning_.link_lost_ms)) {
       mark_link_lost();
@@ -712,6 +734,7 @@ class HpIncidentEngine {
   bool stop_request_initialized_ = false;
   bool stop_confirmation_pending_ = false;
   uint32_t stop_requested_at_ms_ = 0U;
+  uint32_t first_stopped_read_at_ms_ = 0U;
   uint8_t stopped_read_streak_ = 0U;
 
   bool start_watchdog_initialized_ = false;

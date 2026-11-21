@@ -171,6 +171,7 @@ struct EngineTuning {
   uint32_t mode_ack_timeout_ms = 30000U;
   uint32_t start_timeout_ms = 120000U;
   uint32_t stop_confirm_timeout_ms = 60000U;
+  uint32_t stop_confirm_read_grace_ms = 15000U;
 };
 
 struct FaultWordsObservation {
