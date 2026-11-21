@@ -414,6 +414,9 @@ void OpenQuattWeather::loop() {
         if (++accepted_serial_ == 0) ++accepted_serial_;
         state.current.generation = accepted_serial_;
         next_fetch_ms_ = monotonic_ms() + 900000;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+        if (archive_observer_) archive_observer_(state.current);
+#endif
       }
     } else {
       ++failure_count_;

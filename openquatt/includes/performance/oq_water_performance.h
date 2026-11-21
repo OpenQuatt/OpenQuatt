@@ -87,6 +87,7 @@ struct CandidateModel {
   std::array<float, 2> outlet;
   float outside_c, inlet_c, flow_lph;
   bool coupled, boundary;
+  std::array<int, 2> reference_f1_hz{};
   std::array<std::array<int, 21>, 2> hz{};
   std::array<std::array<uint8_t, 21>, 2> confirmed_hz{};
   std::array<Prediction, 21> upstream{};
@@ -100,6 +101,12 @@ struct CandidateModel {
         flow_lph(flow),
         coupled(use_series),
         boundary(cold_start) {
+    for (unsigned hp = 0; hp < 2; ++hp) {
+      const auto& response = feedback[hp];
+      const bool confirmed_f1 = !response.missing && (response.confirmed_mask & (1U << 1)) != 0 && response.hz[1] > 0;
+      // A settled F1 response is evidence for the minimum. A live override alone is not.
+      reference_f1_hz[hp] = confirmed_f1 ? response.hz[1] : frequency.automatic_frequency_hz(hp == 0, 2, 1);
+    }
     for (int level = 0; level <= 20; ++level) {
       for (unsigned hp = 0; hp < 2; ++hp) {
         const int nominal = level == 0 ? 0 : frequency.automatic_frequency_hz(hp == 0, 2, level);
@@ -135,6 +142,23 @@ struct CandidateModel {
   static std::array<float, 2> dispatch(const void* context, int first, int second) {
     const auto p = static_cast<const CandidateModel*>(context)->pair(first, second);
     return {p.thermal_w, p.electrical_w};
+  }
+  static std::array<float, 2> reference_f1_dispatch(const void* context, int first, int second) {
+    if (first < 0 || first > 1 || second < 0 || second > 1) return {NAN, NAN};
+    const auto& model = *static_cast<const CandidateModel*>(context);
+    const int first_hz = first == 1 ? model.reference_f1_hz[0] : 0;
+    const int second_hz = second == 1 ? model.reference_f1_hz[1] : 0;
+    if (first_hz == model.hz[0][first] && second_hz == model.hz[1][second]) return dispatch(context, first, second);
+    if (!model.coupled && first == 0) {
+      const auto b = model.single_at_frequency(false, second_hz);
+      return {b.thermal_w, b.electrical_w};
+    }
+    const auto a = model.single_at_frequency(true, first_hz);
+    if (!a.valid() || second == 0) return {a.thermal_w, a.electrical_w};
+    const auto b =
+        model.coupled ? solve(model.variants[1], second_hz, model.outside_c, a.outlet_c, model.flow_lph, model.boundary)
+                      : model.single_at_frequency(false, second_hz);
+    return {a.thermal_w + b.thermal_w, a.electrical_w + b.electrical_w};
   }
   static float confirmed_power(const void* context, int first, int second, float live_w = NAN) {
     if (first < 0 || first > 20 || second < 0 || second > 20) return NAN;

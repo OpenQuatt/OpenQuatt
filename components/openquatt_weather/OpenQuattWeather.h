@@ -82,6 +82,9 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   void on_shutdown() override;
   void on_ota_global_state(ota::OTAState state, float, uint8_t, ota::OTAComponent*) override;
   void observe(const oq_power_house::forecast::Observation& observation);
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  void set_archive_observer(void (*observer)(const oq_weather::Series&)) { archive_observer_ = observer; }
+#endif
   // Same main-loop owner as the selected outside-temperature sensor.
   float current_outside_temperature() const;
   void set_consent(bool enabled);
@@ -147,6 +150,9 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
   oq_weather::OtaPause ota_pause_;
   WeatherTextSnapshots text_snapshots_;
   ForecastSnapshotAccess forecast_snapshots_;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  void (*archive_observer_)(const oq_weather::Series&) = nullptr;
+#endif
   uint32_t generation_ = 1, configuration_ = 1, accepted_serial_ = 0;
   uint64_t next_fetch_ms_ = 0;
   uint32_t backoff_ms_ = 60000, last_report_ms_ = 0;

@@ -28,7 +28,16 @@ async function buildCompactFixture() {
     import { optionLabel, setLocale, t } from "./i18n/index.js";
     import { renderOduDefrostModal } from "./features/odu-defrost.js";
     import { state } from "./core/state.js";
+    import { renderMeasurementArchive } from "./settings/measurement-archive.js";
     import { renderLearningExplanation } from "./views/learning-explanation.js";
+    export function readMeasurementArchive(locale, code) {
+      setLocale(locale, { persist: false, applyDocument: false, notify: false });
+      state.entities = {
+        measurementArchiveEnabled: { value: code === "recording" },
+        measurementArchiveStatus: { value: code + "|1794873600|1794960000|42" },
+      };
+      return renderMeasurementArchive();
+    }
     export function readLearningExplanation(locale) {
       setLocale(locale, { persist: false, applyDocument: false, notify: false });
       return renderLearningExplanation();
@@ -102,6 +111,22 @@ test("the compact production bundle resolves both learning guide translations", 
     const html = module.readLearningExplanation(locale);
     assert.doesNotMatch(html, /learningExplanation\./);
     for (const label of [intro, flowLabel, scenarioLabel, pauseCopy]) assert.ok(html.includes(label));
+  }
+});
+
+test("the compact production bundle localizes the measurement archive", async () => {
+  const { module } = await buildCompactFixture();
+  globalThis.window = { location: { pathname: "/" } };
+  try {
+    for (const [locale, catalogue] of [["nl", nl], ["en", en]]) {
+      const { title, periodLabel, recording, off, date, download, downloadAll, fields, fieldsTemperature, fieldsHeat, fieldsOperation, fieldsWeather } = catalogue.measurementArchive;
+      const activeHtml = module.readMeasurementArchive(locale, "recording");
+      assert.doesNotMatch(activeHtml, /measurementArchive\./);
+      for (const label of [title, periodLabel, recording, date, download, downloadAll, fields, fieldsTemperature, fieldsHeat, fieldsOperation, fieldsWeather]) assert.ok(activeHtml.includes(label));
+      assert.ok(module.readMeasurementArchive(locale, "off").includes(off));
+    }
+  } finally {
+    delete globalThis.window;
   }
 });
 
