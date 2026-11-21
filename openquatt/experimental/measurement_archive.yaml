@@ -1,4 +1,4 @@
-# Optional local recording for the Q Single/Duo firmware.
+# Local recording for the Q Single/Duo firmware.
 external_components:
   - source:
       type: local

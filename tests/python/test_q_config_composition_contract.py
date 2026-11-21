@@ -35,7 +35,7 @@ def yaml_key_pattern(key: str) -> str:
 
 class QConfigCompositionContractTest(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("esphome"), "ESPHome is required for package composition")
-    def test_standard_q_builds_include_weather_with_verified_consent(self) -> None:
+    def test_standard_q_builds_include_weather_and_measurement_archive(self) -> None:
         from esphome.config import read_config
         from esphome.core import CORE
 
@@ -46,6 +46,11 @@ class QConfigCompositionContractTest(unittest.TestCase):
                 CORE.config_path = ROOT / "configs/heatpump_controller_q" / target
                 config = read_config({})
                 self.assertIsNotNone(config)
+                archive = config["openquatt_measurement_archive"]
+                self.assertEqual(str(archive["id"]), "oq_measurement_archive_store")
+                self.assertEqual(archive["enabled_switch"]["name"], "Measurement Archive enabled")
+                self.assertEqual(archive["enabled_switch"]["restore_mode"], "DISABLED")
+                self.assertEqual(archive["status"]["name"], "Meetarchief")
                 weather = config["openquatt_weather"]
                 self.assertEqual(str(weather["location"]["id"]), "oq_weather_location")
                 self.assertEqual(str(weather["enabled_switch"]["id"]), "oq_weather_experiment_enabled")

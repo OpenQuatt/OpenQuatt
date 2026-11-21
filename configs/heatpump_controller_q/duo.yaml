@@ -17,3 +17,4 @@ packages:
   openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
   openquatt_topology_duo: !include ../../openquatt/topology/duo.yaml
   openquatt_weather: !include ../../openquatt/experimental/weather_outside_source.yaml
+  openquatt_measurement_archive: !include ../../openquatt/experimental/measurement_archive.yaml
