@@ -472,10 +472,11 @@ class Runtime {
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.minimum_viable_level = minimum_viable_level;
     if (applied_total > 0) {
-      const auto active_minimum = oq_power_house_dispatch::minimum_active_candidate(dispatch_input, dispatch_tuning);
-      run_ext_input.minimum_viable_w = active_minimum.valid ? active_minimum.thermal_w : NAN;
-      run_ext_input.minimum_viable_level =
-          active_minimum.valid ? std::max(active_minimum.hp1_level, active_minimum.hp2_level) : 0;
+      const auto active_minimum =
+          oq_power_house_dispatch::run_extension_minimum(dispatch_input, dispatch_tuning, base_requested_w,
+                                                         &oq_water_performance::CandidateModel::reference_f1_dispatch);
+      run_ext_input.minimum_viable_w = active_minimum.thermal_w;
+      run_ext_input.minimum_viable_level = active_minimum.comfort_level;
     }
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(

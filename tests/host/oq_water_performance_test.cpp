@@ -10,6 +10,7 @@ struct GenerationSelect {
 #include "includes/performance/oq_water_performance.h"
 #undef id
 #include "includes/control/oq_power_house_dispatch_logic.h"
+#include "includes/control/oq_power_house_run_extension_logic.h"
 
 struct Frequency {
   bool full_table = false;
@@ -49,7 +50,7 @@ void test_frequency_feedback_changes_duo_selection() {
     in.requested_w = single.thermal_w;
     in.duo = in.performance_valid = in.lead_hp1 = true;
     in.hp1.candidate = in.hp2.candidate = {2, true, false, false, true};
-    in.pair_power = &CandidateModel::dispatch;
+    if (model.coupled) in.pair_power = &CandidateModel::dispatch;
     in.pair_context = &model;
     // Isolate the reported low-command combination. No low-frequency exclusion
     // is added to production; the next assertion also checks that 30 Hz survives.
@@ -64,6 +65,22 @@ void test_frequency_feedback_changes_duo_selection() {
     return in;
   };
   const DispatchTuning limits{6000, 6500};
+  const CandidateModel independent(frequency, 2, 30, 1000, {35, 35}, false, false);
+  for (const auto* model : {&nominal, &independent}) {
+    auto cycle = dispatch_input(*model);
+    cycle.hp1.feedback_hold_level = cycle.hp2.feedback_hold_level = 2;
+    cycle.hp1.stop_inhibited = cycle.hp2.stop_inhibited = true;
+    const auto comfort_level = [&] {
+      return run_extension_minimum(cycle, limits, 500.0f, &CandidateModel::reference_f1_dispatch).comfort_level;
+    };
+    assert(comfort_level() == 1);
+    cycle.hp1.levels[1].allowed = false;
+    assert(comfort_level() == 2);
+    cycle.hp1.stop_inhibited = false;
+    assert(comfort_level() == 1);
+    cycle.hp2.candidate.previous_applied_level = 0;
+    assert(comfort_level() == 2);
+  }
   const auto before = decide_dispatch(dispatch_input(nominal), limits, {}, &CandidateModel::confirmed_power);
   assert(topology(before.hp1_level, before.hp2_level) == 2);
   auto in = dispatch_input(actual);
@@ -619,7 +636,84 @@ void test_startup_oil_and_restart_closed_loop() {
     }
   }
 }
+void test_temporary_frequency_override_preserves_run_extension_margin() {
+  using namespace oq_power_house_dispatch;
+  namespace extension = oq_power_house_run_extension;
+  using oq_water_performance::CandidateModel;
+  struct V1Frequency {
+    oq_odu::Variant performance_variant(bool) const { return oq_odu::Variant::V1; }
+    int automatic_frequency_hz(bool, int, int level) const {
+      return level <= 10 ? oq_odu::V1_HEATING_DEMAND_REFERENCE_HZ[level] : 0;
+    }
+  };
+  struct Sample {
+    int applied_level, measured_hz;
+    bool feedback_settling;
+    float room_c, outside_c, outlet_c, base_w, margin_c;
+    bool f1_response_confirmed = false;
+  };
+  // Cover the F1 override from #977 and two recorder-inspired F3 settling cases.
+  const Sample samples[] = {
+      {1, 44, false, 21.14f, 5.0f, 36.0f, 790.0f, 0.6f},
+      {3, 60, true, 21.02734f, 4.93f, 30.63f, 2634.073f, 0.5f},
+      {3, 48, true, 21.00781f, 4.49f, 29.12f, 2753.972f, 0.5f},
+      {1, 44, false, 21.14f, 5.0f, 36.0f, 790.0f, 0.6f, true},
+  };
+  const V1Frequency frequency;
+  const DispatchTuning limits{3500, 4000};
+  for (const auto& sample : samples) {
+    std::array<oq_compressor_feedback::Snapshot, 2> feedback{};
+    auto& measured = feedback[0];
+    measured.requested_hz = frequency.automatic_frequency_hz(true, 2, sample.applied_level);
+    measured.actual_hz = sample.measured_hz;
+    measured.settling = sample.feedback_settling;
+    if (sample.f1_response_confirmed) {
+      measured.confirmed_mask = 1U << 1;
+      measured.hz[1] = sample.measured_hz;
+    }
+    const CandidateModel model(frequency, sample.outside_c, NAN, NAN, {sample.outlet_c, NAN}, false, false, feedback);
+    DispatchInput in;
+    in.requested_w = sample.base_w;
+    in.performance_valid = true;
+    in.hp1.candidate = {sample.applied_level, true, false, false, true};
+    in.hp1.feedback_hold_level = measured.hold_level(sample.applied_level, true, true, true);
+    in.pair_context = &model;
+    for (int level = 1; level <= 10; ++level) {
+      const auto p = model.unit(true, level);
+      in.hp1.levels[level] = {true,        p.valid(),      p.valid(),
+                              p.thermal_w, p.electrical_w, static_cast<uint8_t>(model.hz[0][level])};
+    }
+    const extension::State running{extension::Phase::RUNNING, 21.0f, true};
+    const extension::Tuning tuning{sample.margin_c, 0.3f, 0.2f};
+    const auto live = minimum_active_candidate(in, limits);
+    assert(live.valid && live.hp1_level > 1 && sample.base_w < live.thermal_w);
+    const auto evaluate = [&](extension::State state) {
+      const auto minimum = run_extension_minimum(in, limits, sample.base_w, &CandidateModel::reference_f1_dispatch);
+      const extension::Input input{
+          true, true, true, true, sample.room_c, 21.0f, sample.base_w, minimum.thermal_w, minimum.comfort_level, 1.0f};
+      return extension::evaluate(input, tuning, state);
+    };
+    const auto continued = evaluate(running);
+    if (sample.f1_response_confirmed) {
+      assert(continued.force_comfort_stop && continued.comfort_stop_c == 21.0f);
+      continue;
+    }
+    assert(continued.next.phase == extension::Phase::EXTENDING && !continued.force_comfort_stop);
+    assert(continued.floor_active && continued.floor_w == live.thermal_w);
+    assert(continued.comfort_stop_c == 21.0f + sample.margin_c);
+    assert(continued.warm_restart_c == continued.comfort_stop_c - tuning.restart_cooldown_c);
+
+    in.hp1.levels[1].allowed = false;
+    const auto prohibited = evaluate(continued.next);
+    assert(prohibited.force_comfort_stop && prohibited.comfort_stop_c == 21.0f);
+    in.hp1.levels[1].allowed = true;
+    const auto latched = evaluate(prohibited.next);
+    assert(latched.force_comfort_stop && latched.comfort_stop_c == 21.0f);
+  }
+}
+
 int main() {
+  test_temporary_frequency_override_preserves_run_extension_margin();
   test_mixed_response_selects_duo_or_single_for_actual_capacity();
   test_inactive_outlet_is_not_required();
   test_frequency_feedback_changes_duo_selection();
