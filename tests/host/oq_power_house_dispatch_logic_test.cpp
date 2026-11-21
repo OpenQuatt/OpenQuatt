@@ -228,6 +228,210 @@ void test_feedback_hold_prefers_upshift_before_starting_peer() {
     check(0, 1);
   }
 }
+
+void test_duo_handoff_waits_for_measured_successor() {
+  struct FieldOrder {
+    int incumbent, incumbent_level, starting_level, solo_level;
+    float request_w;
+  };
+  // Applied command orders from 08:12:13, 08:19:18 and 08:24:28. Explicit
+  // performance estimates isolate the decision from unavailable field inputs.
+  for (const auto& sample :
+       {FieldOrder{1, 1, 4, 9, 4536}, FieldOrder{2, 1, 4, 9, 4536}, FieldOrder{1, 2, 4, 10, 4779}}) {
+    auto in = input(true);
+    in.requested_w = sample.request_w;
+    HandoffEvidence handoff;
+    handoff.request_w = sample.request_w;
+    const HandoffEvidence* evidence = &handoff;
+    const auto earlier = in.now_ms - 10000U;
+    const unsigned incumbent_index = sample.incumbent - 1;
+    const unsigned successor_index = 1 - incumbent_index;
+    const int successor = successor_index + 1;
+    auto& incumbent = sample.incumbent == 1 ? in.hp1 : in.hp2;
+    auto& incoming = sample.incumbent == 1 ? in.hp2 : in.hp1;
+    incumbent.levels = incoming.levels = {};
+    incumbent.candidate.previous_applied_level = sample.incumbent_level;
+    incoming.candidate.previous_applied_level = sample.starting_level;
+    incumbent.levels[sample.incumbent_level] = {true, true, true, sample.request_w / 2 + 32, 650, 30};
+    incoming.levels[sample.starting_level] = {true, true, true, sample.request_w / 2 + 32, 690, 55};
+    incoming.levels[sample.solo_level] = {true, true, true, sample.request_w, 1120, 85};
+    const auto limits = tuning();
+    const auto state_before_add = observe_protection(
+        {}, {earlier - 10000U, false, false, false, sample.incumbent == 1 ? sample.incumbent_level : 0,
+             sample.incumbent == 2 ? sample.incumbent_level : 0});
+    const ProtectionObservation applied_duo{earlier, false, false, false, applied_level(in.hp1), applied_level(in.hp2)};
+    const auto state = observe_protection(state_before_add, applied_duo);
+    assert(state.handoff_incumbent == sample.incumbent);
+    assert(observe_protection({}, applied_duo).handoff_incumbent == 0);
+
+    const auto decide = [&](const DispatchState& observed, const DispatchTuning& limit) {
+      const auto out = decide_dispatch(in, limit, observed, nullptr, {}, evidence);
+      expect_safe(out, in, limit);
+      return out;
+    };
+    handoff.heat_w[incumbent_index] = sample.request_w;
+    assert(decide({}, limits).owner_hp == successor);
+    for (const float unproven : {NAN, 0.0f, sample.request_w - 250.0f}) {
+      handoff.heat_w[successor_index] = unproven;
+      const auto held = decide(state, limits);
+      assert(held.hp1_level == applied_level(in.hp1) && held.hp2_level == applied_level(in.hp2));
+      assert(held.economic_comparison.chosen.hp1_level == held.hp1_level &&
+             held.economic_comparison.chosen.hp2_level == held.hp2_level);
+    }
+    const auto expect_verified_level = [&](const DispatchState& observed) {
+      auto& applied = incoming.levels[sample.starting_level];
+      const auto original = applied;
+      applied.thermal_w = sample.request_w;
+      applied.electrical_w = 1250;
+      handoff.heat_w[successor_index] = sample.request_w - 200;
+      const auto stock = decide({}, limits);
+      assert((successor == 1 ? stock.hp1_level : stock.hp2_level) == sample.solo_level);
+      const auto verified = decide(observed, limits);
+      assert(verified.owner_hp == successor);
+      assert((successor == 1 ? verified.hp1_level : verified.hp2_level) == sample.starting_level);
+      applied = original;
+    };
+    // A measured response proves the currently applied F4 only. The cheaper
+    // counterfactual F9/F10 may have a different response after an upshift.
+    handoff.heat_w[successor_index] = sample.request_w - 200;
+    assert(decide(state, limits).owner_hp == 0);  // F4 still lacks valid model capacity
+    expect_verified_level(state);
+
+    handoff.heat_w[successor_index] = NAN;
+    in.requested_w = sample.request_w - 100;
+    assert(decide(state, limits).owner_hp == 0);
+    in.requested_w = sample.request_w - 400;
+    assert(decide(state, limits).owner_hp == successor);
+    in.requested_w = sample.request_w;
+    handoff.request_w = NAN;
+    assert(decide(state, limits).owner_hp == successor);
+    handoff.request_w = sample.request_w;
+
+    // Capacity may clip the planning target. Use the full request for the
+    // handoff proof, so a feasible forecast is no substitute for delivered heat.
+    in.requested_w = sample.request_w + 400;
+    handoff.heat_w[successor_index] = sample.request_w;
+    auto constrained = limits;
+    constrained.soft_limit_w = constrained.peak_limit_w = 1500;
+    assert(decide({}, constrained).owner_hp == successor);
+    const auto shortfall = decide(state, constrained);
+    assert(shortfall.owner_hp == 0 && shortfall.saturated && shortfall.deficit_w > 0);
+    in.requested_w = sample.request_w;
+    handoff.heat_w[successor_index] = NAN;
+
+    handoff.heat_w[incumbent_index] = NAN;
+    assert(decide(state, limits).owner_hp == successor);
+    handoff.heat_w[incumbent_index] = 0;
+    assert(decide(state, limits).owner_hp == successor);
+    handoff.heat_w[incumbent_index] = sample.request_w;
+    evidence = nullptr;
+    assert(decide(state, limits).owner_hp == successor);
+    evidence = &handoff;
+
+    // A safer/emergency result remains available regardless of the handoff.
+    incumbent.candidate.must_stop = true;
+    assert(decide(state, limits).owner_hp == successor);
+    incumbent.candidate.must_stop = false;
+    incumbent.defrost = true;
+    assert(decide(state, limits).owner_hp == decide({}, limits).owner_hp);
+    incumbent.defrost = false;
+    constrained.peak_limit_w = 1500;
+    constrained.soft_limit_w = 1300;
+    assert(decide(state, constrained).owner_hp == successor);
+    constrained.peak_limit_w = 1300;
+    assert(decide(state, constrained).owner_hp == successor);
+
+    in.requested_w = 0;
+    const auto stopped = decide(state, limits);
+    assert(stopped.hp1_level == 0 && stopped.hp2_level == 0);
+    in.requested_w = sample.request_w;
+
+    in.now_ms = earlier + kTopologyHoldMs - 1;
+    assert(decide(state, limits).owner_hp == 0);
+    in.now_ms += 1U;
+    auto cleared = applied_duo;
+    cleared.now_ms = in.now_ms;
+    const auto expired = observe_protection(state, cleared);
+    assert(decide(expired, limits).owner_hp == successor);
+    incoming.stop_inhibited = true;
+    auto extended = expired;
+    uint32_t first_start = 0;
+    expire_handoff(extended, first_start, in.now_ms, earlier, earlier + 15000U, incoming.stop_inhibited);
+    assert(first_start == earlier + 15000U && decide(extended, limits).owner_hp == 0);
+    expect_verified_level(extended);
+    incoming.stop_inhibited = false;
+
+    handoff.heat_w[successor_index] = NAN;
+    incumbent.levels[5] = {true, true, true, sample.request_w, 1180, 61};
+    in.now_ms = earlier + 10000U;
+    const auto original_owner = decide(state, limits);
+    assert(original_owner.owner_hp == sample.incumbent);
+    cleared.hp1_applied_level = sample.incumbent == 1 ? sample.incumbent_level : 0;
+    cleared.hp2_applied_level = sample.incumbent == 2 ? sample.incumbent_level : 0;
+    assert(observe_protection(state, cleared).handoff_incumbent == 0);
+  }
+}
+
+void test_duo_handoff_expires_with_the_first_physical_run() {
+  constexpr uint32_t command = 20000U, physical_start = command + 15000U;
+  const ProtectionObservation solo{command - 10000U, false, false, false, 1, 0};
+  const ProtectionObservation duo{command, false, false, false, 1, 4};
+  auto observed = observe_protection(observe_protection({}, solo), duo);
+  assert(observed.handoff_incumbent == 1);
+
+  uint32_t first = 0;
+  auto no_new_start = observed;
+  const auto deadline = command + kTopologyHoldMs;
+  expire_handoff(no_new_start, first, deadline - 1, command, command - 1000U, true);
+  assert(no_new_start.handoff_incumbent == 1 && first == 0);
+  expire_handoff(no_new_start, first, deadline, command, command - 1000U, true);
+  assert(no_new_start.handoff_incumbent == 0);
+
+  expire_handoff(observed, first, physical_start, command, physical_start, true);
+  assert(observed.handoff_incumbent == 1 && first == physical_start);
+  expire_handoff(observed, first, deadline, command, physical_start, true);
+  assert(observed.handoff_incumbent == 1 && first == physical_start);
+
+  auto min_runtime_ended = observed;
+  expire_handoff(min_runtime_ended, first, deadline + 1000U, command, physical_start, false);
+  assert(min_runtime_ended.handoff_incumbent == 0);
+  expire_handoff(min_runtime_ended, first, deadline + 2000U, command, physical_start, true);
+  assert(min_runtime_ended.handoff_incumbent == 0 && first == 0);
+
+  // A new physical-start watermark after a mode flap cannot renew the old
+  // transfer, even while the original topology timer is still running.
+  auto mode_flap = observe_protection(observe_protection({}, solo), duo);
+  expire_handoff(mode_flap, first, physical_start, command, physical_start, true);
+  expire_handoff(mode_flap, first, physical_start + 10000U, command, physical_start + 10000U, true);
+  assert(mode_flap.handoff_incumbent == 0);
+  auto still_duo = duo;
+  still_duo.now_ms = physical_start + 20000U;
+  mode_flap = observe_protection(mode_flap, still_duo);
+  expire_handoff(mode_flap, first, still_duo.now_ms, command, physical_start + 10000U, true);
+  assert(mode_flap.handoff_incumbent == 0 && first == 0);
+}
+
+void test_duo_handoff_excludes_manual_and_inactive_transitions() {
+  ProtectionObservation first_solo{10000U, false, false, false, 1, 0};
+  ProtectionObservation still_duo{20000U, false, false, false, 1, 4};
+  const auto observing = observe_protection(observe_protection({}, first_solo), still_duo);
+  assert(observing.handoff_incumbent == 1);
+  still_duo.observe_handoff = false;
+  const auto left_mode = observe_protection(observing, still_duo);
+  assert(left_mode.handoff_incumbent == 0);
+  assert(observe_protection(observe_protection({}, first_solo), still_duo).handoff_incumbent == 0);
+
+  first_solo.observe_handoff = false;
+  const auto in_manual = observe_protection({}, first_solo);
+  assert(in_manual.applied_solo_owner == 0);
+  const auto manual_duo = observe_protection(in_manual, still_duo);
+  assert(manual_duo.handoff_incumbent == 0);
+  still_duo.observe_handoff = true;
+  assert(observe_protection(manual_duo, still_duo).handoff_incumbent == 0);
+  assert(observe_protection(in_manual, still_duo).handoff_incumbent == 0);
+  assert(observe_protection(left_mode, still_duo).handoff_incumbent == 0);
+}
+
 void test_timing_and_matrix() {
   auto state = observe_protection({}, {UINT32_MAX - 4U, true, false, false, 3, 0});
   state = observe_protection(state, {UINT32_MAX - 2U, false, false, false, 3, 0});
@@ -636,6 +840,9 @@ int main() {
   test_extension_uses_only_active_units();
   test_actuator_hold_constrains_owner_swap();
   test_feedback_hold_prefers_upshift_before_starting_peer();
+  test_duo_handoff_waits_for_measured_successor();
+  test_duo_handoff_expires_with_the_first_physical_run();
+  test_duo_handoff_excludes_manual_and_inactive_transitions();
   test_timing_and_matrix();
   test_performance_supply_fallback();
   test_single_and_failures();

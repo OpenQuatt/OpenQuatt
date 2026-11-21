@@ -283,6 +283,8 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 - twee warmtepompen tegelijk zijn niet per definitie beter;
 - het systeem probeert een praktische en zuinige keuze te maken.
 
+Bij een automatische bijschakeling toetst de optimizer of de nieuwe unit op de al toegepaste stand voldoende vermogen kan leveren voor Solo. De toets gebruikt verse compressorfeedback en geldt zolang beide units veilig binnen de vermogensgrenzen kunnen werken en de vraag rond het niveau van de bijschakeling blijft. Een noodzakelijke stop en de minimumlooptijd houden voorrang.
+
 ### Vermogensvoorspelling bij de levelkeuze
 
 Bij beschikbare inlaattemperatuur en flow berekent OpenQuatt het vermogen voor ieder kandidaatpaar met de waterketen HP1 → HP2: de voorspelde uitlaat van HP1 wordt de inlaat van HP2. Dit geldt ook voor Water Temperature Control. Bij ontbrekende watermetingen gebruikt de regeling de eigen verse uitlaattemperatuur van een draaiende ODU, met de bestaande temperatuurreferentie als terugval. Stilstaande ODU's en defrost behouden die bestaande referentie. Alle frequentiegrenzen, stroomlimieten en wachttijden blijven actief; 90 Hz inclusief blijft toegestaan.
@@ -306,6 +308,8 @@ De laagste geschikte stand kan veranderen met de bedrijfsomstandigheden. OpenQua
 De modelversie is `oq-v2-heating-r2`. De voorspeltabel bevat de twintig V2-new-frequenties tot 110 Hz; de bestaande automatische frequentielimiet van 90 Hz blijft gelden. De oude F1–F10-referentieas blijft behouden en het vermogen wordt berekend met de werkelijke frequentie uit de unit. De kaart past de modelgrenzen voor vermogen en COP toe na temperatuurinterpolatie en vóór interpolatie naar een afwijkende frequentie.
 
 Is de laagste geschikte stand hoger dan F1 en ligt de huisvraag onder dat minimumvermogen, dan vraagt langer doorverwarmen al bij de gewenste kamertemperatuur een stop aan. De extra stopmarge wordt dan niet op die hogere stand gevuld. Onder het setpoint kan de warmtepomp nog op de hogere minimumstand verwarmen; een huisvraag vanaf het minimumvermogen blijft de gewone stopgrens gebruiken. De minimumlooptijd en beveiligingen blijven gelden.
+
+Bij een verwarmende Single V2_new na ontdooien kan het huidige niveau tijdelijk vaststaan terwijl OpenQuatt de compressorrespons beoordeelt. Als F1 beschikbaar is en verse metingen minder afgifte tonen dan de huisvraag, gebruikt Power House tijdens die controle de gewone comfortgrens. De gewone vraag en de beperkingen op de compressoropdracht blijven gelden.
 
 Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd door **Afkoeling onder gewenste temperatuur**. Deze eerdere grens blijft tijdens uitlopen en wachten behouden, ook als F1 weer beschikbaar wordt of de vermogensvoorspelling tijdelijk ontbreekt. De web-app toont de actuele eerdere grens zodra de firmware die meldt; tijdens bewerken blijven de ingestelde grenzen als voorvertoning zichtbaar.
 
