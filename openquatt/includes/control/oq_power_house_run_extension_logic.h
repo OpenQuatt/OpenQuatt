@@ -31,6 +31,9 @@ struct Input {
   float minimum_viable_w = NAN;
   int minimum_viable_level = 0;
   float water_limit_factor = NAN;
+  // Optional user switch, last so existing aggregate initialisers stay valid.
+  // true keeps the v0.59 always-on behaviour.
+  bool enabled = true;
 };
 
 struct Tuning {
@@ -128,6 +131,20 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
                              (in.setpoint_c < state.last_setpoint_c - 0.01f);
   State next = state;
   next.stop_at_setpoint = stop_at_setpoint;
+
+  // Disabled: no minimum-power floor, no comfort stop and no restart latch.
+  // Normal Power House demand alone decides when to start and stop.
+  if (!in.enabled) {
+    next.phase = Phase::INACTIVE;
+    next.cycle_armed = false;
+    next.stop_at_setpoint = false;
+    if (std::isfinite(in.setpoint_c)) next.last_setpoint_c = in.setpoint_c;
+    // Publish no thresholds that the control does not use.
+    out.comfort_stop_c = NAN;
+    out.warm_restart_c = NAN;
+    out.next = next;
+    return out;
+  }
 
   // Arming: only a confirmed normal heating run arms a #608 cycle.
   // An idle heat pump must not be started by run extension.

@@ -169,7 +169,7 @@ opwarmduur en energiegebruik in je eigen installatie.
 
 #### Power House comfortregeling
 
-Bij **Instellingen → Verwarmen → Power House — comfort** staan twee onderdelen: **Op temperatuur houden** en **Langer doorverwarmen**. De gewone regeling bepaalt hoeveel warmte je woning nodig heeft; langer doorverwarmen is altijd actief voor een lopende verwarmingsperiode. De bediening is hetzelfde voor radiatoren, LT-radiatoren en vloerverwarming.
+Bij **Instellingen → Verwarmen → Power House — comfort** staan twee onderdelen: **Op temperatuur houden** en **Langer doorverwarmen**. De gewone regeling bepaalt hoeveel warmte je woning nodig heeft; langer doorverwarmen staat standaard aan voor een lopende verwarmingsperiode. De bediening is hetzelfde voor radiatoren, LT-radiatoren en vloerverwarming.
 
 ##### Op temperatuur houden
 
@@ -181,11 +181,11 @@ Met **Afremmen boven gewenste temperatuur** kies je hoeveel opwarming boven je g
 
 Met **Integrerend bijregelen** kies je hoe ver Power House de interne herstelcorrectie bij langdurige afwijking mag laten oplopen: 0,1–1,0 °C, standaard 0,2 °C. Deze waarde staat los van **Afremmen boven gewenste temperatuur**.
 
-De app toont **Warmte terugnemen boven** naast de gewenste temperatuur en de temperatuur voor extra warmte. Langer doorverwarmen staat altijd aan.
+De app toont **Warmte terugnemen boven** naast de gewenste temperatuur en de temperatuur voor extra warmte. Langer doorverwarmen staat standaard aan.
 
 Ook zonder extra opwarming kan de warmtepomp draaien om het warmteverlies van je woning te compenseren. Was de kamer langere tijd te koud, dan kan Power House al eerder extra warmte vragen en daarmee nog een tijdje doorgaan terwijl de kamer opwarmt. De app toont de gewenste temperatuur en **Extra warmte bij afkoeling onder** direct onder het veld.
 
-Langer doorverwarmen is altijd actief. Een lopende run kan bij weinig vraag op laag vermogen doorgaan tot de stopgrens; een stilstaande warmtepomp wordt niet gestart. Na een stop geldt dezelfde afkoelgrens voor iedere nieuwe start. De minimale looptijd kan een stop uitstellen.
+Langer doorverwarmen staat standaard aan; uitzetten kan hier met de schakelaar **Langer doorverwarmen inschakelen** (in Home Assistant: `Power House run extension enabled`). Staat hij uit, dan verdwijnen de stopgrens en de afkoelinstelling. Een lopende run kan bij weinig vraag op laag vermogen doorgaan tot de stopgrens; een stilstaande warmtepomp wordt niet gestart. Na een stop geldt dezelfde afkoelgrens voor iedere nieuwe start. De minimale looptijd kan een stop uitstellen.
 
 #### Langer doorverwarmen
 
@@ -209,7 +209,7 @@ Voorbeelden bij een gewenste temperatuur van **21,0 °C**, een stopgrens van **2
 
 Bij de stopgrens vraagt Power House de warmtepomp om te stoppen. De warmtepomp stopt later als hij zijn minimale looptijd nog moet afmaken. Ook daarna kunnen de radiatoren of vloer nog warmte afgeven. Bij opnieuw verwarmen bepaalt Power House weer hoeveel vermogen nodig is; de warmtepomp start dus niet altijd op minimumvermogen. De normale beveiligingen blijven gelden.
 
-Langer doorverwarmen staat altijd aan. De instellingen blijven na een controllerherstart behouden. Zie [Power House: langer doorverwarmen](../power-house.md#langer-doorverwarmen) voor de precieze werking, statussen en het gedrag na een herstart.
+Langer doorverwarmen staat standaard aan. De instellingen blijven na een controllerherstart behouden. Zie [Power House: langer doorverwarmen](../power-house.md#langer-doorverwarmen) voor de precieze werking, statussen en het gedrag na een herstart.
 
 ##### Geavanceerd: afstelling van de regeling
 

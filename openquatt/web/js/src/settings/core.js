@@ -284,8 +284,9 @@ function syncFrequencyRangeControl(control) {
       }
     });
 
-    state.warmupSettingsRenderPending = !patchControlledWarmupField(stack);
-    patchRunExtensionThresholds();
+    const warmupStructureMatches = patchControlledWarmupField(stack);
+    const runExtensionStructureMatches = patchRunExtensionThresholds();
+    state.warmupSettingsRenderPending = !warmupStructureMatches || !runExtensionStructureMatches;
 
     const generationStatus = stack.querySelector('button[data-oq-action="open-generation-modal"]')?.closest(".oq-settings-quickstart-status");
     if (generationStatus) {
