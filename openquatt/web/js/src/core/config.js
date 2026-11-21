@@ -2354,7 +2354,7 @@
         "phDemandRiseTime",
         "phDemandFallTime",
         "phRunExtensionEnabled",
-    "phRunExtensionStopMargin",
+        "phRunExtensionStopMargin",
         "phRunExtensionRestartCooldown",
       ],
     },

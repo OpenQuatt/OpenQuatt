@@ -139,6 +139,9 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
     next.cycle_armed = false;
     next.stop_at_setpoint = false;
     if (std::isfinite(in.setpoint_c)) next.last_setpoint_c = in.setpoint_c;
+    // Publish no thresholds that the control does not use.
+    out.comfort_stop_c = NAN;
+    out.warm_restart_c = NAN;
     out.next = next;
     return out;
   }
