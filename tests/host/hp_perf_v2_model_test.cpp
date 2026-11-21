@@ -51,8 +51,8 @@ void test_axes_and_all_source_nodes() {
       }
     }
   }
-  assert(valid_nodes == 2362U);
-  assert(masked_nodes == 2438U);
+  assert(valid_nodes == 2374U);
+  assert(masked_nodes == 2426U);
 }
 
 void test_reference_and_boundary_points() {
@@ -109,8 +109,12 @@ void test_v2_new_operating_boundaries_and_native_oracle() {
   assert(predict_heating(20.0, 0.0, 25.0).status == Status::VALID);
   assert(predict_heating(110.0, -5.0, 34.999).status == Status::VALID);
   assert(predict_heating(110.0, -5.0, 35.0).status == Status::MASKED);
-  assert(predict_heating(102.0, -12.000001, 25.0).status == Status::MASKED);
+  assert(predict_heating(102.0, -15.0, 35.0).status == Status::MASKED);
+  assert(predict_heating(110.0, -5.0, 45.0).status == Status::MASKED);
+  assert(predict_heating(102.0, -15.0, 25.0).status == Status::VALID);
+  assert(predict_heating(102.0, -12.000001, 25.0).status == Status::VALID);
   assert(predict_heating(102.0, -12.0, 25.0).status == Status::VALID);
+  assert(predict_heating(102.0, 0.0, 25.0).status == Status::MASKED);
   assert(near(predict_heating(45.0, 36.107, 23.638).pth_w, 9172.15f, 0.02f));
   assert(near(predict_heating(60.0, 16.632, 18.495).pth_w, 8738.62253f, 0.02f));
   assert(near(predict_heating(30.0, -15.0, 70.0).pth_w, 577.14f, 0.02f));

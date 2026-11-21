@@ -131,7 +131,7 @@ voor de bediening, instellingen en voorbeelden.
 
 Bij automatisch verwarmen bekijkt OpenQuatt de frequenties uit de ingelezen standentabel van iedere warmtepomp. Het performancemodel schat bij die frequenties en de buiten- en watertemperatuur hoeveel warmte de unit levert. De regeling kiest daaruit een passende stand; bij `Duo` beoordeelt zij de combinatie van beide units binnen de bestaande inschakel- en wisselvoorwaarden.
 
-Zo kunnen extra standen tussen de bestaande meetpunten worden gebruikt. Automatisch verwarmen blijft voorlopig begrensd op **90 Hz**. Je ingestelde dag-/stiltegrens en uitgesloten frequenties kunnen die keuze verder beperken. Standen zonder geldige tabel of bruikbare performancegegevens zijn geen nieuwe startkandidaten. Bestaande beveiligingen en wachttijden blijven gelden.
+Zo kunnen extra standen tussen de bestaande meetpunten worden gebruikt. Voor V2-new-modellen met de uitgebreide standentabel loopt automatisch verwarmen tot **110 Hz**; V1, V1.5 en de V2-legacy-tabel blijven begrensd op **90 Hz**. Je ingestelde dag-/stiltegrens en uitgesloten frequenties kunnen die keuze verder beperken. Standen zonder geldige tabel of bruikbare performancegegevens zijn geen nieuwe startkandidaten. Bestaande beveiligingen en wachttijden blijven gelden.
 
 ## `Single` en `Duo`
 

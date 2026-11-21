@@ -84,13 +84,18 @@ void test_fixture_chain() {
   for (const auto& table : tables) {
     const auto frequency = context(table, table);
     const int maximum = frequency.automatic_level_limit(true, 2);
-    assert(maximum == (table.variant == oq_odu::Variant::V2_NEW_MODEL ? 17 : 10));
+    assert(maximum == (table.variant == oq_odu::Variant::V2_NEW_MODEL ? 20 : 10));
     for (int level = 1; level <= maximum; ++level) {
       DispatchInput input;
       input.performance_valid = true;
       for (float ambient : {-15.0f, -7.0f, 0.0f, 2.0f, 7.0f, 12.0f}) {
         input.hp1 = modeled_hp(frequency, true, level, 35, ambient);
         if (input.hp1.levels[level].thermal_valid) break;
+      }
+      // The highest V2-new entries are only covered at colder supply points.
+      for (float ambient : {-15.0f, -7.0f, 0.0f, 2.0f, 7.0f, 12.0f}) {
+        if (input.hp1.levels[level].thermal_valid) break;
+        input.hp1 = modeled_hp(frequency, true, level, 30, ambient);
       }
       assert(input.hp1.levels[level].thermal_valid);
       input.requested_w = input.hp1.levels[level].thermal_w;
@@ -103,7 +108,7 @@ void test_fixture_chain() {
       assert(command.physical_level == level && command.control_level == level);
       assert(oq_thermal_actuator::valid_level_command(command.control_level, command.physical_level));
       assert(frequency.automatic_frequency_hz(true, 2, command.physical_level) == table.heating.hz[level]);
-      assert(table.heating.hz[level] <= 90);
+      assert(table.heating.hz[level] <= (table.variant == oq_odu::Variant::V2_NEW_MODEL ? 110 : 90));
     }
   }
 }
@@ -123,8 +128,10 @@ void test_extra_points_and_limits() {
     assert(decide_dispatch(input, limits(), {}).hp1_level == level);
   }
   for (int level : {18, 19, 20}) {
-    assert(!oq_perf::predict_candidate(frequency, table.variant, true, level, 7, 35).usable_for_running_optimization());
-    assert(oq_odu::resolve_automatic_level(false, table, 2, level).physical_level == 0);
+    assert(frequency.automatic_level_limit(true, 2) == 20);
+    assert(oq_odu::resolve_automatic_level(false, table, 2, level).physical_level == level);
+    // Above 90 Hz the map only covers colder operating points.
+    assert(oq_perf::predict_candidate(frequency, table.variant, true, level, -7, 30).usable_for_running_optimization());
   }
   frequency.cap_hz = 40;
   frequency.hp1_excluded = {30, 36};
@@ -177,6 +184,17 @@ void test_future_v1_and_asymmetric_duo() {
   assert(suspect.hp1_level == 7 && suspect.hp2_level == 0);
 }
 
+void test_high_frequency_warm_temperature_limitation() {
+  const auto table = snapshot(oq_test::v2_new_amh6::EEPROM_WORDS, oq_odu::Variant::V2_NEW_MODEL);
+  auto frequency = context(table, table);
+  // Level 20 is the highest for V2 new.
+  int level = 20;
+  // Above 90 Hz the map only covers colder operating points.
+  // We verify that at a warm ambient temperature (e.g. 7.0), it is no longer usable.
+  assert(!oq_perf::predict_candidate(frequency, table.variant, true, level, 7.0f, 35.0f)
+              .usable_for_running_optimization());
+}
+
 void test_high_stand_guards() {
   using namespace oq_thermal_actuator;
   assert(!may_retain_command(0, false) && may_retain_command(17, false) && !may_retain_command(17, true));
@@ -220,4 +238,5 @@ int main() {
   test_future_v1_and_asymmetric_duo();
   test_high_stand_guards();
   test_allowed_entry_slew_and_suspect_filter();
+  test_high_frequency_warm_temperature_limitation();
 }
