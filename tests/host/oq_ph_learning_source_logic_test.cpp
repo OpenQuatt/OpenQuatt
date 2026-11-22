@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "../../openquatt/includes/learning/oq_ph_learning_source_logic.h"
+#include "../../openquatt/includes/learning/oq_ph_thermal_aggregate.h"
 
 namespace {
 using namespace oq_power_house::learning;
@@ -532,12 +533,18 @@ void test_stop_transition_is_bounded_and_cannot_seed_a_day() {
   assert(!empty.active);
 }
 
-void test_stop_transition_never_hides_other_errors_or_enters_1r1c() {
+void test_stop_transition_never_hides_other_errors() {
   auto stopping = valid_input(HydronicTopology::DUO_SERIES);
   stopping.hp1.mode.value = HeatPumpMode::OFF;
   assert(build(stopping).may_bridge_daily_gap);
-  const auto dynamic = build_learning_snapshot(stopping, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
-  assert(!dynamic.measurement_valid && !dynamic.may_bridge_daily_gap);
+  const auto dynamic = [](const LearningSourceInput& input) {
+    return build_learning_snapshot(input, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
+  };
+  stopping.hp1.water_out_c.value = 26.0f;
+  const auto heat = evaluate_calorimetry(stopping, QualityConfig{});
+  const auto sample = dynamic(stopping);
+  assert(heat.valid && heat.heat_to_water_w < 0.0f);
+  assert(sample.measurement_valid && sample.snapshot.heat_to_water_w == heat.heat_to_water_w);
   for (unsigned fault = 0; fault < 8; ++fault) {
     auto input = stopping;
     if (fault == 0) input.hp2.mode.value = HeatPumpMode::COOLING;
@@ -550,6 +557,40 @@ void test_stop_transition_never_hides_other_errors_or_enters_1r1c() {
     if (fault == 7) input.operation.service_or_ota = true;
     const auto result = build(input);
     assert(!result.measurement_valid && !result.may_bridge_daily_gap);
+    assert(!dynamic(input).measurement_valid);
+  }
+  stopping.hp1.defrost_active.value = true;
+  assert_failed(dynamic(stopping), SnapshotSourceStatus::PROTECTION_ACTIVE);
+  stopping.hp1.defrost_active.value = false;
+  stopping.hp1.valve_transition_active.value = true;
+  assert_failed(dynamic(stopping), SnapshotSourceStatus::PROTECTION_ACTIVE);
+  stopping.hp1.valve_transition_active.value = false;
+  stopping.hp1.oil_return_active.value = true;
+  assert_failed(dynamic(stopping), SnapshotSourceStatus::PROTECTION_ACTIVE);
+}
+
+void test_thermal_window_survives_delayed_zero_frequency() {
+  const QualityConfig quality;
+  for (const auto topology : {HydronicTopology::SINGLE, HydronicTopology::DUO_SERIES}) {
+    ThermalWindowAccumulator window;
+    auto input = valid_input(topology);
+    auto& stopping = topology == HydronicTopology::SINGLE ? input.hp1 : input.hp2;
+    const auto heat = evaluate_calorimetry(input, quality);
+    assert(heat.valid);
+    for (uint32_t second = 0; second <= 1800; second += 10) {
+      retime(input, kNowMs + second * 1000ULL);
+      input.epoch_s = kEpochS + second;
+      if (second == 600) stopping.mode.value = HeatPumpMode::OFF;
+      if (second == 690) stopping.compressor_active.value = false;
+      const auto sample = build_learning_snapshot(input, quality, SnapshotPurpose::THERMAL_DYNAMIC);
+      assert(sample.measurement_valid);
+      const auto result = observe_thermal_snapshot(window, sample.snapshot, quality, {});
+      assert(result.has_interval == (second == 1800));
+      if (result.has_interval) {
+        assert(result.interval.start_monotonic_ms == kNowMs);
+        assert(fabs(result.interval.mean_heat_w - heat.heat_to_water_w) < 0.01);
+      }
+    }
   }
 }
 
@@ -572,6 +613,7 @@ int main() {
   test_unknown_operation_cannot_hold_a_daily_measurement();
   test_stop_transition_finishes_a_day_with_heating_pauses();
   test_stop_transition_is_bounded_and_cannot_seed_a_day();
-  test_stop_transition_never_hides_other_errors_or_enters_1r1c();
+  test_stop_transition_never_hides_other_errors();
+  test_thermal_window_survives_delayed_zero_frequency();
   return 0;
 }
