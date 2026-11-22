@@ -73,6 +73,22 @@ class TestRunnerTest(unittest.TestCase):
                 self.assertCountEqual(run_tests.test_files("host", "probe_test.cpp"), [flat, nested])
                 self.assertEqual(run_tests.test_files("host", "power_house/*_test.cpp"), [nested])
 
+    def test_chain_test_generates_runtime_includes_at_any_depth(self):
+        with tempfile.TemporaryDirectory(prefix="openquatt-chain-discovery-") as directory:
+            root = Path(directory)
+            source = root / "tests/host/thermal/scenarios/renamed_chain_test.cpp"
+            source.parent.mkdir(parents=True)
+            source.write_text('#include "runtime_fixture.inc"\nint main() { return 0; }\n')
+
+            def write_runtime_includes(repo, build_directory):
+                self.assertEqual(repo, root)
+                (build_directory / "runtime_fixture.inc").touch()
+
+            with mock.patch.object(run_tests, "ROOT", root), mock.patch.object(
+                run_tests, "write_firmware_runtime_methods", side_effect=write_runtime_includes
+            ):
+                run_tests.run_host([source])
+
     def test_host_build_and_runtime_failures_propagate(self):
         with tempfile.TemporaryDirectory(prefix="openquatt-runner-test-") as directory:
             root = Path(directory)

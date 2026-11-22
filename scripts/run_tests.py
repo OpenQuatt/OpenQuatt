@@ -23,7 +23,7 @@ from tests.support.cpp import (  # noqa: E402
     compiler_command,
 )
 from tests.support.process import run_process  # noqa: E402
-from tests.support.thermal_runtime import write_thermal_runtime_methods  # noqa: E402
+from tests.support.firmware_runtime import write_firmware_runtime_methods  # noqa: E402
 
 
 SUITES = ("host", "python", "hil", "web")
@@ -90,8 +90,8 @@ def run_host(files: list[Path]) -> None:
             binary = Path(directory) / target
             binary.parent.mkdir(parents=True, exist_ok=True)
             extra_flags = []
-            if target == Path("power_house/power_house_chain_test"):
-                write_thermal_runtime_methods(ROOT, binary.parent)
+            if source.name.endswith("_chain_test.cpp"):
+                write_firmware_runtime_methods(ROOT, binary.parent)
                 extra_flags = ["-I", str(binary.parent)]
             print(f"[build] {target.as_posix()}", flush=True)
             run_process(

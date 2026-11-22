@@ -12,7 +12,9 @@
 #include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
+#define OQ_TEST_INCIDENT_MANAGER_RUNTIME
 #include "tests/fixtures/compressor_command_runtime.h"
+#undef OQ_TEST_INCIDENT_MANAGER_RUNTIME
 
 namespace {
 
@@ -268,8 +270,15 @@ struct PowerHouseDuo {
     bus.report(false);
   }
 
-  oq_incidents::HpIncidentEngine& monitor_hp2(const oq_incidents::EngineTuning& tuning) {
-    auto& incident = oq_incident_manager.engines[1].emplace(tuning);
+  oq_incidents::HpIncidentEngine& monitor_hp2(const oq_incidents::EngineTuning& tuning, uint32_t minimum_off_ms = 0) {
+    auto& runtime = oq_incident_manager.runtime;
+    auto& unit = runtime.units[1];
+    unit.configured = true;
+    unit.engine = oq_incidents::HpIncidentEngine(tuning);
+    assert(unit.restart_guard.configure(minimum_off_ms, runtime.LINK_ROUND_TIMEOUT_MS));
+    runtime.manual_reset_persistence_.mark_persist_success(0, test_now_ms);
+    runtime.observe_transport(2, true, test_now_ms);
+    auto& incident = unit.engine;
     const uint32_t link_start_ms = test_now_ms;
     for (const uint32_t elapsed : {0U, tuning.link_recovery_ms / 2, tuning.link_recovery_ms}) {
       test_now_ms = link_start_ms + elapsed;
@@ -709,15 +718,21 @@ void power_house_restarts_hp2_only_after_confirmed_minimum_off_time() {
   reset();
   PowerHouseDuo control;
   auto& bus = control.bus;
-  auto& incident = control.monitor_hp2({});
-  auto& guard = oq_incident_manager.restart_guards[1];
-  assert(guard.configure(minimum_off_ms, FakeIncidentManager::kRestFeedbackFreshnessMs));
+  auto& incident = control.monitor_hp2({}, minimum_off_ms);
+  auto& runtime = oq_incident_manager.runtime;
+  auto& guard = runtime.units[1].restart_guard;
 
   const auto standby_poll = [&](uint32_t now_ms) {
     test_now_ms = now_ms;
     incident.observe_link_round(now_ms, true);
     bus.report(false);
   };
+  // A queued reply can reach the manager while transport is known to be offline.
+  runtime.observe_transport(2, false, ++test_now_ms);
+  bus.report(false);
+  ++test_now_ms;
+  assert(guard.remaining_ms(test_now_ms) == minimum_off_ms);
+  runtime.observe_transport(2, true, test_now_ms);
   const uint32_t idle_since_ms = test_now_ms;
   for (uint32_t elapsed = 0; elapsed <= minimum_off_ms + poll_ms; elapsed += poll_ms) {
     standby_poll(idle_since_ms + elapsed);
@@ -735,7 +750,6 @@ void power_house_restarts_hp2_only_after_confirmed_minimum_off_time() {
   bus.deliver();
   const std::vector<ModbusFrame> hp2_stop{{false, 3999, 0}, {false, 1999, 0}};
   assert(bus.sent == hp2_stop && incident.outputs().run_state == RunState::STOPPING);
-  const uint32_t stop_sent_ms = test_now_ms;
 
   const auto request_duo_and_keep_hp2_off = [&] {
     const auto decision = control.tick(kDuoHeatW);
@@ -752,20 +766,32 @@ void power_house_restarts_hp2_only_after_confirmed_minimum_off_time() {
   standby_poll(test_now_ms + poll_ms);
   request_duo_and_keep_hp2_off();
   assert(!incident.outputs().stop_confirmed && guard.remaining_ms(test_now_ms) == minimum_off_ms);
+
+  // Enough zero-frequency readings can prove the stop while the old Standby
+  // sample is already too old to earn rest credit.
+  test_now_ms += runtime.LINK_ROUND_TIMEOUT_MS + 1;
+  incident.observe_link_round(test_now_ms, true);
+  bus.report_frequency(false, 0.0F);
+  assert(incident.outputs().stop_confirmed);
+  ++test_now_ms;
+  assert(guard.remaining_ms(test_now_ms) == minimum_off_ms);
+  request_duo_and_keep_hp2_off();
+
   standby_poll(test_now_ms + poll_ms);
   assert(incident.outputs().stop_confirmed && guard.remaining_ms(test_now_ms) == minimum_off_ms);
-  const uint32_t stop_confirmed_ms = test_now_ms;
-  const uint32_t release_ms = stop_confirmed_ms + minimum_off_ms;
+  const uint32_t rest_confirmed_ms = test_now_ms;
+  const uint32_t release_ms = rest_confirmed_ms + minimum_off_ms;
 
-  // New Standby/0 Hz replies keep the stop evidence valid. Sending Standby
-  // and the first zero reading must not have started this timer earlier.
-  for (uint32_t poll_at_ms = stop_confirmed_ms + poll_ms; poll_at_ms < release_ms; poll_at_ms += poll_ms) {
+  test_now_ms += poll_ms;
+  bus.report_frequency(false, 0.0F);
+  assert(guard.snapshot_credit_ms(test_now_ms) == 0);
+
+  // New Standby/0 Hz replies keep the rest evidence valid until release.
+  for (uint32_t poll_at_ms = rest_confirmed_ms + 2 * poll_ms; poll_at_ms < release_ms; poll_at_ms += poll_ms) {
     standby_poll(poll_at_ms);
     const auto decision = request_duo_and_keep_hp2_off();
     assert(decision.owner_hp == 1 && decision.deficit_w == kSingleHeatW);
-    if (poll_at_ms == stop_sent_ms + minimum_off_ms) {
-      assert(oq_incident_manager.minimum_off_remaining_ms(2, test_now_ms) == stop_confirmed_ms - stop_sent_ms);
-    }
+    assert(oq_incident_manager.minimum_off_remaining_ms(2, test_now_ms) == release_ms - poll_at_ms);
   }
   test_now_ms = release_ms - 1;
   assert(oq_incident_manager.minimum_off_remaining_ms(2, test_now_ms) == 1);

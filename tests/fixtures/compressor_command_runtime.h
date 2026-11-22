@@ -52,32 +52,10 @@ struct FakeSelect {
 uint32_t millis();
 
 struct FakeIncidentManager {
-  // Match the incident manager's link-round timeout for fresh stopped evidence.
-  static constexpr uint32_t kRestFeedbackFreshnessMs = 15000;
-
-  struct FeedbackState {
-    std::optional<uint16_t> mode;
-    uint32_t mode_received_ms{0}, rest_mode_generation{0};
-    uint32_t mode_generation{0}, frequency_generation{0};
-    uint32_t command_mode_generation{0}, command_frequency_generation{0};
-    uint8_t expected_mode{0};
-    bool stop_feedback_armed{false};
-
-    void arm(uint8_t new_mode) {
-      command_mode_generation = mode_generation;
-      command_frequency_generation = frequency_generation;
-      expected_mode = new_mode;
-      stop_feedback_armed = new_mode == 0;
-    }
-  };
-
   std::array<oq_incidents::DerivedOutputs, 2> outputs{};
-  std::array<std::optional<oq_incidents::HpIncidentEngine>, 2> engines{};
   std::array<oq_hp_restart_guard::Policy, 2> restart_guards{};
   std::array<bool, 2> inhibited{};
   std::array<oq_boot_resume::Policy, 2> boot{};
-  std::array<unsigned, 2> starts{};
-  std::array<FeedbackState, 2> feedback{};
   bool boot_resume_pending(unsigned hp, uint32_t now) const { return boot[hp - 1].pending(now); }
   bool boot_protection_hold(unsigned hp, uint32_t now) const { return boot[hp - 1].protection_hold(now); }
   int boot_resume_level(unsigned hp) const { return boot[hp - 1].level(); }
@@ -86,7 +64,7 @@ struct FakeIncidentManager {
   }
   oq_incidents::DerivedOutputs get_outputs(unsigned hp) const {
     const unsigned slot = hp - 1;
-    auto output = engines[slot] ? engines[slot]->outputs() : outputs[slot];
+    auto output = outputs[slot];
     const auto& guard = restart_guards[slot];
     if (output.run_state == oq_incidents::RunState::STOPPED && guard.configured())
       output.available_for_start = output.available_for_start && guard.can_start(millis());
@@ -98,87 +76,15 @@ struct FakeIncidentManager {
     return guard.configured() ? guard.remaining_ms(now) : 0;
   }
   void invalidate_restart_credit(unsigned hp) { restart_guards[hp - 1].invalidate(); }
-  bool request_start(unsigned hp, uint8_t mode, uint32_t now) {
-    const unsigned slot = hp - 1;
-    const bool was_stopped = get_outputs(hp).run_state == oq_incidents::RunState::STOPPED;
-    const auto& guard = restart_guards[slot];
-    if (was_stopped && guard.configured() && !guard.can_start(now)) return false;
-    if (auto& engine = engines[slot]; engine) {
-      if (!engine->request_start(now)) return false;
-    } else {
-      auto& output = outputs[slot];
-      if (!was_stopped || !output.available_for_start) return false;
-      output.run_state = oq_incidents::RunState::START_REQUESTED;
-      output.stop_confirmed = false;
-    }
-    feedback[slot].arm(mode);
-    if (was_stopped) {
-      invalidate_restart_credit(hp);
-      ++starts[slot];
-    }
-    return true;
-  }
-  void request_stop(unsigned hp, uint32_t now) {
-    const unsigned slot = hp - 1;
-    if (auto& engine = engines[slot]; engine) {
-      if (!engine->request_stop(now)) return;
-    } else {
-      auto& output = outputs[slot];
-      output.run_state = oq_incidents::RunState::STOPPING;
-      output.stop_confirmation_pending = true;
-    }
-    feedback[slot].arm(0);
-  }
-
-  void observe_mode(unsigned hp, uint16_t mode, uint32_t now) {
-    auto& sample = feedback[hp - 1];
-    sample.mode = mode;
-    sample.mode_received_ms = now;
-    ++sample.mode_generation;
-    if (mode != 0) invalidate_restart_credit(hp);
-  }
-
-  void observe_frequency(unsigned hp, float hz, uint32_t now) {
-    using namespace esphome::openquatt_incident_manager;
-    using oq_incidents::RunState;
-    const unsigned slot = hp - 1;
-    auto& sample = feedback[slot];
-    ++sample.frequency_generation;
-    if (auto& engine = engines[slot]; engine) {
-      const auto& outputs = engine->outputs();
-      const auto state = outputs.run_state;
-      const bool waiting_for_start =
-          state == RunState::START_REQUESTED || state == RunState::WAIT_MODE || state == RunState::WAIT_COMPRESSOR;
-      const bool waiting_for_stop = state == RunState::STOPPING || state == RunState::STOP_UNCONFIRMED;
-      const bool post_command_mode =
-          feedback_generation_is_newer(sample.mode_generation, sample.command_mode_generation);
-      const bool post_command_feedback =
-          post_command_feedback_complete(sample.mode_generation, sample.command_mode_generation,
-                                         sample.frequency_generation, sample.command_frequency_generation);
-      const bool fresh =
-          run_observation_is_fresh(waiting_for_start, waiting_for_stop, outputs.stop_confirmation_pending,
-                                   sample.stop_feedback_armed, post_command_feedback);
-      const bool stopped_mode = sample.mode == 0 && post_command_mode;
-      engine->observe_run({now, fresh, sample.mode == sample.expected_mode, stopped_mode, true, hz});
-      if (hz > 0.5f) {
-        invalidate_restart_credit(hp);
-      } else if (fresh && stopped_mode && engine->outputs().stop_confirmed &&
-                 now - sample.mode_received_ms <= kRestFeedbackFreshnessMs &&
-                 feedback_generation_is_newer(sample.mode_generation, sample.rest_mode_generation)) {
-        restart_guards[slot].observe_stopped(now);
-        sample.rest_mode_generation = sample.mode_generation;
-      }
-      if (engine->outputs().stop_confirmed) sample.stop_feedback_armed = false;
-      return;
-    }
-    const bool running = sample.mode.value_or(0) > 0 && hz > 0.0f;
-    auto& output = outputs[slot];
-    output.run_state = running ? oq_incidents::RunState::RUNNING : oq_incidents::RunState::STOPPED;
-    output.running_confirmed = running;
-    output.stop_confirmed = !running;
-    output.stop_confirmation_pending = false;
-  }
 };
+
+#ifdef OQ_TEST_INCIDENT_MANAGER_RUNTIME
+#include "tests/fixtures/incident_manager_runtime.h"
+using CommandFixtureIncidentManager = esphome::openquatt_incident_manager::TestIncidentManager;
+#else
+using CommandFixtureIncidentManager = FakeIncidentManager;
+#endif
+
 struct FakeDevice {
   uint8_t address{1};
   uint8_t device_address() const { return address; }
@@ -294,7 +200,7 @@ int oq_hp_water_calibration_started_ms{};
 std::string oq_hp_water_calibration_status_value{};
 float oq_hp_water_calibration_supply_delta_c{};
 int oq_hp_water_calibration_target_ipwm{};
-FakeIncidentManager oq_incident_manager{};
+CommandFixtureIncidentManager oq_incident_manager{};
 bool oq_lowflow_fault_active{};
 bool oq_manual_flow_active{};
 std::string oq_manual_flow_status_value{};

@@ -46,8 +46,10 @@ support should contain infrastructure rather than copies of production logic.
 
 Add C++ rule tests near the tests for that domain. Use a host chain test when the
 assertion follows a request through multiple components, such as Power House,
-the actuator and the simulated Modbus bus. Use Python for tooling and for YAML,
-code generation and firmware configuration contracts that need Python.
+the actuator and the simulated Modbus bus. Name these files `*_chain_test.cpp`
+to generate the firmware method includes for the request runtime, actuator and
+incident manager in the host build directory. Use Python for tooling and for
+YAML, code generation and firmware configuration contracts that need Python.
 
 ## Commands
 
