@@ -7,11 +7,13 @@
 #include <string>
 
 #include "../boiler/oq_boiler_logic.h"
+#include "../boiler/oq_otb_telemetry.h"
 #include "../performance/hp_perf_frequency.h"
 #include "../performance/oq_energy_logic.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 #include "oq_boiler_defrost_assist_logic.h"
+#include "oq_boiler_dispatch_logic.h"
 #include "oq_cold_start_probe.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_control_mode_log_logic.h"
@@ -73,6 +75,11 @@ struct TickConfig {
   uint32_t boiler_defrost_assist_rearm_s;
   uint32_t boiler_defrost_assist_release_s;
   uint32_t boiler_defrost_assist_reference_settle_s;
+  uint32_t boiler_defrost_assist_ignition_wait_s;
+  float boiler_defrost_assist_raise_step_c;
+  uint32_t boiler_defrost_assist_raise_interval_s;
+  uint32_t boiler_defrost_assist_flame_loss_confirm_s;
+  uint32_t otb_field_timeout_s;
 };
 
 class Runtime {
@@ -504,17 +511,46 @@ class Runtime {
                                     strcmp(cur_cm, "CM4") == 0 || id(oq_boiler_output_request) ||
                                     id(boiler_relay).state;
     this->defrost_assist_first_tick_ = false;
+    // Flame confirmation needs the heat source's own report, which only
+    // OpenTherm gives. Without a fresh status the session keeps its target.
+    // Only a command the boiler chain has actually applied counts as waiting
+    // for the flame, and a flame for domestic hot water is not heating.
+    bool defrost_feedback_available = false;
+    bool defrost_command_applied = false;
+    bool defrost_source_firing = false;
+    bool defrost_source_dhw = false;
+    float defrost_boiler_water_c = NAN;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    const uint32_t otb_field_timeout_ms = oq_supervisory_state::seconds_to_ms(tick.otb_field_timeout_s);
+    defrost_feedback_available =
+        id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm" &&
+        tick.otb_supported && id(oq_otb_link_available_state) &&
+        oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_STATUS, now_ms, otb_field_timeout_ms);
+    defrost_command_applied = id(oq_defrost_assist_active) && strcmp(cur_cm, "CM3") == 0 && id(oq_otb_ch_enable).state;
+    defrost_source_dhw = id(otb_dhw_active).has_state() && id(otb_dhw_active).state;
+    defrost_source_firing = id(otb_flame_on).has_state() && id(otb_flame_on).state && !defrost_source_dhw;
+    if (id(otb_boiler_water_temp).has_state() &&
+        oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_BOILER_WATER_TEMPERATURE, now_ms, otb_field_timeout_ms)) {
+      defrost_boiler_water_c = id(otb_boiler_water_temp).state;
+    }
+#endif
     const auto defrost_assist = oq_boiler_defrost_assist::update(
         {now_ms, id(oq_aux_heat_source_present).state && id(oq_defrost_boiler_support_enabled).state,
          heating_req && heat_pump_heating_mode, any_hp_defrost_reported,
-         !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state, boiler_heat_active},
+         !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state, boiler_heat_active,
+         defrost_feedback_available, defrost_command_applied, defrost_source_firing, defrost_source_dhw,
+         defrost_boiler_water_c, oq_boiler_dispatch::supply_hold_target_ceiling(id(max_water_temp_limit_c).state)},
         this->defrost_assist_state_,
         {oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_max_s), tick.boiler_defrost_assist_margin_c,
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_confirm_s),
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_min_run_s),
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_rearm_s),
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_release_s),
-         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_reference_settle_s)});
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_reference_settle_s),
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_ignition_wait_s),
+         tick.boiler_defrost_assist_raise_step_c,
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_raise_interval_s),
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_flame_loss_confirm_s)});
     this->defrost_assist_state_ = defrost_assist.state;
     const bool defrost_assist_requested = defrost_assist.requested;
     id(oq_defrost_assist_target_c) = defrost_assist.target_c;
@@ -526,6 +562,18 @@ class Runtime {
                (unsigned int)tick.boiler_defrost_assist_max_s);
     } else if (defrost_assist.released) {
       ESP_LOGI("supervisory", "Defrost assist released");
+    }
+    if (defrost_assist.raised) {
+      ESP_LOGI("supervisory",
+               "Defrost assist: heat source not firing, boiler target raised to %.1fC (boiler water %.1fC)",
+               defrost_assist.target_c, defrost_boiler_water_c);
+    }
+    if (defrost_assist.flame_confirmed_now) {
+      ESP_LOGI("supervisory", "Defrost assist: heat source fires at boiler target %.1fC", defrost_assist.target_c);
+    }
+    if (defrost_assist.ceiling_reached_now) {
+      ESP_LOGW("supervisory", "Defrost assist: heat source did not fire up to the target ceiling of %.1fC",
+               defrost_assist.target_c);
     }
     uint8_t cm1_event_reason = openquatt_decision_log::REASON_UNKNOWN;
     oq_hp_fallback::FallbackDecision fallback_decision;

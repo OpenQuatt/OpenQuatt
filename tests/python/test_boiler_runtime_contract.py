@@ -150,7 +150,7 @@ class BoilerRuntimeContractTest(unittest.TestCase):
         # Geen referentie uit de terugval op de warmtepompuitgang, en een
         # defrost-eigen CM3 gaat nooit over in normale ketelhulp.
         self.assertIn(
-            "!id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state, boiler_heat_active},",
+            "!id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state, boiler_heat_active,",
             SUPERVISORY_RUNTIME,
         )
         # Ketelwarmte van normale hulp, koude start, fallback of een eerdere
@@ -184,6 +184,39 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             self.assertIn("${" + substitution.split(":")[0] + "},", SUPERVISORY_YAML)
         # De eigenaarsvlag overleeft CM3 nooit.
         self.assertIn("if (desired != 3) id(oq_defrost_assist_active) = false;", SUPERVISORY_RUNTIME)
+
+    def test_defrost_assist_confirms_the_flame_in_supervisory(self) -> None:
+        # Een doel alleen laat een warmtebron niet branden. De sessie hoogt het
+        # doel op tot de bron brandt; de tijden en stap zijn substituties.
+        for substitution, default in (
+            ('oq_boiler_defrost_assist_ignition_wait_s: "45"', "uint32_t ignition_wait_ms = 45000UL;"),
+            ('oq_boiler_defrost_assist_raise_step_c: "2.0"', "float raise_step_c = 2.0f;"),
+            ('oq_boiler_defrost_assist_raise_interval_s: "30"', "uint32_t raise_interval_ms = 30000UL;"),
+            ('oq_boiler_defrost_assist_flame_loss_confirm_s: "20"', "uint32_t flame_loss_confirm_ms = 20000UL;"),
+        ):
+            self.assertIn(substitution, SUBSTITUTIONS)
+            self.assertIn(default, DEFROST_ASSIST_LOGIC)
+            self.assertIn("${" + substitution.split(":")[0] + "},", SUPERVISORY_YAML)
+        self.assertIn("${oq_otb_field_timeout_s},", SUPERVISORY_YAML)
+        # De terugkoppeling wordt in de supervisory gelezen. De ketelketen krijgt
+        # nog steeds alleen een doeltemperatuur en weet niets van de vlam.
+        self.assertIn("id(otb_flame_on).state", SUPERVISORY_RUNTIME)
+        self.assertIn("id(otb_dhw_active).state", SUPERVISORY_RUNTIME)
+        for chain_source in (DISPATCH_RUNTIME, DISPATCH_LOGIC):
+            self.assertNotIn("flame", chain_source)
+            self.assertNotIn("raise", chain_source)
+        # Zonder verse status is er geen terugkoppeling, en alleen een werkelijk
+        # doorgezette opdracht telt als wachten op de vlam.
+        self.assertIn("oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_STATUS, now_ms,", SUPERVISORY_RUNTIME)
+        self.assertIn(
+            'id(oq_defrost_assist_active) && strcmp(cur_cm, "CM3") == 0 && id(oq_otb_ch_enable).state;',
+            SUPERVISORY_RUNTIME,
+        )
+        # Het beleid kent dezelfde grens als de dispatcher, die blijft begrenzen.
+        self.assertIn(
+            "oq_boiler_dispatch::supply_hold_target_ceiling(id(max_water_temp_limit_c).state)", SUPERVISORY_RUNTIME
+        )
+        self.assertIn("supply_hold_target_ceiling(in.maximum_water_temperature_c)", DISPATCH_LOGIC)
 
 
 if __name__ == "__main__":
