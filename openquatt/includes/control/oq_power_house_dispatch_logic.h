@@ -210,7 +210,11 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
   const auto pair_power = reference_f1_power != nullptr ? reference_f1_power : in.pair_power;
   auto add_hp = [&](const HpInput& hp, int level) {
     // Score only topologies the actuator can actually apply during its existing holds.
-    if (hp.fixed_level > 0 && applied_level(hp) > 0 && !hp.candidate.must_stop && level != hp.fixed_level) return false;
+    // The reference F1 check asks what the unit can do once such a hold ends: a
+    // level held after a restart is as temporary as a modulation hold.
+    if (reference_f1_power == nullptr && hp.fixed_level > 0 && applied_level(hp) > 0 && !hp.candidate.must_stop &&
+        level != hp.fixed_level)
+      return false;
     // Let the ODU respond before another modulation change; this never forbids
     // a stop allowed by the existing runtime and safety gates below.
     if (reference_f1_power == nullptr && level > 0 && hp.feedback_hold_level > 0 && applied_level(hp) > 0 &&
