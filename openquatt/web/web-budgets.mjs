@@ -79,8 +79,6 @@ export const WEB_BUNDLE_BUDGETS = [
     // The recovery tooltip and both translations add 226 B raw on Node 24.14.1.
     // The import token and clear notification add 108 B raw, preserving 44 B headroom.
     // Provisional heat demand and Outlook status copy: +1,266 B raw versus dev 7252cab3.
-    // Optional boiler assist during defrost (settings switch and copy in both locales):
-    // +1,065 B raw / +228 B gzip versus dev 9829c1e (Node 24.21.0); raw headroom unchanged.
     // House learning chart 95% confidence interval and legend labels
     // Manual house-line advice, apply, restore and recheck: +8,542 B raw / +2,835 B gzip versus dev acfe7df2.
     // Per-HP ODU firmware in telemetry previews and NL/EN disclosure: +575 B raw
@@ -90,7 +88,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Separate learning data and archive settings: +1,534 B raw / +368 B gzip versus f34b1f9 (Node 24.22.1).
     // Power House run-extension switch, hidden tuning fields when off and NL/EN copy:
     // +1,799 B raw / +438 B gzip; merged with dev: measured raw 1,509,887 B (Node 24.14.1).
-    raw: 1_510_060,
+    // Optional boiler support during defrost (settings switch and copy in both locales):
+    // +1,072 B raw versus dev 80af1c5, measured raw 1,509,888 B (Node 24.21.0); raw headroom unchanged.
+    raw: 1_510_067,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

@@ -385,7 +385,19 @@ the dispatcher only the ownership and the target to hold: the supply
 temperature from just before the defrost plus `oq_boiler_defrost_assist_margin_c`.
 The dispatcher caps it below the water-limit soft band
 (`supply_hold_target_ceiling`), so the assist cannot throttle the heat pumps. The boiler chain itself still has
-no defrost observation. The session bypasses the normal CM2/CM3 timers and
+no defrost observation. A target alone does not make a heat source fire:
+every boiler starts below its own offset under the setpoint. Where the
+transport reports the flame (OpenTherm), the session therefore confirms it.
+The supervisory passes the policy whether fresh feedback exists, whether
+the boiler chain has applied the command, whether the source fires for
+heating (a domestic-hot-water flame does not count) and the boiler water
+temperature. While an applied command is not followed by a flame, the
+policy raises the target by `oq_boiler_defrost_assist_raise_step_c` after
+`_ignition_wait_s` and then every `_raise_interval_s`, never above the
+ceiling. After a confirmed flame it raises once more at most, and only if
+the flame stays away for `_flame_loss_confirm_s` with the boiler water
+below the target. The raise ends with the session. Without feedback (R1 or
+stale status) the target stays the reference plus margin. The session bypasses the normal CM2/CM3 timers and
 carries its own anti-cycling (`oq_boiler_defrost_assist_confirm_s`,
 `_min_run_s`, `_release_s`, `_rearm_s`). The release time also carries one
 session across a short gap between two outdoor units that defrost one after
