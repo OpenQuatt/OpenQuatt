@@ -70,9 +70,10 @@ test("settings export excludes live API values regardless of their validity and 
   });
 });
 
-function createRestoreController() {
+function createRestoreController(frequencySettings = {}, ignoreWrite = "") {
   const calls = [];
   const sources = new Map();
+  const frequencyWrites = [];
   const inputs = Object.fromEntries(Object.keys(liveInputs).map((key) => [key, {
     value: key === "apiInputOutsideTemperature" ? -40 : 21,
     valid: key === "apiInputRoomTemperature",
@@ -82,7 +83,7 @@ function createRestoreController() {
   let housePower = 7020;
   const response = (payload = {}) => ({ ok: true, status: 200, json: async () => payload });
   const entityPayload = (key, domain, name) => {
-    const value = inputs[key]?.value ?? sources.get(name)
+    const value = inputs[key]?.value ?? frequencySettings[key] ?? sources.get(name)
       ?? (key === "housePower" ? housePower : domain === "select" ? "Disabled" : 0);
     return { value, state: value, min_value: -40, max_value: 30000, step: 0.1 };
   };
@@ -102,7 +103,11 @@ function createRestoreController() {
     const key = Object.keys(ENTITY_DEFS).find((key) => ENTITY_DEFS[key].name === name);
     if (options.method === "POST") {
       calls.push(url.pathname);
-      if (inputs[key]) {
+      if (Object.hasOwn(frequencySettings, key)) {
+        const write = domain === "select" ? url.searchParams.get("option") : Number(url.searchParams.get("value"));
+        frequencyWrites.push([key, write]);
+        if (key !== ignoreWrite) frequencySettings[key] = write;
+      } else if (inputs[key]) {
         inputs[key] = { value: Number(url.searchParams.get("value")), valid: true, lastUpdateMs: 60000 };
       } else if (domain === "select" && action === "set") {
         sources.set(name, url.searchParams.get("option"));
@@ -113,7 +118,7 @@ function createRestoreController() {
     }
     return response(entityPayload(key, domain, name));
   };
-  return { calls, fetch, inputs, initialInputs, sources, getHousePower: () => housePower };
+  return { calls, fetch, inputs, initialInputs, sources, frequencyWrites, getHousePower: () => housePower };
 }
 
 for (const schemaVersion of [1, 2, 3]) {
@@ -160,3 +165,55 @@ for (const schemaVersion of [1, 2, 3]) {
     });
   }
 }
+
+for (const [scope, failed] of [["Off", ""], ["Quiet hours", ""], ["Always", "hp1ExcludeMaxHz"]]) {
+  test(`frequency restore confirms the band before changing scope to ${scope}`, async () => {
+    const stored = { hp1ExcludeScope: "Always", hp1ExcludeMinHz: 55, hp1ExcludeMaxHz: 70 };
+    const controller = createRestoreController(stored, failed);
+    const previousFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = controller.fetch;
+      await withBackupState(async () => {
+        state.settingsBackupDraft = parseSettingsBackupPayload(JSON.stringify({
+          schema_version: SETTINGS_BACKUP_SCHEMA_VERSION,
+          settings: { compressor: { hp1ExcludeScope: scope, hp1ExcludeMinHz: 40, hp1ExcludeMaxHz: 43 } },
+        }));
+        await restoreSettingsBackup();
+        const result = state.settingsBackupRestoreResult;
+        assert.ok(result, state.settingsBackupError);
+        assert.deepEqual(controller.frequencyWrites, [
+          ["hp1ExcludeScope", "Off"], ["hp1ExcludeMinHz", 40], ["hp1ExcludeMaxHz", 43],
+          ...(!failed && scope !== "Off" ? [["hp1ExcludeScope", scope]] : []),
+        ]);
+        assert.equal(stored.hp1ExcludeScope, failed ? "Off" : scope);
+        assert.equal(result.applied.includes("hp1ExcludeScope"), !failed);
+        assert.equal(result.applied.includes("hp1ExcludeMaxHz"), !failed);
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+}
+
+test("restoring only an active scope rejects a stored inverted band", async () => {
+  const stored = { hp1ExcludeScope: "Off", hp1ExcludeMinHz: 55, hp1ExcludeMaxHz: 40 };
+  const controller = createRestoreController(stored);
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = controller.fetch;
+    await withBackupState(async () => {
+      state.settingsBackupDraft = parseSettingsBackupPayload(JSON.stringify({
+        schema_version: SETTINGS_BACKUP_SCHEMA_VERSION,
+        settings: { compressor: { hp1ExcludeScope: "Always" } },
+      }));
+      await restoreSettingsBackup();
+      const result = state.settingsBackupRestoreResult;
+      assert.ok(result, state.settingsBackupError);
+      assert.deepEqual(controller.frequencyWrites, []);
+      assert.equal(stored.hp1ExcludeScope, "Off");
+      assert.equal(result.applied.includes("hp1ExcludeScope"), false);
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

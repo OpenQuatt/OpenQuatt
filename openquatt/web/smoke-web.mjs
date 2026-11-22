@@ -62,6 +62,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-sync.js -> features/odu-settings.js",
   "core/entity-sync.js -> features/security-actions.js",
   "core/entity-sync.js -> features/frequency-limits.js",
+  "core/entity-actions.js -> features/frequency-exclusion.js",
   "core/entity-actions.js -> features/frequency-limits.js",
   "core/entity-write-actions.js -> features/firmware-update.js",
   "core/entity-write-actions.js -> features/house-learning.js",

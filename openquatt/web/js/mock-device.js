@@ -2163,6 +2163,13 @@
       state: "Schedule",
       option: ["Schedule", "On", "Off"],
     });
+    for (const hp of [1, 2]) {
+      setEntity("select", `HP${hp} - Frequency exclusion schedule`, {
+        value: "Always", state: "Always", option: ["Always", "Quiet hours", "Off"],
+      });
+      const frequencies = "26,31,36,41,46,51,56,61,66,71|30,34,38,42,46,50,54,58,62,66";
+      setEntity("text_sensor", `HP${hp} - Automatic compressor frequencies`, { value: frequencies, state: frequencies });
+    }
     setEntity("select", "Flow Control Mode", {
       value: "Flow Setpoint",
       state: "Flow Setpoint",
@@ -4023,8 +4030,13 @@
 
     if (silentModeOverride === "On") {
       setBinary("Silent active", true);
+      setText("text_sensor", "Silent status", "forced_on");
     } else if (silentModeOverride === "Off") {
       setBinary("Silent active", false);
+      setText("text_sensor", "Silent status", "forced_off");
+    } else {
+      setBinary("Silent active", false);
+      setText("text_sensor", "Silent status", "out_of_window");
     }
 
     if (manualCoolingEnabled) {

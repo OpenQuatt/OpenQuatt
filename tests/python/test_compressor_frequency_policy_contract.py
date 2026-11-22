@@ -76,7 +76,12 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
         for removed in ("dayMax:", "silentMax:", "hp1ExcludedA:", "hp2ExcludedA:"):
             self.assertNotIn(removed, WEB_CONFIG)
         self.assertIn('export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"]', WEB_CONFIG)
-        self.assertIn('"hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz"', WEB_CONFIG)
+        for hp in ("hp1", "hp2"):
+            self.assertIn(f'"{hp}ExcludeMinHz", "{hp}ExcludeMaxHz", "{hp}ExcludeScope"', WEB_CONFIG)
+        start = HP_IO.index("id: ${hp_id}_excluded_frequency_scope")
+        scope = HP_IO[start : start + 420]
+        self.assertIn('initial_option: "Always"', scope)
+        self.assertIn("restore_value: true", scope)
 
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
         self.assertEqual(STRATEGY_RUNTIMES.count("oq_frequency_runtime::capture()"), 4)
@@ -106,7 +111,7 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
         ):
             self.assertNotIn(inline_adapter, control_sources)
         self.assertIn("const auto hp1_snapshot =", RUNTIME)
-        self.assertIn("const oq_frequency_policy::FrequencyRange hp2_excluded", RUNTIME)
+        self.assertIn("effective_excluded_range(false, silent)", RUNTIME)
 
 
 if __name__ == "__main__":
