@@ -123,7 +123,8 @@ class Runtime {
     const uint32_t minimum_off_ms = opentherm_selected ? config.otb_min_off_ms : config.relay_min_off_ms;
     const oq_boiler::ControllerInput input{
         id(oq_aux_heat_source_present).state,
-        id(oq_boiler_assist_enabled).state,
+        oq_boiler::assist_permission_for_source(command.source, id(oq_boiler_assist_enabled).state,
+                                                id(oq_boiler_defrost_assist_enabled).state),
         id(oq_boiler_fault_fallback_enabled).state,
         supply_valid,
         flow_valid,

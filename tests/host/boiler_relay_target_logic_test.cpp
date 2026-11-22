@@ -294,6 +294,7 @@ void test_only_normal_auxiliary_heat_sources_use_target_control() {
   assert(oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_POWER_HOUSE, false));
   assert(oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_HEATING_CURVE, false));
   assert(oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_COLD_START, false));
+  assert(oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_DEFROST_ASSIST, false));
 
   // CM4 fault fallback and CM100 commissioning keep their own semantics.
   assert(!oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_FALLBACK, false));
@@ -367,7 +368,7 @@ void test_cm100_commissioning_keeps_its_on_off_semantics() {
 
 void test_opentherm_path_is_unaffected_by_relay_target_control() {
   for (const uint8_t source : {oq_boiler::COMMAND_SOURCE_POWER_HOUSE, oq_boiler::COMMAND_SOURCE_HEATING_CURVE,
-                               oq_boiler::COMMAND_SOURCE_COLD_START}) {
+                               oq_boiler::COMMAND_SOURCE_COLD_START, oq_boiler::COMMAND_SOURCE_DEFROST_ASSIST}) {
     assert(!oq_boiler::relay_target_control_applies(source, true));
   }
 
@@ -886,6 +887,72 @@ void test_cm2_never_owns_the_boiler_under_reduced_hp_capacity() {
   }
 }
 
+void test_defrost_assist_command_obeys_the_assist_permission_and_target_control() {
+  // The optional defrost assist is ordinary CM3 auxiliary heat for the boiler
+  // chain: it needs the general assist permission and R1 regulates around its
+  // target. The chain still receives no defrost observation, only the
+  // supervisory-owned CM3 session and the supply reference to hold.
+  oq_boiler_dispatch::Inputs in;
+  in.now_ms = 5000U;
+  in.control_mode = 3;
+  in.heat_request = true;
+  in.rated_boiler_power_w = 10000.0f;
+  in.maximum_water_temperature_c = 60.0f;
+  in.supply_hold_assist = true;
+  in.supply_hold_target_c = kTargetC;
+  const auto command = oq_boiler_dispatch::dispatch(in);
+  assert(command.source == oq_boiler::COMMAND_SOURCE_DEFROST_ASSIST);
+  assert(oq_boiler::boiler_role_for_source(command.source) == oq_boiler::BoilerRole::ASSIST_CM3);
+
+  RelayTargetInput relay;
+  relay.applicable = oq_boiler::relay_target_control_applies(command.source, false);
+  relay.heat_request = command.heat_request;
+  relay.target_c = command.target_temperature_c;
+  relay.config = kConfig;
+
+  // Supply dipped below the start threshold: the relay energises.
+  relay.supply_c = kStartThresholdC - 1.0f;
+  auto controller_input = guarded_input(oq_boiler::evaluate_relay_target(relay));
+  controller_input.target_valid = true;
+  auto decision = oq_boiler::evaluate(command, controller_input);
+  assert(decision.output_active);
+  assert(decision.block_reason == oq_boiler::BLOCK_NONE);
+
+  // Supply still at the pre-defrost level: nothing to compensate, relay off
+  // without a fault.
+  relay.supply_c = kTargetC;
+  controller_input = guarded_input(oq_boiler::evaluate_relay_target(relay));
+  controller_input.target_valid = true;
+  decision = oq_boiler::evaluate(command, controller_input);
+  assert(!decision.output_active);
+  assert(!decision.blocked);
+  assert(decision.block_reason == oq_boiler::BLOCK_TARGET_SATISFIED);
+
+  // The defrost assist is its own permission. It works with normal boiler
+  // assist switched off, and normal boiler assist does not enable it.
+  assert(oq_boiler::assist_permission_for_source(command.source, false, true));
+  assert(!oq_boiler::assist_permission_for_source(command.source, true, false));
+  for (const uint8_t normal_source : {oq_boiler::COMMAND_SOURCE_POWER_HOUSE, oq_boiler::COMMAND_SOURCE_HEATING_CURVE,
+                                      oq_boiler::COMMAND_SOURCE_COLD_START}) {
+    assert(oq_boiler::assist_permission_for_source(normal_source, true, false));
+    assert(!oq_boiler::assist_permission_for_source(normal_source, false, true));
+  }
+
+  relay.supply_c = kStartThresholdC - 1.0f;
+  controller_input = guarded_input(oq_boiler::evaluate_relay_target(relay));
+  controller_input.target_valid = true;
+  controller_input.assist_enabled = oq_boiler::assist_permission_for_source(command.source, false, true);
+  decision = oq_boiler::evaluate(command, controller_input);
+  assert(decision.output_active);
+
+  // Without its own permission the boiler stays off.
+  controller_input.assist_enabled = oq_boiler::assist_permission_for_source(command.source, true, false);
+  decision = oq_boiler::evaluate(command, controller_input);
+  assert(decision.force_off);
+  assert(!decision.output_active);
+  assert(decision.block_reason == oq_boiler::BLOCK_ASSIST_DISABLED);
+}
+
 void test_satisfied_target_never_reports_a_blocked_boiler() {
   // A satisfied target must not be re-reported as blocked anywhere the runtime
   // or the decision log look at it, or the UI would show a fault.
@@ -959,6 +1026,7 @@ int main() {
   test_power_house_without_a_reachable_target_refuses_to_energise();
   test_boiler_chain_has_no_defrost_input();
   test_cm2_never_owns_the_boiler_under_reduced_hp_capacity();
+  test_defrost_assist_command_obeys_the_assist_permission_and_target_control();
   test_satisfied_target_never_reports_a_blocked_boiler();
   test_relay_target_state_text_covers_every_state();
   return 0;

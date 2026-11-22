@@ -36,6 +36,18 @@ Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysie
 
 Tijdens Quick Start kan een gedetecteerde OpenTherm-ketel automatisch als **OpenTherm (OTB)** worden ingesteld. Na afronden blijft een onverwachte OpenTherm-ketel geblokkeerd totdat je de aansluiting corrigeert. Controleer daarom de getoonde aansluiting voordat je afrondt.
 
+#### Meeverwarmen tijdens ontdooien
+
+Tijdens een ontdooicyclus levert de buitenunit tijdelijk geen warmte en zakt de aanvoertemperatuur. Met `Meeverwarmen tijdens ontdooien` mag de aanvullende warmtebron die dip opvangen: zodra een buitenunit ontdooien meldt, houdt de warmtebron de aanvoer rond de temperatuur van vlak vóór het ontdooien. Het doel ligt 3 °C boven die waarde, zodat de warmtebron niet meteen weer afslaat, en blijft altijd minstens 3 °C onder de ingestelde maximale watertemperatuur. Daardoor grijpt de watertemperatuurbeveiliging niet in en wordt de warmtepomp niet teruggeregeld. Na het ontdooien loopt de hulp nog 1 minuut door. Zo krijgt ook een tweede buitenunit die kort daarna ontdooit hulp. Daarna beslist de normale hybride regeling weer zelf, volgens haar eigen voorwaarden. Per ontdooimelding is er één hulpsessie van maximaal 15 minuten. Om pendelen te voorkomen start de hulp pas als de melding 10 seconden aanhoudt, duurt een gestarte sessie minimaal 1 minuut en begint een volgende sessie op zijn vroegst 2 minuten na de vorige.
+
+Terwijl de warmtebron zelf verwarmt, en tot 5 minuten daarna, bevat de aanvoer warmte van die bron. Die temperatuur telt dan niet als waarde van vlak vóór het ontdooien. Een ontdooiing in die periode krijgt geen hulp.
+
+De hulp vereist een echte aanvoersensor na de warmtebron. Valt de aanvoermeting terug op de uitgaande temperatuur van de warmtepomp, dan blijft de hulp uit: die waarde zakt tijdens het ontdooien en ziet de warmte van de warmtebron niet.
+
+De optie staat standaard uit en werkt los van `Hybride verwarmen bij vermogenstekort`: je kunt alleen tijdens het ontdooien laten meeverwarmen terwijl hybride verwarmen uit blijft. Ze wijzigt geen andere instellingen en kost tijdens het ontdooien extra gas of stroom. Zonder de optie verandert een ontdooicyclus niets aan de aansturing van de warmtebron. De buitenunit blijft zelf eigenaar van de ontdooicyclus.
+
+Houd er rekening mee dat warmte van de aanvullende warmtebron de dagmeting van [Leren](leren.md) onderbreekt, tenzij er een aanvoersensor na de warmtebron is waargenomen. Op dagen met veel ontdooicycli kan deze optie daardoor minder bruikbare leerdagen opleveren.
+
 #### Opstarten met koud water
 
 Bij een nieuwe warmtevraag controleert OpenQuatt na het starten van de circulatie de uitgaande watertemperatuur van iedere aangesloten warmtepomp. Onder `5 °C` blijven de compressoren uit; met `Overnemen wanneer de warmtepomp niet beschikbaar is` kan de aanvullende warmtebron het circuit eerst opwarmen. Vanaf `5 °C` mogen de warmtepompen starten. Met `Hybride verwarmen bij vermogenstekort` helpt de aanvullende warmtebron tot alle uitgaande temperaturen minimaal `12 °C` zijn. Zonder aangesloten of toegestane aanvullende warmtebron start de warmtepomp vanaf `5 °C` zelfstandig. De oude algemene startgrens van `18 °C` wordt niet gebruikt.
