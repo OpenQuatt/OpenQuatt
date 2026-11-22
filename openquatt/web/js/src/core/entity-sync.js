@@ -257,6 +257,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...AUX_RELAY_STATE_KEYS,
       ...FLOW_SETTING_KEYS,
       ...FLOW_TUNING_KEYS,
+      "silentModeOverride",
       ...SILENT_SETTING_KEYS,
       ...COMPRESSOR_SETTING_KEYS,
       ...FREQUENCY_MINIMUM_KEYS,

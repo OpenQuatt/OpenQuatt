@@ -25,7 +25,7 @@ const {
   renderSettingsHeatPumpLimiterCard,
   renderSettingsFlowSection,
 } = await import("../js/src/settings/heating.js");
-const { renderSilentSettingsGrid } = await import("../js/src/settings/silent.js");
+const { renderSettingsSilentSection, renderSilentSettingsGrid } = await import("../js/src/settings/silent.js");
 const {
   renderSettingsControlModeOverridePanel,
   renderSettingsCounterServiceSection,
@@ -667,6 +667,33 @@ test("overzicht labelt lokaal koelvenster en handmatige override", () => {
   card = getOverviewControlCards().find(({ key }) => key === "manualCoolingEnable");
   assert.match(card.copy, /dagelijks tijdvenster \+ handmatig/);
   assert.equal(card.buttonLabel, "Handmatig uit");
+});
+
+test("installatie-instellingen laden en tonen de stille modus in beide talen", () => {
+  assert.ok(getSettingsGroupHydrationKeys("installation").includes("silentModeOverride"));
+
+  resetSettingsState({});
+  assert.doesNotMatch(renderSettingsSilentSection(), /data-oq-field="silentModeOverride"/);
+
+  resetSettingsState({
+    silentModeOverride: { value: "Schedule", state: "Schedule", option: ["Schedule", "On", "Off"] },
+  });
+  const dutch = renderSettingsSilentSection();
+  assert.match(dutch, /<select[^>]*data-oq-field="silentModeOverride"[^>]*aria-label="Stille modus"/);
+  assert.match(dutch, /<option value="Schedule" selected>Schema<\/option>/);
+  assert.match(dutch, /<option value="On"\s*>Aan<\/option>/);
+  assert.match(dutch, /<option value="Off"\s*>Uit<\/option>/);
+
+  try {
+    setLocale("en");
+    const english = renderSettingsSilentSection();
+    assert.match(english, /aria-label="Quiet mode"/);
+    assert.match(english, /<option value="Schedule" selected>Schedule<\/option>/);
+    assert.match(english, /<option value="On"\s*>On<\/option>/);
+    assert.match(english, /<option value="Off"\s*>Off<\/option>/);
+  } finally {
+    setLocale("nl");
+  }
 });
 
 test("frequentielimieten gelden voor beide modi", () => {

@@ -88,9 +88,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // Separate learning data and archive settings: +1,534 B raw / +368 B gzip versus f34b1f9 (Node 24.22.1).
     // Power House run-extension switch, hidden tuning fields when off and NL/EN copy:
     // +1,799 B raw / +438 B gzip; merged with dev: measured raw 1,509,887 B (Node 24.14.1).
+    // Quiet mode selector in installation settings: +336 B raw / +125 B gzip (Node 24.14.1).
     // Optional boiler support during defrost (settings switch and copy in both locales):
-    // +1,072 B raw versus dev 80af1c5, measured raw 1,509,888 B (Node 24.21.0); raw headroom unchanged.
-    raw: 1_510_067,
+    // +1,072 B raw versus dev 26923b8, measured raw 1,510,224 B (Node 24.21.0); raw headroom unchanged.
+    raw: 1_510_403,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

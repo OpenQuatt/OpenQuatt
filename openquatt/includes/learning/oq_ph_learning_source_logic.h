@@ -368,9 +368,6 @@ inline SnapshotSourceStatus validate_heat_pump_state(const HeatPumpRawMeasuremen
   if (heat_pump.mode.value != HeatPumpMode::OFF && heat_pump.mode.value != HeatPumpMode::HEATING &&
       !(heat_pump.mode.value == HeatPumpMode::COOLING && daily_defrost))
     return SnapshotSourceStatus::INVALID_MODE;
-  if (heat_pump.mode.value == HeatPumpMode::OFF && heat_pump.compressor_active.value &&
-      purpose != SnapshotPurpose::STRUCTURAL_BATCH)
-    return SnapshotSourceStatus::INCONSISTENT_ACTIVITY;
   if (purpose == SnapshotPurpose::THERMAL_DYNAMIC &&
       (heat_pump.defrost_active.value || heat_pump.valve_transition_active.value || heat_pump.oil_return_active.value))
     return SnapshotSourceStatus::PROTECTION_ACTIVE;
@@ -615,10 +612,11 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
       return failure(input, SnapshotSourceStatus::BOILER_UNKNOWN, INVALID_ESSENTIAL_SOURCE | INVALID_BOILER_HEAT);
   }
 
-  // Mode 2099 can report OFF before frequency 2103 reaches zero at shutdown.
-  // Only a complete, otherwise valid daily observation may hold this transition.
-  const bool stopping =
-      !use_system &&
+  // Mode 2099 can report OFF before frequency 2103 reaches zero. The dynamic
+  // model uses measured heat during rundown. The daily learner retains its
+  // existing treatment of the transition.
+  const bool hold_daily_stop =
+      purpose == SnapshotPurpose::STRUCTURAL_BATCH && !use_system &&
       ((input.hp1.mode.value == HeatPumpMode::OFF && input.hp1.compressor_active.value) ||
        (input.hp2.present && input.hp2.mode.value == HeatPumpMode::OFF && input.hp2.compressor_active.value));
 
@@ -661,7 +659,7 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   if (status != SnapshotSourceStatus::OK) {
     auto result = failure(input, status, reasons_for_status(status));
     result.may_bridge_daily_gap =
-        purpose == SnapshotPurpose::STRUCTURAL_BATCH && !stopping && daily_measurement_gap_status(status);
+        purpose == SnapshotPurpose::STRUCTURAL_BATCH && !hold_daily_stop && daily_measurement_gap_status(status);
     if (result.may_bridge_daily_gap && calorimetry.valid) {
       result.snapshot.gap_heat_observed_abs_w = fabsf(calorimetry.heat_to_water_w);
       result.snapshot.partial_heat_to_water_w = calorimetry.heat_to_water_w;
@@ -675,12 +673,12 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
     return result;
   }
 
-  if (stopping) {
+  if (hold_daily_stop) {
     auto result = failure(input, SnapshotSourceStatus::INCONSISTENT_ACTIVITY, INVALID_CONTROL_MODE);
     // The full frame stays invalid while mode/frequency disagree. Preserve
     // independently valid calorimetry; bound only actually missing heat.
-    result.may_bridge_daily_gap = purpose == SnapshotPurpose::STRUCTURAL_BATCH;
-    if (result.may_bridge_daily_gap && calorimetry.valid) {
+    result.may_bridge_daily_gap = true;
+    if (calorimetry.valid) {
       result.snapshot.gap_heat_observed_abs_w = fabsf(calorimetry.heat_to_water_w);
       result.snapshot.partial_heat_to_water_w = calorimetry.heat_to_water_w;
     }

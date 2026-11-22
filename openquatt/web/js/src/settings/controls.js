@@ -186,12 +186,21 @@ export function renderSettingsChoiceOption({ key, option, model = getSettingsSel
   `;
 }
 
-function renderSettingsSelectOptions(model) {
-  return model.options.map((option) => `<option value="${escapeHtml(option)}" ${option === model.value ? "selected" : ""}>${escapeHtml(formatSettingsOptionLabel(option))}</option>`).join("");
+function getSettingsSelectOptionLabel(key, option) {
+  if (key === "silentModeOverride") {
+    if (option === "Off") return t("common.off");
+    if (option === "On") return t("common.on");
+    if (option === "Schedule") return t("overview.silentSchedule");
+  }
+  return formatSettingsOptionLabel(option);
 }
 
-export function renderSettingsSelectControl(key, model = getSettingsSelectModel(key)) {
-  return `<select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" data-oq-select-model="true" ${model.busy || !model.available ? "disabled" : ""}>${renderSettingsSelectOptions(model)}</select>`;
+function renderSettingsSelectOptions(key, model) {
+  return model.options.map((option) => `<option value="${escapeHtml(option)}" ${option === model.value ? "selected" : ""}>${escapeHtml(getSettingsSelectOptionLabel(key, option))}</option>`).join("");
+}
+
+export function renderSettingsSelectControl(key, model = getSettingsSelectModel(key), title = "") {
+  return `<select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" data-oq-select-model="true" ${title ? `aria-label="${escapeHtml(title)}"` : ""} ${model.busy || !model.available ? "disabled" : ""}>${renderSettingsSelectOptions(key, model)}</select>`;
 }
 
 export function patchSettingsSelectControl(select, model) {
@@ -200,9 +209,10 @@ export function patchSettingsSelectControl(select, model) {
     select.disabled = model.busy || !model.available;
     // Do not replace a native menu's options while the user is choosing.
     if (select === document.activeElement) return;
+    const key = select.dataset.oqField;
     const options = Array.from(select.options);
-    if (options.length !== model.options.length || options.some((option, index) => option.value !== String(model.options[index]) || option.textContent !== formatSettingsOptionLabel(model.options[index]))) {
-      select.innerHTML = renderSettingsSelectOptions(model);
+    if (options.length !== model.options.length || options.some((option, index) => option.value !== String(model.options[index]) || option.textContent !== getSettingsSelectOptionLabel(key, model.options[index]))) {
+      select.innerHTML = renderSettingsSelectOptions(key, model);
     }
   }
   if (select.value !== model.value) select.value = model.value;
@@ -223,7 +233,7 @@ export function renderSettingsSelectField(key, title, copy, className = "") {
   if (!model.available) {
     return "";
   }
-  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--select">${renderSettingsSelectControl(key, model)}<span class="oq-settings-select-caret" aria-hidden="true"></span></label>`, className);
+  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--select">${renderSettingsSelectControl(key, model, title)}<span class="oq-settings-select-caret" aria-hidden="true"></span></label>`, className);
 }
 
 export function renderSettingsAdvancedDisclosure(id, title, copy, bodyMarkup) {
