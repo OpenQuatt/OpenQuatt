@@ -93,16 +93,21 @@ class BoilerRuntimeContractTest(unittest.TestCase):
     def test_defrost_assist_is_opt_in(self) -> None:
         # De ketelhulp tijdens ontdooien staat standaard uit, zodat bestaand
         # gedrag zonder expliciete keuze ongewijzigd blijft.
-        start = SUPERVISORY_YAML.index("id: oq_boiler_defrost_assist_enabled")
+        start = SUPERVISORY_YAML.index("id: oq_defrost_boiler_support_enabled")
         end = SUPERVISORY_YAML.index("id: oq_boiler_fault_fallback_enabled", start)
         switch = SUPERVISORY_YAML[start:end]
-        self.assertIn('name: "Boiler assist during defrost"', switch)
+        self.assertIn('name: "Boiler support during defrost"', switch)
+        # v0.59.0 bevatte de functie onder een andere naam (#961, teruggedraaid in
+        # #983). De oude naam mag niet terugkomen: een opgeslagen ON zou dan
+        # worden hersteld.
+        self.assertNotIn("oq_boiler_defrost_" + "assist_enabled", SUPERVISORY_YAML)
+        self.assertNotIn("Boiler assist " + "during defrost", SUPERVISORY_YAML)
         self.assertIn("restore_mode: RESTORE_DEFAULT_OFF", switch)
         self.assertNotIn("RESTORE_DEFAULT_ON", switch)
         # De hulp is een eigen toestemming: de aanwezige warmtebron is vereist,
         # de algemene ketelhulp niet.
         self.assertIn(
-            "{now_ms, id(oq_aux_heat_source_present).state && id(oq_boiler_defrost_assist_enabled).state,",
+            "{now_ms, id(oq_aux_heat_source_present).state && id(oq_defrost_boiler_support_enabled).state,",
             SUPERVISORY_RUNTIME,
         )
         self.assertIn(
@@ -110,7 +115,7 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             CONTROL_RUNTIME,
         )
         # Zonder warmtebron wordt de toestemming ingetrokken, net als de andere.
-        self.assertIn("- switch.turn_off: oq_boiler_defrost_assist_enabled", SUPERVISORY_YAML)
+        self.assertIn("- switch.turn_off: oq_defrost_boiler_support_enabled", SUPERVISORY_YAML)
         # De normale ketelhulp blijft afhankelijk van haar eigen schakelaar.
         self.assertIn(
             "const bool boiler_assist_available = boiler_assist_enabled && boiler_transport_available &&\n"

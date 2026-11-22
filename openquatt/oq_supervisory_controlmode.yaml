@@ -285,7 +285,7 @@ switch:
       # Physical absence is the top-level fail-closed gate. Revoke every use
       # permissions and make the selected boiler transport dormant.
       - switch.turn_off: oq_boiler_assist_enabled
-      - switch.turn_off: oq_boiler_defrost_assist_enabled
+      - switch.turn_off: oq_defrost_boiler_support_enabled
       - switch.turn_off: oq_boiler_fault_fallback_enabled
       - lambda: |-
           ${oq_aux_heat_source_presence_extra}
@@ -309,8 +309,8 @@ switch:
             - switch.turn_off: oq_boiler_assist_enabled
 
   - platform: template
-    id: oq_boiler_defrost_assist_enabled
-    name: "Boiler assist during defrost"
+    id: oq_defrost_boiler_support_enabled
+    name: "Boiler support during defrost"
     icon: mdi:snowflake-melt
     # Opt-in and independent of `oq_boiler_assist_enabled`: with this off a
     # defrost changes nothing in the boiler chain, exactly as before.
@@ -323,7 +323,7 @@ switch:
             lambda: |-
               return !id(oq_aux_heat_source_present).state;
           then:
-            - switch.turn_off: oq_boiler_defrost_assist_enabled
+            - switch.turn_off: oq_defrost_boiler_support_enabled
 
   - platform: template
     id: oq_boiler_fault_fallback_enabled

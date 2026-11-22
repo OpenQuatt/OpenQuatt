@@ -505,7 +505,7 @@ class Runtime {
                                     id(boiler_relay).state;
     this->defrost_assist_first_tick_ = false;
     const auto defrost_assist = oq_boiler_defrost_assist::update(
-        {now_ms, id(oq_aux_heat_source_present).state && id(oq_boiler_defrost_assist_enabled).state,
+        {now_ms, id(oq_aux_heat_source_present).state && id(oq_defrost_boiler_support_enabled).state,
          heating_req && heat_pump_heating_mode, any_hp_defrost_reported,
          !id(oq_water_supply_temp_fallback_runtime_active), id(water_supply_temp_selected).state, boiler_heat_active},
         this->defrost_assist_state_,

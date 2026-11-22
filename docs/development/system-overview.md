@@ -377,7 +377,7 @@ The boiler command from `oq_boiler_dispatch` is transport-neutral: it carries
 optional defrost assist may request heat and a target; CM4 fallback and CM100
 commissioning keep their own on/off semantics.
 
-The optional defrost assist (`Boiler assist during defrost`, off by default) is
+The optional defrost assist (`Boiler support during defrost`, off by default) is
 its own permission, independent of `Boiler assist enabled`. It is supervisory
 policy in `includes/control/oq_boiler_defrost_assist_logic.h`. The
 supervisory observes the defrost, promotes CM2 to CM3 for that cycle and hands

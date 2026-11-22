@@ -2127,7 +2127,7 @@
     setEntity("sensor", "Controlled warmup elapsed", { value: 0, uom: "s" });
     setEntity("text_sensor", "Power House run extension status", { value: "inactive", state: "inactive" });
     setEntity("switch", "Boiler assist enabled", { value: true, state: true });
-    setEntity("switch", "Boiler assist during defrost", { value: false, state: false });
+    setEntity("switch", "Boiler support during defrost", { value: false, state: false });
     setEntity("switch", "Boiler fallback on heat-pump fault", { value: false, state: false });
     setEntity("select", "Boiler connection", {
       value: "OpenTherm",
@@ -4307,7 +4307,7 @@
       setEntity("binary_sensor", "Performance model validation choice configured", { value: true, state: true });
     }
     if (name === "Auxiliary heat source connected" && !enabled) {
-      setSwitch("Boiler assist during defrost", false);
+      setSwitch("Boiler support during defrost", false);
     }
     if (name === "Boiler assist enabled" && !enabled) {
       setSwitch("Boiler fallback on heat-pump fault", false);
