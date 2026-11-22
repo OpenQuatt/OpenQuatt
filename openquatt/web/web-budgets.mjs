@@ -88,7 +88,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Separate learning data and archive settings: +1,534 B raw / +368 B gzip versus f34b1f9 (Node 24.22.1).
     // Power House run-extension switch, hidden tuning fields when off and NL/EN copy:
     // +1,799 B raw / +438 B gzip; merged with dev: measured raw 1,509,887 B (Node 24.14.1).
-    raw: 1_508_995,
+    // Quiet mode selector in installation settings: +336 B raw / +125 B gzip (Node 24.14.1).
+    raw: 1_509_331,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
