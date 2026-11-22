@@ -337,7 +337,8 @@ inline RunExtensionMinimum run_extension_minimum(const DispatchInput& in, const 
   if (level <= 1 || !(base_requested_w < minimum.thermal_w)) return {minimum.thermal_w, level};
 
   // The floor follows live dispatch. Only keep the comfort margin when F1 would
-  // be feasible at no more heat without an unconfirmed override or modulation hold.
+  // be feasible at no more heat without an unconfirmed override, modulation hold
+  // or restart hold.
   const int hp1_max = applied_level(in.hp1) > 0 ? 1 : 0;
   const int hp2_max = in.duo && applied_level(in.hp2) > 0 ? 1 : 0;
   for (int first = 0; first <= hp1_max; ++first) {

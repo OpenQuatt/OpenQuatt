@@ -93,6 +93,14 @@ void test_frequency_feedback_changes_duo_selection() {
     // A level that F1 really cannot serve still raises the comfort level.
     resumed.hp1.levels[1].allowed = false;
     assert(resumed_level() == 2);
+    // One resumed unit next to a unit that runs without a hold.
+    resumed = dispatch_input(*model);
+    resumed.hp1.fixed_level = 2;
+    resumed.hp1.stop_inhibited = true;
+    assert(resumed_level() == 1);
+    // A single resumed unit, as on a Single installation: the peer is idle.
+    resumed.hp2.candidate.previous_applied_level = 0;
+    assert(resumed_level() == 1);
   }
   const auto before = decide_dispatch(dispatch_input(nominal), limits, {}, &CandidateModel::confirmed_power);
   assert(topology(before.hp1_level, before.hp2_level) == 2);
