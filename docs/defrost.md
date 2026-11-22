@@ -22,10 +22,6 @@ Het **i** naast **Ontdooimethode** licht de ondersteunde methoden van deze varia
 
 De API gebruikt bestaande webauthenticatie, origincontrole en CSRF voor acties. HTTP en Modbus delen alleen een kleine gesynchroniseerde snapshot; regeling en Modbus-transities lopen op de hoofdloop. Het optionele NVS-profiel wijzigt geen EEPROM-persistentie in de buitenunit en start nooit een handmatige defrostcyclus.
 
-## Meeverwarmen tijdens ontdooien
-
-Standaard verandert een ontdooicyclus niets aan de aansturing van de aanvullende warmtebron. Met de optionele instelling `Meeverwarmen tijdens ontdooien` (zie [Instellingen](web-app/instellingen.md)) mag de warmtebron de aanvoertemperatuur tijdens de cyclus vasthouden rond de waarde van vlak vóór het ontdooien (doel 3 °C erboven, minstens 3 °C onder de maximale watertemperatuur). OpenQuatt stuurt daarbij nog steeds geen compressorfrequentie, ventilator of vierwegklep.
-
 ## Telemetrie-ontwerpkeuze: vasthouden bij stale, stoppen bij langdurige blindheid
 
 - Zolang mode-/defrostterugmeldingen vers zijn (30 s) volgt de regeling de ODU. Is de telemetrie stale maar is er geen bewezen defrost actief of aangevraagd, dan blijft het vorige compressorcommando staan; gewone demandwijzigingen wachten. Dit is bewust conservatief: een ongemerkt lopende ODU-cyclus mag niet door een normale write worden verstoord. Andere ODU-serviceoperaties kunnen de normale polling tijdelijk pauzeren; daarom is dit als contracttest vastgelegd.
