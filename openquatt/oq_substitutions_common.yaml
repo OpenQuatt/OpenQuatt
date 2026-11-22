@@ -263,6 +263,7 @@ oq_boiler_defrost_assist_ignition_wait_s: "45"        # Time an applied defrost-
 oq_boiler_defrost_assist_raise_step_c: "2.0"          # One raise of the defrost-assist target while the heat source does not fire [K].
 oq_boiler_defrost_assist_raise_interval_s: "30"       # Time between two raises while the heat source does not fire [s].
 oq_boiler_defrost_assist_flame_loss_confirm_s: "20"   # Flame must be gone this long before the single extra raise after a confirmed flame [s].
+oq_boiler_defrost_assist_raise_max_c: "8.0"           # Bound on the whole raise above the base defrost-assist target [K].
 oq_boiler_otb_min_on_s: "30"                          # OpenTherm minimum requested on-time [s]; safety trips override it.
 oq_boiler_otb_min_off_s: "120"                        # OpenTherm minimum requested off-time [s].
 oq_otb_supported: "false"                             # Compile-time availability of the boiler OpenTherm master transport.

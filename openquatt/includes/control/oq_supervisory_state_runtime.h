@@ -79,6 +79,7 @@ struct TickConfig {
   float boiler_defrost_assist_raise_step_c;
   uint32_t boiler_defrost_assist_raise_interval_s;
   uint32_t boiler_defrost_assist_flame_loss_confirm_s;
+  float boiler_defrost_assist_raise_max_c;
   uint32_t otb_field_timeout_s;
 };
 
@@ -525,6 +526,7 @@ class Runtime {
     defrost_feedback_available =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm" &&
         tick.otb_supported && id(oq_otb_link_available_state) &&
+        !(id(otb_fault_indication).has_state() && id(otb_fault_indication).state) &&
         oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_STATUS, now_ms, otb_field_timeout_ms);
     defrost_command_applied = id(oq_defrost_assist_active) && strcmp(cur_cm, "CM3") == 0 && id(oq_otb_ch_enable).state;
     defrost_source_dhw = id(otb_dhw_active).has_state() && id(otb_dhw_active).state;
@@ -550,7 +552,8 @@ class Runtime {
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_ignition_wait_s),
          tick.boiler_defrost_assist_raise_step_c,
          oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_raise_interval_s),
-         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_flame_loss_confirm_s)});
+         oq_supervisory_state::seconds_to_ms(tick.boiler_defrost_assist_flame_loss_confirm_s),
+         tick.boiler_defrost_assist_raise_max_c});
     this->defrost_assist_state_ = defrost_assist.state;
     const bool defrost_assist_requested = defrost_assist.requested;
     id(oq_defrost_assist_target_c) = defrost_assist.target_c;

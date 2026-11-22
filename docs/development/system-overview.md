@@ -393,8 +393,9 @@ the boiler chain has applied the command, whether the source fires for
 heating (a domestic-hot-water flame does not count) and the boiler water
 temperature. While an applied command is not followed by a flame, the
 policy raises the target by `oq_boiler_defrost_assist_raise_step_c` after
-`_ignition_wait_s` and then every `_raise_interval_s`, never above the
-ceiling. After a confirmed flame it raises once more at most, and only if
+`_ignition_wait_s` and then every `_raise_interval_s`, by `_raise_max_c` in
+total at most and never above the ceiling. An OpenTherm fault indication
+counts as no feedback. After a confirmed flame it raises once more at most, and only if
 the flame stays away for `_flame_loss_confirm_s` with the boiler water
 below the target. The raise ends with the session. Without feedback (R1 or
 stale status) the target stays the reference plus margin. The session bypasses the normal CM2/CM3 timers and

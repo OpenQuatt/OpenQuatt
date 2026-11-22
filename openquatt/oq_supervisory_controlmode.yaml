@@ -725,5 +725,6 @@ interval:
               ${oq_boiler_defrost_assist_raise_step_c},
               ${oq_boiler_defrost_assist_raise_interval_s},
               ${oq_boiler_defrost_assist_flame_loss_confirm_s},
+              ${oq_boiler_defrost_assist_raise_max_c},
               ${oq_otb_field_timeout_s},
           });

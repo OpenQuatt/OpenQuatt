@@ -69,6 +69,11 @@ struct Config {
   // After a confirmed flame, the flame must be gone this long before the one
   // extra raise.
   uint32_t flame_loss_confirm_ms = 20000UL;
+  // Bound on the whole raise above the base target. The search cannot tell
+  // a target that is too low from a source that is not ready (anti-cycle
+  // time, lockout). Without this bound such a source would pull the target
+  // up to the ceiling and then heat to it.
+  float max_raise_c = 8.0f;
 };
 
 struct State {
@@ -186,9 +191,12 @@ inline void confirm_flame(const Input& input, State& state, Output& output, cons
     state.wait_timing = false;
     return;
   }
-  const bool at_ceiling = state.target_c + state.raise_c >= input.target_ceiling_c;
+  // The raise ends at the ceiling or at its own bound, whichever is lower.
+  const float bound_c = state.target_c + usable_step(config.max_raise_c);
+  const float limit_c = bound_c < input.target_ceiling_c ? bound_c : input.target_ceiling_c;
+  const bool at_ceiling = state.target_c + state.raise_c >= limit_c;
   const auto raise = [&]() {
-    const float room_c = input.target_ceiling_c - state.target_c - state.raise_c;
+    const float room_c = limit_c - state.target_c - state.raise_c;
     state.raise_c += step_c < room_c ? step_c : room_c;
     output.raised = true;
   };

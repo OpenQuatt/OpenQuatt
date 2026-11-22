@@ -443,7 +443,8 @@ void test_duration_survives_millis_wraparound() {
 // Flame confirmation. With feedback from the heat source (OpenTherm) the
 // session raises its target until the source actually fires. The cases use the
 // recorded night of 22 November: supply reference 31.4 C, boiler water 31.0 C.
-constexpr Config kFlame{900000UL, 3.0f, 10000UL, 60000UL, 120000UL, 60000UL, 300000UL, 45000UL, 2.0f, 30000UL, 20000UL};
+constexpr Config kFlame{900000UL, 3.0f,    10000UL, 60000UL, 120000UL, 60000UL,
+                        300000UL, 45000UL, 2.0f,    30000UL, 20000UL,  8.0f};
 
 bool near(float value, float expected) { return fabsf(value - expected) < 0.01f; }
 
@@ -646,6 +647,58 @@ void test_target_never_exceeds_ceiling() {
   assert(!source.in_session);
 }
 
+void test_slow_source_cannot_drive_the_target_to_the_ceiling() {
+  // A high water limit leaves a lot of room under the ceiling. A source that
+  // is simply not ready (anti-cycle time, lockout) must not pull the target up
+  // there: the search has its own bound above the base target.
+  Source source;
+  source.ceiling_c = 57.0f;
+  source.start_session();
+  for (int tick = 0; tick < 150; ++tick) {
+    source.step(true, false);
+    assert(source.target_c < 42.41f);
+  }
+  assert(source.raises == 4);
+  assert(near(source.target_c, 42.4f));
+  assert(source.ceiling_reports == 1);
+  assert(source.in_session);
+}
+
+void test_extra_step_respects_the_raise_bound() {
+  Source source;
+  source.ceiling_c = 57.0f;
+  source.start_session();
+  while (source.confirmations == 0) source.step(true, source.fires_below(11.0f));
+  assert(source.raises == 4);
+  assert(near(source.target_c, 42.4f));
+  source.boiler_water_c = 33.0f;
+  for (int tick = 0; tick < 60; ++tick) source.step(true, false);
+  assert(source.raises == 4);
+  assert(near(source.target_c, 42.4f));
+}
+
+void test_unusable_raise_bound_never_raises() {
+  for (const float bound_c : {0.0f, -1.0f, NAN}) {
+    Config config = kFlame;
+    config.max_raise_c = bound_c;
+    State state;
+    uint32_t now_ms = 0;
+    bool raised = false;
+    for (int tick = 0; tick < 80; ++tick) {
+      now_ms += 5000U;
+      Input in = heating(now_ms, 31.4f, tick > 0);
+      in.feedback_available = true;
+      in.command_applied = true;
+      in.boiler_water_c = 31.0f;
+      in.target_ceiling_c = 42.0f;
+      const Output out = oq_boiler_defrost_assist::update(in, state, config);
+      raised = raised || out.raised;
+      state = out.state;
+    }
+    assert(!raised);
+  }
+}
+
 void test_ceiling_below_base_target_caps_without_raising() {
   Source source;
   source.ceiling_c = 33.0f;
@@ -803,6 +856,9 @@ int main() {
   test_flame_loss_when_satisfied_is_not_raised();
   test_satisfied_uses_supply_without_boiler_water();
   test_target_never_exceeds_ceiling();
+  test_slow_source_cannot_drive_the_target_to_the_ceiling();
+  test_extra_step_respects_the_raise_bound();
+  test_unusable_raise_bound_never_raises();
   test_ceiling_below_base_target_caps_without_raising();
   test_no_ceiling_means_no_raise();
   test_without_feedback_behaves_like_before();

@@ -193,6 +193,7 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             ('oq_boiler_defrost_assist_raise_step_c: "2.0"', "float raise_step_c = 2.0f;"),
             ('oq_boiler_defrost_assist_raise_interval_s: "30"', "uint32_t raise_interval_ms = 30000UL;"),
             ('oq_boiler_defrost_assist_flame_loss_confirm_s: "20"', "uint32_t flame_loss_confirm_ms = 20000UL;"),
+            ('oq_boiler_defrost_assist_raise_max_c: "8.0"', "float max_raise_c = 8.0f;"),
         ):
             self.assertIn(substitution, SUBSTITUTIONS)
             self.assertIn(default, DEFROST_ASSIST_LOGIC)
@@ -214,6 +215,8 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             'id(oq_defrost_assist_active) && strcmp(cur_cm, "CM3") == 0 && id(oq_otb_ch_enable).state;',
             SUPERVISORY_RUNTIME,
         )
+        # Een storing van de warmtebron is geen reden om het doel te verhogen.
+        self.assertIn("!(id(otb_fault_indication).has_state() && id(otb_fault_indication).state)", SUPERVISORY_RUNTIME)
         # Het beleid kent dezelfde grens als de dispatcher, die blijft begrenzen.
         self.assertIn(
             "oq_boiler_dispatch::supply_hold_target_ceiling(id(max_water_temp_limit_c).state)", SUPERVISORY_RUNTIME
