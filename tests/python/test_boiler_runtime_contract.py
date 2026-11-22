@@ -204,7 +204,9 @@ class BoilerRuntimeContractTest(unittest.TestCase):
         self.assertIn("id(otb_dhw_active).state", SUPERVISORY_RUNTIME)
         for chain_source in (DISPATCH_RUNTIME, DISPATCH_LOGIC):
             self.assertNotIn("flame", chain_source)
-            self.assertNotIn("raise", chain_source)
+            self.assertNotIn("raise_c", chain_source)
+            self.assertNotIn("flame_confirmed", chain_source)
+            self.assertNotIn("otb_flame_on", chain_source)
         # Zonder verse status is er geen terugkoppeling, en alleen een werkelijk
         # doorgezette opdracht telt als wachten op de vlam.
         self.assertIn("oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_STATUS, now_ms,", SUPERVISORY_RUNTIME)

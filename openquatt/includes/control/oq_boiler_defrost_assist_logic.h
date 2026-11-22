@@ -167,7 +167,10 @@ inline float effective_target(const State& state, float ceiling_c) {
 // Raises the session target while the source demonstrably does not fire.
 inline void confirm_flame(const Input& input, State& state, Output& output, const Config& config) {
   const float step_c = usable_step(config.raise_step_c);
-  if (input.feedback_available && input.firing && !input.dhw_active) {
+  // Only a flame that answers this session's own applied command confirms
+  // it. A flame that another command still holds (normal assist before a
+  // hand-over) says nothing about this target.
+  if (input.feedback_available && input.command_applied && input.firing && !input.dhw_active) {
     if (!state.flame_confirmed) {
       state.flame_confirmed = true;
       output.flame_confirmed_now = true;

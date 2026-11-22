@@ -563,10 +563,13 @@ class Runtime {
     } else if (defrost_assist.released) {
       ESP_LOGI("supervisory", "Defrost assist released");
     }
-    if (defrost_assist.raised) {
+    if (defrost_assist.raised && std::isfinite(defrost_boiler_water_c)) {
       ESP_LOGI("supervisory",
                "Defrost assist: heat source not firing, boiler target raised to %.1fC (boiler water %.1fC)",
                defrost_assist.target_c, defrost_boiler_water_c);
+    } else if (defrost_assist.raised) {
+      ESP_LOGI("supervisory", "Defrost assist: heat source not firing, boiler target raised to %.1fC",
+               defrost_assist.target_c);
     }
     if (defrost_assist.flame_confirmed_now) {
       ESP_LOGI("supervisory", "Defrost assist: heat source fires at boiler target %.1fC", defrost_assist.target_c);
