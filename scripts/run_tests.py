@@ -23,6 +23,7 @@ from tests.support.cpp import (  # noqa: E402
     compiler_command,
 )
 from tests.support.process import run_process  # noqa: E402
+from tests.support.thermal_runtime import write_thermal_runtime_methods  # noqa: E402
 
 
 SUITES = ("host", "python", "hil", "web")
@@ -84,9 +85,13 @@ def run_host(files: list[Path]) -> None:
     with tempfile.TemporaryDirectory(prefix="openquatt-host-tests-") as directory:
         for source in files:
             binary = Path(directory) / source.stem
+            extra_flags = []
+            if source.stem == "oq_compressor_command_runtime_test":
+                write_thermal_runtime_methods(ROOT, binary.parent)
+                extra_flags = ["-I", directory]
             print(f"[build] {source.stem}", flush=True)
             run_process(
-                [*command, str(source), "-o", str(binary)],
+                [*command, *extra_flags, str(source), "-o", str(binary)],
                 cwd=ROOT,
                 check=True,
                 timeout=COMPILE_TIMEOUT_SECONDS,

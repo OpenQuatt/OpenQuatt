@@ -509,12 +509,8 @@ class Runtime {
         !oq_power_house_run_extension::water_floor_allowed(id(oq_water_temp_limit_factor)) && std::isfinite(room_c) &&
         std::isfinite(run_ext_decision.comfort_stop_c) && room_c < run_ext_decision.comfort_stop_c)
       this->run_ext_blocked_ = true;
-    float effective_requested_w = base_requested_w;
-    if (run_ext_decision.force_comfort_stop) {
-      effective_requested_w = 0.0f;
-    } else if (run_ext_decision.floor_active) {
-      effective_requested_w = std::max(base_requested_w, run_ext_decision.floor_w);
-    }
+    const float effective_requested_w =
+        oq_power_house_run_extension::apply_to_request(run_ext_decision, base_requested_w);
     this->run_ext_effective_w_ = effective_requested_w;
     requested_w = effective_requested_w;
     id(oq_phouse_req_w) = requested_w;
