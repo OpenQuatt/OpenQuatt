@@ -717,9 +717,6 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
     const boilerPowerEntityAvailable = hasEntity("boilerRatedHeatPower");
     const boilerMeta = getNumberMeta("boilerRatedHeatPower");
     const boilerValue = getInputDraftValue("boilerRatedHeatPower");
-    const defrostAssistSettingAvailable = hasEntity("boilerDefrostAssistEnabled");
-    const defrostAssistEnabled = defrostAssistSettingAvailable && isEntityActive("boilerDefrostAssistEnabled");
-    const defrostAssistBusy = state.loadingEntities || state.busyAction === "switch-boilerDefrostAssistEnabled";
     const fallbackSettingAvailable = hasEntity("boilerFaultFallbackEnabled");
     const fallbackEnabled = fallbackSettingAvailable && isEntityActive("boilerFaultFallbackEnabled");
     const fallbackBusy = state.loadingEntities || state.busyAction === "switch-boilerFaultFallbackEnabled";
@@ -900,22 +897,6 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
                   t("settingsInstallation.assistTitle"),
                   assistEnabled,
                   assistBusy,
-                )}
-              </div>
-            `,
-            "oq-settings-field--compact",
-          ) : ""}
-          ${sourcePresent && defrostAssistSettingAvailable ? renderSettingsFieldCard(
-            "boilerDefrostAssistEnabled",
-            t("settingsInstallation.defrostAssistTitle"),
-            t("settingsInstallation.defrostAssistCopy"),
-            `
-              <div class="oq-settings-compact-switch-field">
-                ${renderSettingsCompactSwitchControl(
-                  "boilerDefrostAssistEnabled",
-                  t("settingsInstallation.defrostAssistTitle"),
-                  defrostAssistEnabled,
-                  defrostAssistBusy,
                 )}
               </div>
             `,

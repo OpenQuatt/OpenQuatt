@@ -20,8 +20,6 @@ inline const char* command_source_text(uint8_t source) {
       return "Fallback";
     case COMMAND_SOURCE_COLD_START:
       return "Cold start";
-    case COMMAND_SOURCE_DEFROST_ASSIST:
-      return "Defrost assist";
     default:
       return "None";
   }
@@ -39,7 +37,6 @@ inline BoilerRole boiler_role_for_source(uint8_t source) {
     case COMMAND_SOURCE_POWER_HOUSE:
     case COMMAND_SOURCE_HEATING_CURVE:
     case COMMAND_SOURCE_COLD_START:
-    case COMMAND_SOURCE_DEFROST_ASSIST:
       return BoilerRole::ASSIST_CM3;
     case COMMAND_SOURCE_FALLBACK:
       return BoilerRole::FALLBACK_CM4;

@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 #include "../boiler/oq_boiler_logic.h"
-#include "oq_thermal_limits_logic.h"
 
 namespace oq_boiler_dispatch {
 
@@ -18,10 +17,6 @@ struct Inputs {
   int control_mode = 0;
   uint32_t now_ms = 0;
   bool cold_start_assist = false;
-  // Supervisory-owned CM3 session that holds the supply at its pre-dip
-  // reference. The dispatcher only receives the ownership and the target.
-  bool supply_hold_assist = false;
-  float supply_hold_target_c = NAN;
   bool heat_request = false;
   float rated_boiler_power_w = NAN;
   float maximum_water_temperature_c = NAN;
@@ -46,13 +41,6 @@ inline float bounded_maximum_water_temperature(float configured_c) {
   return fmaxf(25.0f, fminf(configured_c, 75.0f));
 }
 
-// Highest target a supply-hold assist may ask for. It stays below the
-// water-limit soft band, so this assist can never make the supply guard
-// throttle the heat pumps or inhibit the boiler.
-inline float supply_hold_target_ceiling(float configured_maximum_c) {
-  return bounded_maximum_water_temperature(configured_maximum_c) - oq_thermal_limits::Config{}.soft_band_c;
-}
-
 inline oq_boiler::BoilerCommand dispatch(const Inputs& in, const Config& config = {}) {
   oq_boiler::BoilerCommand command{
       true, false, false, NAN, NAN, oq_boiler::COMMAND_SOURCE_NONE, in.now_ms,
@@ -66,21 +54,6 @@ inline oq_boiler::BoilerCommand dispatch(const Inputs& in, const Config& config 
                                        ? config.cold_start_target_c
                                        : fminf(config.cold_start_target_c, in.maximum_water_temperature_c);
     command.source = oq_boiler::COMMAND_SOURCE_COLD_START;
-    return command;
-  }
-
-  if (in.control_mode == 3 && in.supply_hold_assist) {
-    // Bounded task: lift the supply back to the target the supervisory
-    // latched, never into the water-limit soft band. Without a usable target
-    // the command is invalid and the controller keeps the boiler off.
-    command.demand_present = true;
-    command.valid = isfinite(in.supply_hold_target_c) && in.supply_hold_target_c > 0.0f;
-    command.heat_request = command.valid && in.heat_request;
-    command.requested_power_w = in.rated_boiler_power_w;
-    command.target_temperature_c =
-        command.valid ? fminf(in.supply_hold_target_c, supply_hold_target_ceiling(in.maximum_water_temperature_c))
-                      : NAN;
-    command.source = oq_boiler::COMMAND_SOURCE_DEFROST_ASSIST;
     return command;
   }
 
