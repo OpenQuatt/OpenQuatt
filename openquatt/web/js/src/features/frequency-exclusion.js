@@ -31,7 +31,7 @@ export function getFrequencyExclusionModel(hp, edits = {}, read = getEntityValue
       return { label, remaining, blocked: remaining === 0 && underCap?.length > 0 };
     });
     const excluded = known && hasRange
-      ? frequencies.flatMap((hz, level) => hz >= min && hz <= max ? [`F${level + 1} (${hz} Hz)`] : [])
+      ? [...new Set(frequencies.filter((hz) => hz >= min && hz <= max))]
       : [];
     return { mode, known, available, excluded };
   });
@@ -72,32 +72,51 @@ function getDetails(hp, edits) {
       status = endTime ? t("frequencyExclusion.until", { time: endTime }) : t("frequencyExclusion.alwaysActive");
     } else status = t("frequencyExclusion.outside");
   }
-  return [
-    { text: status, warning: false },
-    ...summaries.map(({ mode, known, available, excluded }) => {
-      if (!hasRange || scope === "Off") return { text: "", warning: false };
-      const label = modeLabel(mode);
-      if (!known) return { text: t("frequencyExclusion.unknown", { mode: label }), warning: false };
-      const counts = available.filter(({ remaining }) => remaining !== null)
-        .map(({ label, remaining }) => t("frequencyExclusion.remaining", { period: periodLabel(label), count: remaining }));
-      const affected = excluded.length
-        ? t("frequencyExclusion.affected", { levels: excluded.join(", ") })
-        : t("frequencyExclusion.unaffected");
-      return { text: [label, affected, ...counts].join(" · "), warning: available.some(({ remaining }) => remaining === 0) };
-    }),
-  ];
+  const details = summaries.map(({ mode, known, available, excluded }) => {
+    if (!hasRange || scope === "Off") return { title: "", affected: "", counts: "", warning: false };
+    const title = mode === "Heating" ? t("frequencyExclusion.heating") : t("frequencyExclusion.cooling");
+    if (!known) return { title, affected: t("frequencyExclusion.unknown"), counts: "", warning: false };
+    const counts = available.filter(({ remaining }) => remaining !== null)
+      .map(({ label, remaining }) => label === "day"
+        ? t("frequencyExclusion.availableDay", { count: remaining })
+        : t("frequencyExclusion.availableQuiet", { count: remaining }));
+    const affected = excluded.length
+      ? t("frequencyExclusion.affected", { frequencies: excluded.map((hz) => `${hz} Hz`).join(", ") })
+      : t("frequencyExclusion.unaffected");
+    return {
+      title,
+      affected,
+      counts: counts.length ? t("frequencyExclusion.available", { periods: counts.join(" · ") }) : "",
+      warning: available.some(({ remaining }) => remaining === 0),
+    };
+  });
+  return { status, details };
 }
 
 export function renderFrequencyExclusionDetails(hp) {
-  return `<div data-oq-frequency-exclusion="${hp}">${getDetails(hp).map(({ text, warning }) => `<p class="oq-settings-action-note${warning ? " oq-settings-action-note--warning" : ""}"${text ? "" : " hidden"}>${escapeHtml(text)}</p>`).join("")}</div>`;
+  const { status, details } = getDetails(hp);
+  return `<div class="oq-settings-field--span-2 oq-frequency-exclusion-details" data-oq-frequency-exclusion="${hp}">
+    <p class="oq-settings-action-note">${escapeHtml(status)}</p>
+    ${details.map(({ title, affected, counts, warning }) => `<p class="oq-settings-action-note${warning ? " oq-settings-action-note--warning" : ""}"${title ? "" : " hidden"}>
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(affected)}</span>
+      <span${counts ? "" : " hidden"}>${escapeHtml(counts)}</span>
+    </p>`).join("")}
+  </div>`;
 }
 
 export function patchFrequencyExclusionDetails(root = state.root, edits) {
   root?.querySelectorAll("[data-oq-frequency-exclusion]").forEach((node) => {
-    getDetails(node.dataset.oqFrequencyExclusion, edits).forEach(({ text, warning }, index) => {
-      const line = node.children[index];
-      if (line.textContent !== text) line.textContent = text;
-      line.hidden = !text;
+    const { status, details } = getDetails(node.dataset.oqFrequencyExclusion, edits);
+    if (node.firstElementChild.textContent !== status) node.firstElementChild.textContent = status;
+    details.forEach(({ title, affected, counts, warning }, index) => {
+      const line = node.children[index + 1];
+      const [heading, frequencies, availability] = line.children;
+      if (heading.textContent !== title) heading.textContent = title;
+      if (frequencies.textContent !== affected) frequencies.textContent = affected;
+      if (availability.textContent !== counts) availability.textContent = counts;
+      availability.hidden = !counts;
+      line.hidden = !title;
       line.classList.toggle("oq-settings-action-note--warning", warning);
     });
   });

@@ -195,6 +195,40 @@ for (const [scope, failed] of [["Off", ""], ["Quiet hours", ""], ["Always", "hp1
   });
 }
 
+for (const [ignoredField, actualScope, detail] of [
+  ["hp1ExcludeMinHz", "Off", /staat op Uit na de mislukte herstelpoging/],
+  ["hp1ExcludeScope", "Always", /is niet bevestigd/],
+]) {
+  test(`a partial frequency restore reports the implicit scope after a failed write to ${ignoredField}`, async () => {
+    const stored = { hp1ExcludeScope: "Always", hp1ExcludeMinHz: 55, hp1ExcludeMaxHz: 70 };
+    const controller = createRestoreController(stored, ignoredField);
+    const previousFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = controller.fetch;
+      await withBackupState(async () => {
+        state.settingsBackupDraft = parseSettingsBackupPayload(JSON.stringify({
+          schema_version: SETTINGS_BACKUP_SCHEMA_VERSION,
+          settings: { compressor: { hp1ExcludeMinHz: 40 } },
+        }));
+        await restoreSettingsBackup();
+        const result = state.settingsBackupRestoreResult;
+        assert.ok(result, state.settingsBackupError);
+        assert.equal(stored.hp1ExcludeScope, actualScope);
+        assert.deepEqual(controller.frequencyWrites, [
+          ["hp1ExcludeScope", "Off"],
+          ...(ignoredField === "hp1ExcludeMinHz" ? [["hp1ExcludeMinHz", 40]] : []),
+        ]);
+        const scope = result.skipped.filter(({ key }) => key === "hp1ExcludeScope");
+        assert.equal(scope.length, 1);
+        assert.equal(scope[0].severity, "error");
+        assert.match(scope[0].detail, detail);
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+}
+
 test("restoring only an active scope rejects a stored inverted band", async () => {
   const stored = { hp1ExcludeScope: "Off", hp1ExcludeMinHz: 55, hp1ExcludeMaxHz: 40 };
   const controller = createRestoreController(stored);

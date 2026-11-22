@@ -669,7 +669,9 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
     if (hpPrefix === "hp2" && getInstallationTopology() !== "duo") return "";
     const firstFrequencyKey = `${hpPrefix}ExcludeMinHz`;
-    const scope = renderSettingsSelectField(`${hpPrefix}ExcludeScope`, t("frequencyExclusion.scope"), "");
+    const scope = renderSettingsSelectField(
+      `${hpPrefix}ExcludeScope`, t("frequencyExclusion.scope"), "", "oq-settings-field--span-2",
+    );
     const fields = renderSettingsFrequencyRangeField(
       firstFrequencyKey,
       `${hpPrefix}ExcludeMaxHz`,

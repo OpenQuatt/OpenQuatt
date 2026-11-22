@@ -741,9 +741,14 @@ test("uitsluiting voor stille uren toont de effectieve status en waarschuwt voor
   const renderCard = () => renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1");
   assert.match(renderCard(), /Alleen tijdens stille uren/);
   assert.match(renderCard(), /Actief tot 07:00/);
-  assert.match(renderCard(), /Slaat F1 \(26 Hz\) over · 1 over \(stille uren\)/);
-  assert.match(renderCard(), /Slaat F2 \(30 Hz\) over · 1 over \(stille uren\)/);
-  assert.doesNotMatch(renderCard(), /over \(overdag\)|data-oq-action="disable-range"/);
+  assert.match(renderCard(), /Verwarmen<\/strong>\s*<span>OpenQuatt slaat 26 Hz over\.<\/span>/);
+  assert.match(renderCard(), /Koelen<\/strong>\s*<span>OpenQuatt slaat 30 Hz over\.<\/span>/);
+  assert.match(renderCard(), /Beschikbare standen · Tijdens stille uren 1/);
+  assert.doesNotMatch(renderCard(), /Overdag [0-9]|F[12] \(|data-oq-action="disable-range"/);
+
+  state.entities.hp1ExcludeScope.value = "Always";
+  assert.match(renderCard(), /Beschikbare standen · Overdag 2 · Tijdens stille uren 1/);
+  state.entities.hp1ExcludeScope.value = "Quiet hours";
 
   state.entities.silentStatus.value = "time_invalid";
   assert.match(renderCard(), /Wacht op tijdsynchronisatie/);
@@ -755,7 +760,7 @@ test("uitsluiting voor stille uren toont de effectieve status en waarschuwt voor
   state.entities.hp1ExcludeScope.value = "Off";
   assert.match(renderCard(), /Uitsluiting uit/);
   assert.match(renderCard(), /26–30 Hz/);
-  assert.doesNotMatch(renderCard(), /Slaat F1/);
+  assert.doesNotMatch(renderCard(), /OpenQuatt slaat 26 Hz over/);
   state.entities.hp1ExcludeMaxHz.value = 31;
   assert.match(getFrequencyExclusionSaveWarning("hp1", { Scope: "Always" }), /verwarmen \(stille uren\)/);
 });

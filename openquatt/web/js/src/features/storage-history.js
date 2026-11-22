@@ -1533,6 +1533,7 @@ import { t } from "../i18n/index.js";
       keys.forEach((key) => handled.add(key));
       const previous = getSettingsBackupValue(scope);
       const target = hasScope ? String(values[scope] ?? "").trim() : previous;
+      let scopeRestoreDetail = "";
 
       try {
         const expected = limitKeys.map((key) => Object.hasOwn(values, key)
@@ -1545,7 +1546,9 @@ import { t } from "../i18n/index.js";
           if (!hasScope && !await verifyEntityBackupValue(scope, previous)) {
             throw new Error(t("storageHistory.notConfirmed"));
           }
+          if (hasScope || previous !== "Off") scopeRestoreDetail = t("storageHistory.frequencyScopeUnconfirmed");
           await setVerifiedBackupValue(scope, "Off");
+          if (scopeRestoreDetail) scopeRestoreDetail = t("storageHistory.frequencyScopeOffAfterRestore");
           if (hasScope && target === "Off") applied.push(scope);
           for (const key of bounds) {
             await setVerifiedBackupValue(key, values[key]);
@@ -1560,18 +1563,20 @@ import { t } from "../i18n/index.js";
           }
         }
         if (!bounds.length || target !== "Off") {
+          scopeRestoreDetail = t("storageHistory.frequencyScopeUnconfirmed");
           await setVerifiedBackupValue(scope, target);
           if (hasScope) applied.push(scope);
         }
       } catch (error) {
+        if (!hasScope && scopeRestoreDetail) {
+          handled.add(scope);
+          keys.push(scope);
+        }
         const detail = String(error?.message || error);
         for (const key of keys.filter((key) => !applied.includes(key))) {
+          const fieldDetail = key === scope && scopeRestoreDetail ? `${detail} ${scopeRestoreDetail}` : detail;
           skipped.push(createSettingsBackupRestoreItem(key, backupSectionLabel(section),
-            t("storageHistory.writeFailed"), detail, "error"));
-        }
-        if (!hasScope && bounds.every((key) => applied.includes(key))) {
-          skipped.push(createSettingsBackupRestoreItem(scope, backupSectionLabel(section),
-            t("storageHistory.writeFailed"), detail, "error"));
+            t("storageHistory.writeFailed"), fieldDetail, "error"));
         }
       }
     }
