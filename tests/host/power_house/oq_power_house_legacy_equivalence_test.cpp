@@ -2,7 +2,7 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
+#include "openquatt/includes/control/oq_power_house_demand_logic.h"
 
 // Frozen copy of the baseline decide_demand implementation at 0282c2e9.
 // Keep this oracle independent of the implementation under test while the

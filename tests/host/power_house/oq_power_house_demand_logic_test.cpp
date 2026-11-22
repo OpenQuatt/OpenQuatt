@@ -2,7 +2,7 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
+#include "openquatt/includes/control/oq_power_house_demand_logic.h"
 
 namespace {
 using namespace oq_power_house;

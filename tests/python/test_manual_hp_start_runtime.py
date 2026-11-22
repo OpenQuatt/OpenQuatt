@@ -20,8 +20,8 @@ def method(source, name):
 def fixture_prefix(real_incidents=False):
     # Reuse peripheral declarations from the executable command-runtime fixture;
     # the command gate itself and the defrost permission remain production code.
-    host = (ROOT / "tests/host/oq_compressor_command_runtime_test.cpp").read_text()
-    prefix = host[:host.index("namespace {")].replace('../../openquatt/', 'openquatt/')
+    fixture = (ROOT / "tests/fixtures/compressor_command_runtime.h").read_text()
+    prefix = fixture.split("namespace compressor_command_fixture {", 1)[0].removeprefix("#pragma once\n\n")
     service = (ROOT / "components/openquatt_odu_defrost/OpenQuattOduDefrost.cpp").read_text()
     permission = re.search(r"bool OpenQuattOduDefrost::normal_write_allowed\(.*?\n}", service, re.S).group()
     permission = permission.replace("OpenQuattOduDefrost::", "")
@@ -32,10 +32,8 @@ def fixture_prefix(real_incidents=False):
   bool forced_write_pending_{};
   void clear_tx_queue_for_device() { ++queue_clear_calls; }
   void finish_profile_(bool) {}
-  void release() {}
   oq_defrost::Cycle cycle{};""")
     prefix = prefix.replace('#undef id', '')
-    prefix = '#include <cstdint>\nuint32_t millis();\n' + prefix
     if real_incidents:
         old = re.search(r"struct FakeIncidentManager \{.*?\n};", prefix, re.S).group()
         prefix = prefix.replace(old, """struct FakeIncidentManager {
@@ -49,16 +47,11 @@ def fixture_prefix(real_incidents=False):
     return boot[hp-1].update(now, abort || engines[hp-1].outputs().must_stop, safety, inputs, adopt);
   }
 };""")
-    else:
-        prefix = prefix.replace('struct FakeIncidentManager {', """#include "openquatt/includes/control/oq_hp_restart_guard.h"
-struct FakeIncidentManager {
-  oq_hp_restart_guard::Policy credit[2];
-  void invalidate_restart_credit(unsigned hp) { credit[hp-1].invalidate(); }""")
     return prefix
 
 
 def compile_run(test, unit, expected_success=True, duo=True):
-    args = compiler_command("-DOQ_TOPOLOGY_DUO=" + str(int(duo)), "-I", str(ROOT))
+    args = compiler_command("-DOQ_TOPOLOGY_DUO=" + str(int(duo)), "-I", str(ROOT), "-I", str(ROOT / "openquatt"))
     with tempfile.TemporaryDirectory(prefix="openquatt-manual-start-") as directory:
         source, binary = Path(directory) / "test.cpp", Path(directory) / "test"
         source.write_text(unit)
@@ -78,17 +71,10 @@ def compile_run(test, unit, expected_success=True, duo=True):
 class ManualHpStartRuntimeTest(unittest.TestCase):
     def unit(self):
         prefix = fixture_prefix()
-        prefix = prefix.replace('struct FakeSelect {', 'struct FakeSelect;\nstruct ModeCall { FakeSelect* target; std::string option; void set_option(const char* value) { option=value; } void perform(); };\nstruct FakeSelect {')
-        prefix = prefix.replace('  bool has_state() const { return present; }\n  const std::string&', '  bool has_state() const { return present; }\n  ModeCall make_call() { return {this, {}}; }\n  const std::string&')
         prefix += r'''
 #include <cstring>
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
 #define OQ_ACTUATOR_SECONDARY_ID(x) hp2_##x
-void ModeCall::perform() {
-  const bool hp1 = target == &hp1_set_working_mode;
-  const int value = option=="Heating" ? 2 : option=="Cooling" ? 1 : 0;
-  if (oq_command_runtime::guarded_write(hp1, 3999, value)) target->option=option;
-}
 struct Runtime {
 // METHODS
 };
@@ -100,8 +86,12 @@ int main() {
     if (!hp1) continue;
     #endif
     const unsigned index=hp1 ? 0 : 1;
-    auto& policy=oq_incident_manager.credit[index];
+    auto& policy=oq_incident_manager.restart_guards[index];
     auto& select=hp1 ? hp1_set_working_mode : hp2_set_working_mode;
+    select.control = [&select, hp1](const std::string& option) {
+      const int value = option == "Heating" ? 2 : option == "Cooling" ? 1 : 0;
+      if (oq_command_runtime::guarded_write(hp1, 3999, value)) select.option = option;
+    };
     auto& levels=hp1 ? hp1_compressor_level : hp2_compressor_level;
     auto& service=hp1 ? hp1_odu_defrost : hp2_odu_defrost;
     auto& revalidate=hp1 ? hp1_compressor_command_revalidation_required : hp2_compressor_command_revalidation_required;

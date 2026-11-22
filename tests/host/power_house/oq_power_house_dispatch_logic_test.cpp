@@ -4,10 +4,17 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../openquatt/includes/control/oq_boiler_dispatch_logic.h"
-#include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
-#include "../../openquatt/includes/control/oq_power_house_dispatch_logic.h"
-#include "../../openquatt/includes/control/oq_power_house_run_extension_logic.h"
+#include "openquatt/includes/control/oq_boiler_dispatch_logic.h"
+#include "openquatt/includes/control/oq_power_house_demand_logic.h"
+#include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
+#include "openquatt/includes/control/oq_power_house_run_extension_logic.h"
+
+#include "openquatt/includes/control/oq_compressor_frequency_runtime.h"
+#include "tests/fixtures/hp_generation_select.h"
+
+#define id(value) value
+#include "openquatt/includes/performance/hp_perf_frequency.h"
+#undef id
 
 namespace {
 using namespace oq_power_house_dispatch;
@@ -815,6 +822,55 @@ void test_duo_holds_and_boost() {
   assert(strcmp(request_reason_name(15), "oil_return_hold") == 0);
   assert(strcmp(request_reason_name(16), "ph_idle") == 0);
 }
+oq_odu::RuntimeFrequencySnapshot heating_snapshot(oq_odu::Variant variant, const std::array<float, 10>& frequencies) {
+  oq_odu::RuntimeFrequencySnapshot snapshot;
+  snapshot.variant = variant;
+  snapshot.heating.level_count = oq_odu::LEGACY_FREQUENCY_LEVEL_COUNT;
+  for (size_t i = 0; i < frequencies.size(); ++i) snapshot.heating.hz[i + 1] = static_cast<uint8_t>(frequencies[i]);
+  snapshot.heating.valid = oq_odu::validate_frequency_table(snapshot.heating);
+  assert(snapshot.heating.valid);
+  return snapshot;
+}
+
+void test_mixed_generations_dispatch_with_individual_frequency_limits() {
+  using namespace oq_power_house_dispatch;
+  const auto v1 = heating_snapshot(oq_odu::Variant::V1_5, oq_perf::V1_HEATING_FREQUENCIES_HZ);
+  const auto v2 = heating_snapshot(oq_odu::Variant::V2_OLD_MODEL, oq_perf::V2_HEATING_FREQUENCIES_HZ);
+  const oq_frequency_runtime::Context frequency{false, v1, v2, 72, {55, 61}, {26, 30}, v1.variant, v2.variant};
+  DispatchInput in{60000U, 9000.0f, true, true, true, {}, {}};
+  for (bool hp1 : {true, false}) {
+    auto& pump = hp1 ? in.hp1 : in.hp2;
+    pump.candidate.available_for_start = true;
+    for (int level = 1; level <= kMaxLevel; ++level) {
+      const auto prediction =
+          oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level, 2.0f, 35.0f);
+      const auto& values = prediction.performance;
+      pump.levels[level] = {prediction.frequency_policy_allowed,
+                            std::isfinite(values.pth_w),
+                            std::isfinite(values.pel_w),
+                            values.pth_w,
+                            values.pel_w,
+                            static_cast<uint8_t>(prediction.runtime_frequency_hz)};
+    }
+  }
+  assert(frequency.automatic_frequency_hz(true, 2, 1) == 30);
+  assert(frequency.automatic_frequency_hz(false, 2, 1) == 20);
+  assert(!in.hp1.levels[4].allowed && in.hp2.levels[4].allowed);
+  assert(in.hp1.levels[2].allowed && !in.hp2.levels[2].allowed);
+
+  const DispatchTuning tuning{4000.0f, 4000.0f};
+  const auto best_single = pick_topology(in, tuning, in.requested_w, 1, 0.0f);
+  assert(best_single.valid && best_single.thermal_w + tuning.topology_heat_advantage_w < in.requested_w);
+  const auto out = decide_dispatch(in, tuning, {});
+  assert(out.output_valid && !out.saturated && out.hp1_level > 0 && out.hp2_level > 0);
+  const auto& hp1 = in.hp1.levels[out.hp1_level];
+  const auto& hp2 = in.hp2.levels[out.hp2_level];
+  assert(hp1.allowed && hp2.allowed);
+  assert(out.expected_w == hp1.thermal_w + hp2.thermal_w);
+  assert(std::fabs(out.expected_w - in.requested_w) <= in.requested_w * 0.05f);
+  assert(hp1.electrical_w + hp2.electrical_w <= tuning.peak_limit_w);
+}
+
 }  // namespace
 int main() {
   test_cold_weather_request_reaches_dispatch_and_deficit();
@@ -824,6 +880,7 @@ int main() {
   test_timing_and_matrix();
   test_performance_supply_fallback();
   test_single_and_failures();
+  test_mixed_generations_dispatch_with_individual_frequency_limits();
   test_duo_daily_demand_profile();
   test_runtime_lead_changes_between_heating_cycles();
   test_duo_waits_for_minimum_off_after_demand_rebound();
