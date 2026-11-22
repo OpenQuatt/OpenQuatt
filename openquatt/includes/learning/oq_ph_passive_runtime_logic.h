@@ -578,6 +578,14 @@ inline PassiveRuntimeSummary passive_runtime_summary(const PassiveRuntimeStorage
   return summary;
 }
 
+// The forecast adapter validates the current dynamic snapshot separately. A
+// held daily observation during compressor rundown need not hide a ready model.
+inline bool forecast_model_ready(const PassiveRuntimeSummary& summary, const PassiveTickInput& tick) {
+  return summary.thermal_model_ready || (summary.initialized && !summary.blocked && summary.opted_in &&
+                                         summary.thermal.ready && tick.active_line_valid && tick.may_bridge_daily_gap &&
+                                         tick.batch_source_status == SnapshotSourceStatus::INCONSISTENT_ACTIVITY);
+}
+
 }  // namespace oq_power_house::learning
 
 #endif  // OQ_PH_LEARNING_CORE_AVAILABLE

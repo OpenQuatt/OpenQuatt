@@ -648,7 +648,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     observation.room_c = snapshot.room_c;
     observation.outside_c = snapshot.outside_c;
     observation.heat_w = snapshot.heat_to_water_w;
-    observation.model_ready = state.summary.thermal_model_ready;
+    observation.model_ready = forecast_model_ready(state.summary, tick);
     observation.model_samples = state.summary.thermal.accepted_samples;
     observation.h_w_per_k = state.summary.thermal.heat_loss_w_per_k;
     observation.c_wh_per_k = state.summary.thermal.thermal_capacity_wh_per_k;

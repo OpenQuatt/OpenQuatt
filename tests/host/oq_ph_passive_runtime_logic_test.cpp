@@ -399,6 +399,33 @@ void test_summary_never_exposes_readiness_without_live_valid_context() {
   assert(!summary.batch_advice_ready && !summary.thermal_model_ready && !summary.cross_validated_advice_ready);
 }
 
+void test_forecast_can_use_ready_model_during_daily_stop_hold() {
+  PassiveRuntimeSummary summary;
+  summary.initialized = summary.opted_in = summary.thermal.ready = true;
+  auto input = tick(1000, 20000U * 86400U);
+  input.may_bridge_daily_gap = true;
+  input.batch_source_status = SnapshotSourceStatus::INCONSISTENT_ACTIVITY;
+  assert(!summary.batch_advice_ready && forecast_model_ready(summary, input));
+
+  input.batch_source_status = SnapshotSourceStatus::SOURCE_STALE;
+  assert(!forecast_model_ready(summary, input));
+  input.batch_source_status = SnapshotSourceStatus::INCONSISTENT_ACTIVITY;
+  input.may_bridge_daily_gap = false;
+  assert(!forecast_model_ready(summary, input));
+  input.may_bridge_daily_gap = true;
+  input.active_line_valid = false;
+  assert(!forecast_model_ready(summary, input));
+  input.active_line_valid = true;
+  summary.thermal.ready = false;
+  assert(!forecast_model_ready(summary, input));
+  summary.thermal.ready = true;
+  summary.opted_in = false;
+  assert(!forecast_model_ready(summary, input));
+  summary.opted_in = true;
+  summary.blocked = true;
+  assert(!forecast_model_ready(summary, input));
+}
+
 void test_manual_line_outside_thermal_bounds_does_not_block_initialization() {
   PassiveRuntimeConfig config;
   // All three values are valid user-facing settings; H=3000 is above RLS bounds.
@@ -493,4 +520,5 @@ int main() {
   test_active_line_change_revokes_bound_fit_result();
   test_missing_utc_pauses_without_blocking_owner();
   test_summary_never_exposes_readiness_without_live_valid_context();
+  test_forecast_can_use_ready_model_during_daily_stop_hold();
 }
