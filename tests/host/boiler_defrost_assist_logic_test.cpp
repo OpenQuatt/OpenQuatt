@@ -440,6 +440,314 @@ void test_duration_survives_millis_wraparound() {
   assert(out.expired_now);
 }
 
+// Flame confirmation. With feedback from the heat source (OpenTherm) the
+// session raises its target until the source actually fires. The cases use the
+// recorded night of 22 November: supply reference 31.4 C, boiler water 31.0 C.
+constexpr Config kFlame{900000UL, 3.0f, 10000UL, 60000UL, 120000UL, 60000UL, 300000UL, 45000UL, 2.0f, 30000UL, 20000UL};
+
+bool near(float value, float expected) { return fabsf(value - expected) < 0.01f; }
+
+struct Source {
+  State state;
+  uint32_t now_ms = 0;
+  uint32_t session_start_ms = 0;
+  bool in_session = false;
+  int raises = 0;
+  int confirmations = 0;
+  int ceiling_reports = 0;
+  uint32_t last_raise_ms = 0;
+  uint32_t confirmed_ms = 0;
+  float target_c = NAN;
+  // Inputs the supervisory derives from the transport.
+  bool enabled = true;
+  bool feedback = true;
+  bool applied = true;
+  bool dhw = false;
+  float boiler_water_c = 31.0f;
+  float ceiling_c = 42.0f;
+  float supply_c = 31.4f;
+
+  Output step(bool defrost, bool firing) {
+    now_ms += 5000U;
+    Input in = heating(now_ms, supply_c, defrost);
+    in.enabled = enabled;
+    in.feedback_available = feedback;
+    in.command_applied = applied;
+    in.firing = firing;
+    in.dhw_active = dhw;
+    in.boiler_water_c = boiler_water_c;
+    in.target_ceiling_c = ceiling_c;
+    const Output out = oq_boiler_defrost_assist::update(in, state, kFlame);
+    if (out.started) {
+      session_start_ms = now_ms;
+      in_session = true;
+    }
+    if (out.released) in_session = false;
+    if (out.raised) {
+      ++raises;
+      last_raise_ms = now_ms;
+    }
+    if (out.flame_confirmed_now) {
+      ++confirmations;
+      confirmed_ms = now_ms;
+    }
+    if (out.ceiling_reached_now) ++ceiling_reports;
+    target_c = out.target_c;
+    state = out.state;
+    return out;
+  }
+
+  // Learns the reference and runs the defrost report until the session starts.
+  void start_session() {
+    step(false, false);
+    while (!in_session) step(true, false);
+    assert(near(target_c, 34.4f));
+  }
+
+  // A source that enables its elements below "setpoint minus hysteresis", like
+  // the recorded e-boiler (P02).
+  bool fires_below(float hysteresis_c) const { return in_session && target_c - hysteresis_c > boiler_water_c; }
+};
+
+void test_recorded_ecv_starts_after_one_step() {
+  Source source;
+  source.start_session();
+  for (int tick = 0; tick < 60; ++tick) source.step(true, source.fires_below(5.0f));
+  assert(source.raises == 1);
+  assert(source.last_raise_ms - source.session_start_ms == 45000U);
+  assert(source.confirmations == 1);
+  assert(source.confirmed_ms - source.session_start_ms <= 50000U);
+  // The target stays where the source started, for the rest of the session.
+  assert(near(source.target_c, 36.4f));
+  assert(source.state.flame_confirmed);
+}
+
+void test_factory_hysteresis_needs_three_steps() {
+  Source source;
+  source.start_session();
+  for (int tick = 0; tick < 60; ++tick) source.step(true, source.fires_below(8.0f));
+  assert(source.raises == 3);
+  assert(near(source.target_c, 40.4f));
+  assert(source.confirmations == 1);
+  assert(source.confirmed_ms - source.session_start_ms <= 110000U);
+}
+
+void test_source_that_ignites_in_time_is_not_raised() {
+  Source source;
+  source.start_session();
+  for (int tick = 0; tick < 60; ++tick) source.step(true, source.now_ms - source.session_start_ms >= 30000U);
+  assert(source.raises == 0);
+  assert(source.confirmations == 1);
+  assert(near(source.target_c, 34.4f));
+}
+
+void test_blocked_command_is_never_raised() {
+  // The boiler chain did not apply the command (start guard, minimum off-time,
+  // inhibit). No flame then says nothing about the target.
+  Source source;
+  source.applied = false;
+  source.start_session();
+  for (int tick = 0; tick < 120; ++tick) source.step(true, false);
+  assert(source.raises == 0);
+  assert(source.ceiling_reports == 0);
+  assert(near(source.target_c, 34.4f));
+}
+
+void test_dhw_pauses_search_and_flame_does_not_count() {
+  Source source;
+  source.start_session();
+  source.dhw = true;
+  for (int tick = 0; tick < 24; ++tick) source.step(true, true);
+  assert(source.raises == 0);
+  assert(source.confirmations == 0);
+  assert(!source.state.flame_confirmed);
+  source.dhw = false;
+  const uint32_t dhw_end_ms = source.now_ms;
+  for (int tick = 0; tick < 8; ++tick) source.step(true, false);
+  assert(source.raises == 0);
+  source.step(true, false);
+  source.step(true, false);
+  assert(source.raises == 1);
+  assert(source.last_raise_ms - dhw_end_ms >= 45000U);
+}
+
+// Runs the recorded e-boiler until it fires at 36.4 C.
+Source confirmed_source() {
+  Source source;
+  source.start_session();
+  while (source.confirmations == 0) source.step(true, source.fires_below(5.0f));
+  assert(source.raises == 1);
+  assert(near(source.target_c, 36.4f));
+  return source;
+}
+
+void test_flame_loss_below_target_gets_one_extra_step() {
+  Source source = confirmed_source();
+  source.boiler_water_c = 33.0f;
+  const uint32_t lost_ms = source.now_ms;
+  for (int tick = 0; tick < 60; ++tick) source.step(true, false);
+  assert(source.raises == 2);
+  assert(source.last_raise_ms - lost_ms >= 20000U);
+  assert(source.last_raise_ms - lost_ms <= 25000U);
+  assert(near(source.target_c, 38.4f));
+  assert(source.ceiling_reports == 0);
+}
+
+void test_flame_loss_when_satisfied_is_not_raised() {
+  Source source = confirmed_source();
+  source.boiler_water_c = 37.0f;
+  for (int tick = 0; tick < 60; ++tick) source.step(true, false);
+  assert(source.raises == 1);
+  assert(near(source.target_c, 36.4f));
+}
+
+void test_satisfied_uses_supply_without_boiler_water() {
+  Source source = confirmed_source();
+  source.boiler_water_c = NAN;
+  source.supply_c = 37.0f;
+  for (int tick = 0; tick < 60; ++tick) source.step(true, false);
+  assert(source.raises == 1);
+  assert(near(source.target_c, 36.4f));
+}
+
+void test_target_never_exceeds_ceiling() {
+  Source source;
+  source.ceiling_c = 37.0f;
+  source.start_session();
+  for (int tick = 0; tick < 60; ++tick) {
+    source.step(true, false);
+    assert(source.target_c <= 37.0f);
+  }
+  assert(source.raises == 2);
+  assert(near(source.target_c, 37.0f));
+  assert(source.ceiling_reports == 1);
+  // The command stays until the session ends the normal way.
+  assert(source.in_session);
+  for (int tick = 0; tick < 20; ++tick) source.step(false, false);
+  assert(!source.in_session);
+}
+
+void test_ceiling_below_base_target_caps_without_raising() {
+  Source source;
+  source.ceiling_c = 33.0f;
+  source.step(false, false);
+  while (!source.in_session) source.step(true, false);
+  for (int tick = 0; tick < 60; ++tick) {
+    source.step(true, false);
+    assert(near(source.target_c, 33.0f));
+  }
+  assert(source.raises == 0);
+  assert(source.ceiling_reports == 1);
+}
+
+void test_no_ceiling_means_no_raise() {
+  Source source;
+  source.ceiling_c = NAN;
+  source.start_session();
+  for (int tick = 0; tick < 60; ++tick) source.step(true, false);
+  assert(source.raises == 0);
+  assert(near(source.target_c, 34.4f));
+}
+
+void test_without_feedback_behaves_like_before() {
+  // R1, or OpenTherm telemetry that is not fresh: nothing but the old target.
+  Source source;
+  source.feedback = false;
+  Run plain;
+  plain.step(false, 31.4f);
+  source.step(false, false);
+  for (int tick = 0; tick < 200; ++tick) {
+    const bool defrost = tick < 100;
+    const Output old_out = plain.step(defrost, 31.4f);
+    const Output new_out = source.step(defrost, tick % 3 == 0);
+    assert(old_out.requested == new_out.requested);
+    assert(old_out.started == new_out.started);
+    assert(old_out.released == new_out.released);
+    assert((isnan(old_out.target_c) && isnan(new_out.target_c)) || old_out.target_c == new_out.target_c);
+  }
+  assert(source.raises == 0);
+  assert(source.confirmations == 0);
+}
+
+void test_feedback_lost_keeps_raised_target() {
+  Source source;
+  source.start_session();
+  while (source.raises == 0) source.step(true, false);
+  assert(near(source.target_c, 36.4f));
+  source.feedback = false;
+  for (int tick = 0; tick < 60; ++tick) {
+    source.step(true, false);
+    assert(near(source.target_c, 36.4f));
+  }
+  assert(source.raises == 1);
+}
+
+void test_flickering_flame_is_bounded() {
+  Source source;
+  source.start_session();
+  for (int tick = 0; tick < 120; ++tick) source.step(true, tick % 2 == 0);
+  assert(source.confirmations == 1);
+  assert(source.raises <= 2);
+}
+
+void test_wait_survives_millis_rollover() {
+  Source source;
+  source.now_ms = UINT32_MAX - 40000U;
+  source.start_session();
+  const uint32_t start_ms = source.session_start_ms;
+  while (source.raises == 0) {
+    source.step(true, false);
+    assert(static_cast<uint32_t>(source.now_ms - start_ms) <= 45000U);
+  }
+  assert(static_cast<uint32_t>(source.last_raise_ms - start_ms) == 45000U);
+  assert(source.now_ms < start_ms);
+}
+
+void test_raise_is_cleared_at_session_end() {
+  Source source = confirmed_source();
+  while (source.in_session) source.step(false, false);
+  assert(source.state.raise_c == 0.0f);
+  assert(!source.state.flame_confirmed);
+  assert(!source.state.extra_step_used);
+  // A later session searches again from its own base target.
+  for (int tick = 0; tick < 80; ++tick) source.step(false, false);
+  while (!source.in_session) source.step(true, false);
+  assert(near(source.target_c, 34.4f));
+}
+
+void test_unusable_step_never_raises() {
+  for (const float step_c : {0.0f, -2.0f, NAN, INFINITY}) {
+    Config config = kFlame;
+    config.raise_step_c = step_c;
+    State state;
+    uint32_t now_ms = 0;
+    bool raised = false;
+    for (int tick = 0; tick < 80; ++tick) {
+      now_ms += 5000U;
+      Input in = heating(now_ms, 31.4f, tick > 0);
+      in.feedback_available = true;
+      in.command_applied = true;
+      in.boiler_water_c = 31.0f;
+      in.target_ceiling_c = 42.0f;
+      const Output out = oq_boiler_defrost_assist::update(in, state, config);
+      raised = raised || out.raised;
+      state = out.state;
+    }
+    assert(!raised);
+  }
+}
+
+void test_disabled_never_raises() {
+  Source source;
+  source.enabled = false;
+  source.step(false, false);
+  for (int tick = 0; tick < 60; ++tick) {
+    const Output out = source.step(true, false);
+    assert(!out.requested);
+  }
+  assert(source.raises == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -466,5 +774,23 @@ int main() {
   test_running_session_keeps_its_target_while_the_boiler_heats();
   test_maximum_duration_releases_until_the_defrost_clears();
   test_duration_survives_millis_wraparound();
+  test_recorded_ecv_starts_after_one_step();
+  test_factory_hysteresis_needs_three_steps();
+  test_source_that_ignites_in_time_is_not_raised();
+  test_blocked_command_is_never_raised();
+  test_dhw_pauses_search_and_flame_does_not_count();
+  test_flame_loss_below_target_gets_one_extra_step();
+  test_flame_loss_when_satisfied_is_not_raised();
+  test_satisfied_uses_supply_without_boiler_water();
+  test_target_never_exceeds_ceiling();
+  test_ceiling_below_base_target_caps_without_raising();
+  test_no_ceiling_means_no_raise();
+  test_without_feedback_behaves_like_before();
+  test_feedback_lost_keeps_raised_target();
+  test_flickering_flame_is_bounded();
+  test_wait_survives_millis_rollover();
+  test_raise_is_cleared_at_session_end();
+  test_unusable_step_never_raises();
+  test_disabled_never_raises();
   return 0;
 }

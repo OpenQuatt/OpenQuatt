@@ -30,6 +30,14 @@ namespace oq_boiler_defrost_assist {
 // firmware the reference settle time after boiler heat stretches the gap
 // further. The release time also carries a session across a short gap between
 // two outdoor units that defrost one after the other.
+//
+// A target alone does not make a heat source fire: every boiler decides for
+// itself below which water temperature it starts, and that offset is not known
+// from outside. Where the transport reports whether the source fires
+// (OpenTherm), the session therefore confirms the flame. It starts at the low
+// target and raises it in steps for as long as the source does not fire, never
+// above the ceiling the dispatcher applies. Without that feedback (R1) the
+// target stays at the reference plus margin.
 struct Config {
   // Hard bound on one assist session. A defrost that is still reported after
   // this time (for example a stale flag) releases the boiler.
@@ -51,6 +59,16 @@ struct Config {
   // After the boiler last heated, the supply must settle this long before it
   // can be a reference again.
   uint32_t reference_settle_ms = 300000UL;
+  // Time an applied command gets before the first raise. A gas boiler needs
+  // this to purge and ignite.
+  uint32_t ignition_wait_ms = 45000UL;
+  // One raise of the target while the source does not fire.
+  float raise_step_c = 2.0f;
+  // Time between two raises while searching.
+  uint32_t raise_interval_ms = 30000UL;
+  // After a confirmed flame, the flame must be gone this long before the one
+  // extra raise.
+  uint32_t flame_loss_confirm_ms = 20000UL;
 };
 
 struct State {
@@ -74,6 +92,15 @@ struct State {
   float reference_supply_c = NAN;
   // Reference plus margin, latched at the start of the active session.
   float target_c = NAN;
+  // Raise above that base target, for this session only.
+  float raise_c = 0.0f;
+  bool flame_confirmed = false;
+  // After a confirmed flame the target is raised once more at most, so the
+  // source's own anti-cycle time cannot drive the target to the ceiling.
+  bool extra_step_used = false;
+  bool wait_timing = false;
+  uint32_t wait_since_ms = 0;
+  bool ceiling_reported = false;
 };
 
 struct Input {
@@ -92,6 +119,18 @@ struct Input {
   // The boiler may be heating: a control mode that owns it (normal assist,
   // cold start, this assist, fallback) or an active boiler output.
   bool boiler_heat_active = false;
+  // The transport reports whether the source fires, and that report is fresh.
+  bool feedback_available = false;
+  // The boiler chain has actually switched heating on for this session. While
+  // it has not (start guard, minimum off-time, inhibit), a missing flame says
+  // nothing about the target.
+  bool command_applied = false;
+  // The source fires. A flame for domestic hot water does not count.
+  bool firing = false;
+  bool dhw_active = false;
+  float boiler_water_c = NAN;
+  // Highest target the dispatcher lets through.
+  float target_ceiling_c = NAN;
 };
 
 struct Output {
@@ -101,6 +140,10 @@ struct Output {
   bool started = false;
   bool released = false;
   bool expired_now = false;
+  bool raised = false;
+  bool flame_confirmed_now = false;
+  // The ceiling was reached and the source still does not fire. Reported once.
+  bool ceiling_reached_now = false;
 };
 
 inline bool reference_usable(float reference_c) { return isfinite(reference_c) && reference_c > 0.0f; }
@@ -110,6 +153,75 @@ inline float usable_margin(float margin_c) { return isfinite(margin_c) && margin
 
 inline bool elapsed(uint32_t now_ms, uint32_t since_ms, uint32_t duration_ms) {
   return static_cast<uint32_t>(now_ms - since_ms) >= duration_ms;
+}
+
+// An unusable step never raises the target.
+inline float usable_step(float step_c) { return isfinite(step_c) && step_c > 0.0f ? step_c : 0.0f; }
+
+// Base target plus raise, kept at or below a known ceiling.
+inline float effective_target(const State& state, float ceiling_c) {
+  const float target_c = state.target_c + state.raise_c;
+  return isfinite(ceiling_c) && target_c > ceiling_c ? ceiling_c : target_c;
+}
+
+// Raises the session target while the source demonstrably does not fire.
+inline void confirm_flame(const Input& input, State& state, Output& output, const Config& config) {
+  const float step_c = usable_step(config.raise_step_c);
+  if (input.feedback_available && input.firing && !input.dhw_active) {
+    if (!state.flame_confirmed) {
+      state.flame_confirmed = true;
+      output.flame_confirmed_now = true;
+    }
+    state.wait_timing = false;
+    return;
+  }
+  // Only an applied command that the source ignores is a reason to raise.
+  // Without feedback, during hot water, or without a ceiling to stay under,
+  // the target reached so far simply stands.
+  if (!input.feedback_available || !input.command_applied || input.dhw_active || !isfinite(input.target_ceiling_c) ||
+      step_c <= 0.0f) {
+    state.wait_timing = false;
+    return;
+  }
+  const bool at_ceiling = state.target_c + state.raise_c >= input.target_ceiling_c;
+  const auto raise = [&]() {
+    const float room_c = input.target_ceiling_c - state.target_c - state.raise_c;
+    state.raise_c += step_c < room_c ? step_c : room_c;
+    output.raised = true;
+  };
+  if (!state.flame_confirmed) {
+    if (!state.wait_timing) {
+      state.wait_timing = true;
+      state.wait_since_ms = input.now_ms;
+    }
+    const uint32_t wait_ms = state.raise_c > 0.0f ? config.raise_interval_ms : config.ignition_wait_ms;
+    if (!elapsed(input.now_ms, state.wait_since_ms, wait_ms)) return;
+    state.wait_since_ms = input.now_ms;
+    if (!at_ceiling) {
+      raise();
+    } else if (!state.ceiling_reported) {
+      state.ceiling_reported = true;
+      output.ceiling_reached_now = true;
+    }
+    return;
+  }
+  // The source fired earlier in this session and stopped. A source that
+  // reached its target is satisfied; one that sits below it gets one more
+  // step. An unknown temperature is never a reason to raise.
+  const float observed_c = isfinite(input.boiler_water_c) ? input.boiler_water_c : input.supply_c;
+  const bool below_target = isfinite(observed_c) && observed_c < effective_target(state, input.target_ceiling_c);
+  if (state.extra_step_used || !below_target) {
+    state.wait_timing = false;
+    return;
+  }
+  if (!state.wait_timing) {
+    state.wait_timing = true;
+    state.wait_since_ms = input.now_ms;
+  }
+  if (!elapsed(input.now_ms, state.wait_since_ms, config.flame_loss_confirm_ms)) return;
+  state.extra_step_used = true;
+  state.wait_timing = false;
+  if (!at_ceiling) raise();
 }
 
 inline Output update(const Input& input, State state, const Config& config = {}) {
@@ -181,10 +293,19 @@ inline Output update(const Input& input, State state, const Config& config = {})
     state.reference_supply_c = input.supply_c;
   }
 
-  if (!state.active) state.target_c = NAN;
+  if (state.active) {
+    confirm_flame(input, state, output, config);
+  } else {
+    state.target_c = NAN;
+    state.raise_c = 0.0f;
+    state.flame_confirmed = false;
+    state.extra_step_used = false;
+    state.wait_timing = false;
+    state.ceiling_reported = false;
+  }
   output.released = was_active && !state.active;
   output.requested = state.active;
-  output.target_c = state.target_c;
+  output.target_c = state.active ? effective_target(state, input.target_ceiling_c) : NAN;
   output.state = state;
   return output;
 }
