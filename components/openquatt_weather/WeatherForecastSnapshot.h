@@ -49,7 +49,9 @@ inline void age_forecast_snapshot(ForecastSnapshot& snapshot, uint64_t now_ms) {
     snapshot.current_wind.valid = false;
     snapshot.current_wind.direction_valid = false;
     snapshot.now_epoch = 0;
-    invalidate_scenario(snapshot.scenario, ScenarioReason::SNAPSHOT_STALE);
+    invalidate_scenario(snapshot.scenario, fresh && snapshot.scenario.reason == ScenarioReason::CLOCK_INVALID
+                                               ? ScenarioReason::CLOCK_INVALID
+                                               : ScenarioReason::SNAPSHOT_STALE);
     return;
   }
   snapshot.now_epoch = static_cast<uint32_t>(epoch);

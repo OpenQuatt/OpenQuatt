@@ -12,6 +12,9 @@ constexpr uint32_t kIssueIntervalS = 900;
 constexpr size_t kForcingSteps = 12;
 constexpr size_t kPendingSlots = 13;
 constexpr uint64_t kMaxSampleGapMs = 30000;
+constexpr uint64_t kObservationFreshMs = 15000;
+
+enum class InputIssue : uint8_t { NONE, DEFROST, ROOM_TEMPERATURE, OUTSIDE_TEMPERATURE, SETPOINT, HEAT_OUTPUT };
 
 struct Observation {
   uint64_t monotonic_ms = 0;
@@ -19,6 +22,8 @@ struct Observation {
   bool valid = false, model_ready = false;
   double room_c = NAN, outside_c = NAN, heat_w = NAN;
   double h_w_per_k = NAN, c_wh_per_k = NAN;
+  bool defrost_active = false, model_reusable = false;
+  InputIssue missing_input = InputIssue::NONE;
 };
 
 inline bool valid_observation(const Observation& o) {
@@ -31,6 +36,62 @@ inline bool valid_model(const Observation& o) {
   return o.model_ready && o.model_samples > 0 && std::isfinite(o.h_w_per_k) && o.h_w_per_k >= 20 &&
          o.h_w_per_k <= 1500 && std::isfinite(o.c_wh_per_k) && o.c_wh_per_k >= 500 && o.c_wh_per_k <= 100000;
 }
+
+struct DefrostForecastRecovery {
+  uint64_t last_defrost_ms = 0;
+  uint64_t pending_defrost_ms = 0;
+  uint64_t held_observation_ms = 0;
+  uint32_t held_observation_epoch = 0;
+  uint32_t model_samples = 0;
+  bool holding_issue = false;
+
+  // Keep the frozen issue while readings are interrupted. Once valid inputs
+  // return, permit only the same qualified model to compute a fresh scenario.
+  void update(Observation& observation, bool same_context, const Observation& previous) {
+    holding_issue = false;
+    if (!same_context || observation.model_ready) {
+      *this = {};
+      return;
+    }
+    const bool current_valid = valid_observation(observation);
+    const bool previous_valid = valid_observation(previous);
+    if (!current_valid && previous_valid && valid_model(previous)) {
+      // A mode or valve reading can invalidate the observation before the
+      // independently polled defrost flag arrives. Keep the issue private.
+      *this = {};
+      pending_defrost_ms = previous.monotonic_ms;
+      model_samples = previous.model_samples;
+    }
+    if (last_defrost_ms == 0) {
+      if (current_valid || !pending_defrost_ms || observation.monotonic_ms < pending_defrost_ms ||
+          observation.monotonic_ms - pending_defrost_ms > kMaxSampleGapMs) {
+        *this = {};
+        return;
+      }
+      if (!observation.defrost_active) return;
+      pending_defrost_ms = 0;
+    }
+    if (observation.defrost_active) last_defrost_ms = observation.monotonic_ms;
+    const bool settling =
+        observation.monotonic_ms >= last_defrost_ms && observation.monotonic_ms - last_defrost_ms <= 120000U;
+    if (current_valid) {
+      if (observation.model_reusable && observation.model_samples == model_samples && (previous_valid || settling))
+        observation.model_ready = true;
+      else
+        *this = {};
+      return;
+    }
+    // Valve and mode receipts can settle after the defrost flag drops. A
+    // different interruption after valid observations resumed ends this hold.
+    holding_issue = observation.defrost_active || (!previous_valid && settling);
+    if (holding_issue) {
+      held_observation_ms = observation.monotonic_ms;
+      held_observation_epoch = observation.epoch;
+    } else {
+      *this = {};
+    }
+  }
+};
 
 // Exact 1R1C transition for constant inputs. No T0 correction is added: the
 // dynamic learner fits Q - H*(Ti-To), independently of the structural house line.
@@ -77,6 +138,8 @@ struct State {
   uint32_t last_model_samples = 0;
   double latest[kHorizons]{NAN, NAN, NAN};
   const char* status = "waiting_for_observation";
+  uint64_t input_issue_ms = 0;
+  InputIssue input_issue = InputIssue::NONE;
 };
 
 inline void discard_pending(State& state) {
@@ -85,6 +148,8 @@ inline void discard_pending(State& state) {
     ticket.active = false;
   }
   state.previous = {};
+  state.input_issue_ms = 0;
+  state.input_issue = InputIssue::NONE;
   state.last_issue_ms = 0;
   state.latest_issue_epoch = 0;
   for (auto& value : state.latest) value = NAN;
@@ -97,12 +162,22 @@ inline double ticket_weather(const Ticket& t, double elapsed_s) {
   return t.weather[i] + (step - i) * (t.weather[i + 1] - t.weather[i]);
 }
 
+inline InputIssue current_input_issue(const State& state, uint64_t now_ms) {
+  return state.input_issue_ms && now_ms >= state.input_issue_ms && now_ms - state.input_issue_ms <= kObservationFreshMs
+             ? state.input_issue
+             : InputIssue::NONE;
+}
+
 inline void observe(State& state, const Observation& observation) {
   if (!valid_observation(observation)) {
     discard_pending(state);
+    state.input_issue_ms = observation.monotonic_ms;
+    state.input_issue = observation.defrost_active ? InputIssue::DEFROST : observation.missing_input;
     state.status = "invalid_observation";
     return;
   }
+  state.input_issue_ms = 0;
+  state.input_issue = InputIssue::NONE;
   if (state.context != observation.context) {
     discard_pending(state);
     for (auto& errors : state.errors) errors = {};
