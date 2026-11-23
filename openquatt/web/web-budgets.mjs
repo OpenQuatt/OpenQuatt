@@ -91,7 +91,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Quiet mode selector in installation settings: +336 B raw / +125 B gzip (Node 24.14.1).
     // Scheduled per-unit exclusions and frequency preview: +5,913 B raw / +2,250 B gzip versus dev (Node 24.14.1).
     // Clearer exclusion summaries and restore feedback: +1,082 B raw / +180 B gzip (Node 24.14.1).
-    raw: 1_516_326,
+    // Compressor frequency demand in both overview modes: +376 B raw / +114 B gzip (Node 24.14.1).
+    raw: 1_516_702,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -123,5 +124,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // Responsive ODU identity rows and detection status: +531 B raw versus dev 7536e6bc.
   // Measurement archive layout: +1,162 B raw / +239 B gzip versus dev f0da4507.
   // Frequency exclusion summaries span the card width: +67 B raw.
-  { file: "css/openquatt-app.css", raw: 230_729, gzipBaselineCeiling: 44_985 },
+  // Compact compressor frequency demand: +77 B raw / +9 B gzip (Node 24.14.1).
+  { file: "css/openquatt-app.css", raw: 230_806, gzipBaselineCeiling: 44_985 },
 ];
