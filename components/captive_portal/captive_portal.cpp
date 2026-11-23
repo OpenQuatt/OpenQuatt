@@ -115,10 +115,10 @@ void CaptivePortal::start() {
   ESP_LOGV(TAG, "Captive portal started");
 }
 
-// The portal may start before the web server registers its routes, so its GET
-// catch-all can sit in front of the web app. Only a positive match with a
-// current Ethernet address bypasses the portal; every lookup failure keeps the
-// portal, so the fallback AP never depends on this check.
+// The root router asks canHandle() before claiming "/", so this check keeps both
+// the router and the GET catch-all away from Ethernet, whatever the setup order.
+// Only a positive match with a current Ethernet address bypasses the portal;
+// every lookup failure keeps the portal, so the fallback AP never depends on it.
 bool CaptivePortal::request_targets_ethernet_(AsyncWebServerRequest* request) {
 #if defined(USE_ESP32) && defined(USE_ETHERNET)
   auto* ethernet = ethernet::global_eth_component;

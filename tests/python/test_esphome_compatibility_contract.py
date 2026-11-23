@@ -75,7 +75,7 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertIn('== "/";', CAPTIVE_PORTAL_ROUTER_CPP)
 
     def test_captive_portal_leaves_ethernet_requests_to_web_server(self) -> None:
-        # The portal can register before the web server, so its catch-all itself must skip Ethernet.
+        # The root router follows portal->canHandle(), so the portal itself must skip Ethernet.
         self.assertIn("&& !request_targets_ethernet_(request);", CAPTIVE_PORTAL_HEADER)
         helper = CAPTIVE_PORTAL_CPP.split("bool CaptivePortal::request_targets_ethernet_(", 1)[1].split(
             "\nvoid CaptivePortal::handleRequest(", 1
