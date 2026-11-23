@@ -10,6 +10,10 @@
 #include "esphome/components/provisioning/provisioning.h"
 #endif
 #include "captive_index.h"
+#if defined(USE_ESP32) && defined(USE_ETHERNET)
+#include <lwip/sockets.h>
+#include "esphome/components/ethernet/ethernet_component.h"
+#endif
 
 namespace esphome::captive_portal {
 
@@ -109,6 +113,46 @@ void CaptivePortal::start() {
   this->enable_loop();
 
   ESP_LOGV(TAG, "Captive portal started");
+}
+
+// The portal may start before the web server registers its routes, so its GET
+// catch-all can sit in front of the web app. Only a positive match with a
+// current Ethernet address bypasses the portal; every lookup failure keeps the
+// portal, so the fallback AP never depends on this check.
+bool CaptivePortal::request_targets_ethernet_(AsyncWebServerRequest* request) {
+#if defined(USE_ESP32) && defined(USE_ETHERNET)
+  auto* ethernet = ethernet::global_eth_component;
+  if (ethernet == nullptr) {
+    return false;
+  }
+
+  httpd_req_t* raw_request = *request;
+  const int socket_fd = httpd_req_to_sockfd(raw_request);
+  struct sockaddr_storage local_address{};
+  socklen_t address_length = sizeof(local_address);
+  if (socket_fd < 0 ||
+      getsockname(socket_fd, reinterpret_cast<struct sockaddr*>(&local_address), &address_length) != 0) {
+    ESP_LOGW(TAG, "Local request address unavailable; keeping captive portal");
+    return false;
+  }
+  if (local_address.ss_family != AF_INET) {
+    return false;
+  }
+
+  const uint32_t local_ipv4 = reinterpret_cast<const struct sockaddr_in*>(&local_address)->sin_addr.s_addr;
+  for (const auto& address : ethernet->get_ip_addresses()) {
+    if (!address.is_set() || !address.is_ip4()) {
+      continue;
+    }
+    const esp_ip4_addr_t ethernet_ipv4 = address;
+    if (ethernet_ipv4.addr == local_ipv4) {
+      return true;
+    }
+  }
+#else
+  (void)request;
+#endif
+  return false;
 }
 
 void CaptivePortal::handleRequest(AsyncWebServerRequest* req) {

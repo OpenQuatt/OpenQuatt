@@ -6,7 +6,10 @@ onder de upstream MIT-licentie: zie `../web_server_base/LICENSE-MIT`.
 
 Enige functionele wijzigingen: de API-key provisioningtimer sluit de portal/DNS
 niet meer, de opslaan-response belooft nog geen persistent succes, en de
-recovery-routes blijven buiten de actieve GET-catchall. De lokale
+recovery-routes blijven buiten de actieve GET-catchall. Verzoeken op een actueel
+Ethernet-adres blijven ook buiten die catchall, zodat de normale webserver met
+webauthenticatie ze afhandelt. Kan het lokale adres niet worden bepaald, dan
+blijft de portal ze afhandelen. De lokale
 Wi-Fi-component sluit de portal na een geslaagde verbinding/opslag. Geen eigen
 portal, credentialsysteem of AP-timer; zie `../wifi/README.md`.
 

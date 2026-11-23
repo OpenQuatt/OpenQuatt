@@ -44,6 +44,12 @@ CAPTIVE_PORTAL_ROUTER_CPP = (
 WIFI_ETH_PROFILE = (
     ROOT / "openquatt" / "connection" / "wifi_eth.yaml"
 ).read_text()
+CAPTIVE_PORTAL_HEADER = (
+    ROOT / "components" / "captive_portal" / "captive_portal.h"
+).read_text()
+CAPTIVE_PORTAL_CPP = (
+    ROOT / "components" / "captive_portal" / "captive_portal.cpp"
+).read_text()
 
 
 class ESPHomeCompatibilityContractTest(unittest.TestCase):
@@ -67,6 +73,18 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
     def test_captive_portal_router_only_handles_root_requests(self) -> None:
         self.assertIn("request->url_to(url_buffer)", CAPTIVE_PORTAL_ROUTER_CPP)
         self.assertIn('== "/";', CAPTIVE_PORTAL_ROUTER_CPP)
+
+    def test_captive_portal_leaves_ethernet_requests_to_web_server(self) -> None:
+        # The portal can register before the web server, so its catch-all itself must skip Ethernet.
+        self.assertIn("&& !request_targets_ethernet_(request);", CAPTIVE_PORTAL_HEADER)
+        helper = CAPTIVE_PORTAL_CPP.split("bool CaptivePortal::request_targets_ethernet_(", 1)[1].split(
+            "\nvoid CaptivePortal::handleRequest(", 1
+        )[0]
+        self.assertIn("getsockname(socket_fd", helper)
+        self.assertIn("ethernet->get_ip_addresses()", helper)
+        # Only a matching Ethernet address bypasses the portal; lookup failures keep it.
+        self.assertEqual(helper.count("return true;"), 1)
+        self.assertIn("if (ethernet_ipv4.addr == local_ipv4) {\n      return true;", helper)
 
     def test_web_auth_updates_owned_credentials_atomically(self) -> None:
         self.assertIn("set_auth_credentials(storage.username, storage.password)", WEB_AUTH_CPP)
