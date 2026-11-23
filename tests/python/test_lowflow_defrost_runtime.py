@@ -39,6 +39,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 #include "openquatt/includes/control/oq_defrost_logic.h"
 #include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
+#include "tests/fixtures/supervisory_low_load_stub.h"
 #include "openquatt/includes/control/oq_cooling_limiter_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_hp_boot_resume.h"

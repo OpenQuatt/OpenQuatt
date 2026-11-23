@@ -179,9 +179,11 @@ class Runtime {
         id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Heating";
     const bool hp1_target_cooling =
         id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Cooling";
+    const bool hp1_defrost_hold = id(hp1_odu_defrost).holding();
+    const bool hp1_defrost_observed = id(hp1_odu_defrost).cycle.observed_active();
     const bool hp1_active_guard =
         oq_defrost::hp_active(hp1_heating, hp1_cooling, hp1_target_heating, hp1_target_cooling, hp1_lvl,
-                              id(hp1_odu_defrost).holding(), id(hp1_odu_defrost).cycle.observed_active());
+                              hp1_defrost_hold, hp1_defrost_observed);
 #if OQ_TOPOLOGY_DUO
     const int hp2_lvl = id(hp2_last_applied_level);
     const int hp2_cmd_lvl =
@@ -764,8 +766,7 @@ class Runtime {
                   id(oq_strategy_output_updated_ms) != 0 && now_ms - id(oq_strategy_output_updated_ms) <= 30000U &&
                   hp1_lvl > 0 && hp1_cmd_lvl > 0 && id(oq_actuator_hp1_req) > 0 && hp1_heating && hp1_target_heating &&
                   hp1_incidents.running_confirmed && hp1_incidents.available_for_start && !hp1_incidents.must_stop &&
-                  !id(hp1_defrost).state && !id(hp1_4_way_valve).state && !id(hp1_odu_defrost).holding() &&
-                  !id(hp1_odu_defrost).cycle.observed_active() &&
+                  !id(hp1_defrost).state && !id(hp1_4_way_valve).state && !hp1_defrost_hold && !hp1_defrost_observed &&
                   !id(oq_incident_manager).boot_protection_hold(1, now_ms)) {
                 const auto& frequency_receipt = oq_sources::hp1.compressor_frequency;
                 const bool running =
