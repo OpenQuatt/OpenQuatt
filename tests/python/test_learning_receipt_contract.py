@@ -15,6 +15,19 @@ OT_SLAVE_CPP = (ROOT / "components/openquatt_ot_slave/OpenQuattOTSlave.cpp").rea
 OTB_YAML = (ROOT / "openquatt/oq_boiler_opentherm.yaml").read_text()
 OTB_TELEMETRY = (ROOT / "openquatt/includes/boiler/oq_otb_telemetry.h").read_text()
 
+HP_RECEIPT_NAMES = (
+    "working_mode",
+    "compressor_frequency",
+    "status_2108",
+    "defrost",
+    "status_2119",
+    "water_in",
+    "water_out",
+    "flow",
+    "outside",
+    "pump_pwm",
+)
+
 
 def entity_block(source: str, entity_id: str, next_section: str = "\n  - platform:") -> str:
     start = source.index(f"    id: {entity_id}")
@@ -59,9 +72,21 @@ class LearningReceiptContractTest(unittest.TestCase):
             "millis(), oq_sources::monotonic_ms(), response_id, response_type,",
             OTB_YAML,
         )
-        observations = re.findall(r"oq_sources::\$\{hp_id\}\.[a-z0-9_]+\.observe\((.*?)\);", HP_IO, re.DOTALL)
-        self.assertEqual(len(observations), 9)
-        self.assertTrue(all("oq_sources::monotonic_ms()" in observation for observation in observations))
+        observations = re.findall(
+            r"oq_sources::\$\{hp_id\}\.([a-z0-9_]+)\.observe\((.*?)\);", HP_IO, re.DOTALL
+        )
+        self.assertCountEqual([name for name, _ in observations], HP_RECEIPT_NAMES)
+        for name, arguments in observations:
+            with self.subTest(receipt=name):
+                self.assertIn("oq_sources::monotonic_ms()", arguments)
+
+    def test_pump_pwm_receipt_is_bound_to_r2015_readback(self) -> None:
+        pump = entity_block(HP_IO, "${hp_id}_pump_speed", "\nsensor:")
+        readback, write = pump.split("    write_lambda:", 1)
+        observe = "oq_sources::${hp_id}.pump_pwm.observe("
+        self.assertIn("\n    address: 2015\n", readback)
+        self.assertIn(observe, readback.split("    lambda: |-", 1)[1])
+        self.assertNotIn(observe, write)
 
     def test_defrost_receipt_is_bound_to_r2118_parser(self) -> None:
         defrost = entity_block(HP_IO, "${hp_id}_defrost")
@@ -74,18 +99,7 @@ class LearningReceiptContractTest(unittest.TestCase):
         offline_start = HP_IO.index("    on_offline:")
         offline_end = HP_IO.index("    on_online:", offline_start)
         offline = HP_IO[offline_start:offline_end]
-        receipt_names = (
-            "working_mode",
-            "compressor_frequency",
-            "status_2108",
-            "defrost",
-            "status_2119",
-            "water_in",
-            "water_out",
-            "flow",
-            "outside",
-        )
-        for name in receipt_names:
+        for name in HP_RECEIPT_NAMES:
             self.assertIn(f"oq_sources::${{hp_id}}.{name}.invalidate();", offline)
         self.assertNotIn("oq_sources::monotonic_ms()", offline)
 
