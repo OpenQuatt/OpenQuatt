@@ -1,16 +1,18 @@
 #pragma once
 
-// These harnesses exercise extracted request and actuator methods outside a
-// Power House low-load hold. The supervisor normally owns that decision.
+#include <cstdint>
+
+// The real supervisor owns this decision. Extracted methods default to no hold.
 namespace oq_supervisory_state_runtime {
 
 struct Runtime {
-  bool power_house_low_load_hold() const { return false; }
+  uint8_t hold_hp = 0;
+  uint8_t power_house_low_load_hold_hp() const { return hold_hp; }
 };
 
-inline const Runtime& runtime() {
-  static const Runtime inactive;
-  return inactive;
+inline Runtime& runtime() {
+  static Runtime instance;
+  return instance;
 }
 
 }  // namespace oq_supervisory_state_runtime

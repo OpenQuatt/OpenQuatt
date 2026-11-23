@@ -98,6 +98,22 @@ void test_power_house_low_load_stop_waits_for_minimum_runtime() {
   assert(!hold());
 }
 
+void test_power_house_duo_low_load_hold_requires_a_confirmed_stopped_peer() {
+  using oq_supervisory_state::select_power_house_low_load_hold_hp;
+  assert(select_power_house_low_load_hold_hp(0, true, false, false, true) == 1);
+  assert(select_power_house_low_load_hold_hp(1, true, false, false, true) == 1);
+  assert(select_power_house_low_load_hold_hp(0, false, true, true, false) == 2);
+  assert(select_power_house_low_load_hold_hp(2, false, true, true, false) == 2);
+
+  assert(select_power_house_low_load_hold_hp(0, true, true, false, false) == 0);
+  assert(select_power_house_low_load_hold_hp(1, true, false, false, false) == 0);
+  assert(select_power_house_low_load_hold_hp(2, false, true, false, false) == 0);
+  assert(select_power_house_low_load_hold_hp(0, false, false, true, true) == 0);
+
+  assert(select_power_house_low_load_hold_hp(1, false, true, true, false) == 0);
+  assert(select_power_house_low_load_hold_hp(2, true, false, false, true) == 0);
+}
+
 void test_low_load_reentry_release_and_invalid_tuning() {
   using namespace oq_supervisory_state;
   LowLoadInput input;
@@ -467,6 +483,7 @@ int main() {
   assert(!window_active(20, UINT32_MAX - 10));
   test_low_load_hysteresis_and_cache();
   test_power_house_low_load_stop_waits_for_minimum_runtime();
+  test_power_house_duo_low_load_hold_requires_a_confirmed_stopped_peer();
   test_low_load_reentry_release_and_invalid_tuning();
   test_low_load_minimum_off_does_not_restart_preflow();
   test_low_load_cache_only_extends_for_normal_rest();
