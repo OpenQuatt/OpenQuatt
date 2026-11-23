@@ -135,11 +135,22 @@ bool CaptivePortal::request_targets_ethernet_(AsyncWebServerRequest* request) {
     ESP_LOGW(TAG, "Local request address unavailable; keeping captive portal");
     return false;
   }
-  if (local_address.ss_family != AF_INET) {
+  uint32_t local_ipv4 = 0;
+  if (local_address.ss_family == AF_INET) {
+    local_ipv4 = reinterpret_cast<const struct sockaddr_in*>(&local_address)->sin_addr.s_addr;
+#if LWIP_IPV6
+  } else if (local_address.ss_family == AF_INET6) {
+    // A dual-stack httpd socket reports IPv4 connections as ::ffff:a.b.c.d.
+    const auto* local_ipv6 = reinterpret_cast<const struct sockaddr_in6*>(&local_address);
+    if (!IN6_IS_ADDR_V4MAPPED(&local_ipv6->sin6_addr)) {
+      return false;
+    }
+    local_ipv4 = local_ipv6->sin6_addr.un.u32_addr[3];
+#endif
+  } else {
     return false;
   }
 
-  const uint32_t local_ipv4 = reinterpret_cast<const struct sockaddr_in*>(&local_address)->sin_addr.s_addr;
   for (const auto& address : ethernet->get_ip_addresses()) {
     if (!address.is_set() || !address.is_ip4()) {
       continue;

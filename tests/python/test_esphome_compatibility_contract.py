@@ -82,6 +82,8 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         )[0]
         self.assertIn("getsockname(socket_fd", helper)
         self.assertIn("ethernet->get_ip_addresses()", helper)
+        # A dual-stack httpd socket reports IPv4 peers as IPv4-mapped IPv6 addresses.
+        self.assertIn("IN6_IS_ADDR_V4MAPPED(&local_ipv6->sin6_addr)", helper)
         # Only a matching Ethernet address bypasses the portal; lookup failures keep it.
         self.assertEqual(helper.count("return true;"), 1)
         self.assertIn("if (ethernet_ipv4.addr == local_ipv4) {\n      return true;", helper)
