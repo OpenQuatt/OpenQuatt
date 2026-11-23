@@ -131,6 +131,14 @@ inline LowLoadOutput update_low_load(const LowLoadInput& input, LowLoadState sta
   return {state, heating_request, reentry_block_active, effective_minimum_power_w, off_w, on_w, source_code};
 }
 
+// Only defer the low-load veto. Ordinary heat withdrawal and safety exits
+// keep their own path, and a stopped compressor must never enter this hold.
+inline bool defer_power_house_low_load_stop(const LowLoadOutput& low_load, float requested_w, bool heat_allowed,
+                                            bool running, bool minimum_runtime_active) {
+  return heat_allowed && running && minimum_runtime_active && !low_load.state.heat_latched &&
+         std::isfinite(requested_w) && requested_w > 0.0f;
+}
+
 struct ConfirmationState {
   bool timing = false;
   uint32_t since_ms = 0;

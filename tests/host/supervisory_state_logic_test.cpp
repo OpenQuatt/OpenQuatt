@@ -7,6 +7,7 @@
 
 #include "../../openquatt/includes/control/oq_hp_restart_guard.h"
 #include "../../openquatt/includes/control/oq_supervisory_state_logic.h"
+#include "../../openquatt/includes/control/oq_thermal_request_logic.h"
 #include "../../openquatt/includes/incidents/oq_hp_incident_types.h"
 
 namespace {
@@ -53,6 +54,48 @@ void test_low_load_hysteresis_and_cache() {
   output.state.reentry_block_until_ms = 70000;
   output = update_low_load(input, output.state);
   assert(output.source_code == 0 && !output.heating_request && output.state.reentry_block_until_ms == 0);
+}
+
+void test_power_house_low_load_stop_waits_for_minimum_runtime() {
+  using namespace oq_supervisory_state;
+  constexpr uint32_t started_ms = 10000;
+  constexpr uint32_t minimum_runtime_ms = 300000;
+  LowLoadInput input;
+  input.active = input.raw_heating_request = input.openquatt_enabled = true;
+  input.live_minimum_power_w = 2400.0f;
+  input.now_ms = started_ms + 100000;
+  input.requested_power_w = 2500.0f;
+  auto output = update_low_load(input, {});
+
+  const auto hold = [&](bool heat_allowed = true, bool running = true) {
+    return defer_power_house_low_load_stop(
+        output, input.requested_power_w, heat_allowed, running,
+        oq_request::min_runtime_window_active(input.now_ms, started_ms, minimum_runtime_ms));
+  };
+  assert(output.heating_request && !hold());
+
+  input.requested_power_w = output.off_threshold_w;
+  output = update_low_load(input, output.state);
+  assert(!output.heating_request && hold());
+  assert(!hold(false) && !hold(true, false));
+
+  input.requested_power_w = output.on_threshold_w - 1.0f;
+  output = update_low_load(input, output.state);
+  input.now_ms = started_ms + minimum_runtime_ms - 1;
+  assert(!output.heating_request && hold());
+  ++input.now_ms;
+  assert(!hold());
+
+  --input.now_ms;
+  input.requested_power_w = output.on_threshold_w;
+  output = update_low_load(input, output.state);
+  assert(output.heating_request && !hold());
+
+  input.requested_power_w = 0.0f;
+  output = update_low_load(input, output.state);
+  assert(!output.heating_request && !hold());
+  input.requested_power_w = NAN;
+  assert(!hold());
 }
 
 void test_low_load_reentry_release_and_invalid_tuning() {
@@ -423,6 +466,7 @@ int main() {
   assert(window_active(UINT32_MAX - 10, 20));
   assert(!window_active(20, UINT32_MAX - 10));
   test_low_load_hysteresis_and_cache();
+  test_power_house_low_load_stop_waits_for_minimum_runtime();
   test_low_load_reentry_release_and_invalid_tuning();
   test_low_load_minimum_off_does_not_restart_preflow();
   test_low_load_cache_only_extends_for_normal_rest();
