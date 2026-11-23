@@ -46,8 +46,11 @@ struct Context {
   int limit_heating_slew(bool is_hp1, int requested, int previous, uint32_t now_ms, uint32_t last_change_ms,
                          uint32_t up_hold_ms, uint32_t down_hold_ms) const {
     const int maximum = this->automatic_level_limit(is_hp1, 2);
-    if (previous > 0 && !this->frequency_allowed(is_hp1, 2, previous))
-      return this->pick_allowed_level(is_hp1, 2, previous, 1, std::min(maximum, previous));
+    if (previous > 0 && !this->frequency_allowed(is_hp1, 2, previous)) {
+      // Keep positive heat demand on an allowed stand, preferring a lower one.
+      const int fallback_maximum = requested > 0 ? maximum : std::min(maximum, previous);
+      return this->pick_allowed_level(is_hp1, 2, previous, 1, fallback_maximum);
+    }
     // Slew one allowed entry at a time. Excluded intermediate entries must
     // neither strand a running HP nor bypass an upward/downward wait window.
     std::array<uint8_t, oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX + 1> entries{};
@@ -71,6 +74,25 @@ inline int read_hz(const Number& number) {
   return number.has_state() && !isnan(number.state) ? static_cast<int>(lroundf(number.state)) : -1;
 }
 
+inline int active_cap_hz(bool silent) {
+  return read_hz(silent ? id(oq_silent_max_frequency_hz) : id(oq_day_max_frequency_hz));
+}
+
+inline oq_frequency_policy::FrequencyRange effective_excluded_range(bool is_hp1, bool silent) {
+#if OQ_TOPOLOGY_DUO
+  if (!is_hp1) {
+    const auto scope = id(hp2_excluded_frequency_scope).current_option();
+    if (scope == "Off" || (scope == "Quiet hours" && !silent)) return {};
+    return {read_hz(id(hp2_excluded_frequency_min_hz)), read_hz(id(hp2_excluded_frequency_max_hz))};
+  }
+#else
+  if (!is_hp1) return {};
+#endif
+  const auto scope = id(hp1_excluded_frequency_scope).current_option();
+  if (scope == "Off" || (scope == "Quiet hours" && !silent)) return {};
+  return {read_hz(id(hp1_excluded_frequency_min_hz)), read_hz(id(hp1_excluded_frequency_max_hz))};
+}
+
 inline Context capture() {
   const bool configured_v2 = id(hp_generation).has_state() && id(hp_generation).current_option() == "V2";
   const auto hp1_snapshot = oq_odu::decode_runtime_frequency_snapshot(id(hp1_runtime_frequency_snapshot_storage));
@@ -80,23 +102,18 @@ inline Context capture() {
   const auto hp2_snapshot = oq_odu::decode_runtime_frequency_snapshot(id(hp2_runtime_frequency_snapshot_storage));
   const auto hp2_variant =
       oq_odu::confirmed_variant(id(hp2_odu_generation_detection_complete), id(hp2_generation_variant_code));
-  const oq_frequency_policy::FrequencyRange hp2_excluded = {
-      read_hz(id(hp2_excluded_frequency_min_hz)),
-      read_hz(id(hp2_excluded_frequency_max_hz)),
-  };
 #else
   const auto hp2_snapshot = hp1_snapshot;
   const auto hp2_variant = oq_odu::Variant::UNKNOWN;
-  const oq_frequency_policy::FrequencyRange hp2_excluded{};
 #endif
-  const auto& cap = id(oq_silent_active).state ? id(oq_silent_max_frequency_hz) : id(oq_day_max_frequency_hz);
+  const bool silent = id(oq_silent_active).state;
   return {
       configured_v2,
       hp1_snapshot,
       hp2_snapshot,
-      read_hz(cap),
-      {read_hz(id(hp1_excluded_frequency_min_hz)), read_hz(id(hp1_excluded_frequency_max_hz))},
-      hp2_excluded,
+      active_cap_hz(silent),
+      effective_excluded_range(true, silent),
+      effective_excluded_range(false, silent),
       hp1_variant,
       hp2_variant,
   };

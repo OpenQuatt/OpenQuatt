@@ -6,8 +6,8 @@ import { buildEntityPath } from "../core/domain-helpers.js";
 import { getEnergyHistoryRequestQuery } from "../core/energy-history-query.js";
 import { getEnergyHistoryDateKeyFromDate, parseEnergyHistoryDateKey } from "../core/energy-history-domain.js";
 import { updateEnergyHistoryState } from "../core/feature-state.js";
-import { setEntityBackupValue, verifyEntityBackupSelectState, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
-import { formatValue, getEntityValue, normalizeDateTimeValue, normalizeTimeValue, parseLooseNumber } from "../core/entity-store.js";
+import { setEntityBackupValue, verifyEntityBackupValue, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
+import { formatValue, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber } from "../core/entity-store.js";
 import { refreshEntities, syncEntities } from "../core/entity-sync.js";
 import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, migrateLegacySettingsBackupSettings, normalizeSettingsBackupMqttConfig, normalizeSettingsBackupOduProfiles, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
 import { DEFAULT_TREND_WINDOW_HOURS, state } from "../core/state.js";
@@ -1503,20 +1503,84 @@ import { t } from "../i18n/index.js";
     return !shouldDisableUsageTelemetryForSetupRestore(shouldCompleteSetup, setupWasComplete) || telemetryAvailable;
   }
 
-  async function setVerifiedCoolingValue(key, value, normalize) {
-    await setEntityBackupValue(key, value);
-    if (!await verifyEntityBackupSelectState(key, value, normalize)) {
-      throw new Error(t("storageHistory.notConfirmed"));
+  async function setVerifiedBackupValue(key, value, normalize) {
+    const written = await setEntityBackupValue(key, value);
+    for (const delay of [0, 100, 300]) {
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      if (await verifyEntityBackupValue(key, written, normalize)) return written;
     }
+    throw new Error(t("storageHistory.notConfirmed"));
   }
 
   async function guardCoolingSchedule() {
     try {
-      await setVerifiedCoolingValue(COOLING_SCHEDULE_SOURCE_KEY, "Disabled");
+      await setVerifiedBackupValue(COOLING_SCHEDULE_SOURCE_KEY, "Disabled");
       return true;
     } catch (_error) {
       return false;
     }
+  }
+
+  async function restoreFrequencyExclusions(section, values, applied, skipped) {
+    const handled = new Set();
+    for (const hp of ["hp1", "hp2"]) {
+      const scope = `${hp}ExcludeScope`;
+      const limitKeys = [`${hp}ExcludeMinHz`, `${hp}ExcludeMaxHz`];
+      const bounds = limitKeys.filter((key) => Object.hasOwn(values, key));
+      const hasScope = Object.hasOwn(values, scope);
+      const keys = hasScope ? [...bounds, scope] : bounds;
+      if (!keys.length || !hasEntity(scope)) continue;
+      keys.forEach((key) => handled.add(key));
+      const previous = getSettingsBackupValue(scope);
+      const target = hasScope ? String(values[scope] ?? "").trim() : previous;
+      let scopeRestoreDetail = "";
+
+      try {
+        const expected = limitKeys.map((key) => Object.hasOwn(values, key)
+          ? normalizeNumber(key, values[key]) : getSettingsBackupValue(key));
+        const [min, max] = expected;
+        if (target !== "Off" && (!Number.isFinite(min) || !Number.isFinite(max) || (max > 0 && min > max))) {
+          throw new Error(t("settingsControls.invalidRange"));
+        }
+        if (bounds.length) {
+          if (!hasScope && !await verifyEntityBackupValue(scope, previous)) {
+            throw new Error(t("storageHistory.notConfirmed"));
+          }
+          if (hasScope || previous !== "Off") scopeRestoreDetail = t("storageHistory.frequencyScopeUnconfirmed");
+          await setVerifiedBackupValue(scope, "Off");
+          if (scopeRestoreDetail) scopeRestoreDetail = t("storageHistory.frequencyScopeOffAfterRestore");
+          if (hasScope && target === "Off") applied.push(scope);
+          for (const key of bounds) {
+            await setVerifiedBackupValue(key, values[key]);
+            applied.push(key);
+          }
+        }
+        if (target !== "Off") {
+          for (const [index, key] of limitKeys.entries()) {
+            if (!await verifyEntityBackupValue(key, expected[index])) {
+              throw new Error(t("storageHistory.notConfirmed"));
+            }
+          }
+        }
+        if (!bounds.length || target !== "Off") {
+          scopeRestoreDetail = t("storageHistory.frequencyScopeUnconfirmed");
+          await setVerifiedBackupValue(scope, target);
+          if (hasScope) applied.push(scope);
+        }
+      } catch (error) {
+        if (!hasScope && scopeRestoreDetail) {
+          handled.add(scope);
+          keys.push(scope);
+        }
+        const detail = String(error?.message || error);
+        for (const key of keys.filter((key) => !applied.includes(key))) {
+          const fieldDetail = key === scope && scopeRestoreDetail ? `${detail} ${scopeRestoreDetail}` : detail;
+          skipped.push(createSettingsBackupRestoreItem(key, backupSectionLabel(section),
+            t("storageHistory.writeFailed"), fieldDetail, "error"));
+        }
+      }
+    }
+    return handled;
   }
 
   export async function restoreSettingsBackup() {
@@ -1565,7 +1629,7 @@ import { t } from "../i18n/index.js";
         coolingGuarded = false;
       } else if (coolingSourceValue !== undefined) {
         try {
-          coolingGuarded = await verifyEntityBackupSelectState(
+          coolingGuarded = await verifyEntityBackupValue(
             COOLING_SCHEDULE_SOURCE_KEY,
             "Schedule",
           ) ? false : null;
@@ -1597,7 +1661,9 @@ import { t } from "../i18n/index.js";
           ? draft.settings[section.id]
           : {};
 
+        const restored = section.id === "compressor" && await restoreFrequencyExclusions(section, sectionValues, applied, skipped);
         for (const key of section.keys) {
+          if (restored && restored.has(key)) continue;
           if (!Object.prototype.hasOwnProperty.call(sectionValues, key)) {
             skipped.push(createSettingsBackupRestoreItem(
               key,
@@ -1661,7 +1727,7 @@ import { t } from "../i18n/index.js";
 
           try {
             if (coolingScheduleTime) {
-              await setVerifiedCoolingValue(key, value, normalizeTimeValue);
+              await setVerifiedBackupValue(key, value, normalizeTimeValue);
               verifiedCoolingTimes += 1;
             } else {
               await setEntityBackupValue(key, value);
@@ -1687,7 +1753,7 @@ import { t } from "../i18n/index.js";
               verifiedCoolingTimes < COOLING_SCHEDULE_TIME_KEYS.length) || !await guardCoolingSchedule()) {
             throw new Error(t("storageHistory.coolingGuardError"));
           }
-          await setVerifiedCoolingValue(key, value);
+          await setVerifiedBackupValue(key, value);
           applied.push(key);
         } catch (error) {
           detail = await guardCoolingSchedule()
@@ -1745,7 +1811,7 @@ import { t } from "../i18n/index.js";
 
         try {
           if (guardedCoolingSource) {
-            await setVerifiedCoolingValue(key, value);
+            await setVerifiedBackupValue(key, value);
           } else {
             await setEntityBackupValue(key, value);
           }

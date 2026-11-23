@@ -1,3 +1,4 @@
+import { renderFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
 import { getEntityNumericValue, hasEntity } from "../core/app-shared.js";
 import { STRATEGY_OPTION_CURVE, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode, isDeltaTFlowMode, isManualFlowMode } from "../core/domain-helpers.js";
@@ -668,11 +669,15 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
     if (hpPrefix === "hp2" && getInstallationTopology() !== "duo") return "";
     const firstFrequencyKey = `${hpPrefix}ExcludeMinHz`;
+    const scope = renderSettingsSelectField(
+      `${hpPrefix}ExcludeScope`, t("frequencyExclusion.scope"), "", "oq-settings-field--span-2",
+    );
     const fields = renderSettingsFrequencyRangeField(
       firstFrequencyKey,
       `${hpPrefix}ExcludeMaxHz`,
       t("settingsHeating.limiterExcludedTitle"),
       t("settingsHeating.limiterExcludedCopy"),
+      !scope,
     );
 
     if (!fields) {
@@ -688,6 +693,8 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         </header>
         <div class="oq-settings-hp-group-grid">
           ${fields}
+          ${scope}
+          ${scope ? renderFrequencyExclusionDetails(hpPrefix) : ""}
         </div>
       </article>
     `;

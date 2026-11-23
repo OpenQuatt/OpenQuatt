@@ -24,6 +24,10 @@ Een wijziging wordt direct opgeslagen. Daarna toont een melding de oude en de ni
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende warmtebron, stille uren, watergrenzen en compressorinstellingen.
 
+Onder **Compressorinstellingen** kies je per warmtepomp één frequentiebereik voor verwarmen en koelen. Bij **Altijd** geldt de uitsluiting doorlopend. **Alleen tijdens stille uren** volgt het ingestelde venster en het handmatig aan- of uitzetten van de stille modus. Bij een ongeldige klok wacht het venster op tijdsynchronisatie. Met **Uit** bewaar je het bereik voor later.
+
+De kaart toont welke frequenties OpenQuatt overslaat. Onder **Beschikbare standen** zie je per tijdvak hoeveel compressorstanden overblijven na toepassing van de frequentielimiet en het uitgesloten bereik. Als de uitsluiting de laatste bruikbare stand wegneemt, vraagt de web-app om bevestiging.
+
 Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**.
 
 Bij **Quatt Hybrid-versie** staat de ingestelde generatie boven de uitgelezen generatie en firmwareversie per buitenunit. Via **Aanpassen** kun je de buitenunits opnieuw laten detecteren.

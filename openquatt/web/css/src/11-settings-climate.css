@@ -81,6 +81,15 @@
   margin-top: 16px;
 }
 
+.oq-frequency-exclusion-details {
+  display: grid;
+  gap: 10px;
+}
+
+.oq-frequency-exclusion-details p > :not([hidden]) {
+  display: block;
+}
+
 .oq-settings-grid--pid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
