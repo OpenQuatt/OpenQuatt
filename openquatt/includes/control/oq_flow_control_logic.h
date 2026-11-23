@@ -31,8 +31,11 @@ inline int compute_start_pwm(bool commissioning_start, int commissioning_start_p
 }
 
 inline int confirmed_common_pump_pwm(const oq_sources::RawFloatReceipt& primary,
-                                     const oq_sources::RawFloatReceipt* peer, uint64_t now_ms, uint64_t max_age_ms) {
-  if (!primary.fresh(now_ms, max_age_ms) || primary.value < kMinimumIpwm || primary.value > kMaximumIpwm) return 0;
+                                     const oq_sources::RawFloatReceipt* peer, uint64_t now_ms, uint64_t max_age_ms,
+                                     int ignored_pwm) {
+  if (!primary.fresh(now_ms, max_age_ms) || primary.value == ignored_pwm || primary.value < kMinimumIpwm ||
+      primary.value > kMaximumIpwm)
+    return 0;
   // A shared write cannot preserve two different pump commands.
   if (peer != nullptr && (!peer->fresh(now_ms, max_age_ms) || peer->value != primary.value)) return 0;
   return static_cast<int>(primary.value);

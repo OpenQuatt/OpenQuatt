@@ -184,9 +184,10 @@ class Runtime {
           publish_mode_(oq_flow_control::ExecutionMode::AUTO_STARTING);
           return;
         }
-        const auto resumed = cooling_target ? PumpResume{} : resumed_pump_(now_ms);
-        // Use the same fresh flow sample that qualified the pump readback.
-        if (resumed.pwm > 0) flow_lph = resumed.flow_lph;
+        const int frost_pwm = oq_flow_control::clamp_ipwm(config.frost_ipwm);
+        const auto resumed = cooling_target ? PumpResume{} : resumed_pump_(now_ms, frost_pwm);
+        // Use the checked flow sample even when a rejected readback falls back to a saved seed.
+        if (std::isfinite(resumed.flow_lph)) flow_lph = resumed.flow_lph;
         start_auto_(config, "CM98->AUTO", resumed.pwm);
         pwm = id(oq_flow_last_pwm);
         auto_after_frost_ = false;
@@ -235,7 +236,7 @@ class Runtime {
     float flow_lph{NAN};
   };
 
-  static PumpResume resumed_pump_(uint32_t now_ms) {
+  static PumpResume resumed_pump_(uint32_t now_ms, int frost_pwm) {
     const auto& incidents = id(oq_incident_manager);
     bool resumed = incidents.boot_protection_hold(1U, now_ms);
     const oq_sources::RawFloatReceipt* peer = nullptr;
@@ -254,8 +255,9 @@ class Runtime {
         !oq_defrost::minimum_flow_ready(sources.flow_lph, oq_boot_resume_runtime::minimum_flow_lph))
       return {};
 
+    // A fresh read can contain a frost command written after boot acquisition ended.
     const int pwm = oq_flow_control::confirmed_common_pump_pwm(oq_sources::hp1.pump_pwm, peer, now_monotonic_ms,
-                                                               oq_boot_resume::COMMAND_FRESH_MS);
+                                                               oq_boot_resume::COMMAND_FRESH_MS, frost_pwm);
     return {pwm, sources.flow_lph};
   }
 
