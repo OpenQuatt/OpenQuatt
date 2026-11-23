@@ -214,6 +214,13 @@
   line-height: 1.25;
 }
 
+.oq-overview-hp-meta-chip small {
+  display: block;
+  margin-top: 4px;
+  color: var(--oq-overview-muted);
+  font-size: 0.82rem;
+}
+
 @keyframes oq-hp-pulse {
   0%, 100% {
     fill: rgba(255, 255, 255, 0.08);

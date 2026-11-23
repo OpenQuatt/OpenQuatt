@@ -1,6 +1,6 @@
 import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { HP_PANEL_CONFIGS } from "../core/config.js";
-import { getEntityValue } from "../core/entity-store.js";
+import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
@@ -371,6 +371,8 @@ import { renderStatCard } from "./stat-card.js";
   export function buildHeatPumpSchematicModel(title, keys, accent, mode, defrostActive, failures, running) {
     const freqValue = getEntityNumericValue(keys.freq);
     const freqText = Number.isNaN(freqValue) ? "—" : String(Math.round(freqValue));
+    const freqDemand = parseLooseNumber(getEntityValue(keys.freqDemand));
+    const compressorFreqDemandText = t("heatpump.frequencyDemand", { value: formatNumericState(freqDemand, 0, "Hz") });
     const powerValue = getEntityNumericValue(keys.power);
     const heatValue = getEntityNumericValue(keys.heat);
     const coolingValue = getEntityNumericValue(keys.cooling);
@@ -455,6 +457,8 @@ import { renderStatCard } from "./stat-card.js";
       mode,
       reverseCycle,
       compressorFreqText: `${freqText} Hz`,
+      compressorFreqDemandText,
+      compressorFreqAria: t("heatpump.readingFreq", { value: `${freqText} Hz`, demand: compressorFreqDemandText }),
       leftExchangerTitle,
       rightExchangerTitle,
       supplyLineTone,
@@ -553,7 +557,7 @@ import { renderStatCard } from "./stat-card.js";
       },
     }));
     const hotspots = [
-      { bind: "compressor-freq", ariaLabel: t("heatpump.readingFreq", { value: model.compressorFreqText }), x: 300, y: 148, width: 52, height: 26, rx: 12, tooltip: { modifier: "component", icon: "fan", x: 366, y: 130, width: 136, kicker: t("heatpump.detailFrequency"), detail: t("heatpump.detailCompressor"), direction: "left" } },
+      { bind: "compressor-freq", ariaLabel: model.compressorFreqAria, x: 300, y: 148, width: 52, height: 26, rx: 12, tooltip: { modifier: "component", icon: "fan", x: 366, y: 130, width: 166, kicker: t("heatpump.detailCompressor"), detail: model.compressorFreqDemandText, detailBind: "compressor-freq-demand", direction: "left" } },
       { bind: "fourway", ariaLabel: t("heatpump.readingFourWay", { value: model.fourWayPositionText }), x: 252, y: 208, width: 52, height: 52, rx: 16, tooltip: { modifier: "component", icon: "fourway", x: 308, y: 198, width: 196, kicker: t("heatpump.detailFourWay"), detail: model.fourWayPositionText, detailBind: "fourway-detail", direction: "left" } },
       { bind: "eev", ariaLabel: t("heatpump.readingEev", { value: model.eevPositionText }), x: 301, y: 275, width: 50, height: 38, rx: 12, tooltip: { modifier: "component", icon: "eev", x: 340, y: 252, width: 202, kicker: t("heatpump.detailEev"), detail: model.eevPositionText, detailBind: "eev-detail", direction: "left" } },
     ];
@@ -785,6 +789,7 @@ import { renderStatCard } from "./stat-card.js";
           <div class="oq-overview-hp-meta-chip">
             <span>${escapeHtml(t("heatpump.compactFreq"))}</span>
             <strong>${escapeHtml(getEntityStateText(keys.freq))}</strong>
+            <small>${escapeHtml(schematicModel.compressorFreqDemandText)}</small>
           </div>
           <div class="oq-overview-hp-meta-chip">
             <span>${escapeHtml(t("heatpump.defrostKicker"))}</span>
@@ -1509,6 +1514,7 @@ import { renderStatCard } from "./stat-card.js";
       ["left-exchanger-title", model.leftExchangerTitle],
       ["right-exchanger-title", model.rightExchangerTitle],
       ["compressor-freq", model.compressorFreqText],
+      ["compressor-freq-demand", model.compressorFreqDemandText],
       ["footer-mode", model.mode],
       ["footer-power", model.powerText],
       ["footer-heat", model.heatText],
@@ -1542,7 +1548,7 @@ import { renderStatCard } from "./stat-card.js";
     });
     syncBoundAria(board, [
       ...HEAT_PUMP_READINGS.map((reading) => [`${reading.bind}-reading`, getHeatPumpReadingAria(reading, model)]),
-      ["compressor-freq-trigger", t("heatpump.readingFreq", { value: model.compressorFreqText })],
+      ["compressor-freq-trigger", model.compressorFreqAria],
       ["fourway-trigger", t("heatpump.readingFourWay", { value: model.fourWayPositionText })],
       ["eev-trigger", t("heatpump.readingEev", { value: model.eevPositionText })],
     ]);

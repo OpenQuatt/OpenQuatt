@@ -10,6 +10,10 @@
 #include "esphome/components/provisioning/provisioning.h"
 #endif
 #include "captive_index.h"
+#if defined(USE_ESP32) && defined(USE_ETHERNET)
+#include <lwip/sockets.h>
+#include "esphome/components/ethernet/ethernet_component.h"
+#endif
 
 namespace esphome::captive_portal {
 
@@ -109,6 +113,57 @@ void CaptivePortal::start() {
   this->enable_loop();
 
   ESP_LOGV(TAG, "Captive portal started");
+}
+
+// The root router asks canHandle() before claiming "/", so this check keeps both
+// the router and the GET catch-all away from Ethernet, whatever the setup order.
+// Only a positive match with a current Ethernet address bypasses the portal;
+// every lookup failure keeps the portal, so the fallback AP never depends on it.
+bool CaptivePortal::request_targets_ethernet_(AsyncWebServerRequest* request) {
+#if defined(USE_ESP32) && defined(USE_ETHERNET)
+  auto* ethernet = ethernet::global_eth_component;
+  if (ethernet == nullptr) {
+    return false;
+  }
+
+  httpd_req_t* raw_request = *request;
+  const int socket_fd = httpd_req_to_sockfd(raw_request);
+  struct sockaddr_storage local_address{};
+  socklen_t address_length = sizeof(local_address);
+  if (socket_fd < 0 ||
+      getsockname(socket_fd, reinterpret_cast<struct sockaddr*>(&local_address), &address_length) != 0) {
+    ESP_LOGW(TAG, "Local request address unavailable; keeping captive portal");
+    return false;
+  }
+  uint32_t local_ipv4 = 0;
+  if (local_address.ss_family == AF_INET) {
+    local_ipv4 = reinterpret_cast<const struct sockaddr_in*>(&local_address)->sin_addr.s_addr;
+#if LWIP_IPV6
+  } else if (local_address.ss_family == AF_INET6) {
+    // A dual-stack httpd socket reports IPv4 connections as ::ffff:a.b.c.d.
+    const auto* local_ipv6 = reinterpret_cast<const struct sockaddr_in6*>(&local_address);
+    if (!IN6_IS_ADDR_V4MAPPED(&local_ipv6->sin6_addr)) {
+      return false;
+    }
+    local_ipv4 = local_ipv6->sin6_addr.un.u32_addr[3];
+#endif
+  } else {
+    return false;
+  }
+
+  for (const auto& address : ethernet->get_ip_addresses()) {
+    if (!address.is_set() || !address.is_ip4()) {
+      continue;
+    }
+    const esp_ip4_addr_t ethernet_ipv4 = address;
+    if (ethernet_ipv4.addr == local_ipv4) {
+      return true;
+    }
+  }
+#else
+  (void)request;
+#endif
+  return false;
 }
 
 void CaptivePortal::handleRequest(AsyncWebServerRequest* req) {
