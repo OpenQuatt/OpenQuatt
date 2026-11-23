@@ -117,6 +117,7 @@ modbus_controller:
             oq_sources::${hp_id}.water_out.invalidate();
             oq_sources::${hp_id}.flow.invalidate();
             oq_sources::${hp_id}.outside.invalidate();
+            oq_sources::${hp_id}.pump_pwm.invalidate();
             id(${hp_id}_status_2108_raw).publish_state(NAN);
             id(${hp_id}_status_2115_raw).publish_state(NAN);
             id(${hp_id}_pump_ipwm_feedback_raw).publish_state(NAN);
@@ -808,6 +809,10 @@ number:
     register_type: holding
     address: 2015
     value_type: U_WORD
+    lambda: |-
+      // Number state also changes on enqueue. Record only physical readback here.
+      oq_sources::${hp_id}.pump_pwm.observe(x, oq_sources::monotonic_ms(), true);
+      return x;
     write_lambda: |-
       if (!oq_command_runtime::guarded_write(${hp_index} == 1, 2015, x)) return {};
       return x;
