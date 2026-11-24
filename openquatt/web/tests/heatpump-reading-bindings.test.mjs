@@ -102,3 +102,41 @@ test("compact panels show demand for their own unit and distinguish zero from mi
   const { title, keys, accent } = HP_PANEL_CONFIGS[1];
   assert.match(renderHeatPumpPanel(title, keys, accent), /<small>Gevraagd —<\/small>/);
 });
+
+test("defrost takes priority over heating in both layouts and clears in the live schematic", () => {
+  const { title, keys, accent } = HP_PANEL_CONFIGS[1];
+  state.entities = {
+    [keys.mode]: { value: "Heating" },
+    [keys.defrost]: { value: true },
+    [keys.fourWay]: { value: true },
+    [keys.freq]: { value: 72 },
+    [keys.power]: { value: 1330 },
+    [keys.heat]: { value: 3796 },
+    [keys.cop]: { value: 2.9 },
+  };
+  state.hpVisualMode = "compact";
+  const compact = renderHeatPumpPanel(title, keys, accent);
+  assert.match(compact, /data-oq-bind="panel-status">Ontdooien<\/span>/);
+  assert.match(compact, /<strong class="oq-stat-value">n\.v\.t\.<\/strong>/);
+  state.hpVisualMode = "schematic";
+  const schematic = renderHeatPumpPanel(title, keys, accent);
+  assert.match(schematic, /data-oq-bind="footer-mode">Ontdooien<\/strong>/);
+  assert.match(schematic, /data-oq-bind="footer-efficiency">n\.v\.t\.<\/strong>/);
+
+  state.entities[keys.defrost] = { value: false };
+  assert.equal(getHeatPumpRuntimeModel(title, keys, accent).schematic.reverseCycle, true);
+
+  const mode = { textContent: "Ontdooien" };
+  const cop = { textContent: "n.v.t." };
+  const nodes = {
+    '[data-oq-bind="footer-mode"]': mode,
+    '[data-oq-bind="footer-efficiency"]': cop,
+  };
+  const board = { className: "", querySelector: selector => nodes[selector] || null };
+  const panel = { querySelector: selector => selector === "[data-oq-hp-board]" ? board : null };
+  state.entities[keys.fourWay] = { value: false };
+  patchHeatPumpPanel(panel, title, keys, accent);
+  assert.equal(mode.textContent, "Verwarmen");
+  assert.equal(cop.textContent, "2.9");
+  assert.doesNotMatch(board.className, /is-defrost|is-reversed/);
+});

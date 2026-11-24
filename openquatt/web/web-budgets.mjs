@@ -92,7 +92,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Scheduled per-unit exclusions and frequency preview: +5,913 B raw / +2,250 B gzip versus dev (Node 24.14.1).
     // Clearer exclusion summaries and restore feedback: +1,082 B raw / +180 B gzip (Node 24.14.1).
     // Compressor frequency demand in both overview modes: +376 B raw / +114 B gzip (Node 24.14.1).
-    raw: 1_516_702,
+    // Defrost valve status and live COP explanation: +726 B raw / +224 B gzip (Node 24.14.1).
+    raw: 1_517_428,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

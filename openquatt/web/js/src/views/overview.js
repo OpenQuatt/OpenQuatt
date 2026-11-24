@@ -1,4 +1,4 @@
-import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
+import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, getTotalCopDefrostNote, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
 import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, renderOqIcon, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes, parseLooseNumber } from "../core/entity-store.js";
@@ -88,6 +88,9 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function getHeatPumpPanelStatusLabel(mode, running) {
+    if (mode === t("heatpump.modeDefrost") || mode === t("heatpump.modeDefrostTransition")) {
+      return mode;
+    }
     if (running) {
       return t("overview.statusActive");
     }
@@ -101,8 +104,8 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function renderHpPanelStatusChip(mode, running) {
-    const tone = running ? "active" : "neutral";
     const label = getHeatPumpPanelStatusLabel(mode, running);
+    const tone = label === t("overview.statusActive") ? "active" : "neutral";
     return `<span class="oq-overview-chip oq-overview-chip--${escapeHtml(tone)}" data-oq-bind="panel-status">${escapeHtml(label)}</span>`;
   }
 
@@ -685,7 +688,9 @@ import { renderStatCard } from "./stat-card.js";
     return [
       { key: "totalPower", label: t("overview.topPower"), tone: "blue" },
       { key: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "orange" },
-      { key: coolingActive ? "totalEer" : "totalCop", label: coolingActive ? t("overview.topCopEer") : t("overview.topCop"), tone: "green" },
+      coolingActive
+        ? { key: "totalEer", label: t("overview.topCopEer"), tone: "green" }
+        : { key: "totalCop", label: t("overview.topCop"), tone: "green", note: getTotalCopDefrostNote() },
       { key: "flowSelected", label: t("overview.topFlow"), tone: "sky" },
     ];
   }

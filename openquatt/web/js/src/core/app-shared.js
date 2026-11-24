@@ -72,22 +72,45 @@ export { hasEntity } from "./entity-store.js";
     return normalized.includes("cop") || normalized.includes("eer");
   }
 
+  function getInstalledHeatPumpPanels(topology) {
+    return HP_PANEL_CONFIGS.slice(0, topology === "duo" ? 2 : 1);
+  }
+
+  export function isHeatPumpDefrosting(keys) {
+    if (getBinaryEntityState(keys.fourWay) !== true) return false;
+    const mode = getEntityValue(keys.mode);
+    return mode === "Heating" || mode === "Defrost" || (mode !== "Cooling" && getBinaryEntityState(keys.defrost) === true);
+  }
+
+  export function getTotalCopDefrostNote() {
+    const defrosting = getInstalledHeatPumpPanels(getInstallationTopology())
+      .filter(({ keys }) => isHeatPumpDefrosting(keys));
+    if (defrosting.length === 2) return t("overview.topCopDefrostBoth");
+    if (defrosting.length === 1) return t("overview.topCopDefrost", { pump: defrosting[0].title });
+    return "";
+  }
+
   export function getLiveHeatingCopValue(key) {
     if (/^CM1(?:\s|$)/.test(String(getEntityValue("controlModeLabel") || "").trim())) return Number.NaN;
     const total = key === "totalCop";
+    const topology = total ? getInstallationTopology() : "";
     const panels = total
-      ? HP_PANEL_CONFIGS.slice(0, getInstallationTopology() === "duo" ? 2 : 1)
+      ? getInstalledHeatPumpPanels(topology)
       : HP_PANEL_CONFIGS.filter((panel) => panel.keys.cop === key);
-    if (!panels.length || (total && !getInstallationTopology())) return Number.NaN;
+    if (!panels.length || (total && !topology)) return Number.NaN;
     let heating = false;
+    let defrostReported = false;
     for (const { keys } of panels) {
       const mode = String(getEntityValue(keys.mode) || "");
       const rawFrequency = getEntityValue(keys.freq);
       const frequency = rawFrequency !== "" && rawFrequency != null ? getEntityNumericValue(keys.freq) : Number.NaN;
       const defrost = getBinaryEntityState(keys.defrost);
       if (!["Standby", "Cooling", "Heating", "Defrost"].includes(mode) || !Number.isFinite(frequency) || frequency < 0 || frequency > 120 || defrost === null) return Number.NaN;
-      if (mode === "Defrost" || defrost) return Number.NaN;
-      if (mode === "Heating") {
+      const transition = mode === "Defrost" || defrost;
+      const valveReversed = getBinaryEntityState(keys.fourWay);
+      if (valveReversed === true || (transition && valveReversed !== false)) return Number.NaN;
+      defrostReported ||= transition;
+      if (mode === "Heating" || mode === "Defrost") {
         heating ||= frequency > 0;
       }
     }
@@ -98,7 +121,7 @@ export { hasEntity } from "./entity-store.js";
       const value = getEntityNumericValue(key);
       return Number.isFinite(value) && value > 0 ? value : Number.NaN;
     }
-    if (!total) return Number.NaN;
+    if (!total || defrostReported) return Number.NaN;
     const output = getEntityNumericValue("totalHeat");
     const inputKey = hasEntity("heatingPowerInput") ? "heatingPowerInput" : "totalPower";
     const input = hasEntity(inputKey) ? getEntityNumericValue(inputKey) : Number.NaN;
