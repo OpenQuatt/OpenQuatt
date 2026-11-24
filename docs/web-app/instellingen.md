@@ -279,9 +279,9 @@ Hier staan commissioning, tests, kalibratie en andere servicetaken. Gebruik deze
 
 **Ontluchten** draait in CM100 een pomp-only programma van 5 minuten met een rustige start, pomp-pulsen en stabilisatie. Tijdens een rustpuls mag de gemeten flow kort naar nul zakken. De routine stopt met een fout zodra 120 seconden aaneengesloten geen geldige flow van minstens 20 L/h is gedetecteerd. De gevraagde iPWM toont de opdracht van het programma, niet een bevestiging dat de pomp draait of water stroomt. Het resultaat onderscheidt **Mislukt** met foutreden van **Afgebroken**. Na een fout of afbreken keert de routine niet automatisch terug naar Auto; de optie voor terugkeer naar Auto geldt alleen bij normaal afronden.
 
-#### Flow autotune
+#### Flowregeling afstellen
 
-Start de service (CM100) en open **Flow autotune**. De autotune voert twee
+Start de service (CM100) en open **Flowregeling afstellen**. OpenQuatt voert twee
 pompstaptests uit en controleert daarna de berekende Kp/Ki met een
 flowdoelstap. Laat kleppen en andere pompen tijdens de test gelijk staan.
 **Huidige Kp/Ki** toont de actieve waarden; tijdens validatie worden tijdelijk

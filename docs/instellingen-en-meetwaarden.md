@@ -366,7 +366,7 @@ Gebruik deze vuistregels:
 Voor de meeste gebruikers zijn dit geen eerste knoppen:
 
 - compile-time constanten;
-- flow autotune-details;
+- details van de afstelling van de flowregeling;
 - lage-level optimizer- of guardrailinstellingen;
 - meerdere groepen instellingen tegelijk.
 
