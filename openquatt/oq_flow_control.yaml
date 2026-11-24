@@ -25,7 +25,7 @@
 # Interaction with Control Modes:
 #   - Active in CM1/CM2/CM3/CM4/CM5/CM100 (AUTO=PI, MANUAL=fixed iPWM)
 #   - CM0: early return (supervisory owns pump state in idle)
-#   - CM98: fixed frost PWM path
+#   - CM98: frost PWM with a low-flow recovery path
 #
 # Safety / fail-safe:
 #   - Hydraulic safety: at insufficient flow, heat production must stop (via CM1)
@@ -225,4 +225,7 @@ interval:
     startup_delay: ${oq_flow_loop_startup_delay_ms}ms
     then:
       - lambda: |-
-          oq_flow_runtime::runtime().tick({${oq_flow_loop_s}, 20, ${oq_cm98_pump_ipwm}});
+          oq_flow_runtime::runtime().tick({
+            ${oq_flow_loop_s}, 20, ${oq_cm98_pump_ipwm}, ${oq_cm_min_flow_lph},
+            oq_supervisory_state_runtime::runtime().compressor_postflow_active()
+          });

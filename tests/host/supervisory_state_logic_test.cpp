@@ -7,7 +7,7 @@
 
 #include "../../openquatt/includes/control/oq_hp_restart_guard.h"
 #include "../../openquatt/includes/control/oq_supervisory_state_logic.h"
-#include "../../openquatt/includes/incidents/oq_hp_incident_types.h"
+#include "../../openquatt/includes/incidents/oq_hp_incident_engine.h"
 
 namespace {
 
@@ -386,6 +386,40 @@ void test_flow_guard_and_cm1_idle_hold() {
   assert(hold_cm1_until_hp_idle(true, 0, true));
 }
 
+void test_postflow_waits_for_both_fresh_stop_reads_after_watchdog_timeout() {
+  using namespace oq_supervisory_state;
+  oq_incidents::HpIncidentEngine hp;
+  assert(!compressor_requires_postflow(hp.outputs(), false));
+
+  hp.observe_run({1U, true, true, false, true, 68.0f});
+  assert(compressor_requires_postflow(hp.outputs(), true));
+  assert(hp.request_stop(1000U));
+
+  hp.observe_run({31000U, true, false, true, true, 47.0f});
+  assert(standby_requires_postflow(98, compressor_requires_postflow(hp.outputs(), true)));
+  assert(standby_requires_postflow(0, compressor_requires_postflow(hp.outputs(), true)));
+  assert(flow_guard_required(false, compressor_requires_postflow(hp.outputs(), true), false));
+
+  hp.observe_run({56000U, true, false, true, true, 27.0f});
+  hp.tick(61000U);
+  assert(hp.outputs().stop_unconfirmed);
+  assert(standby_requires_postflow(98, compressor_requires_postflow(hp.outputs(), false)));
+  hp.observe_run({66000U, true, false, true, true, 20.0f});
+  assert(standby_requires_postflow(98, compressor_requires_postflow(hp.outputs(), true)));
+  hp.observe_run({76000U, true, false, true, true, 0.0f});
+  assert(standby_requires_postflow(98, compressor_requires_postflow(hp.outputs(), false)));
+  hp.observe_run({86000U, true, false, true, true, 0.0f});
+  assert(hp.outputs().stop_confirmed);
+  assert(!standby_requires_postflow(98, compressor_requires_postflow(hp.outputs(), false)));
+  assert(standby_requires_postflow(98, compressor_requires_postflow(hp.outputs(), true)));
+
+  hp.observe_link_round(87000U, false);
+  hp.observe_link_round(102000U, false);
+  hp.observe_link_round(117000U, false);
+  assert(hp.outputs().stop_confirmation_pending);
+  assert(standby_requires_postflow(98, compressor_requires_postflow(hp.outputs(), false)));
+}
+
 void test_sticky_pump_timing() {
   using namespace oq_supervisory_state;
   auto output = update_sticky_pump(0, true, 1000, 500, {});
@@ -433,6 +467,7 @@ int main() {
   test_override_timeout();
   test_silent_window();
   test_flow_guard_and_cm1_idle_hold();
+  test_postflow_waits_for_both_fresh_stop_reads_after_watchdog_timeout();
   test_sticky_pump_timing();
   return 0;
 }

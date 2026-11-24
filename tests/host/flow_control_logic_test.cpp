@@ -208,6 +208,23 @@ void test_flow_mismatch_hold_is_rollover_safe() {
   assert(update_mismatch(state, inputs));
 }
 
+void test_circulation_recovery_keeps_stronger_pump_drive() {
+  constexpr float minimum_flow_lph = 400.0f;
+  int limit = update_circulation_ipwm_limit(kWeakestPumpIpwm, 800, false, 550.0f, minimum_flow_lph);
+  assert(limit == kWeakestPumpIpwm);
+  limit = update_circulation_ipwm_limit(limit, 800, false, 0.0f, minimum_flow_lph);
+  assert(limit == kAutoStartFallbackIpwm);
+  limit = update_circulation_ipwm_limit(limit, 440, false, 400.0f, minimum_flow_lph);
+  assert(limit == kAutoStartFallbackIpwm);
+  limit = update_circulation_ipwm_limit(limit, 440, false, NAN, minimum_flow_lph);
+  assert(limit == kStrongestPumpIpwm);
+  assert(update_circulation_ipwm_limit(limit, 50, false, 700.0f, minimum_flow_lph) == kStrongestPumpIpwm);
+
+  assert(update_circulation_ipwm_limit(kWeakestPumpIpwm, 300, false, 0.0f, minimum_flow_lph) == kStrongestPumpIpwm);
+  assert(update_circulation_ipwm_limit(kWeakestPumpIpwm, 800, true, 399.0f, minimum_flow_lph) == kStrongestPumpIpwm);
+  assert(update_circulation_ipwm_limit(kWeakestPumpIpwm, 800, true, NAN, minimum_flow_lph) == kStrongestPumpIpwm);
+}
+
 void test_execution_mode_labels_are_stable() {
   assert(strcmp(execution_mode_text(ExecutionMode::AUTO), "AUTO") == 0);
   assert(strcmp(execution_mode_text(ExecutionMode::AUTO_FAILSAFE), "AUTO (failsafe)") == 0);
@@ -228,6 +245,7 @@ int main() {
   test_normal_cooling_and_manual_flow_setpoint_selection();
   test_flow_mismatch_hold_hysteresis_and_pump_gate();
   test_flow_mismatch_hold_is_rollover_safe();
+  test_circulation_recovery_keeps_stronger_pump_drive();
   test_execution_mode_labels_are_stable();
   return 0;
 }

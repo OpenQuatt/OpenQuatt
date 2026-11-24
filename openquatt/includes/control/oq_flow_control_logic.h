@@ -12,14 +12,23 @@
 namespace oq_flow_control {
 
 constexpr int kAutoStartFallbackIpwm = 440;
+constexpr int kStrongestPumpIpwm = 50;
+constexpr int kWeakestPumpIpwm = 850;
 
 // iPWM limits shared with YAML.
 inline int clamp_ipwm(int value) {
-  constexpr int kMin = 50;
-  constexpr int kMax = 850;
-  if (value < kMin) return kMin;
-  if (value > kMax) return kMax;
+  if (value < kStrongestPumpIpwm) return kStrongestPumpIpwm;
+  if (value > kWeakestPumpIpwm) return kWeakestPumpIpwm;
   return value;
+}
+
+inline int update_circulation_ipwm_limit(int limit, int current_ipwm, bool postflow, float flow_lph,
+                                         float minimum_flow_lph) {
+  if (isfinite(flow_lph) && flow_lph >= minimum_flow_lph) return limit;
+  // A lower iPWM drives the pump harder. Keep the stronger setting for this
+  // circulation period so a recovered sample cannot undo the rescue.
+  const bool already_boosted = limit <= kAutoStartFallbackIpwm || current_ipwm <= kAutoStartFallbackIpwm;
+  return postflow || already_boosted ? kStrongestPumpIpwm : kAutoStartFallbackIpwm;
 }
 
 inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm,

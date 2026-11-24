@@ -176,10 +176,11 @@ class DefrostContractTest(unittest.TestCase):
         # P1a: CM0 with an active HP must circulate, never keep the stop PWM while the relay is On.
         self.assertIn("oq_defrost::cm0_pump_target(sticky_active, any_hp_active_guard,", supervisor)
         self.assertIn("cm0_pump_target(bool sticky_active, bool hp_active_guard,", logic)
-        self.assertIn("standby_requires_postflow(desired_local,", supervisor)
-        postflow = supervisor.index("standby_requires_postflow(desired_local,")
+        self.assertIn("standby_requires_postflow(", supervisor)
+        postflow = supervisor.index("standby_requires_postflow(")
         self.assertGreater(postflow, supervisor.index("if (override_mode != 0)"))
         self.assertLess(postflow, supervisor.index("return desired_local;"))
+        self.assertIn("this->compressor_postflow_active_", supervisor[postflow:])
         self.assertNotIn('strcmp(desired_cm, "CM0") == 0 && !any_hp_active_guard', supervisor)
         self.assertIn('hold_cm1_until_hp_idle(strcmp(cur_cm, "CM1") == 0, desired_local,', supervisor)
 

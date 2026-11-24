@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "../sources/oq_source_receipt_runtime.h"
 #include "oq_flow_control_logic.h"
 #include "oq_flow_delta_t_runtime.h"
 #include "../service/oq_service_logic.h"
@@ -14,6 +15,8 @@ struct TickConfig {
   float dt_s = 10.0f;
   int startup_hold_s = 20;
   int frost_ipwm = 800;
+  float minimum_flow_lph = 400.0f;
+  bool compressor_postflow_active = false;
 };
 
 class Runtime {
@@ -86,6 +89,9 @@ class Runtime {
     const int cm_code = id(oq_control_mode_code);
     const int task_code = id(oq_commissioning_task_code);
     const bool want_manual = id(oq_flow_control_mode).active_index().value_or(0) == 1;
+    const bool frost = cm_code == 98;
+    const bool postflow = cm_code == 1 && config.compressor_postflow_active;
+    if (!frost && !postflow) circulation_ipwm_limit_ = oq_flow_control::kWeakestPumpIpwm;
     const bool cm100_idle = cm_code == 100 && task_code == oq_commissioning::TASK_NONE;
     const bool flow_idle = cm_code == 0 || cm100_idle;
     const bool cm100_task_started =
@@ -111,7 +117,6 @@ class Runtime {
       return;
     }
 
-    const bool frost = cm_code == 98;
     const int fixed_mode = frost ? 2 : 0;
     if (fixed_mode != last_fixed_mode_) {
       reset_pi_();
@@ -195,6 +200,19 @@ class Runtime {
       }
     }
 
+    if (frost || postflow) {
+      // R2103 and the ODU flow share a poll. A cached flow value must
+      // not suppress pump recovery after the runtime polls go stale.
+      const uint64_t now_ms = oq_sources::monotonic_ms();
+      bool odu_poll_fresh = id(hp1_is_online) && oq_sources::hp1.compressor_frequency.fresh(now_ms, 30000);
+#if OQ_TOPOLOGY_DUO
+      odu_poll_fresh = odu_poll_fresh && id(hp2_is_online) && oq_sources::hp2.compressor_frequency.fresh(now_ms, 30000);
+#endif
+      const float flow_lph = odu_poll_fresh && id(flow_rate_selected).has_state() ? id(flow_rate_selected).state : NAN;
+      circulation_ipwm_limit_ = oq_flow_control::update_circulation_ipwm_limit(
+          circulation_ipwm_limit_, id(oq_flow_last_pwm), postflow, flow_lph, config.minimum_flow_lph);
+      if (pwm > circulation_ipwm_limit_) pwm = circulation_ipwm_limit_;
+    }
     pwm = oq_flow_control::clamp_ipwm(pwm);
     set_output_pwm_(pwm);
     write_pumps_(pwm);
@@ -273,6 +291,7 @@ class Runtime {
   int last_cm_code_ = 0;
   int last_task_code_ = 0;
   int last_fixed_mode_ = 0;
+  int circulation_ipwm_limit_ = oq_flow_control::kWeakestPumpIpwm;
   bool have_published_mode_ = false;
   oq_flow_control::ExecutionMode published_mode_ = oq_flow_control::ExecutionMode::CM0;
 };

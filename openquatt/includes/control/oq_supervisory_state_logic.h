@@ -300,7 +300,18 @@ inline bool hold_cm1_until_hp_idle(bool in_cm1, int desired_mode, bool hp_active
   return in_cm1 && (desired_mode == 0 || desired_mode == 98) && hp_active;
 }
 
-inline bool standby_requires_postflow(int desired_mode, bool hp_active) { return desired_mode == 0 && hp_active; }
+template <typename IncidentOutputs>
+inline bool compressor_requires_postflow(const IncidentOutputs& outputs, bool compressor_moving) {
+  using RunState = decltype(outputs.run_state);
+  // Standby and a zero command can precede inverter standstill by over a minute.
+  // Keep pumping through the stop watchdog, including a timeout and link revalidation.
+  return compressor_moving || outputs.running_confirmed || outputs.stop_confirmation_pending ||
+         outputs.stop_unconfirmed || (outputs.run_state != RunState::UNKNOWN && outputs.run_state != RunState::STOPPED);
+}
+
+inline bool standby_requires_postflow(int desired_mode, bool hp_active) {
+  return (desired_mode == 0 || desired_mode == 98) && hp_active;
+}
 
 enum class SilentOverride : uint8_t { SCHEDULE, ON, OFF };
 

@@ -11,6 +11,7 @@
 #include "../performance/oq_energy_logic.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
+#include "../sources/oq_source_receipt_runtime.h"
 #include "oq_cold_start_probe.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_control_mode_log_logic.h"
@@ -70,6 +71,7 @@ struct TickConfig {
 class Runtime {
  public:
   uint8_t heating_gate_reason() const { return this->heating_gate_reason_; }
+  bool compressor_postflow_active() const { return this->compressor_postflow_active_; }
   void tick(const TickConfig& tick) {
     const uint32_t now_ms = (uint32_t)millis();
 
@@ -208,10 +210,20 @@ class Runtime {
     const float outside_c = id(outside_temp_selected).state, supply_c = id(oq_system_supply_temp).state;
     const uint32_t minimum_off_ms = oq_supervisory_state::seconds_to_ms(tick.hp_min_off_s);
     const auto hp1_incidents = id(oq_incident_manager).get_outputs(1);
+    const uint64_t telemetry_now_ms = oq_sources::monotonic_ms();
+    const auto compressor_requires_postflow = [&](const auto& incidents, const oq_sources::RawFloatReceipt& frequency) {
+      const bool moving = frequency.fresh(telemetry_now_ms, 30000) && frequency.value > 0.5f;
+      return oq_supervisory_state::compressor_requires_postflow(incidents, moving);
+    };
+    this->compressor_postflow_active_ =
+        compressor_requires_postflow(hp1_incidents, oq_sources::hp1.compressor_frequency);
     bool minimum_off_active = oq_supervisory_state::low_load_minimum_off_active(
         hp1_incidents, hp1_lvl, id(oq_incident_manager).minimum_off_remaining_ms(1, now_ms));
 #if OQ_TOPOLOGY_DUO
     const auto hp2_incidents = id(oq_incident_manager).get_outputs(2);
+    this->compressor_postflow_active_ =
+        this->compressor_postflow_active_ ||
+        compressor_requires_postflow(hp2_incidents, oq_sources::hp2.compressor_frequency);
     minimum_off_active =
         minimum_off_active || oq_supervisory_state::low_load_minimum_off_active(
                                   hp2_incidents, hp2_lvl, id(oq_incident_manager).minimum_off_remaining_ms(2, now_ms));
@@ -357,8 +369,8 @@ class Runtime {
                                          (int)roundf(id(oq_manual_hp2_level).state) > 0 || actuator_request_active);
     const bool heating_flow_req = heating_req || heating_preflow_req;
     const bool thermal_req = heating_flow_req || cooling_req || manual_hp_thermal_req;
-    const bool flow_guard_required =
-        oq_supervisory_state::flow_guard_required(thermal_req, any_hp_compressor_active, actuator_request_active);
+    const bool flow_guard_required = oq_supervisory_state::flow_guard_required(
+        thermal_req, any_hp_compressor_active || this->compressor_postflow_active_, actuator_request_active);
 
     // -------------------------------------------------
     // 2) Flow interlock status + timers
@@ -898,13 +910,12 @@ class Runtime {
           }
         }
       }
-      // Every standby entry, including Force CM0, must wait in circulation
-      // until the actuator and ODU confirm idle. Defrost safety stops remain
-      // authoritative in the actuator; this only preserves pump flow.
-      if (oq_supervisory_state::standby_requires_postflow(desired_local,
-                                                          any_hp_active_guard || actuator_request_active)) {
+      // Release normal circulation only after the actuator and both ODUs
+      // are idle, including when Force CM0 or Force CM98 is selected.
+      if (oq_supervisory_state::standby_requires_postflow(
+              desired_local, any_hp_active_guard || actuator_request_active || this->compressor_postflow_active_)) {
         desired_local = 1;
-        cm_transition_reason = "standby waiting for heat pumps to become idle";
+        cm_transition_reason = "postflow waiting for confirmed compressor stop";
       }
       cm4_resume_tracker.finish_after_decision(heating_req,
                                                cooling_req || frost || commissioning_in_progress || override_mode != 0,
@@ -1204,6 +1215,7 @@ class Runtime {
 
  private:
   uint8_t heating_gate_reason_{0};
+  bool compressor_postflow_active_{false};
   oq_cold_start::WaterProbe hp1_water_probe_;
 #if OQ_TOPOLOGY_DUO
   oq_cold_start::WaterProbe hp2_water_probe_;
