@@ -4719,6 +4719,7 @@ export default {
     confirm: "With this frequency range and limit, no compressor levels remain for {blocked}. Save anyway?",
   },
   frequencyLimits: {
+    noLevel: "Below F1",
     describe: "{cap} Hz is lower than the minimum of {unit} for {mode}: {minimum} Hz. {unit} may therefore not start.",
     modeCooling: "cooling",
     modeHeating: "heating",

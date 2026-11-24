@@ -4719,6 +4719,7 @@ export default {
     confirm: "Met het frequentiebereik en de ingestelde limiet blijft voor {blocked} geen compressorstand over. Toch opslaan?",
   },
   frequencyLimits: {
+    noLevel: "Onder F1",
     describe: "{cap} Hz is lager dan het minimum van {unit} bij {mode}: {minimum} Hz. {unit} kan hierdoor niet starten.",
     modeCooling: "koelen",
     modeHeating: "verwarmen",
