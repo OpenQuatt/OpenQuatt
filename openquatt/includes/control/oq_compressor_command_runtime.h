@@ -106,14 +106,10 @@ inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = f
   // Manual service keeps its existing user-frequency policy. Temperature
   // dependent frequency regulation remains owned by the ODU.
   if (oq_manual_hp::owns_control()) return true;
-  const auto& cap = id(oq_silent_active).state ? id(oq_silent_max_frequency_hz) : id(oq_day_max_frequency_hz);
-  const auto& excluded_min =
-      hp1 ? id(hp1_excluded_frequency_min_hz) : OQ_COMMAND_SECONDARY_ID(excluded_frequency_min_hz);
-  const auto& excluded_max =
-      hp1 ? id(hp1_excluded_frequency_max_hz) : OQ_COMMAND_SECONDARY_ID(excluded_frequency_max_hz);
-  return oq_frequency_policy::frequency_allowed(
-      oq_odu::frequency_for_physical_level(snapshot.heating, value), oq_frequency_runtime::read_hz(cap),
-      {oq_frequency_runtime::read_hz(excluded_min), oq_frequency_runtime::read_hz(excluded_max)});
+  const bool silent = id(oq_silent_active).state;
+  return oq_frequency_policy::frequency_allowed(oq_odu::frequency_for_physical_level(snapshot.heating, value),
+                                                oq_frequency_runtime::active_cap_hz(silent),
+                                                oq_frequency_runtime::effective_excluded_range(hp1, silent));
 }
 
 inline bool queued_command(bool hp1, const uint8_t* pdu, size_t size) {

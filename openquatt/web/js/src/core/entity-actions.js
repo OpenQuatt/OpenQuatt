@@ -1,3 +1,4 @@
+import { getFrequencyExclusionModel, getFrequencyExclusionSaveWarning, patchFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
 import { handleWeatherChartFocus, handleWeatherChartKeyDown, handleWeatherChartPointer } from "../settings/weather-forecast.js";
 import { handlePerformanceTelemetryPromptAction, handlePerformanceTelemetryPromptKeyDown } from "../features/performance-telemetry-prompt.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
@@ -17,6 +18,7 @@ import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChan
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleHouseLearningAction } from "../features/house-learning.js";
+import { handleMeasurementArchiveAction } from "../settings/measurement-archive.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
 import { handleFirmwareAction } from "../features/firmware-actions.js";
 import { updateFirmwareState, updateEnergyHistoryState } from "./feature-state.js";
@@ -48,6 +50,7 @@ const actionDelegates = [
   handleControlReplayAction,
   handleQuickStartAction,
   handleDebugRecordingAction,
+  handleMeasurementArchiveAction,
   (action, button) => handleHouseLearningAction(action, button, triggerNamedButton, refreshEntities),
   handleOduEepromDumpAction,
   handleOduDefrostAction,
@@ -102,6 +105,7 @@ function updateFrequencyRangeControl(input) {
   if (value) {
     value.textContent = disabled ? t("settings.noExclusion") : `${minValue}–${maxValue} Hz`;
   }
+  patchFrequencyExclusionDetails(input.closest(".oq-settings-hp-group"), { MinHz: minValue, MaxHz: maxValue });
 }
 
   export function requestElectricalLimitChange(rawValue) {
@@ -375,7 +379,10 @@ function updateFrequencyRangeControl(input) {
       if (!Number.isNaN(numeric)) {
         const normalized = normalizeNumber(field, event.target.value);
         state.drafts[field] = normalized;
-        if (field === "silentMaxHz" || field === "dayMaxHz") patchFrequencyLimitWarnings();
+        if (field === "silentMaxHz" || field === "dayMaxHz") {
+          patchFrequencyLimitWarnings();
+          patchFrequencyExclusionDetails();
+        }
         if (event.target.type === "range") {
           if (field === "electricalCurrentLimit") {
             const sliderValue = event.target.closest("[data-oq-settings-field]")?.querySelector(".oq-helper-slider-meta strong");
@@ -524,6 +531,22 @@ function updateFrequencyRangeControl(input) {
     const entity = ENTITY_DEFS[field];
     if (!entity) {
       return;
+    }
+
+    const exclusion = /^(hp[12])Exclude(Scope|MinHz|MaxHz)$/.exec(field);
+    if (exclusion) {
+      const [, hp, setting] = exclusion;
+      const value = event.target.value;
+      const invalid = setting === "Scope" && value !== "Off" && getFrequencyExclusionModel(hp).invalidRange;
+      const warning = getFrequencyExclusionSaveWarning(hp, { [setting]: value });
+      if (invalid || (warning && !window.confirm(warning))) {
+        if (invalid) state.controlError = t("settingsControls.invalidRange");
+        delete state.drafts[field];
+        delete state.inputDrafts[field];
+        event.target.value = String(getEntityValue(field));
+        render();
+        return;
+      }
     }
 
     if (entity.domain === "select") {

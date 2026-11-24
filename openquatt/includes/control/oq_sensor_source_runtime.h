@@ -27,11 +27,18 @@ class Runtime {
   // Use the selected source and its calibration with the producer's own
   // timestamp. The producer and the display sensor publish independently.
   // Neither an outdoor-unit fallback nor a held value measures after the boiler.
-  oq_sources::RawFloatReceipt system_supply_receipt() const {
-    if (!id(oq_water_supply_temp_current_source_ready) || id(oq_water_supply_temp_selected_hold_active) ||
-        id(oq_water_supply_temp_fallback_runtime_active) || !id(water_supply_temp_selected).has_state())
-      return {};
+  oq_sources::RawFloatReceipt system_supply_receipt(float* applied_offset_c = nullptr) const {
+    if (applied_offset_c) *applied_offset_c = 0.0f;
+    if (!id(oq_water_supply_temp_current_source_ready)) return {};
+    const bool available = !id(oq_water_supply_temp_selected_hold_active) &&
+                           !id(oq_water_supply_temp_fallback_runtime_active) &&
+                           id(water_supply_temp_selected).has_state();
+    if (!available && !applied_offset_c) return {};
     const auto source = current_calibration_source();
+    const auto record = calibration_record(source.code);
+    const float offset = oq_supply_calibration::record_matches(record, source) ? record.offset_c : 0.0f;
+    if (applied_offset_c) *applied_offset_c = offset;
+    if (!available) return {};
     oq_sources::RawFloatReceipt receipt;
     switch (source.code) {
       case oq_supply_calibration::SOURCE_LOCAL_PT1000:
@@ -50,8 +57,7 @@ class Runtime {
         break;
     }
     if (!receipt.valid) return {};
-    const auto record = calibration_record(source.code);
-    if (oq_supply_calibration::record_matches(record, source)) receipt.value += record.offset_c;
+    receipt.value += offset;
     return receipt;
   }
 

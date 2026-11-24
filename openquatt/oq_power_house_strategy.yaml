@@ -72,6 +72,17 @@ globals:
     restore_value: false
     initial_value: '0'
 
+switch:
+  - platform: template
+    id: ph_run_extension_enabled
+    # New name on purpose: ESPHome keys restored state by entity name, so a
+    # switch state stored by firmware <= v0.58 must not override the default.
+    name: "Power House run extension enabled"
+    icon: mdi:heat-wave
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+
 select:
   - platform: template
     id: oq_ph_response_profile

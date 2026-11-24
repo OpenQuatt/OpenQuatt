@@ -25,7 +25,7 @@ test("Toby-context bevat drie instelwaarden, setpoint, comfortband en cyclusdiag
 });
 
 test("configuratieallowlist bevat alleen begrensde veilige number/select/switch-velden", () => {
-  assert.equal(DEBUG_CONFIGURATION_KEYS.length, 15);
+  assert.equal(DEBUG_CONFIGURATION_KEYS.length, 16);
   assert.equal(new Set(DEBUG_CONFIGURATION_KEYS).size, DEBUG_CONFIGURATION_KEYS.length);
   for (const key of DEBUG_CONFIGURATION_KEYS) {
     assert.ok(["number", "select", "switch"].includes(ENTITY_DEFS[key].domain), key);

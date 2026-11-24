@@ -51,6 +51,10 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
   explicit OpenQuattHouseLearningStatusRequestHandler(OpenQuattHouseLearningStatus* parent) : parent_(parent) {}
 
   bool canHandle(AsyncWebServerRequest* request) const override {
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    auto* archive = this->parent_->archive_handler();
+    if (archive && archive->canHandle(request)) return true;
+#endif
     char url[AsyncWebServerRequest::URL_BUF_SIZE];
     request->url_to(url);
     const auto method = request->method();
@@ -59,6 +63,13 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
   }
 
   void handleRequest(AsyncWebServerRequest* request) override {
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    auto* archive = this->parent_->archive_handler();
+    if (archive && archive->canHandle(request)) {
+      archive->handleRequest(request);
+      return;
+    }
+#endif
     if (!this->parent_->request_is_authenticated(request)) {
       request->requestAuthentication();
       return;

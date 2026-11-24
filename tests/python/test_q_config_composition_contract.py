@@ -35,7 +35,7 @@ def yaml_key_pattern(key: str) -> str:
 
 class QConfigCompositionContractTest(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("esphome"), "ESPHome is required for package composition")
-    def test_standard_q_builds_include_weather_with_verified_consent(self) -> None:
+    def test_standard_q_builds_include_weather_and_measurement_archive(self) -> None:
         from esphome.config import read_config
         from esphome.core import CORE
 
@@ -46,6 +46,11 @@ class QConfigCompositionContractTest(unittest.TestCase):
                 CORE.config_path = ROOT / "configs/heatpump_controller_q" / target
                 config = read_config({})
                 self.assertIsNotNone(config)
+                archive = config["openquatt_measurement_archive"]
+                self.assertEqual(str(archive["id"]), "oq_measurement_archive_store")
+                self.assertEqual(archive["enabled_switch"]["name"], "Measurement Archive enabled")
+                self.assertEqual(archive["enabled_switch"]["restore_mode"], "DISABLED")
+                self.assertEqual(archive["status"]["name"], "Meetarchief")
                 weather = config["openquatt_weather"]
                 self.assertEqual(str(weather["location"]["id"]), "oq_weather_location")
                 self.assertEqual(str(weather["enabled_switch"]["id"]), "oq_weather_experiment_enabled")
@@ -59,6 +64,24 @@ class QConfigCompositionContractTest(unittest.TestCase):
                 self.assertEqual(selects["outside_temp_source"]["initial_option"], "Auto")
                 sensors = {str(item["id"]): item for item in config["sensor"] if "id" in item}
                 self.assertIn("current_outside_temperature()", str(sensors["outside_temp_selected"]["lambda"]))
+
+    @unittest.skipUnless(importlib.util.find_spec("esphome"), "ESPHome is required for package composition")
+    def test_archive_hil_baseline_excludes_recorder_and_candidate_includes_it(self) -> None:
+        from esphome.config import read_config
+        from esphome.core import CORE
+
+        self.addCleanup(CORE.reset)
+        for target, has_archive in (("measurement_archive_baseline_duo.yaml", False),
+                                    ("measurement_archive_duo.yaml", True)):
+            with self.subTest(target=target):
+                CORE.reset()
+                CORE.config_path = ROOT / "scripts/hil/configs" / target
+                config = read_config({})
+                self.assertIsNotNone(config)
+                self.assertEqual("openquatt_measurement_archive" in config, has_archive)
+                self.assertEqual(config["esphome"]["name"], "openquatt-test")
+                self.assertEqual(config["esphome"]["project"]["name"], "openquatt.test")
+                self.assertIn("openquatt_weather", config)
 
     def test_release_targets_only_pin_topology(self) -> None:
         for target, flag in (

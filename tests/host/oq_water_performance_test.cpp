@@ -80,6 +80,27 @@ void test_frequency_feedback_changes_duo_selection() {
     assert(comfort_level() == 1);
     cycle.hp2.candidate.previous_applied_level = 0;
     assert(comfort_level() == 2);
+    // A restart holds a resumed compressor at its level for a short time. That
+    // hold is temporary, like a modulation hold: F1 is still the comfort level,
+    // so the run-extension margin survives an update with the heat pump running.
+    auto resumed = dispatch_input(*model);
+    resumed.hp1.fixed_level = resumed.hp2.fixed_level = 2;
+    resumed.hp1.stop_inhibited = resumed.hp2.stop_inhibited = true;
+    const auto resumed_level = [&] {
+      return run_extension_minimum(resumed, limits, 500.0f, &CandidateModel::reference_f1_dispatch).comfort_level;
+    };
+    assert(resumed_level() == 1);
+    // A level that F1 really cannot serve still raises the comfort level.
+    resumed.hp1.levels[1].allowed = false;
+    assert(resumed_level() == 2);
+    // One resumed unit next to a unit that runs without a hold.
+    resumed = dispatch_input(*model);
+    resumed.hp1.fixed_level = 2;
+    resumed.hp1.stop_inhibited = true;
+    assert(resumed_level() == 1);
+    // A single resumed unit, as on a Single installation: the peer is idle.
+    resumed.hp2.candidate.previous_applied_level = 0;
+    assert(resumed_level() == 1);
   }
   const auto before = decide_dispatch(dispatch_input(nominal), limits, {}, &CandidateModel::confirmed_power);
   assert(topology(before.hp1_level, before.hp2_level) == 2);

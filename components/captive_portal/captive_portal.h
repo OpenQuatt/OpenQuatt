@@ -50,7 +50,8 @@ class CaptivePortal final : public AsyncWebHandler, public Component {
     if (!this->active_ || request->method() != HTTP_GET) return false;
     char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
     const auto url = request->url_to(url_buffer);
-    return url != "/recovery" && url != "/recovery/status";
+    // Requests to the Ethernet address stay with the normal, authenticated web server.
+    return url != "/recovery" && url != "/recovery/status" && !request_targets_ethernet_(request);
   }
 
   void handle_config(AsyncWebServerRequest* request);
@@ -60,6 +61,8 @@ class CaptivePortal final : public AsyncWebHandler, public Component {
   void handleRequest(AsyncWebServerRequest* req) override;
 
  protected:
+  static bool request_targets_ethernet_(AsyncWebServerRequest* request);
+
   web_server_base::WebServerBase* base_;
   bool initialized_{false};
   bool active_{false};

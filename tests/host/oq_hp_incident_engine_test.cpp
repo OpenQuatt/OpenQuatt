@@ -599,6 +599,115 @@ void test_repeated_stop_request_does_not_restart_timeout() {
   assert(!engine.outputs().stop_confirmation_pending);
 }
 
+void initiate_running_stop(HpIncidentEngine& engine, uint32_t stop_ms) {
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  assert(engine.request_start(stop_ms - 10001U));
+  engine.observe_run(frequency(stop_ms - 10000U, 72.0F));
+  assert(engine.request_stop(stop_ms));
+}
+
+void test_slow_stop_waits_for_second_fresh_zero_read() {
+  constexpr uint32_t stop_ms = 90000U;
+  HpIncidentEngine engine;
+  initiate_running_stop(engine, stop_ms);
+
+  engine.observe_run(frequency(stop_ms + 45000U, 30.0F));
+  engine.observe_run(frequency(stop_ms + 55000U, 0.0F));
+  engine.tick(stop_ms + 60000U);
+  assert(engine.outputs().run_state == RunState::STOPPING);
+  assert(!engine.outputs().stop_confirmed);
+  assert(!engine.outputs().fallback_eligible);
+  assert(!engine.request_start(stop_ms + 61000U));
+  assert(!engine.request_stop(stop_ms + 62000U));
+  engine.observe_run(frequency(stop_ms + 64000U, 0.0F, true, false));
+  assert(!engine.outputs().stop_confirmed);
+
+  engine.observe_run(frequency(stop_ms + 65000U, 0.0F));
+  assert(engine.outputs().stop_confirmed);
+  assert(!engine.outputs().stop_unconfirmed);
+}
+
+void test_stop_read_grace_has_a_fixed_deadline() {
+  constexpr uint32_t stop_ms = 90000U;
+  HpIncidentEngine engine;
+  initiate_running_stop(engine, stop_ms);
+  engine.observe_run(frequency(stop_ms + 55000U, 0.0F));
+  assert(!engine.request_stop(stop_ms + 69000U));
+  assert(engine.outputs().run_state == RunState::STOPPING);
+  engine.tick(stop_ms + 70000U);
+  assert(engine.outputs().stop_unconfirmed);
+  assert(!engine.outputs().stop_confirmed);
+  assert(!engine.outputs().fallback_eligible);
+}
+
+void test_stop_read_grace_requires_timely_standby_and_zero_speed() {
+  constexpr uint32_t stop_ms = 90000U;
+  for (const RunObservation first_read :
+       {frequency(stop_ms + 55000U, 30.0F), frequency(stop_ms + 55000U, 0.0F, true, false),
+        frequency(stop_ms + 55000U, 0.0F, true, true, false), frequency(stop_ms + 60000U, 0.0F)}) {
+    HpIncidentEngine engine;
+    initiate_running_stop(engine, stop_ms);
+    engine.observe_run(first_read);
+    engine.tick(stop_ms + 60000U);
+    assert(engine.outputs().stop_unconfirmed);
+    assert(!engine.outputs().stop_confirmed);
+  }
+}
+
+void test_run_or_link_feedback_revokes_stop_read_grace() {
+  constexpr uint32_t stop_ms = 90000U;
+  for (const bool link_suspect : {false, true}) {
+    HpIncidentEngine engine;
+    initiate_running_stop(engine, stop_ms);
+    engine.observe_run(frequency(stop_ms + 55000U, 0.0F));
+    engine.tick(stop_ms + 60000U);
+    assert(!engine.outputs().stop_unconfirmed);
+    if (link_suspect) {
+      engine.observe_link_round(stop_ms + 62000U, false);
+    } else {
+      engine.observe_run(frequency(stop_ms + 62000U, 30.0F));
+    }
+    assert(engine.outputs().stop_unconfirmed);
+    assert(!engine.outputs().fallback_eligible);
+    assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+  }
+}
+
+void test_hard_fault_revokes_stop_read_grace() {
+  constexpr uint32_t stop_ms = 90000U;
+  constexpr uint16_t kHardFault = 1U << 0U;
+  HpIncidentEngine engine;
+  initiate_running_stop(engine, stop_ms);
+  engine.observe_fault_words(words(stop_ms + 50000U, kHardFault));
+  engine.observe_run(frequency(stop_ms + 55000U, 0.0F));
+  engine.tick(stop_ms + 60000U);
+  assert(!engine.outputs().stop_unconfirmed);
+  engine.observe_fault_words(words(stop_ms + 62000U, kHardFault));
+  assert(engine.outputs().stop_unconfirmed);
+  assert(engine.outputs().must_stop);
+  assert(!engine.outputs().fallback_eligible);
+}
+
+void test_immediate_link_loss_preserves_expired_stop_timeout() {
+  constexpr uint32_t stop_ms = 90000U;
+  EngineTuning tuning;
+  tuning.link_lost_rounds = 1U;
+  tuning.link_lost_ms = 0U;
+  HpIncidentEngine engine(tuning);
+  initiate_running_stop(engine, stop_ms);
+  engine.observe_run(frequency(stop_ms + 55000U, 0.0F));
+  engine.tick(stop_ms + 60000U);
+  assert(!engine.outputs().stop_unconfirmed);
+
+  engine.observe_link_round(stop_ms + 62000U, false);
+  assert(engine.outputs().link_state == LinkState::LOST);
+  assert(engine.outputs().stop_unconfirmed);
+  assert(engine.request_stop(stop_ms + 62001U));
+  engine.tick(stop_ms + 122001U);
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+}
+
 void test_revalidation_only_becomes_unconfirmed_after_timeout() {
   EngineTuning tuning;
   tuning.stop_confirm_timeout_ms = 60000U;
@@ -616,6 +725,7 @@ void test_revalidation_only_becomes_unconfirmed_after_timeout() {
   assert(!engine.outputs().fallback_eligible);
 
   assert(engine.request_stop(90102U));
+  engine.observe_run(frequency(145102U, 0.0F));
   engine.tick(150101U);
   assert(engine.outputs().stop_confirmation_pending);
   assert(!engine.outputs().stop_unconfirmed);
@@ -986,6 +1096,12 @@ int main() {
   test_persistent_wrong_mode_requires_safe_stop_and_retry();
   test_stop_requires_post_command_mode_confirmation();
   test_repeated_stop_request_does_not_restart_timeout();
+  test_slow_stop_waits_for_second_fresh_zero_read();
+  test_stop_read_grace_has_a_fixed_deadline();
+  test_stop_read_grace_requires_timely_standby_and_zero_speed();
+  test_run_or_link_feedback_revokes_stop_read_grace();
+  test_hard_fault_revokes_stop_read_grace();
+  test_immediate_link_loss_preserves_expired_stop_timeout();
   test_revalidation_only_becomes_unconfirmed_after_timeout();
   test_preheat_pauses_start_watchdog();
   test_start_timeout_requires_safe_stop_and_explicit_recovery();

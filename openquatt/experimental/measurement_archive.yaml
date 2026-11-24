@@ -1,0 +1,35 @@
+# Local recording for the Q Single/Duo firmware.
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_measurement_archive]
+
+openquatt_measurement_archive:
+  id: oq_measurement_archive_store
+  web_auth: oq_web_auth_store
+  learning_endpoint: oq_ph_learning_status_endpoint
+  enabled_switch:
+    name: "Measurement Archive enabled"
+    entity_category: config
+  status:
+    name: "Meetarchief"
+    entity_category: diagnostic
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          oq_ph_learning::runtime().set_archive_observer(
+              [](const oq_power_house::learning::LearningSourceInput& input,
+                 const oq_power_house::learning::CalorimetryResult& heat,
+                 const oq_power_house::learning::PassiveContextView& context,
+                 uint32_t cic_flow_endpoint, float supply_offset_c) {
+                id(oq_measurement_archive_store).observe(input, heat, context,
+                                                         cic_flow_endpoint, supply_offset_c);
+              });
+          id(oq_weather_experiment).set_archive_observer([](const oq_weather::Series& series) {
+            id(oq_measurement_archive_store).weather(series);
+          });
+          id(oq_measurement_archive_store).enable_downloads();

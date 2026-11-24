@@ -238,7 +238,7 @@ test("vijf leeronderdelen scheiden uitleg, dagelijks gebruik, instellingen en di
       if (panel === "configuration") assert.doesNotMatch(markup, /Een nieuwe berekening|A new calculation|data-oq-learning-scenario|<table/);
       assert.equal(markup.includes('data-oq-field="weatherLocation"'), panel === "configuration");
       assert.equal(markup.includes('data-control-key="houseLearningEnabled"'), panel === "configuration");
-      assert.equal(markup.includes('data-oq-button-key="houseLearningReset"'), panel === "configuration");
+      assert.equal(markup.includes('data-oq-button-key="houseLearningReset"'), panel === "diagnostics");
       assert.equal(markup.includes('data-oq-action="download-house-learning"'), panel === "diagnostics");
       if (panel === "diagnostics") {
         assert.doesNotMatch(markup, /data-oq-forecast-quality/);

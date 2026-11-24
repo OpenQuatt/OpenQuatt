@@ -2117,6 +2117,7 @@
       option: ["Auto", "Force CM0", "Force CM1", "Force CM98"],
     });
     setEntity("switch", "OpenQuatt Enabled", { value: true, state: true });
+    setEntity("switch", "Power House run extension enabled", { value: true, state: true });
     setEntity("switch", "Controlled warmup enabled", { value: false, state: false });
     setEntity("binary_sensor", "Controlled warmup active", { value: false, state: false });
     setEntity("sensor", "Controlled warmup intermediate target", { value: null, state: "unknown", uom: "°C" });
@@ -2126,7 +2127,6 @@
     setEntity("sensor", "Controlled warmup elapsed", { value: 0, uom: "s" });
     setEntity("text_sensor", "Power House run extension status", { value: "inactive", state: "inactive" });
     setEntity("switch", "Boiler assist enabled", { value: true, state: true });
-    setEntity("switch", "Boiler assist during defrost", { value: false, state: false });
     setEntity("switch", "Boiler fallback on heat-pump fault", { value: false, state: false });
     setEntity("select", "Boiler connection", {
       value: "OpenTherm",
@@ -2163,6 +2163,13 @@
       state: "Schedule",
       option: ["Schedule", "On", "Off"],
     });
+    for (const hp of [1, 2]) {
+      setEntity("select", `HP${hp} - Frequency exclusion schedule`, {
+        value: "Always", state: "Always", option: ["Always", "Quiet hours", "Off"],
+      });
+      const frequencies = "26,31,36,41,46,51,56,61,66,71|30,34,38,42,46,50,54,58,62,66";
+      setEntity("text_sensor", `HP${hp} - Automatic compressor frequencies`, { value: frequencies, state: frequencies });
+    }
     setEntity("select", "Flow Control Mode", {
       value: "Flow Setpoint",
       state: "Flow Setpoint",
@@ -4023,8 +4030,13 @@
 
     if (silentModeOverride === "On") {
       setBinary("Silent active", true);
+      setText("text_sensor", "Silent status", "forced_on");
     } else if (silentModeOverride === "Off") {
       setBinary("Silent active", false);
+      setText("text_sensor", "Silent status", "forced_off");
+    } else {
+      setBinary("Silent active", false);
+      setText("text_sensor", "Silent status", "out_of_window");
     }
 
     if (manualCoolingEnabled) {
@@ -4304,9 +4316,6 @@
     if (name === "Performance model validation") {
       setEntity("binary_sensor", "Performance model validation prompt handled", { value: true, state: true });
       setEntity("binary_sensor", "Performance model validation choice configured", { value: true, state: true });
-    }
-    if (name === "Auxiliary heat source connected" && !enabled) {
-      setSwitch("Boiler assist during defrost", false);
     }
     if (name === "Boiler assist enabled" && !enabled) {
       setSwitch("Boiler fallback on heat-pump fault", false);

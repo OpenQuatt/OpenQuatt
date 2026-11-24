@@ -84,6 +84,9 @@ struct DiagnosticRow {
 struct RuntimeStorage {
   PassiveRuntimeStorage learner;
   LearningSourceInput input;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  float archive_supply_offset_c = 0;
+#endif
   PassiveTickInput tick;
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
@@ -125,6 +128,11 @@ struct RuntimeStorage {
 
 class Runtime : public esphome::ota::OTAGlobalStateListener {
  public:
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  using ArchiveObserver = void (*)(const LearningSourceInput&, const CalorimetryResult&, const PassiveContextView&,
+                                   uint32_t, float);
+  void set_archive_observer(ArchiveObserver observer) { archive_observer_ = observer; }
+#endif
   // Called after the control tick returns. Keep its bounded publication frame
   // separate from the control calculation and reuse the strict-PSRAM scratch.
   __attribute__((noinline)) void refresh_shadow() {
@@ -443,6 +451,19 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     }
 
     const auto calorimetry = evaluate_calorimetry(input, state.config.quality);
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    if (archive_observer_) {
+      const auto route = static_cast<oq_sources::LearningSourceRoute>(input.flow_lph.source.id);
+      const uint32_t cic_endpoint =
+          route == oq_sources::LearningSourceRoute::CIC_FLOW
+              ? oq_supply_calibration::fingerprint(oq_supply_calibration::SOURCE_CIC, id(cic_feed_url).state.c_str())
+              : 0;
+      const auto heat =
+          input.system_heat_enabled ? evaluate_system_calorimetry(input, state.config.quality) : calorimetry;
+      archive_observer_(input, heat, context_valid ? context : PassiveContextView{}, cic_endpoint,
+                        state.archive_supply_offset_c);
+    }
+#endif
     const auto batch =
         build_learning_snapshot(input, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH, &calorimetry);
     state.batch_source_status = batch.status;
@@ -627,7 +648,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     observation.room_c = snapshot.room_c;
     observation.outside_c = snapshot.outside_c;
     observation.heat_w = snapshot.heat_to_water_w;
-    observation.model_ready = state.summary.thermal_model_ready;
+    observation.model_ready = forecast_model_ready(state.summary, tick);
     observation.model_samples = state.summary.thermal.accepted_samples;
     observation.h_w_per_k = state.summary.thermal.heat_loss_w_per_k;
     observation.c_wh_per_k = state.summary.thermal.thermal_capacity_wh_per_k;
@@ -636,6 +657,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
 #endif
 
  private:
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  ArchiveObserver archive_observer_ = nullptr;
+#endif
   static manual_line::Settings manual_settings_() {
     return {id(house_cold_temp_c).state, id(house_rated_power_w).state, id(house_zero_power_temp_c).state};
   }
@@ -935,7 +959,11 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     in.setpoint_c = resolved_learning_measurement(state.sources[1], now_ms);
     in.outside_c = resolved_learning_measurement(state.sources[2], now_ms);
     in.flow_lph = resolved_learning_measurement(state.sources[3], now_ms);
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    const auto supply = oq_sensor_source::runtime().system_supply_receipt(&state.archive_supply_offset_c);
+#else
     const auto supply = oq_sensor_source::runtime().system_supply_receipt();
+#endif
     in.system_heat_enabled =
         daily_system_heat_enabled(id(oq_aux_heat_source_present).has_state() && id(oq_aux_heat_source_present).state,
                                   state.system_supply_observed, supply, now_ms);

@@ -1,0 +1,22 @@
+# Shared instrumented baseline for the physical archive memory test.
+substitutions:
+  oq_archive_hil_profile: "archive-baseline"
+  oq_include_measurement_archive: "false"
+
+packages:
+  hil_base: !include base_duo.yaml
+
+esphome:
+  includes:
+    - measurement_archive_memory_probe.h
+  on_boot:
+    priority: 251 # Register before WiFi and the web server start.
+    then:
+      - lambda: oq_archive_hil::setup(*id(oq_web_auth_store));
+
+text_sensor:
+  - platform: template
+    name: "HIL Test Profile"
+    internal: true
+    update_interval: 5s
+    lambda: return {"${oq_archive_hil_profile}"};

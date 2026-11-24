@@ -32,6 +32,7 @@ struct FakeIncidentManager {
 };
 
 FakeSelect hp_generation;
+FakeSelect hp1_excluded_frequency_scope{"Always"}, hp2_excluded_frequency_scope{"Always"};
 FakeIncidentManager oq_incident_manager;
 FakeSensor oq_day_max_frequency_hz{90}, oq_silent_max_frequency_hz{55}, oq_silent_active{0};
 FakeSensor hp1_excluded_frequency_min_hz{0}, hp1_excluded_frequency_max_hz{0};

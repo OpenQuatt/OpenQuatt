@@ -186,12 +186,26 @@ export function renderSettingsChoiceOption({ key, option, model = getSettingsSel
   `;
 }
 
-function renderSettingsSelectOptions(model) {
-  return model.options.map((option) => `<option value="${escapeHtml(option)}" ${option === model.value ? "selected" : ""}>${escapeHtml(formatSettingsOptionLabel(option))}</option>`).join("");
+function getSettingsSelectOptionLabel(key, option) {
+  if (key === "silentModeOverride") {
+    if (option === "Off") return t("common.off");
+    if (option === "On") return t("common.on");
+    if (option === "Schedule") return t("overview.silentSchedule");
+  }
+  if (key === "hp1ExcludeScope" || key === "hp2ExcludeScope") {
+    if (option === "Always") return t("frequencyExclusion.always");
+    if (option === "Quiet hours") return t("frequencyExclusion.quietOnly");
+    if (option === "Off") return t("common.off");
+  }
+  return formatSettingsOptionLabel(option);
 }
 
-export function renderSettingsSelectControl(key, model = getSettingsSelectModel(key)) {
-  return `<select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" data-oq-select-model="true" ${model.busy || !model.available ? "disabled" : ""}>${renderSettingsSelectOptions(model)}</select>`;
+function renderSettingsSelectOptions(key, model) {
+  return model.options.map((option) => `<option value="${escapeHtml(option)}" ${option === model.value ? "selected" : ""}>${escapeHtml(getSettingsSelectOptionLabel(key, option))}</option>`).join("");
+}
+
+export function renderSettingsSelectControl(key, model = getSettingsSelectModel(key), title = "") {
+  return `<select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" data-oq-select-model="true" ${title ? `aria-label="${escapeHtml(title)}"` : ""} ${model.busy || !model.available ? "disabled" : ""}>${renderSettingsSelectOptions(key, model)}</select>`;
 }
 
 export function patchSettingsSelectControl(select, model) {
@@ -200,9 +214,10 @@ export function patchSettingsSelectControl(select, model) {
     select.disabled = model.busy || !model.available;
     // Do not replace a native menu's options while the user is choosing.
     if (select === document.activeElement) return;
+    const key = select.dataset.oqField;
     const options = Array.from(select.options);
-    if (options.length !== model.options.length || options.some((option, index) => option.value !== String(model.options[index]) || option.textContent !== formatSettingsOptionLabel(model.options[index]))) {
-      select.innerHTML = renderSettingsSelectOptions(model);
+    if (options.length !== model.options.length || options.some((option, index) => option.value !== String(model.options[index]) || option.textContent !== getSettingsSelectOptionLabel(key, model.options[index]))) {
+      select.innerHTML = renderSettingsSelectOptions(key, model);
     }
   }
   if (select.value !== model.value) select.value = model.value;
@@ -223,7 +238,7 @@ export function renderSettingsSelectField(key, title, copy, className = "") {
   if (!model.available) {
     return "";
   }
-  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--select">${renderSettingsSelectControl(key, model)}<span class="oq-settings-select-caret" aria-hidden="true"></span></label>`, className);
+  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--select">${renderSettingsSelectControl(key, model, title)}<span class="oq-settings-select-caret" aria-hidden="true"></span></label>`, className);
 }
 
 export function renderSettingsAdvancedDisclosure(id, title, copy, bodyMarkup) {
@@ -247,7 +262,7 @@ export function renderSettingsSwitchPill(key, enabled, onLabel = t("common.on"),
   return `<span class="oq-settings-toggle-state${enabled ? " is-on" : ""}" data-oq-switch-pill="${escapeHtml(key)}" data-on-label="${escapeHtml(onLabel)}" data-off-label="${escapeHtml(offLabel)}">${escapeHtml(enabled ? onLabel : offLabel)}</span>`;
 }
 
-export function renderSettingsCompactSwitchControl(key, title, enabled, busy, onLabel = null, offLabel = null, showStatus = true) {
+export function renderSettingsCompactSwitchControl(key, title, enabled, busy, onLabel = null, offLabel = null, showStatus = true, labelledBy = null) {
   const resolvedOnLabel = onLabel ?? t("common.on");
   const resolvedOffLabel = offLabel ?? t("common.off");
   const model = getSettingsSwitchModel(key, { title, enabled, busy, onLabel: resolvedOnLabel, offLabel: resolvedOffLabel });
@@ -266,6 +281,7 @@ export function renderSettingsCompactSwitchControl(key, title, enabled, busy, on
         data-off-label="${escapeHtml(offLabel)}"
         aria-checked="${model.enabled ? "true" : "false"}"
         aria-label="${escapeHtml(model.ariaLabel)}"
+        ${labelledBy ? `aria-labelledby="${escapeHtml(labelledBy)}"` : ""}
         ${model.busy ? "disabled" : ""}
       >
         <span class="oq-settings-toggle-switch-track" aria-hidden="true">
@@ -436,7 +452,7 @@ export function renderSettingsSliderField(key, title, copy, className = "", opti
   return renderSettingsFieldCard(key, title, copy, `<label class="oq-helper-slider-field"><div class="oq-helper-slider-meta"><span>${escapeHtml(minLabel)}</span><strong>${escapeHtml(valueLabel)}</strong><span>${escapeHtml(maxLabel)}</span></div><input class="oq-helper-range" type="range" data-oq-field="${escapeHtml(key)}" min="${min}" max="${max}" step="${meta.step}" value="${value}" ${state.loadingEntities ? "disabled" : ""}></label>`, className, options.footerMarkup || "");
 }
 
-export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
+export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy, showDisable = true) {
   if (!hasEntity(minKey) || !hasEntity(maxKey)) {
     return "";
   }
@@ -498,7 +514,7 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
       </div>
     </div>
   `;
-  const disableButton = `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${disabled || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>`;
+  const disableButton = showDisable ? `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${disabled || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>` : "";
   return renderSettingsFieldCard(minKey, title, copy, markup, "oq-settings-field--frequency-range", "", disableButton);
 }
 

@@ -56,6 +56,10 @@ struct Series {
   float wind_mps[kHours]{};
   float wind_direction_deg[kHours]{};
   uint64_t wind_direction_valid_mask = 0;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  uint16_t solar_wm2[kHours]{};
+  uint64_t solar_valid_mask = 0;
+#endif
   Current current;
   CurrentWind current_wind;
 };

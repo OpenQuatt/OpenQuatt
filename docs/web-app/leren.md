@@ -10,8 +10,8 @@ update vanaf de eerdere versie die altijd uit startte, wordt leren ingeschakeld.
 - **Uitleg** laat met illustraties zien wat OpenQuatt meet, wat het leert en hoe Vooruitblik rekent.
 - **Leren** toont de meetvoortgang, dagmetingen en woninglijn.
 - **Vooruitblik** toont het temperatuurscenario en de weersverwachting.
-- **Instellingen** groepeert passief leren, leerdata wissen en de weerinstellingen.
-- **Diagnose en data** toont modelwaarden, broninformatie, warmtevraag en de export van leerdata.
+- **Instellingen** groepeert passief leren, de weerinstellingen en de schakelaar voor Meetarchief.
+- **Diagnose en data** toont de warmtevraag, broninformatie en opties om leerdata en Meetarchief te beheren.
 
 ## Twee meetperioden
 
@@ -110,13 +110,75 @@ en modelwaarden. Bij de woninglijn geeft `H` aan hoeveel extra vermogen per
 graad kouder nodig is. `T₀` is de buitentemperatuur waarbij de geschatte
 warmtevraag nul wordt. De regeling gebruikt die waarde niet als schakelgrens.
 
-Via **Diagnose en data → Leerdata downloaden** bewaar je een lokale JSON-export.
-**Instellingen → Leerdata wissen** pauzeert het leren en wist de leerhistorie. Bij een fysieke
-ombouw van Single naar Duo of omgekeerd wis je de leerdata voordat je de
-nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet.
+Onder **Diagnose en data → Leerdata** kun je de leerdata downloaden als JSON.
+**Leerdata wissen** wist daar de leerhistorie en pauzeert passief leren. Het
+Meetarchief blijft bewaard. Bij een fysieke ombouw van Single naar Duo of
+omgekeerd wis je de leerdata voordat je de nieuwe opstelling gaat beoordelen. Een gewone bronwissel vereist deze reset niet.
 Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van
 passief leren gedeeld.
 
+### Meetarchief (experimenteel)
+
+Op Heatpump Controller Q Single en Duo staat het Meetarchief bij een nieuw
+archief standaard aan. De controller bewaart de blokken lokaal, ook als de
+browser dicht is. Onder **Instellingen → Meetarchief** kun je de opname uitzetten.
+Eerder bewaarde blokken blijven beschikbaar. Je keuze blijft bewaard bij een
+herstart of update.
+
+Onder **Diagnose en data → Meetarchief** staan de opnamestatus en de bewaarde meetperiode. Met **Hele archief
+downloaden** krijg je één JSON-bestand met alle bewaarde meetblokken en de
+weerdata bij die periode. De browser haalt de dagen één voor één op. Laat de
+pagina open tot de download start. Onder **Eén dag downloaden** kun je ook
+een losse dag (UTC) kiezen.
+
+Onder **Wat bewaart Meetarchief?** staat wat de controller vastlegt. Per blok
+bewaart hij de binnentemperatuur aan het begin en einde, de gemiddelde
+buitentemperatuur, de ingestelde kamertemperatuur, de aan het water afgegeven
+warmte en de bedrijfstoestand. Het bestand bevat ook de eindtijd, de blokduur
+en de geldige meetduur voor warmte en temperatuur. Met Weer aan staan de
+opgehaalde verwachtingen voor buitentemperatuur, windsnelheid, windrichting en
+zoninstraling apart in de export, samen met beschikbare actuele windgegevens.
+Zoninstraling staat in `solar` met dezelfde ophaaltijd als de bijbehorende
+weerupdate. De vijf waarden zijn globale instraling op een horizontaal vlak
+in W/m². Elke waarde geldt voor het uur dat op het vermelde tijdstip eindigt.
+Een ontbrekende waarde staat als `null`. Koppel een zonrij aan een bestaande
+weerupdate op ophaaltijd. Een oudere weerupdate heeft geen zonrij. Bij een
+onleesbaar zonarchief blijft de gewone export beschikbaar en krijgt
+`solar_available` de waarde `false`. Het bronnummer
+verwijst per dag naar de meetroute in `heat_contexts`. Bij een bronwissel
+bewaart de controller het oude blok als
+verkorte periode. Ontbrekende warmte heeft een eigen waarde en is te
+onderscheiden van gemeten nul. De dagen in de volledige export hebben
+dezelfde opbouw als een losse dag. Meetarchief hergebruikt bronregistraties
+zodra de bijbehorende blokken uit de opslag zijn gerold. Als alle slots in
+gebruik zijn, blijft de opname lopen. Een nieuwe meetbron staat dan als
+`unknown` in de export tot er weer ruimte vrijkomt.
+
+Een fabrieksreset wist de opname-instelling. De firmware schermt oude
+meetblokken daarna af. Voor een nieuw archief moet de archiefruimte eerst
+worden gewist. Dit kan via USB op een Q-controller met de standaard
+16 MiB-partitie-indeling. De wisopdracht verwijdert de oude meetopname
+definitief. Controleer eerst de partitie-indeling van de aangesloten controller
+met esptool 5 en het partitiescript van ESP-IDF. Vul de USB-poort van de
+controller in bij `OQ_USB_PORT`.
+
+```sh
+OQ_USB_PORT=/dev/tty.usbmodem…
+python -m esptool --chip esp32s3 --port "$OQ_USB_PORT" read-flash 0x8000 0x1000 partitions.bin
+python "$IDF_PATH/components/partition_table/gen_esp32part.py" partitions.bin
+```
+
+Controleer dat `openquatt_data` start op `0xA20000` en `6016K`
+(`0x5E0000`) groot is, zoals in
+[`openquatt_16mb.csv`](../../openquatt/partitions/openquatt_16mb.csv).
+Gebruik de volgende opdracht alleen bij die indeling. Die wist uitsluitend
+de gereserveerde archiefruimte.
+
+```sh
+python -m esptool --chip esp32s3 --port "$OQ_USB_PORT" erase-region 0xC00000 0x29D000
+```
+
+Herstart de controller. Het nieuwe Meetarchief begint automatisch met opnemen.
 
 ## Vooruitblik
 

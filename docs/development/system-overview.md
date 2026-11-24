@@ -373,30 +373,9 @@ OpenTherm CH-enable output while the output safety guards remain unchanged.
 
 The boiler command from `oq_boiler_dispatch` is transport-neutral: it carries
 `demand_present`, `heat_request`, `requested_power_w`, `target_temperature_c`,
-`source` and `updated_at_ms`. Power House, Heating Curve, cold start and the
-optional defrost assist may request heat and a target; CM4 fallback and CM100
-commissioning keep their own on/off semantics.
-
-The optional defrost assist (`Boiler assist during defrost`, off by default) is
-its own permission, independent of `Boiler assist enabled`. It is supervisory
-policy in `includes/control/oq_boiler_defrost_assist_logic.h`. The
-supervisory observes the defrost, promotes CM2 to CM3 for that cycle and hands
-the dispatcher only the ownership and the target to hold: the supply
-temperature from just before the defrost plus `oq_boiler_defrost_assist_margin_c`.
-The dispatcher caps it below the water-limit soft band
-(`supply_hold_target_ceiling`), so the assist cannot throttle the heat pumps. The boiler chain itself still has
-no defrost observation. The session bypasses the normal CM2/CM3 timers and
-carries its own anti-cycling (`oq_boiler_defrost_assist_confirm_s`,
-`_min_run_s`, `_release_s`, `_rearm_s`). The release time also carries one
-session across a short gap between two outdoor units that defrost one after
-the other. There is one session per defrost report, bounded by
-`oq_boiler_defrost_assist_max_s`, and it needs a real system supply
-measurement (not the heat-pump outlet fallback). The reference is never
-learned while the boiler may be heating (CM3, CM4 or an active boiler output)
-or within `oq_boiler_defrost_assist_reference_settle_s` after it, so boiler
-heat from normal assist or an earlier session cannot lift the next target. A CM3 that normal assist
-already owns is left untouched; a defrost-owned CM3 always returns to CM2 and
-never continues as normal assist.
+`source` and `updated_at_ms`. Power House, Heating Curve and cold start may
+request heat and a target; CM4 fallback and CM100 commissioning keep their own
+on/off semantics.
 
 `oq_boiler_runtime` owns validation, safety and transport. The selected
 transport decides how the requested target is realised:

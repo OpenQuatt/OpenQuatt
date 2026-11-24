@@ -51,6 +51,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/webserver-logs.js",
   "core/entity-actions.js -> settings/electrical-limit.js",
   "core/entity-actions.js -> settings/house-learning-chart.js",
+  "core/entity-actions.js -> settings/measurement-archive.js",
   "core/entity-actions.js -> settings/heating.js",
   "core/entity-actions.js -> views/energy.js",
   "core/entity-sync.js -> features/mqtt-actions.js",
@@ -61,6 +62,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-sync.js -> features/odu-settings.js",
   "core/entity-sync.js -> features/security-actions.js",
   "core/entity-sync.js -> features/frequency-limits.js",
+  "core/entity-actions.js -> features/frequency-exclusion.js",
   "core/entity-actions.js -> features/frequency-limits.js",
   "core/entity-write-actions.js -> features/firmware-update.js",
   "core/entity-write-actions.js -> features/house-learning.js",
@@ -74,6 +76,7 @@ const boundaryAllowedEdges = new Set([
   "views/overview.js -> settings/cooling.js",
   "views/shell.js -> settings/core.js",
   "views/learning.js -> settings/house-learning.js",
+  "views/learning.js -> settings/measurement-archive.js",
 ]);
 
 function toBundlePath(value) {

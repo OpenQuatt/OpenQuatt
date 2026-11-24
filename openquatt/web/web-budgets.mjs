@@ -79,14 +79,20 @@ export const WEB_BUNDLE_BUDGETS = [
     // The recovery tooltip and both translations add 226 B raw on Node 24.14.1.
     // The import token and clear notification add 108 B raw, preserving 44 B headroom.
     // Provisional heat demand and Outlook status copy: +1,266 B raw versus dev 7252cab3.
-    // Optional boiler assist during defrost (settings switch and copy in both locales):
-    // +1,065 B raw / +228 B gzip versus dev 9829c1e (Node 24.21.0); raw headroom unchanged.
     // House learning chart 95% confidence interval and legend labels
     // Manual house-line advice, apply, restore and recheck: +8,542 B raw / +2,835 B gzip versus dev acfe7df2.
     // Per-HP ODU firmware in telemetry previews and NL/EN disclosure: +575 B raw
     // versus dev acfe7df2 (Node 24.22.1); existing headroom and relative gzip limits unchanged.
     // Detected ODU generation and firmware in installation settings: +714 B raw versus dev 7536e6bc (Node 24.22.1).
-    raw: 1_497_246,
+    // Measurement archive: +9,481 B raw / +3,097 B gzip versus dev f0da4507 (Node 24.14.1).
+    // Separate learning data and archive settings: +1,534 B raw / +368 B gzip versus f34b1f9 (Node 24.22.1).
+    // Power House run-extension switch, hidden tuning fields when off and NL/EN copy:
+    // +1,799 B raw / +438 B gzip; merged with dev: measured raw 1,509,887 B (Node 24.14.1).
+    // Quiet mode selector in installation settings: +336 B raw / +125 B gzip (Node 24.14.1).
+    // Scheduled per-unit exclusions and frequency preview: +5,913 B raw / +2,250 B gzip versus dev (Node 24.14.1).
+    // Clearer exclusion summaries and restore feedback: +1,082 B raw / +180 B gzip (Node 24.14.1).
+    // Compressor frequency demand in both overview modes: +376 B raw / +114 B gzip (Node 24.14.1).
+    raw: 1_516_702,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -116,5 +122,8 @@ export const WEB_BUNDLE_BUDGETS = [
   // Learning workspace and curve display: +2,604 B raw against the same base.
   // Manual house-line advice: +444 B raw / +94 B gzip versus dev acfe7df2.
   // Responsive ODU identity rows and detection status: +531 B raw versus dev 7536e6bc.
-  { file: "css/openquatt-app.css", raw: 229_500, gzipBaselineCeiling: 44_985 },
+  // Measurement archive layout: +1,162 B raw / +239 B gzip versus dev f0da4507.
+  // Frequency exclusion summaries span the card width: +67 B raw.
+  // Compact compressor frequency demand: +77 B raw / +9 B gzip (Node 24.14.1).
+  { file: "css/openquatt-app.css", raw: 230_806, gzipBaselineCeiling: 44_985 },
 ];

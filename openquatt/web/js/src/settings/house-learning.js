@@ -470,13 +470,16 @@ function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.h
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
-function renderHouseLearningDataActions(busy, resetOnly = false) {
+function renderHouseLearningDataActions(busy) {
   const resetting = state.busyAction === "houseLearningReset" || state.houseLearningReset === "pending";
-  const reset = hasEntity("houseLearningReset")
-    ? renderNamedActionButton("houseLearningReset", t(resetting ? "houseLearning.reset.clearingButton" : "houseLearning.reset.button"), "oq-helper-button oq-helper-button--ghost", busy)
-    : "";
-  if (resetOnly) return `<div class="oq-helper-actions oq-house-learning-actions">${reset}</div>`;
-  return `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${escapeHtml(t(state.busyAction === "houseLearningExport" ? "houseLearning.export.downloading" : "houseLearning.export.button"))}</button>`;
+  const reset = hasEntity("houseLearningReset") ? `<div class="oq-learning-data-reset">
+    ${renderNamedActionButton("houseLearningReset", t(resetting ? "houseLearning.reset.clearingButton" : "houseLearning.reset.button"), "oq-helper-button oq-helper-button--ghost", busy)}
+    ${state.houseLearningReset ? renderHouseLearningStatusMarkup() : ""}
+  </div>` : "";
+  return `<div class="oq-learning-download">
+    <p>${escapeHtml(t("houseLearning.export.copy"))}</p>
+    <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${escapeHtml(t(state.busyAction === "houseLearningExport" ? "houseLearning.export.downloading" : "houseLearning.export.button"))}</button>
+  </div>${reset}`;
 }
 
 // The measurement card is always open: the chart loads by itself, the button reloads it.
@@ -526,25 +529,28 @@ export function renderHouseLearningSettings(section = "measurements") {
   if (!hasEntity("houseLearningEnabled") || (!state.houseLearningEndpointAvailable && !initialCapabilityCheck)) return "";
   const resetting = state.busyAction === "houseLearningReset" || state.houseLearningReset === "pending";
   const busy = Boolean(state.busyAction) || resetting;
-  if (section === "export") return `<div class="oq-learning-download">
-    <div><h5>${escapeHtml(t("houseLearning.export.label"))}</h5><p>${escapeHtml(t("houseLearning.export.copy"))}</p></div>
-    <div><div data-oq-house-learning-actions>${renderHouseLearningDataActions(busy)}</div>
-    <div data-oq-house-learning-status-error>${renderHouseLearningStatusError()}</div></div>
-  </div>`;
+  if (section === "export") return `<section class="oq-settings-section">
+    <h4 class="oq-learning-diagnostic-title">${escapeHtml(t("houseLearning.export.label"))}</h4>
+    <div data-oq-house-learning-actions>${renderHouseLearningDataActions(state.loadingEntities || busy)}</div>
+    <div data-oq-house-learning-status-error>${renderHouseLearningStatusError()}</div>
+  </section>`;
   const learningSwitch = getSettingsSwitchModel("houseLearningEnabled");
   if (section === "configuration") return `<section class="oq-settings-section" data-oq-house-learning>
     <div class="oq-settings-section-head"><div class="oq-house-learning-heading"><h3>${escapeHtml(t("houseLearning.switch.label"))}</h3><div data-oq-learning-switch>${renderSettingsCompactSwitchControl("houseLearningEnabled", t("houseLearning.switch.label"), learningSwitch.enabled, busy || learningSwitch.busy, t("common.on"), t("common.off"))}</div></div><p>${escapeHtml(t("houseLearning.switch.copy"))}</p></div>
-    <div class="oq-settings-section-body"><div data-oq-house-learning-reset-status>${state.houseLearningReset ? renderHouseLearningStatusMarkup() : ""}</div><div data-oq-house-learning-actions data-learning-action-mode="reset">${renderHouseLearningDataActions(busy || state.loadingEntities, true)}</div></div>
   </section>`;
-  if (section === "diagnostics") return `<section class="oq-settings-section" data-oq-house-learning>
-    <h4 class="oq-learning-diagnostic-title">${escapeHtml(t("houseLearning.diagnostics.title"))}</h4>
-    <div class="oq-settings-section-body">
-      <div data-oq-house-learning-reset-status>${state.houseLearningReset ? renderHouseLearningStatusMarkup() : ""}</div>
-      <div data-oq-house-learning-secondary>${renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary")}</div>
-      <div data-oq-house-learning-shadow>${renderHouseLearningShadow()}</div>
-      <div data-oq-house-learning-technical>${renderHouseLearningStatusMarkup(state.houseLearningStatus, "technical")}</div>
-    </div>
-  </section>`;
+  if (section === "diagnostics") {
+    const secondary = renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary");
+    const shadow = renderHouseLearningShadow();
+    const technical = renderHouseLearningStatusMarkup(state.houseLearningStatus, "technical");
+    return `<section class="oq-settings-section" data-oq-house-learning ${secondary || shadow || technical ? "" : "hidden"}>
+      <h4 class="oq-learning-diagnostic-title">${escapeHtml(t("houseLearning.diagnostics.title"))}</h4>
+      <div class="oq-settings-section-body">
+        <div data-oq-house-learning-secondary>${secondary}</div>
+        <div data-oq-house-learning-shadow>${shadow}</div>
+        <div data-oq-house-learning-technical>${technical}</div>
+      </div>
+    </section>`;
+  }
   return `<section class="oq-settings-section" data-oq-house-learning>
       <div class="oq-settings-section-body"><div data-oq-house-learning-status>${renderCurrentLearningStatus()}</div></div>
     </section>
@@ -578,10 +584,9 @@ function patchLearningMarkup(node, markup) {
 export function patchHouseLearningSettingsStatus() {
   const panel = state.root?.querySelector("[data-oq-house-learning]");
   const initialCapabilityCheck = state.houseLearningEndpointChecking && !state.houseLearningEndpointChecked;
-  if (panel && (!hasEntity("houseLearningEnabled") || (!state.houseLearningEndpointAvailable && !initialCapabilityCheck))) {
-    return false;
-  }
-  if (!panel) return state.learningPanel === "configuration" && !state.houseLearningEndpointAvailable;
+  const available = hasEntity("houseLearningEnabled") && (state.houseLearningEndpointAvailable || initialCapabilityCheck);
+  if (Boolean(panel) !== available) return false;
+  if (!panel) return true;
   const node = panel.querySelector("[data-oq-house-learning-status]");
   const toggle = panel.querySelector("[data-oq-learning-switch]");
   if (toggle) {
@@ -600,15 +605,14 @@ export function patchHouseLearningSettingsStatus() {
   const shadowNode = panel.querySelector("[data-oq-house-learning-shadow]");
   if (shadowNode) patchLearningMarkup(shadowNode, renderHouseLearningShadow());
   if (node) patchLearningMarkup(node, renderCurrentLearningStatus());
-  const resetStatus = panel.querySelector("[data-oq-house-learning-reset-status]");
-  if (resetStatus) patchLearningMarkup(resetStatus, state.houseLearningReset ? renderHouseLearningStatusMarkup() : "");
   const actions = state.root.querySelector("[data-oq-house-learning-actions]");
-  if (actions) patchLearningMarkup(actions, renderHouseLearningDataActions(state.loadingEntities || Boolean(state.busyAction) || state.houseLearningReset === "pending", actions.dataset.learningActionMode === "reset"));
+  if (actions) patchLearningMarkup(actions, renderHouseLearningDataActions(state.loadingEntities || Boolean(state.busyAction) || state.houseLearningReset === "pending"));
   const error = state.root.querySelector("[data-oq-house-learning-status-error]");
   if (error) patchLearningMarkup(error, renderHouseLearningStatusError());
   const secondary = panel.querySelector("[data-oq-house-learning-secondary]");
   if (secondary) patchLearningMarkup(secondary, renderHouseLearningStatusMarkup(state.houseLearningStatus, "secondary"));
   const technical = panel.querySelector("[data-oq-house-learning-technical]");
   if (technical) patchLearningMarkup(technical, renderHouseLearningStatusMarkup(state.houseLearningStatus, "technical"));
+  if (secondary && shadowNode && technical) panel.hidden = ![secondary, shadowNode, technical].some(section => section.firstElementChild);
   return true;
 }

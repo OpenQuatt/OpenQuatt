@@ -1,3 +1,4 @@
+import { patchFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
 import { getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
@@ -284,8 +285,10 @@ function syncFrequencyRangeControl(control) {
       }
     });
 
-    state.warmupSettingsRenderPending = !patchControlledWarmupField(stack);
-    patchRunExtensionThresholds();
+    patchFrequencyExclusionDetails(stack);
+    const warmupStructureMatches = patchControlledWarmupField(stack);
+    const runExtensionStructureMatches = patchRunExtensionThresholds();
+    state.warmupSettingsRenderPending = !warmupStructureMatches || !runExtensionStructureMatches;
 
     const generationStatus = stack.querySelector('button[data-oq-action="open-generation-modal"]')?.closest(".oq-settings-quickstart-status");
     if (generationStatus) {

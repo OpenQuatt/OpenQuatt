@@ -304,6 +304,7 @@ OQ_DEBUG_RECORDER_DEFAULT_FIELD("coolingDewPointHaValid", "binary_sensor", "HA -
 OQ_DEBUG_RECORDER_DEFAULT_FIELD("heatingCurveModifierHa", "sensor", "HA - Heating Curve Modifier")
 #endif  // OQ_DEBUG_RECORDER_DEFAULT_FIELD
 #ifdef OQ_DEBUG_RECORDER_CONFIGURATION_FIELD
+OQ_DEBUG_RECORDER_CONFIGURATION_FIELD("phRunExtensionEnabled", "switch", "Power House run extension enabled")
 OQ_DEBUG_RECORDER_CONFIGURATION_FIELD("phRunExtensionStopMargin", "number", "Power House run extension stop margin")
 OQ_DEBUG_RECORDER_CONFIGURATION_FIELD("phRunExtensionRestartCooldown", "number", "Power House run extension restart cooldown")
 OQ_DEBUG_RECORDER_CONFIGURATION_FIELD("roomTempSource", "select", "Room Temperature Source")

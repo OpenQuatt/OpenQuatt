@@ -125,6 +125,7 @@ export function createSettingsState() {
     optionalMissingEntities: {},
     renderedAppView: "",
     renderedSettingsGroup: "",
+    renderedLearningPanel: "",
     settingsPageScrollRestoreToken: 0,
     settingsInfoOpen: "",
     settingsSourceFocusKey: "room-temperature",

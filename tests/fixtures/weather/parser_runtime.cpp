@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include "components/openquatt_weather/OpenQuattWeatherJson.h"
 
 int main(int argc, char** argv) {
@@ -13,9 +14,20 @@ int main(int argc, char** argv) {
   candidate.current = {1800000000, 10.5f, 85, 8, true};
   candidate.wind_direction_valid_mask = (uint64_t{1} << oq_weather::kHours) - 1;
   candidate.current_wind = {1800000000, 9, 90, true, true};
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  candidate.solar_valid_mask = UINT64_MAX;
+#endif
   const bool parsed =
       oq_weather::parse_json(json.data(), json.size(), arena, std::strtoul(argv[2], nullptr, 10), candidate, 52.09,
                              6.15, static_cast<uint32_t>(std::strtoul(argv[1], nullptr, 10)), 1000);
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  if (argc == 4 && std::string_view(argv[3]) == "solar") {
+    std::printf("%d %llu", parsed, static_cast<unsigned long long>(candidate.solar_valid_mask));
+    for (uint16_t radiation : candidate.solar_wm2) std::printf(" %u", static_cast<unsigned>(radiation));
+    std::puts("");
+    return 0;
+  }
+#endif
   if (argc == 4) {
     const auto& wind = candidate.current_wind;
     std::printf("%d %d %llu %d %d %u %.8g %.8g", parsed, candidate.current.valid,
