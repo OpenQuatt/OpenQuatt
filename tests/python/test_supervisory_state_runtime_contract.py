@@ -42,9 +42,11 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
     def test_flow_guard_covers_heating_preflow_and_compressor_wind_down(self) -> None:
         self.assertIn("const bool heating_flow_req = heating_req || heating_preflow_req;", RUNTIME)
         self.assertIn("const bool thermal_req = heating_flow_req || cooling_req || manual_hp_thermal_req;", RUNTIME)
-        self.assertIn(
-            "oq_supervisory_state::flow_guard_required(thermal_req, any_hp_compressor_active, actuator_request_active)",
+        self.assertRegex(
             RUNTIME,
+            r"oq_supervisory_state::flow_guard_required\(\s*thermal_req,\s*"
+            r"any_hp_compressor_active\s*\|\|\s*this->compressor_postflow_active_,\s*"
+            r"actuator_request_active\s*\)",
         )
         self.assertIn("{now_ms, flow_guard_required, min_flow_lph", RUNTIME)
 
