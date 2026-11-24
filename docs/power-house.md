@@ -309,6 +309,8 @@ Is de laagste geschikte stand hoger dan F1 en ligt de huisvraag onder dat minimu
 
 Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd door **Afkoeling onder gewenste temperatuur**. Deze eerdere grens blijft tijdens uitlopen en wachten behouden, ook als F1 weer beschikbaar wordt of de vermogensvoorspelling tijdelijk ontbreekt. De web-app toont de actuele eerdere grens zodra de firmware die meldt; tijdens bewerken blijven de ingestelde grenzen als voorvertoning zichtbaar.
 
+Vlak vóór het eerste compressorcommando voor zo'n herstart leest Power House de kamertemperatuur en het setpoint opnieuw. De start wacht als een waarde ongeldig of verlopen is, of als de kamer het setpoint al heeft bereikt. Bij een verlaagd setpoint toetst Power House de herstart aan de nieuwe afkoelgrens.
+
 ### De instellingen
 
 | In de web-app | Home Assistant / firmware | Bereik en standaard |

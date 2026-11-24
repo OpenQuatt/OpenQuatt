@@ -160,7 +160,7 @@ inline bool positive_cooling_request(bool) { return false; }
 }
 namespace openquatt_decision_log {
 enum { REASON_UNKNOWN, REASON_HP_FAULT, REASON_CANDIDATE_UNAVAILABLE, REASON_CANDIDATE_IN_REST,
-       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE, REASON_CANDIDATE_IN_DEFROST };
+       REASON_START_STOP_RATE_HIGH, REASON_NO_CANDIDATE, REASON_CANDIDATE_IN_DEFROST, REASON_PH_COMFORT_HOLD };
 }
 struct Cycle {
   TickConfig config;
@@ -168,6 +168,7 @@ struct Cycle {
   int request_mode_code=2;
   bool manual_service_active=false, request_thermal_active=true;
   bool cooling_stop_armed=false, restart_by_minimum_off_time=false, cooling_stop_planned=false;
+  bool ph_restart_blocked=false;
   uint8_t duo_defrost_start_block_mask=0;
   struct { bool confirmation_pending=false; uint32_t remaining_ms=0; } cooling;
   std::string request_mode_option="Heating";
@@ -524,6 +525,18 @@ int main() {
     peer_request=1;
     assert(start()==0 && c.duo_defrost_start_block_mask==mask);
     active.observe(0,clock_ms,true); check_start();  // New telemetry clears the block and diagnostics.
+
+    // A cached positive request cannot register a start or write Heating or a
+    // nonzero level after the room input withdraws a pending PH restart.
+    oq_request_strategy_code=oq_request::STRATEGY_POWER_HOUSE;
+    c.ph_restart_blocked=true;
+    assert(start()==0 && a.physical[idle]==0);
+    for (const char* action : {"start", "mode-active", "level-active"})
+      assert(std::find(events.begin(),events.end(),action)==events.end());
+    assert(a.candidate_reason==openquatt_decision_log::REASON_PH_COMFORT_HOLD);
+    c.ph_restart_blocked=false;
+    check_start();
+    oq_request_strategy_code=oq_request::STRATEGY_CURVE;
   }
   // Execute the real engine: repeated notification cannot rebase its stop
   // watchdog. Normal STOPPING does not imply its revalidation pending flag.

@@ -175,6 +175,9 @@ class OpenQuattMqttConfig : public Component {
   bool is_enabled() const { return this->enabled_.load(); }
   bool is_connected() const { return this->connected_.load() && this->client_events_enabled_.load(); }
 
+  // Called on the ESPHome loop before committing an HVAC start.
+  bool room_input_fresh_for_start(bool setpoint, uint32_t now_ms);
+
   struct StatusSnapshot {
     bool enabled{false};
     bool connected{false};
@@ -383,6 +386,7 @@ class OpenQuattMqttConfig : public Component {
   bool is_binary_input_enabled_(size_t input_index) const;
   bool is_numeric_input_accept_retained_(size_t input_index) const;
   bool is_binary_input_accept_retained_(size_t input_index) const;
+  uint32_t numeric_input_stale_ms_(size_t input_index) const;
   bool input_mask_for_key_(const std::string& key, uint8_t* mask) const;
   void clear_all_inputs_();
   void clear_disabled_inputs_();
