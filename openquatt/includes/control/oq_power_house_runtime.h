@@ -608,7 +608,8 @@ class Runtime {
     auto dispatch = oq_power_house_dispatch::decide_dispatch(dispatch_input, dispatch_tuning, this->dispatch_state_,
                                                              &oq_water_performance::CandidateModel::confirmed_power,
                                                              pending_single, handoff_evidence);
-#if OQ_TOPOLOGY_DUO && defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+#if OQ_TOPOLOGY_DUO
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
     const auto current_topology = oq_power_house_dispatch::topology(retained_hp1, retained_hp2);
     const auto next_topology = oq_power_house_dispatch::topology(dispatch.hp1_level, dispatch.hp2_level);
     if (current_topology > 0 && next_topology > 0 && current_topology != next_topology && automatic_handoff &&
@@ -659,6 +660,7 @@ class Runtime {
             {comparison_levels(0), comparison_levels(1)});
       }
     }
+#endif
 #endif
     if (log_warmup_power) {
       ESP_LOGI("quatt.warmup",
@@ -814,7 +816,8 @@ class Runtime {
   float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
 
  private:
-#if OQ_TOPOLOGY_DUO && defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+#if OQ_TOPOLOGY_DUO
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
   static constexpr uint32_t kTopologyReceiptAgeMs = 25000;
 
   bool topology_feedback_ready_(uint8_t hp, int applied, const oq_compressor_feedback::Snapshot& feedback,
@@ -833,6 +836,7 @@ class Runtime {
            receipts.compressor_frequency.value > 3.0f && !feedback.missing && feedback.qualified_run &&
            this->compressor_feedback_[hp - 1].running_for(now_ms, stable_run_ms);
   }
+#endif
 #endif
   std::array<oq_compressor_feedback::Snapshot, 2> observe_compressor_feedback_(
       const oq_frequency_runtime::Context& frequency, uint32_t now_ms) {
