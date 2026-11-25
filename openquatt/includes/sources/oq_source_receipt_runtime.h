@@ -16,6 +16,7 @@ struct HeatPumpReceipts {
   RawFloatReceipt water_out;
   RawFloatReceipt flow;
   RawFloatReceipt outside;
+  RawFloatReceipt pump_pwm;
 };
 
 inline HeatPumpReceipts hp1{};

@@ -87,10 +87,12 @@ class ForecastJsonWriter {
 };
 
 template <typename Sink>
-bool write_scenario_json(const ScenarioSnapshot& value, ForecastJsonWriter<Sink>& out) {
+bool write_scenario_json(const ScenarioSnapshot& value, ForecastJsonWriter<Sink>& out, bool last_calculated = false) {
   const auto& issue = value.issued;
-  if (!out.literal("{\"schema\":1,\"valid\":") || !out.literal(value.valid ? "true" : "false") ||
-      !out.literal(",\"reason\":") || !out.string(scenario_reason_name(value.reason)) ||
+  const bool valid = value.valid && (value.reason != ScenarioReason::DEFROST || last_calculated);
+  if (!out.literal("{\"schema\":1,\"valid\":") || !out.literal(valid ? "true" : "false") ||
+      !out.literal(",\"reason\":") ||
+      !out.string(scenario_reason_name(last_calculated ? ScenarioReason::READY : value.reason)) ||
       !out.literal(",\"issued_epoch\":") || !out.integer(issue.epoch) || !out.literal(",\"configuration\":") ||
       !out.integer(issue.configuration) || !out.literal(",\"weather_generation\":") ||
       !out.integer(issue.weather_generation) || !out.literal(",\"weather_fetched_epoch\":") ||
@@ -102,12 +104,12 @@ bool write_scenario_json(const ScenarioSnapshot& value, ForecastJsonWriter<Sink>
       !out.literal(",\"c_wh_per_k\":") || !out.number(issue.c_wh_per_k) || !out.literal(",\"horizon_valid\":["))
     return false;
   for (size_t i = 0; i < 3; ++i)
-    if ((i && !out.byte(',')) || !out.literal(value.valid && (value.horizon_valid_mask & (1U << i)) ? "true" : "false"))
+    if ((i && !out.byte(',')) || !out.literal(valid && (value.horizon_valid_mask & (1U << i)) ? "true" : "false"))
       return false;
   if (!out.literal("],\"temperature_c\":[")) return false;
   for (size_t i = 0; i < 3; ++i)
     if ((i && !out.byte(',')) ||
-        !out.number(value.valid && (value.horizon_valid_mask & (1U << i)) ? issue.temperature_c[i] : NAN))
+        !out.number(valid && (value.horizon_valid_mask & (1U << i)) ? issue.temperature_c[i] : NAN))
       return false;
   return out.literal("]}");
 }
@@ -149,7 +151,10 @@ bool write_forecast_json(const ForecastSnapshot& value, Sink sink) {
          out.number(current.valid ? current.temperature_c : NAN) && out.literal(",\"relative_humidity_pct\":") &&
          out.number(current.valid ? current.relative_humidity_pct : NAN) && out.literal(",\"dew_point_c\":") &&
          out.number(current.valid ? current.dew_point_c : NAN) && out.literal("},\"scenario\":") &&
-         write_scenario_json(value.scenario, out) && out.literal("}") && out.flush();
+         write_scenario_json(value.scenario, out) &&
+         (!(value.scenario.valid && value.scenario.reason == ScenarioReason::DEFROST) ||
+          (out.literal(",\"last_scenario\":") && write_scenario_json(value.scenario, out, true))) &&
+         out.literal("}") && out.flush();
 }
 
 }  // namespace esphome::openquatt_weather
