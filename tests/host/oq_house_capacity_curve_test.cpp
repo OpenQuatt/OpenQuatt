@@ -38,15 +38,28 @@ int main() {
   assert(power_at(solo, -7, 35) == 3814);
 
   Curve curve;
-  for (int step = 0; step < 22; ++step) curve.step(install);
+  constexpr size_t legacy_points = LEGACY_MAX_OUTSIDE_C - MIN_OUTSIDE_C + 1;
+  constexpr size_t legacy_steps = legacy_points * SUPPLY_C.size();
+  for (size_t step = 0; step < legacy_steps - 1; ++step) curve.step(install);
   assert(!curve.complete());
+  assert(curve.count == legacy_points - 1);
+  assert(curve.points[legacy_points - 1].watts[0] == power_at(install, 7, 35));
   curve.step(install);
-  assert(curve.complete() && curve.count == 23);
+  assert(curve.complete() && curve.count == legacy_points);
   assert(curve.points[0].outside_centi == -1500 && curve.points[22].outside_centi == 700);
+  assert(curve.points[22].watts[1] == 11849);
   curve.step(install);
-  assert(curve.complete() && curve.count == 23);
+  assert(curve.complete() && curve.count == legacy_points);
   curve.step(solo);
+  assert(!curve.complete() && curve.count == 0);
+  curve.step(install);
+  assert(!curve.complete() && curve.count == 0);
+  curve.step(install);
   assert(!curve.complete() && curve.count == 1);
+  assert(curve.points[0].watts[0] == power_at(install, -15, 35));
+  assert(curve.points[0].watts[1] == power_at(install, -15, 45));
+  curve.step(solo);
+  assert(!curve.complete() && curve.count == 0);
   curve.step({});
   assert(!curve.complete() && curve.count == 0);
 
@@ -54,7 +67,7 @@ int main() {
   v2.units[0] = {oq_odu::Variant::V2_NEW_MODEL, {30, 48, 61, 72, 80, 85, 90}};
   assert(power_at(v2, -5, 35) > 0);
   assert(power_at(v2, 0, 35) == UNAVAILABLE);
-  for (size_t step = 0; step < MAX_POINTS; ++step) curve.step(v2);
+  for (size_t step = 0; step < MAX_POINTS * SUPPLY_C.size(); ++step) curve.step(v2);
   assert(curve.complete() && curve.count == MAX_POINTS);
   assert(curve.points[3].outside_centi == -1201 && curve.points[4].outside_centi == -1200);
   assert(curve.points[MAX_POINTS - 1].outside_centi == 2000);

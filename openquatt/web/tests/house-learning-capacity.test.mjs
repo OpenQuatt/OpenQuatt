@@ -46,6 +46,18 @@ test("crossing follows the drawn demand line at a fractional heating cutoff", ()
   assert(result.reserves[0].some(point => point.outsideC === 5.5));
 });
 
+test("hiding capacity restores the chart axes for the housing lines and measurements", () => {
+  const configured = { coldC: -10, zeroC: 16, ratedW: 3200 };
+  const data = profile([[-1500, 10000, 9900], [-1400, 11000, 10800]]);
+  const shown = renderHouseLearningChart([], configured, {}, { profile: data });
+  const hidden = renderHouseLearningChart([], configured, {}, { profile: data, hiddenSeries: ["capacity"] });
+  assert.match(shown, /class="oq-house-learning-chart-axis">-15°<\/text>/);
+  assert.match(shown, /class="oq-house-learning-chart-axis">12<\/text>/);
+  assert.match(hidden, /class="oq-house-learning-chart-axis">-10°<\/text>/);
+  assert.match(hidden, /class="oq-house-learning-chart-axis">4<\/text>/);
+  assert.doesNotMatch(hidden, /class="oq-house-learning-chart-axis">(?:-15°|12)<\/text>/);
+});
+
 test("legend keeps all available controls while removing only the hidden series and their overlays", () => {
   const records = [{ startEpoch: 100, endEpoch: 86500, outsideC: -6, heatW: 4200 }];
   const configured = { coldC: -10, zeroC: 16, ratedW: 7000 };

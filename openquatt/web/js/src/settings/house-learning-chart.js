@@ -262,7 +262,7 @@ function renderCapacity(model, profile, supplyC, segments, learnedBounds, visibl
 export function renderHouseLearningChart(records, configured, learned, { profile = null, supplyC = 35, hiddenSeries = [] } = {}) {
   const visible = series => !hiddenSeries.includes(series);
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
-  const capacitySegments = getCapacitySegments(profile, supplyC);
+  const capacitySegments = visible("capacity") ? getCapacitySegments(profile, supplyC) : [];
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH, capacitySegments.flat());
   const dailyFit = records.some((record) => record.referenceRoomC != null) || finite(learned?.referenceRoomC) != null;
   const usableRecords = records.filter(usableForChartModel);

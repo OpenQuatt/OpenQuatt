@@ -173,6 +173,7 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             payload = json.loads(run.stdout)
             self.assertLess(len(run.stdout.encode()), 5 * 1024)
+            self.assertEqual(payload["memory"]["house_capacity_max_us"], 2**64 - 1)
             self.assertEqual(len(payload["heating_capacity"]["points"]), 43)
             self.assertEqual(payload["heating_capacity"]["points"][0], [-1500, 18000, 18000])
             self.assertEqual(payload["heating_capacity"]["points"][-1], [2000, 18000, 18000])

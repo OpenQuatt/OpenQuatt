@@ -102,6 +102,7 @@ struct RuntimeStorage {
   DailyRestartDiagnostics daily_restart;
   SnapshotSourceStatus batch_source_status = SnapshotSourceStatus::OK;
   uint64_t max_tick_us = UINT64_MAX;
+  uint64_t house_capacity_max_us = UINT64_MAX;
   char json[kExportJsonBufferSize]{};
 };
 struct Production {
@@ -301,7 +302,8 @@ int main() {
   installation.limit_w = 10000;
   installation.cap_hz = 90;
   installation.max_water_c = 60;
-  for (size_t index = 0; index < oq_house_capacity::MAX_POINTS; ++index) state.house_capacity.step(installation);
+  for (size_t index = 0; index < oq_house_capacity::MAX_POINTS * oq_house_capacity::SUPPLY_C.size(); ++index)
+    state.house_capacity.step(installation);
   assert(state.house_capacity.complete() && state.house_capacity.count == state.house_capacity.points.size());
   for (auto& point : state.house_capacity.points) point.watts.fill(18000);
   auto& learner = state.learner;

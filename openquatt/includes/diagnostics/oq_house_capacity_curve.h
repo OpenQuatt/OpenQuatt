@@ -120,25 +120,30 @@ struct Curve {
   size_t count{0};
   int next_outside_c{MIN_OUTSIDE_C};
   bool left_of_boundary{false};
+  uint8_t next_supply{0};
 
   bool complete() const {
     return installation.available && next_outside_c > (v2_only(installation) ? V2_MAX_OUTSIDE_C : LEGACY_MAX_OUTSIDE_C);
   }
 
-  // Called by one main-loop owner. Publish only after both profiles for the
-  // same configuration are complete; a changed input invalidates all points.
+  // The main-loop owner calculates one supply scenario per call. Publish only
+  // after both profiles are complete for the same configuration.
   void step(const Installation& current) {
     if (!(current == installation)) {
       installation = current;
       count = 0;
       next_outside_c = MIN_OUTSIDE_C;
       left_of_boundary = has_v2(installation) && v2_boundary(next_outside_c);
+      next_supply = 0;
     }
     if (!installation.available || complete()) return;
     const int centi = next_outside_c * 100 - (left_of_boundary ? 1 : 0);
-    auto& point = points[count++];
+    auto& point = points[count];
     point.outside_centi = static_cast<int16_t>(centi);
-    for (size_t i = 0; i < SUPPLY_C.size(); ++i) point.watts[i] = power_at(installation, centi / 100.0f, SUPPLY_C[i]);
+    point.watts[next_supply] = power_at(installation, centi / 100.0f, SUPPLY_C[next_supply]);
+    if (++next_supply < SUPPLY_C.size()) return;
+    next_supply = 0;
+    ++count;
     if (left_of_boundary) {
       left_of_boundary = false;
     } else {
