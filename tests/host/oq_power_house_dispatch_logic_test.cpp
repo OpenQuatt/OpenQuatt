@@ -8,6 +8,7 @@
 #include "../../openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
 #include "../../openquatt/includes/control/oq_power_house_run_extension_logic.h"
+#include "../../openquatt/includes/control/oq_thermal_request_logic.h"
 
 namespace {
 struct GenerationSelect {
@@ -408,6 +409,21 @@ void test_duo_handoff_expires_with_the_first_physical_run() {
   assert(mode_flap.handoff_incumbent == 0 && first == 0);
 }
 
+void test_duo_handoff_with_boiler_assist() {
+  constexpr int heat_pump_only = 2, boiler_assist = 3;
+  for (const int solo_cm : {heat_pump_only, boiler_assist}) {
+    const auto solo =
+        observe_protection({}, {10000U, false, false, false, 1, 0, oq_request::heating_cm_allows_hp(solo_cm)});
+    const auto assisted_duo =
+        observe_protection(solo, {20000U, false, false, false, 1, 4, oq_request::heating_cm_allows_hp(boiler_assist)});
+    assert(assisted_duo.handoff_incumbent == 1);
+    const auto unassisted_duo = observe_protection(
+        assisted_duo, {30000U, false, false, false, 1, 4, oq_request::heating_cm_allows_hp(heat_pump_only)});
+    assert(unassisted_duo.handoff_incumbent == 1);
+    assert(unassisted_duo.topology_hold_started_ms == assisted_duo.topology_hold_started_ms);
+  }
+}
+
 void test_duo_handoff_excludes_manual_and_inactive_transitions() {
   ProtectionObservation first_solo{10000U, false, false, false, 1, 0};
   ProtectionObservation still_duo{20000U, false, false, false, 1, 4};
@@ -727,6 +743,7 @@ int main() {
   test_feedback_hold_prefers_upshift_before_starting_peer();
   test_duo_handoff_waits_for_measured_successor();
   test_duo_handoff_expires_with_the_first_physical_run();
+  test_duo_handoff_with_boiler_assist();
   test_duo_handoff_excludes_manual_and_inactive_transitions();
   test_timing_and_matrix();
   test_performance_supply_fallback();
