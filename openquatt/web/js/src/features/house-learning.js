@@ -6,6 +6,7 @@ import { state } from "../core/state.js";
 import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
 import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
+import { CAPACITY_SUPPLY_CHOICES, normalizeHouseCapacity } from "../settings/house-learning-capacity.js";
 import { t } from "../i18n/index.js";
 
 export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
@@ -122,6 +123,7 @@ export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = pe
       || preview.min_c !== null && preview.max_c !== null && preview.min_c <= preview.max_c);
   return {
     enabled: payload.enabled === true,
+    heatingCapacity: normalizeHouseCapacity(payload.heating_capacity),
     shadow: normalizeHouseLearningShadow(payload, requestStartedAt),
     controlMode: numberOrNull(payload.control_mode),
     storageReady: payload.storage_ready === true,
@@ -239,6 +241,13 @@ function scheduleShadowRefresh(previous) {
 
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
 export const getHouseLearningExportEndpoint = () => `${getBasePath()}/openquatt/learning/export`;
+
+export function changeHouseCapacitySupply(input) {
+  const supplyC = Number(input.value);
+  if (!CAPACITY_SUPPLY_CHOICES.includes(supplyC)) return;
+  state.houseLearningCapacitySupplyC = supplyC;
+  if (!patchLearningDom()) render();
+}
 
 // The measurement card is always open, so its data loads once the status is known.
 // A cleared journal has nothing to show, and a failed load waits for the refresh button.

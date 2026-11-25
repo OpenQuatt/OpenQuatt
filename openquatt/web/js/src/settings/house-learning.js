@@ -460,6 +460,13 @@ function renderHouseLearningStatusError() {
     : "";
 }
 
+function currentHouseCapacity() {
+  const status = state.houseLearningStatus;
+  const strategy = getEntityStateText("strategy", "");
+  return status && !statusIsStale(status) && !state.houseLearningStatusError && (!strategy || strategy === "Power House")
+    ? status.heatingCapacity : null;
+}
+
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
     state.houseLearningChartLoading, state.houseLearningChartError,
@@ -467,6 +474,7 @@ function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.h
     state.houseLearningStatus?.records === 0 && state.houseLearningStatus.journalStatus === "cleared",
     houseLearningLine(), state.houseLearningStatus?.manualLineRestore, state.houseLearningStatus?.manualLineRetesting,
     state.houseLearningRetest, state.houseLearningLineNotice,
+    state.houseLearningCapacitySupplyC, currentHouseCapacity(),
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
@@ -512,7 +520,7 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
     ready: !retesting && learned.ready,
     retesting,
     proposal: settings ? { ...shown, h: settings.ratedW / (settings.zeroC - settings.coldC), t0: settings.zeroC } : shown,
-  });
+  }, { profile: currentHouseCapacity(), supplyC: state.houseLearningCapacitySupplyC });
   return `<div class="oq-settings-section-head">
     <div class="oq-house-learning-heading"><h3>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h3><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t("houseLearning.chart.refresh"))}</button></div>
     <p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p>
@@ -565,7 +573,8 @@ function patchLearningMarkup(node, markup) {
   const control = focused && active.dataset?.controlKey;
   const info = focused && active.dataset?.infoId;
   const action = focused && active.dataset?.oqAction;
-  const selector = control === "houseLearningEnabled" ? '[data-control-key="houseLearningEnabled"]'
+  const selector = focused && active.dataset?.oqHouseCapacitySupply !== undefined ? "[data-oq-house-capacity-supply]"
+    : control === "houseLearningEnabled" ? '[data-control-key="houseLearningEnabled"]'
     : ["house-learning-window", "house-learning-readiness", "house-learning-thermal", "house-learning-chart", "house-learning-shadow"].includes(info)
     ? `[data-info-id="${info}"]`
     : ["load-house-learning-chart", "download-house-learning", "apply-house-line", "restore-house-line"].includes(action) ? `[data-oq-action="${action}"]`

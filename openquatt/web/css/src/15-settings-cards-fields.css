@@ -556,6 +556,15 @@
 .oq-house-learning-chart-line--configured { stroke: #2563eb; }
 .oq-house-learning-chart-line--learned { stroke: #16a34a; }
 .oq-house-learning-chart-line--learned-dashed { stroke: #16a34a; stroke-dasharray: 7 7; opacity: 0.78; }
+.oq-house-learning-chart-wrap, .oq-house-learning-chart-legend { --oq-capacity-color: #7c3aed; }
+.oq-helper-shell--dark :is(.oq-house-learning-chart-wrap, .oq-house-learning-chart-legend) { --oq-capacity-color: #c4b5fd; }
+.oq-house-learning-chart-line--capacity, .oq-house-learning-capacity-crossing { stroke: var(--oq-capacity-color); }
+.oq-house-learning-capacity-crossing { fill: var(--oq-helper-card); stroke-width: 2; }
+.oq-house-learning-capacity-point, .oq-house-learning-capacity-reserve { fill: var(--oq-capacity-color); }
+.oq-house-learning-capacity-reserve { opacity: 0.12; }
+.oq-house-learning-capacity-dot { fill: var(--oq-capacity-color); opacity: 0; }
+.oq-house-learning-chart-point:is(:hover, :focus-visible) .oq-house-learning-capacity-dot { opacity: 1; }
+.oq-house-learning-capacity-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.82rem; }
 .oq-helper-shell--dark .oq-house-learning-chart-line--configured { stroke: #60a5fa; }
 .oq-helper-shell--dark .oq-house-learning-chart-line--learned,
 .oq-helper-shell--dark .oq-house-learning-chart-line--learned-dashed { stroke: #4ade80; }
@@ -570,6 +579,7 @@
 .oq-house-learning-chart-swatch { width: 18px; height: 3px; border-radius: 2px; background: #2563eb; }
 .oq-house-learning-chart-swatch--records { width: 8px; height: 8px; border-radius: 50%; background: #ea580c; }
 .oq-house-learning-chart-swatch--learned { background: #16a34a; }
+.oq-house-learning-chart-swatch--capacity { background: var(--oq-capacity-color); }
 .oq-house-learning-chart-swatch--interval { width: 8px; height: 8px; border-radius: 50%; background: rgba(22, 163, 74, 0.4); border: 1px solid #16a34a; }
 .oq-helper-shell--dark .oq-house-learning-chart-swatch--interval { background: rgba(74, 222, 128, 0.3); border: 1px solid #4ade80; }
 .oq-house-learning-chart-interval { fill: rgba(22, 163, 74, 0.12); stroke: none; }

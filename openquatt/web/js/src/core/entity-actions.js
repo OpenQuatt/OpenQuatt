@@ -17,7 +17,7 @@ import { state } from "./state.js";
 import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
-import { handleHouseLearningAction } from "../features/house-learning.js";
+import { changeHouseCapacitySupply, handleHouseLearningAction } from "../features/house-learning.js";
 import { handleMeasurementArchiveAction } from "../settings/measurement-archive.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
 import { handleFirmwareAction } from "../features/firmware-actions.js";
@@ -461,6 +461,10 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
+    if (event.target.matches?.("[data-oq-house-capacity-supply]")) {
+      changeHouseCapacitySupply(event.target);
+      return;
+    }
     if (event.target.dataset.oqOduDefrostHp) {
       updateOduDefrostDraft(event.target);
       return;

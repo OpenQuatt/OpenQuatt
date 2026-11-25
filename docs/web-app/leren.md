@@ -92,6 +92,28 @@ Onder de grafiek staan de geschatte warmtevraag bij −10 °C en de
 buitentemperatuur waarbij de geleerde lijn 0 kW bereikt. Buiten het gemeten
 bereik rekent de webapp de lijnen door.
 
+### Warmtecapaciteit bij Power House
+
+De paarse lijn schat het maximale thermische vermogen van de geïnstalleerde
+Quatt-buitenunits. Kies **35 °C** of **45 °C** bij **Rekenaanvoer**. Deze keuze
+geldt alleen voor de grafiek. De berekening gebruikt het ingestelde
+verwarmingsdebiet, de daglimiet, de frequentietabellen en uitsluitingen per
+buitenunit en de elektrische grens voor langdurig bedrijf. Bij Duo stroomt het
+water door beide buitenunits in serie.
+
+Het gekleurde gebied toont hoeveel vermogen er boven de warmtevraag overblijft.
+Wijs een punt op de capaciteitslijn aan om het vermogen en de marge te zien.
+De markering bij het geschatte omslagpunt noemt de gebruikte woninglijn. Een
+voorlopige geleerde woninglijn telt daarvoor nog niet mee. Voor een goedgekeurde
+geleerde lijn telt alleen een kruising binnen het bereik met geschikte metingen.
+
+Bij V1 en V1.5 eindigt de capaciteitslijn bij **+7 °C**. Daarboven ontbreken
+kaartwaarden om het maximum te schatten. Ontbrekende kaartwaarden op de hoogste
+toegestane stand geven een gat in de lijn. De schatting gaat uit van stabiel
+verwarmen tussen ontdooicycli. Het omslagpunt geeft aan waar de twee schattingen
+elkaar kruisen. Wanneer de ketel daadwerkelijk bijspringt, hangt ook af van de
+hybride regeling en de actuele omstandigheden.
+
 ### Woninglijnadvies overnemen
 
 Boven de grafiek vergelijkt **Woninglijnadvies** het ingestelde vermogen bij

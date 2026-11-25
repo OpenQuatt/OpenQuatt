@@ -17,6 +17,7 @@
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "../boiler/oq_otb_telemetry.h"
+#include "../diagnostics/oq_house_capacity_curve.h"
 #include "../learning/oq_ph_passive_runtime_logic.h"
 #include "../learning/oq_ph_learning_journal.h"
 #include "../learning/oq_ph_learning_live_logic.h"
@@ -83,6 +84,7 @@ struct DiagnosticRow {
 
 struct RuntimeStorage {
   PassiveRuntimeStorage learner;
+  oq_house_capacity::Curve house_capacity;
   LearningSourceInput input;
 #ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
   float archive_supply_offset_c = 0;
@@ -372,6 +374,57 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     if (!manual_settings_in_range_(target) || !(target == manual_line_proposal_(batch, current.cold_c)))
       return Result::REFUSED;
     return publish_result(manual_line::apply(manual_line_receipt_, current, target, receipt_writer, settings_writer));
+  }
+
+  void update_house_capacity() {
+    if (!storage_) return;
+    auto& curve = storage_[0].house_capacity;
+    oq_house_capacity::Installation installation;
+    if (id(oq_heat_control_mode).current_option() == "Power House" && !id(oq_runtime_polling_paused).state) {
+      const float flow = id(oq_flow_setpoint_lph).state;
+      const float limit = id(oq_power_limit_soft_w);
+      const float max_water = id(max_water_temp_limit_c).state;
+      const int cap = oq_frequency_runtime::active_cap_hz(false);
+      if (std::isfinite(flow) && flow >= 300 && flow <= 3000 && std::isfinite(limit) && limit >= 0 && limit <= 10000 &&
+          std::isfinite(max_water) && cap >= 0 && cap <= oq_frequency_policy::MAX_POLICY_FREQUENCY_HZ) {
+        auto frequency = oq_frequency_runtime::capture();
+        frequency.cap_hz = std::min(cap, 90);
+        frequency.hp1_excluded = oq_frequency_runtime::effective_excluded_range(true, false);
+        frequency.hp2_excluded = oq_frequency_runtime::effective_excluded_range(false, false);
+        installation.duo = OQ_TOPOLOGY_DUO;
+        installation.flow_lph = static_cast<int>(std::lround(flow));
+        installation.limit_w = static_cast<int>(std::lround(limit));
+        installation.cap_hz = frequency.cap_hz;
+        installation.max_water_c = max_water;
+        installation.available = true;
+        for (size_t index = 0; index < (installation.duo ? 2U : 1U); ++index) {
+          const bool first = index == 0U;
+          auto& unit = installation.units[index];
+          unit.variant = frequency.performance_variant(first);
+          const int levels = frequency.automatic_level_limit(first, 2);
+          if (unit.variant == oq_odu::Variant::UNKNOWN ||
+              !oq_frequency_policy::valid_frequency_range(frequency.excluded_range(first)) || levels < 1 ||
+              levels > oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX) {
+            installation.available = false;
+            break;
+          }
+          size_t count = 0;
+          for (int level = 1; level <= levels; ++level) {
+            const int hz = frequency.automatic_frequency_hz(first, 2, level);
+            if (hz <= 0) {
+              installation.available = false;
+              break;
+            }
+            if (oq_frequency_policy::frequency_allowed(hz, frequency.cap_hz, frequency.excluded_range(first)) &&
+                std::find(unit.frequencies.begin(), unit.frequencies.end(), hz) == unit.frequencies.end())
+              unit.frequencies[count++] = static_cast<uint8_t>(hz);
+          }
+          if (!installation.available) break;
+        }
+      }
+    }
+    // Invalid snapshots are canonical so reset/unknown inputs never keep an old curve.
+    curve.step(installation.available ? installation : oq_house_capacity::Installation{});
   }
 
   void tick() {
@@ -1563,6 +1616,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)), static_cast<unsigned>(sizeof(RuntimeStorage)),
         static_cast<unsigned long long>(state.max_tick_us));
+    if (state.house_capacity.complete()) {
+      json.add(",\"heating_capacity\":");
+      oq_house_capacity::write_json(json, state.house_capacity);
+    }
     const auto shadow = shadow_demand_(state);
     const size_t shadow_prefix_length = json.size();
     json.add(",\"shadow\":");

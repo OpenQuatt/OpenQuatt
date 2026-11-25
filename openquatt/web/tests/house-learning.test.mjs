@@ -1172,7 +1172,7 @@ test("firmware-endpoint bewaart caches en requestscratch uitsluitend in PSRAM", 
     readFile(new URL("../../../components/openquatt_house_learning_status/OpenQuattHouseLearningStatus.cpp", import.meta.url), "utf8"),
     readFile(new URL("../../includes/control/oq_ph_learning_runtime.h", import.meta.url), "utf8"),
   ]);
-  assert.match(header, /STATUS_BUFFER_SIZE = 4U \* 1024U/);
+  assert.match(header, /STATUS_BUFFER_SIZE = 5U \* 1024U/);
   assert.match(header, /EXPORT_BUFFER_SIZE = 37U \* 1024U/);
   assert.match(header, /REQUEST_BUFFER_SIZE = EXPORT_BUFFER_SIZE/);
   assert.match(source, /status_buffer_\.allocate_external/);

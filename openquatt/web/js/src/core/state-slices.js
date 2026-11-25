@@ -160,6 +160,7 @@ export function createSettingsState() {
     houseLearningChartError: "",
     houseLearningChartFetchedAt: 0,
     houseLearningChartRequestId: 0,
+    houseLearningCapacitySupplyC: 35,
     houseLearningReset: "",
     houseLearningResetError: "",
     oduRuntimeFrequencyTechnicalDetailsOpen: false,

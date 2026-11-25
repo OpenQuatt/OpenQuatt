@@ -1,4 +1,4 @@
-"""Execute the complete production learning status body against its 4 KiB cache."""
+"""Execute the complete production learning status body against its bounded cache."""
 from pathlib import Path
 import json
 import re
@@ -172,7 +172,10 @@ class LearningStatusJsonRuntimeTest(unittest.TestCase):
             run = run_process([str(binary)], timeout=RUN_TIMEOUT_SECONDS, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             payload = json.loads(run.stdout)
-            self.assertLess(len(run.stdout.encode()), 4096)
+            self.assertLess(len(run.stdout.encode()), 5 * 1024)
+            self.assertEqual(len(payload["heating_capacity"]["points"]), 43)
+            self.assertEqual(payload["heating_capacity"]["points"][0], [-1500, 18000, 18000])
+            self.assertEqual(payload["heating_capacity"]["points"][-1], [2000, 18000, 18000])
             self.assertEqual(payload["shadow"]["tick_ms"], 2**64 - 1)
             self.assertEqual(payload["shadow"]["context_revision"], 2**32 - 1)
             self.assertTrue(payload["shadow"]["available"])

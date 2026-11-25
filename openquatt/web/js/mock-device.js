@@ -5987,6 +5987,13 @@
     const ready = !retesting && invalidReasons.length === 0 && dailyCount >= 24;
     return {
       schema: 1, mode: "passive", enabled, storage_ready: true,
+      heating_capacity: {
+        flow_lph: 800, limit_w: 3400, cap_hz: 90,
+        points: Array.from({ length: 23 }, (_, index) => {
+          const coldReductionW = Math.max(0, 5 - index) * 150;
+          return [(index - 15) * 100, 5500 + index * 300 - coldReductionW, 5520 + index * 287 - coldReductionW];
+        }),
+      },
       manual_line_restore: mockLineCanRestore(),
       manual_line_retesting: retesting,
       shadow_ttl_ms: enabled && ready ? 10000 : 0,
