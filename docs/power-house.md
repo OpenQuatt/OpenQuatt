@@ -40,6 +40,8 @@ Volg de effectieve regelvraag via `Strategy requested power` in W. De stapdiagno
 
 Zakt de positieve warmtevraag onder de uitschakelgrens terwijl één buitenunit draait, dan kan Power House in CM2 op stand 1 blijven verwarmen tot de minimumlooptijd afloopt. Bij Duo geldt dit als de andere buitenunit bevestigd stilstaat en er geen startopdracht voor die unit loopt. Herstelt de vraag intussen tot de inschakelgrens, dan gaat Power House vanuit CM2 verder met moduleren. De water- en debietbeveiligingen houden voorrang.
 
+Bij Q Duo kan Power House de draaiende compressor of compressoren laten doorlopen als de huidige bedrijfsvorm binnen de berekende warmtemarge blijft. Bij een vrijwillige overgang tussen Solo en Duo vergelijkt de regeling het verwachte stroomverbruik bij gelijke warmte. Bij minder dan 2% voordeel blijft de huidige bedrijfsvorm aan en kan ze verder moduleren. Deze vergelijking gebruikt verse ODU-gegevens en lokale aanvoer. Een tekort buiten de warmtemarge en de bestaande beveiligingen hebben voorrang. Bij een V2-compressor vergelijkt de regeling bij een geselecteerde buitentemperatuur van 5 °C of lager alleen standen vanaf 30 Hz.
+
 ### Te koud
 
 Onder de normale koude grens vraagt OpenQuatt extra warmte boven op de normale huisvraag. Die grens is het setpoint min `Power House comfort below setpoint`, in de web-app **Afkoeling onder gewenste temperatuur**.
