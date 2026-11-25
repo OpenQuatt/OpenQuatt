@@ -235,6 +235,29 @@ void test_local_flow_receipt_tracks_the_selected_contributors() {
   assert(recovered.valid && recovered.value == 600.0f && recovered.received_ms == 3000U);
 }
 
+void test_circulation_aggregate_uses_only_fresh_producers() {
+  oq_sources::RawFloatReceipt controller, hp2;
+  constexpr uint64_t max_age_ms = 30000U;
+  constexpr uint64_t now_ms = 50000U;
+  controller.observe(550.0f, 49000U, true);
+  hp2.observe(500.0f, 49000U, true);
+  const auto selected_flow = [&] {
+    return select_local_flow(true, fresh_flow_lph(controller, now_ms, max_age_ms),
+                             fresh_flow_lph(hp2, now_ms, max_age_ms), 150.0f);
+  };
+  assert(selected_flow() == 525.0f);
+  hp2.invalidate();
+  assert(selected_flow() == 550.0f);
+  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, false, selected_flow(), 400.0f) == kMaximumIpwm);
+  hp2.observe(500.0f, now_ms - max_age_ms - 1U, true);
+  assert(selected_flow() == 550.0f);
+  controller.invalidate();
+  assert(isnan(selected_flow()));
+  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, false, selected_flow(), 400.0f) == kAutoStartFallbackIpwm);
+  hp2.observe(500.0f, now_ms - max_age_ms, true);
+  assert(selected_flow() == 500.0f);
+}
+
 void test_normal_cooling_and_manual_flow_setpoint_selection() {
   assert(!uses_cooling_setpoint(2, false, 0, 0));
   assert(uses_cooling_setpoint(5, false, 0, 0));
@@ -320,6 +343,7 @@ int main() {
   test_confirmed_common_pump_pwm_rejects_queued_frost_recovery_steps();
   test_local_flow_selection();
   test_local_flow_receipt_tracks_the_selected_contributors();
+  test_circulation_aggregate_uses_only_fresh_producers();
   test_normal_cooling_and_manual_flow_setpoint_selection();
   test_flow_mismatch_hold_hysteresis_and_pump_gate();
   test_flow_mismatch_hold_is_rollover_safe();

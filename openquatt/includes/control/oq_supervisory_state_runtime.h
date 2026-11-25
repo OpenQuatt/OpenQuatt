@@ -218,19 +218,25 @@ class Runtime {
     const uint32_t minimum_off_ms = oq_supervisory_state::seconds_to_ms(tick.hp_min_off_s);
     const auto hp1_incidents = id(oq_incident_manager).get_outputs(1);
     const uint64_t telemetry_now_ms = oq_sources::monotonic_ms();
-    const auto compressor_requires_postflow = [&](const auto& incidents, const oq_sources::RawFloatReceipt& frequency) {
-      const bool moving = frequency.fresh(telemetry_now_ms, 30000) && frequency.value > 0.5f;
-      return oq_supervisory_state::compressor_requires_postflow(incidents, moving);
-    };
-    this->compressor_postflow_active_ =
-        compressor_requires_postflow(hp1_incidents, oq_sources::hp1.compressor_frequency);
+    const auto hp1_postflow =
+        hp1_postflow_guard_.update(hp1_incidents, oq_sources::hp1.compressor_frequency, telemetry_now_ms);
+    const bool hp1_circulation_evidence = !hp1_postflow.link_loss_hold_expired;
+    this->compressor_postflow_active_ = hp1_postflow.required;
+    bool circulation_hp_active = hp1_circulation_evidence && hp1_active_guard;
+    bool circulation_compressor_active = hp1_circulation_evidence && (hp1_lvl > 0 || hp1_cmd_lvl > 0);
+    bool actuator_request_active = hp1_circulation_evidence && id(oq_actuator_hp1_req) > 0;
     bool minimum_off_active = oq_supervisory_state::low_load_minimum_off_active(
         hp1_incidents, hp1_lvl, id(oq_incident_manager).minimum_off_remaining_ms(1, now_ms));
 #if OQ_TOPOLOGY_DUO
     const auto hp2_incidents = id(oq_incident_manager).get_outputs(2);
-    this->compressor_postflow_active_ =
-        this->compressor_postflow_active_ ||
-        compressor_requires_postflow(hp2_incidents, oq_sources::hp2.compressor_frequency);
+    const auto hp2_postflow =
+        hp2_postflow_guard_.update(hp2_incidents, oq_sources::hp2.compressor_frequency, telemetry_now_ms);
+    const bool hp2_circulation_evidence = !hp2_postflow.link_loss_hold_expired;
+    this->compressor_postflow_active_ = this->compressor_postflow_active_ || hp2_postflow.required;
+    circulation_hp_active = circulation_hp_active || (hp2_circulation_evidence && hp2_active_guard);
+    circulation_compressor_active =
+        circulation_compressor_active || (hp2_circulation_evidence && (hp2_lvl > 0 || hp2_cmd_lvl > 0));
+    actuator_request_active = actuator_request_active || (hp2_circulation_evidence && id(oq_actuator_hp2_req) > 0);
     minimum_off_active =
         minimum_off_active || oq_supervisory_state::low_load_minimum_off_active(
                                   hp2_incidents, hp2_lvl, id(oq_incident_manager).minimum_off_remaining_ms(2, now_ms));
@@ -370,14 +376,13 @@ class Runtime {
         heating_preflow_req = false;
       }
     }
-    const bool actuator_request_active = id(oq_actuator_hp1_req) > 0 || id(oq_actuator_hp2_req) > 0;
     const bool manual_hp_thermal_req =
         oq_manual_hp::owns_control() && ((int)roundf(id(oq_manual_hp1_level).state) > 0 ||
                                          (int)roundf(id(oq_manual_hp2_level).state) > 0 || actuator_request_active);
     const bool heating_flow_req = heating_req || heating_preflow_req;
     const bool thermal_req = heating_flow_req || cooling_req || manual_hp_thermal_req;
     const bool flow_guard_required = oq_supervisory_state::flow_guard_required(
-        thermal_req, any_hp_compressor_active || this->compressor_postflow_active_, actuator_request_active);
+        thermal_req, circulation_compressor_active || this->compressor_postflow_active_, actuator_request_active);
 
     // -------------------------------------------------
     // 2) Flow interlock status + timers
@@ -843,7 +848,7 @@ class Runtime {
           // Safety: never leave CM1 to CM0/CM98 while any HP still reports/targets activity.
           // Keep CM1 (pump-on holding state) until both HPs are effectively idle.
           if (oq_supervisory_state::hold_cm1_until_hp_idle(strcmp(cur_cm, "CM1") == 0, desired_local,
-                                                           any_hp_active_guard || actuator_request_active)) {
+                                                           circulation_hp_active || actuator_request_active)) {
             desired_local = 1;
           }
 
@@ -976,10 +981,10 @@ class Runtime {
           }
         }
       }
-      // Release normal circulation only after the actuator and both ODUs
-      // are idle, including when Force CM0 or Force CM98 is selected.
+      // Honor the same circulation hold for automatic and forced CM0/CM98.
+      // After prolonged link loss, cached feedback and commands cannot keep CM1 latched.
       if (oq_supervisory_state::standby_requires_postflow(
-              desired_local, any_hp_active_guard || actuator_request_active || this->compressor_postflow_active_)) {
+              desired_local, circulation_hp_active || actuator_request_active || this->compressor_postflow_active_)) {
         desired_local = 1;
         cm_transition_reason = "postflow waiting for confirmed compressor stop";
       }
@@ -1260,7 +1265,7 @@ class Runtime {
       // Pump failsafe: never stop circulation while any HP is still active.
       // CM100 idle is a service stand, not an active circulation mode.
       const bool pump_on = (strcmp(desired_cm, "CM0") != 0 && strcmp(desired_cm, "CM100") != 0) || cm100_task_active ||
-                           sticky_active || any_hp_active_guard;
+                           sticky_active || (in_cm0 ? circulation_hp_active : any_hp_active_guard);
       set_select_option(id(hp1_set_pump_mode), pump_on ? "On" : "Off");
 #if OQ_TOPOLOGY_DUO
       set_select_option(id(hp2_set_pump_mode), pump_on ? "On" : "Off");
@@ -1269,7 +1274,7 @@ class Runtime {
       if (strcmp(desired_cm, "CM0") == 0) {
         // Active HP/defrost keeps the relay On in CM0, so PWM must circulate too.
         const float target_pwm =
-            oq_defrost::cm0_pump_target(sticky_active, any_hp_active_guard, tick.sticky_pwm, tick.cm0_pump_stop_ipwm);
+            oq_defrost::cm0_pump_target(sticky_active, circulation_hp_active, tick.sticky_pwm, tick.cm0_pump_stop_ipwm);
         set_number_value(id(hp1_pump_speed), target_pwm, 1.0f);
 #if OQ_TOPOLOGY_DUO
         set_number_value(id(hp2_pump_speed), target_pwm, 1.0f);
@@ -1286,6 +1291,10 @@ class Runtime {
  private:
   uint8_t heating_gate_reason_{0};
   bool compressor_postflow_active_{false};
+  oq_supervisory_state::CompressorPostflowGuard hp1_postflow_guard_;
+#if OQ_TOPOLOGY_DUO
+  oq_supervisory_state::CompressorPostflowGuard hp2_postflow_guard_;
+#endif
   uint8_t power_house_low_load_hold_hp_{0};
   oq_cold_start::WaterProbe hp1_water_probe_;
 #if OQ_TOPOLOGY_DUO

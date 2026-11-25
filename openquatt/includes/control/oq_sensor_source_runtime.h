@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string>
 
+#include "oq_flow_control_logic.h"
 #include "oq_flow_pump_logic.h"
 #include "oq_heating_supply_target_logic.h"
 #include "oq_input_source_logic.h"
@@ -22,6 +23,24 @@ class Runtime {
   oq_sources::ResolvedLearningSource resolved_room_setpoint() const { return this->resolved_setpoint_; }
   oq_sources::ResolvedLearningSource resolved_outside_temperature() const { return this->resolved_outside_; }
   oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
+
+  float circulation_flow_lph(uint64_t now_ms, float mismatch_threshold_lph) const {
+    const auto selected = flow_selection();
+    constexpr uint64_t max_age_ms = 30000;
+    // Calculate the aggregate from current producers. An offline ODU's
+    // cached entity state can otherwise make a valid peer flow unusable.
+    if (selected.route == oq_input_source::FlowRoute::AGGREGATE) {
+      const float primary = oq_flow_control::fresh_flow_lph(primary_local_flow_receipt_(), now_ms, max_age_ms);
+#if OQ_TOPOLOGY_DUO
+      const float secondary = oq_flow_control::fresh_flow_lph(oq_sources::hp2.flow, now_ms, max_age_ms);
+#else
+      const float secondary = NAN;
+#endif
+      return oq_flow_control::select_local_flow(OQ_TOPOLOGY_DUO, primary, secondary, mismatch_threshold_lph);
+    }
+    if (!selected.valid) return NAN;
+    return oq_flow_control::fresh_flow_lph(selected_flow_receipt_(selected.route), now_ms, max_age_ms);
+  }
 
 #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
   // Use the selected source and its calibration with the producer's own
@@ -71,40 +90,20 @@ class Runtime {
     if (flow_route(selected.route) != resolved_flow_.route) return {};
     // Choose the normal flow route, but read the value and time together
     // from the producer instead of re-timestamping the selected display cache.
-    oq_sources::RawFloatReceipt receipt;
-    using Route = oq_sources::LearningSourceRoute;
-    switch (resolved_flow_.route) {
+    auto receipt = selected_flow_receipt_(selected.route);
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-      case Route::CONTROLLER_FLOW:
-        receipt = oq_sources::current_controller_filtered_flow();
-        // The pulse meter publishes zero once after the pulses stop. Keep that
-        // evidence separate from a fresh physical receipt for calorimetry.
-        controller_zero_observed = selected.valid && selected.value == 0.0f && receipt.valid && receipt.value == 0.0f &&
-                                   receipt.received_ms != 0U && receipt.received_ms <= now_ms;
-        break;
-      case Route::SYNTHESIZED_ZERO_FLOW:
-        // With idle ODU pumps, only fresh pulses prove boiler circulation.
-        // A quiet or unconnected input cannot certify zero circuit flow.
-        if (oq_sources::controller_flow.value > 0.0f) receipt = oq_sources::current_controller_filtered_flow();
-        break;
-#endif
-      case Route::CIC_FLOW:
-        if (cic_feed_valid()) receipt = id(cic_component).flow_rate_receipt();
-        break;
-      case Route::HP1_FLOW:
-        receipt = oq_sources::hp1.flow;
-        break;
-#if OQ_TOPOLOGY_DUO
-      case Route::HP2_FLOW:
-        receipt = oq_sources::hp2.flow;
-        break;
-#endif
-      case Route::FLOW_AGGREGATE:
-        receipt = oq_sources::local_flow;
-        break;
-      default:
-        break;
+    if (selected.route == oq_input_source::FlowRoute::CONTROLLER) {
+      // The pulse meter publishes zero once after the pulses stop. Keep that
+      // evidence separate from a fresh physical receipt for calorimetry.
+      controller_zero_observed = selected.valid && selected.value == 0.0f && receipt.valid && receipt.value == 0.0f &&
+                                 receipt.received_ms != 0U && receipt.received_ms <= now_ms;
+    } else if (selected.route == oq_input_source::FlowRoute::PUMPS_STOPPED &&
+               oq_sources::controller_flow.value > 0.0f) {
+      // With idle ODU pumps, only fresh pulses prove boiler circulation.
+      // A quiet or unconnected input cannot certify zero circuit flow.
+      receipt = oq_sources::current_controller_filtered_flow();
     }
+#endif
     return receipt.fresh(now_ms, max_age_ms) ? receipt : oq_sources::RawFloatReceipt{};
   }
 #endif
@@ -612,6 +611,38 @@ class Runtime {
     if (option == "Schedule") return oq_input_source::Source::SCHEDULE;
     if (option == "Open-Meteo") return oq_input_source::Source::OPEN_METEO;
     return oq_input_source::Source::NONE;
+  }
+
+  static oq_sources::RawFloatReceipt primary_local_flow_receipt_() {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V1")
+      return oq_sources::current_controller_filtered_flow();
+#endif
+    return oq_sources::hp1.flow;
+  }
+
+  static oq_sources::RawFloatReceipt selected_flow_receipt_(oq_input_source::FlowRoute route) {
+    using Route = oq_input_source::FlowRoute;
+    switch (route) {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+      case Route::CONTROLLER:
+        return oq_sources::current_controller_filtered_flow();
+#endif
+      case Route::CIC:
+        return cic_feed_valid() ? id(cic_component).flow_rate_receipt() : oq_sources::RawFloatReceipt{};
+      case Route::HP1:
+        return oq_sources::hp1.flow;
+#if OQ_TOPOLOGY_DUO
+      case Route::HP2:
+        return oq_sources::hp2.flow;
+#endif
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+      case Route::AGGREGATE:
+        return oq_sources::local_flow;
+#endif
+      default:
+        return {};
+    }
   }
 
   static oq_input_source::ControllerFlowMode controller_flow_mode_() {

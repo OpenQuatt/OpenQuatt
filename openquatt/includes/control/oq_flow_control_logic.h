@@ -90,6 +90,10 @@ inline float select_local_flow(bool secondary_enabled, float hp1_flow_lph, float
   return local_flow_selection(secondary_enabled, hp1_flow_lph, hp2_flow_lph, mismatch_threshold_lph).value;
 }
 
+inline float fresh_flow_lph(const oq_sources::RawFloatReceipt& receipt, uint64_t now_ms, uint64_t max_age_ms) {
+  return receipt.fresh(now_ms, max_age_ms) ? receipt.value : NAN;
+}
+
 inline oq_sources::RawFloatReceipt local_flow_receipt(const LocalFlowSelection& selection,
                                                       const oq_sources::RawFloatReceipt& primary, float primary_lph,
                                                       const oq_sources::RawFloatReceipt& secondary,

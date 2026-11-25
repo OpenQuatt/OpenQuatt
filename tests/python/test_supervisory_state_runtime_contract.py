@@ -45,7 +45,7 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         self.assertRegex(
             RUNTIME,
             r"oq_supervisory_state::flow_guard_required\(\s*thermal_req,\s*"
-            r"any_hp_compressor_active\s*\|\|\s*this->compressor_postflow_active_,\s*"
+            r"circulation_compressor_active\s*\|\|\s*this->compressor_postflow_active_,\s*"
             r"actuator_request_active\s*\)",
         )
         self.assertIn("{now_ms, flow_guard_required, min_flow_lph", RUNTIME)

@@ -227,5 +227,5 @@ interval:
       - lambda: |-
           oq_flow_runtime::runtime().tick({
             ${oq_flow_loop_s}, 20, ${oq_cm98_pump_ipwm}, ${oq_cm_min_flow_lph},
-            oq_supervisory_state_runtime::runtime().compressor_postflow_active()
+            oq_supervisory_state_runtime::runtime().compressor_postflow_active(), ${oq_flow_mismatch_threshold_lph}
           });

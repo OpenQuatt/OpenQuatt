@@ -8,6 +8,7 @@
 #include "oq_defrost_logic.h"
 #include "oq_flow_control_logic.h"
 #include "oq_flow_delta_t_runtime.h"
+#include "oq_sensor_source_runtime.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 
@@ -19,6 +20,7 @@ struct TickConfig {
   int frost_ipwm = 800;
   float minimum_flow_lph = 400.0f;
   bool compressor_postflow_active = false;
+  float mismatch_threshold_lph = 150.0f;
 };
 
 class Runtime {
@@ -222,14 +224,8 @@ class Runtime {
     }
 
     if (frost || postflow) {
-      // R2103 and the ODU flow share a poll. A cached flow value must
-      // not suppress pump recovery after the runtime polls go stale.
-      const uint64_t now_ms = oq_sources::monotonic_ms();
-      bool odu_poll_fresh = id(hp1_is_online) && oq_sources::hp1.compressor_frequency.fresh(now_ms, 30000);
-#if OQ_TOPOLOGY_DUO
-      odu_poll_fresh = odu_poll_fresh && id(hp2_is_online) && oq_sources::hp2.compressor_frequency.fresh(now_ms, 30000);
-#endif
-      const float flow_lph = odu_poll_fresh && id(flow_rate_selected).has_state() ? id(flow_rate_selected).state : NAN;
+      const float flow_lph =
+          oq_sensor_source::runtime().circulation_flow_lph(oq_sources::monotonic_ms(), config.mismatch_threshold_lph);
       circulation_ipwm_limit_ = oq_flow_control::update_circulation_ipwm_limit(
           circulation_ipwm_limit_, id(oq_flow_last_pwm), postflow, flow_lph, config.minimum_flow_lph);
       if (pwm > circulation_ipwm_limit_) pwm = circulation_ipwm_limit_;

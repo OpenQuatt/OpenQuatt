@@ -174,7 +174,7 @@ class DefrostContractTest(unittest.TestCase):
         self.assertEqual(supervisor.count("id(hp2_odu_defrost).holding()"), 1)
         self.assertIn("oq_defrost::hp_active(", supervisor)
         # P1a: CM0 with an active HP must circulate, never keep the stop PWM while the relay is On.
-        self.assertIn("oq_defrost::cm0_pump_target(sticky_active, any_hp_active_guard,", supervisor)
+        self.assertIn("oq_defrost::cm0_pump_target(sticky_active, circulation_hp_active,", supervisor)
         self.assertIn("cm0_pump_target(bool sticky_active, bool hp_active_guard,", logic)
         self.assertIn("standby_requires_postflow(", supervisor)
         postflow = supervisor.index("standby_requires_postflow(")

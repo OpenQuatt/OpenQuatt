@@ -64,7 +64,6 @@ inline RawFloatReceipt local_flow{};
 
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
 inline RawFloatReceipt controller_flow{};
-#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
 inline RawFloatReceipt controller_filtered_flow{};
 
 inline RawFloatReceipt current_controller_filtered_flow() {
@@ -72,7 +71,6 @@ inline RawFloatReceipt current_controller_filtered_flow() {
              ? controller_filtered_flow
              : RawFloatReceipt{};
 }
-#endif
 #endif
 
 }  // namespace oq_sources
