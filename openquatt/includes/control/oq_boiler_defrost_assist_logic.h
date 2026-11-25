@@ -54,8 +54,9 @@ struct Config {
   // After a session, the report must have been clear this long before a new
   // session may start.
   uint32_t rearm_ms = 120000UL;
-  // A session ends only once the report has been clear this long.
-  uint32_t release_ms = 60000UL;
+  // A session ends only once the report has been clear this long. The heat
+  // pump still delivers cold water in the first minutes after a defrost.
+  uint32_t release_ms = 120000UL;
   // After the boiler last heated, the supply must settle this long before it
   // can be a reference again.
   uint32_t reference_settle_ms = 300000UL;

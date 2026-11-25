@@ -176,7 +176,7 @@ class BoilerRuntimeContractTest(unittest.TestCase):
             ('oq_boiler_defrost_assist_confirm_s: "10"', "uint32_t confirm_ms = 10000UL;"),
             ('oq_boiler_defrost_assist_min_run_s: "60"', "uint32_t minimum_ms = 60000UL;"),
             ('oq_boiler_defrost_assist_rearm_s: "120"', "uint32_t rearm_ms = 120000UL;"),
-            ('oq_boiler_defrost_assist_release_s: "60"', "uint32_t release_ms = 60000UL;"),
+            ('oq_boiler_defrost_assist_release_s: "120"', "uint32_t release_ms = 120000UL;"),
             ('oq_boiler_defrost_assist_reference_settle_s: "300"', "uint32_t reference_settle_ms = 300000UL;"),
         ):
             self.assertIn(substitution, SUBSTITUTIONS)
