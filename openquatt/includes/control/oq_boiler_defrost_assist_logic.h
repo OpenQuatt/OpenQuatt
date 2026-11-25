@@ -106,6 +106,10 @@ struct State {
   bool extra_step_used = false;
   bool wait_timing = false;
   uint32_t wait_since_ms = 0;
+  // The next wait is the ignition wait: at the start of a session and after
+  // every interruption of the applied command, because the source then has
+  // to start over.
+  bool ignition_wait_due = true;
   bool ceiling_reported = false;
 };
 
@@ -190,6 +194,7 @@ inline void confirm_flame(const Input& input, State& state, Output& output, cons
   if (!input.feedback_available || !input.command_applied || input.dhw_active || !isfinite(input.target_ceiling_c) ||
       step_c <= 0.0f) {
     state.wait_timing = false;
+    state.ignition_wait_due = true;
     return;
   }
   // The raise ends at the ceiling or at its own bound, whichever is lower.
@@ -206,9 +211,10 @@ inline void confirm_flame(const Input& input, State& state, Output& output, cons
       state.wait_timing = true;
       state.wait_since_ms = input.now_ms;
     }
-    const uint32_t wait_ms = state.raise_c > 0.0f ? config.raise_interval_ms : config.ignition_wait_ms;
+    const uint32_t wait_ms = state.ignition_wait_due ? config.ignition_wait_ms : config.raise_interval_ms;
     if (!elapsed(input.now_ms, state.wait_since_ms, wait_ms)) return;
     state.wait_since_ms = input.now_ms;
+    state.ignition_wait_due = false;
     if (!at_ceiling) {
       raise();
     } else if (!state.ceiling_reported) {
@@ -313,6 +319,7 @@ inline Output update(const Input& input, State state, const Config& config = {})
     state.flame_confirmed = false;
     state.extra_step_used = false;
     state.wait_timing = false;
+    state.ignition_wait_due = true;
     state.ceiling_reported = false;
   }
   output.released = was_active && !state.active;

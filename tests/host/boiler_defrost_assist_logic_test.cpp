@@ -754,6 +754,46 @@ void test_feedback_lost_keeps_raised_target() {
   assert(source.raises == 1);
 }
 
+// Runs the search to its first raise, interrupts it and returns how long the
+// source then gets before the next raise.
+template <typename Interrupt, typename Restore>
+uint32_t wait_after_interruption(Interrupt interrupt, Restore restore) {
+  Source source;
+  source.ceiling_c = 57.0f;
+  source.start_session();
+  while (source.raises == 0) source.step(true, false);
+  interrupt(source);
+  for (int tick = 0; tick < 3; ++tick) source.step(true, false);
+  assert(source.raises == 1);
+  restore(source);
+  source.step(true, false);
+  const uint32_t restored_ms = source.now_ms;
+  while (source.raises == 1) source.step(true, false);
+  const uint32_t wait_ms = source.last_raise_ms - restored_ms;
+  // After that the search continues at its interval.
+  const uint32_t second_raise_ms = source.last_raise_ms;
+  while (source.raises == 2) source.step(true, false);
+  assert(source.last_raise_ms - second_raise_ms == 30000U);
+  return wait_ms;
+}
+
+void test_interrupted_command_gets_the_ignition_wait_again() {
+  // The chain withdraws heating (inhibit, flow) and applies it again: the
+  // source has to purge and ignite from the start.
+  assert(wait_after_interruption([](Source& source) { source.applied = false; },
+                                 [](Source& source) { source.applied = true; }) == 45000U);
+}
+
+void test_interrupted_feedback_gets_the_ignition_wait_again() {
+  assert(wait_after_interruption([](Source& source) { source.feedback = false; },
+                                 [](Source& source) { source.feedback = true; }) == 45000U);
+}
+
+void test_hot_water_interruption_gets_the_ignition_wait_again() {
+  assert(wait_after_interruption([](Source& source) { source.dhw = true; },
+                                 [](Source& source) { source.dhw = false; }) == 45000U);
+}
+
 void test_flickering_flame_is_bounded() {
   Source source;
   source.start_session();
@@ -863,6 +903,9 @@ int main() {
   test_no_ceiling_means_no_raise();
   test_without_feedback_behaves_like_before();
   test_feedback_lost_keeps_raised_target();
+  test_interrupted_command_gets_the_ignition_wait_again();
+  test_interrupted_feedback_gets_the_ignition_wait_again();
+  test_hot_water_interruption_gets_the_ignition_wait_again();
   test_flickering_flame_is_bounded();
   test_wait_survives_millis_rollover();
   test_raise_is_cleared_at_session_end();
