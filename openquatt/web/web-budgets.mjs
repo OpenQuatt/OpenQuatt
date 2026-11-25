@@ -89,9 +89,13 @@ export const WEB_BUNDLE_BUDGETS = [
     // Power House run-extension switch, hidden tuning fields when off and NL/EN copy:
     // +1,799 B raw / +438 B gzip; merged with dev: measured raw 1,509,887 B (Node 24.14.1).
     // Quiet mode selector in installation settings: +336 B raw / +125 B gzip (Node 24.14.1).
+    // Scheduled per-unit exclusions and frequency preview: +5,913 B raw / +2,250 B gzip versus dev (Node 24.14.1).
+    // Clearer exclusion summaries and restore feedback: +1,082 B raw / +180 B gzip (Node 24.14.1).
+    // Compressor frequency demand in both overview modes: +376 B raw / +114 B gzip (Node 24.14.1).
+    // Outlook during defrost and missing-input messages: +1,296 B raw / +267 B gzip versus dev 89e28f53 (Node 24.14.1).
     // Optional boiler support during defrost (settings switch and copy in both locales):
-    // +1,072 B raw versus dev 26923b8, measured raw 1,510,224 B (Node 24.21.0); raw headroom unchanged.
-    raw: 1_510_403,
+    // +1,072 B raw versus dev a9aa3f3, measured raw 1,518,891 B (Node 24.21.0); raw headroom unchanged.
+    raw: 1_519_070,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -122,5 +126,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // Manual house-line advice: +444 B raw / +94 B gzip versus dev acfe7df2.
   // Responsive ODU identity rows and detection status: +531 B raw versus dev 7536e6bc.
   // Measurement archive layout: +1,162 B raw / +239 B gzip versus dev f0da4507.
-  { file: "css/openquatt-app.css", raw: 230_662, gzipBaselineCeiling: 44_985 },
+  // Frequency exclusion summaries span the card width: +67 B raw.
+  // Compact compressor frequency demand: +77 B raw / +9 B gzip (Node 24.14.1).
+  { file: "css/openquatt-app.css", raw: 230_806, gzipBaselineCeiling: 44_985 },
 ];

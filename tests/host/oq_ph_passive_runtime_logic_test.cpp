@@ -500,6 +500,74 @@ void test_explicit_daily_gap_does_not_bridge_thermal_windows() {
   assert(state.record_count == 1);
 }
 
+void test_duo_defrost_windows_feed_the_thermal_model() {
+  constexpr uint32_t epoch = 20000U * 86400U;
+  constexpr uint32_t spacing_s = 55U * 60U / 2U;
+  PassiveRuntimeStorage standard;
+  PassiveRuntimeStorage adaptive;
+  initialize_passive_runtime(standard, context(), config(), true);
+  initialize_passive_runtime(adaptive, context(), config(), true);
+  uint32_t accepted = 0;
+  for (uint32_t second = 0; second <= 6U * 3600U; second += 10) {
+    const uint32_t phase = second % spacing_s;
+    auto input = tick(1000ULL + second * 1000ULL, epoch + second);
+    // Eight minutes of defrost and a minute of settling.
+    if (phase < 540U) input.dynamic_snapshot.invalid_reasons = INVALID_DEFROST_OR_OIL_RETURN;
+    tick_passive_runtime(standard, input);
+    input.defrost_active = phase < 480U;
+    tick_passive_runtime(adaptive, input);
+    if (phase == 540U) {
+      assert(adaptive.thermal_accumulator.active);
+      assert(thermal_collection_config(adaptive).target_duration_ms == 900000U);
+      assert(adaptive.thermal_accumulator.first.epoch_s == epoch + second);
+    }
+    if (phase == 1440U) {
+      ++accepted;
+      assert(adaptive.thermal_state.last_interval_end_monotonic_ms == input.now_monotonic_ms);
+      assert(adaptive.thermal_accumulator.first.monotonic_ms == input.now_monotonic_ms);
+      assert(adaptive.thermal_accumulator.config.target_duration_ms == 900000U);
+      assert(adaptive.defrost_recovery_windows_remaining == 1U);
+    }
+    assert(standard.thermal_state.accepted_samples == 0);
+    assert(adaptive.thermal_state.accepted_samples == accepted);
+  }
+  assert(accepted == 13);
+  assert(adaptive.batch_accumulator.integrated_duration_s == standard.batch_accumulator.integrated_duration_s);
+}
+
+void test_two_recovery_intervals_are_short_and_share_endpoints() {
+  constexpr uint32_t epoch = 20000U * 86400U;
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  auto defrost = tick(1000, epoch);
+  defrost.defrost_active = true;
+  tick_passive_runtime(state, defrost);
+  assert(!state.thermal_accumulator.active);
+  uint32_t accepted = 0;
+  for (uint32_t second = 10; second <= 3610; second += 10) {
+    const auto input = tick(1000ULL + second * 1000ULL, epoch + second);
+    tick_passive_runtime(state, input);
+    if (second == 910U || second == 1810U || second == 3610U) {
+      ++accepted;
+      assert(state.thermal_accumulator.first.monotonic_ms == input.now_monotonic_ms);
+    }
+    assert(state.thermal_state.accepted_samples == accepted);
+    assert(thermal_collection_config(state).target_duration_ms == (second < 1810U ? 900000U : 1800000U));
+  }
+  assert(accepted == 3);
+  assert(state.thermal_state.recent_data_valid);
+  auto interruption = tick(3621000, epoch + 3620);
+  interruption.dynamic_snapshot.invalid_reasons = INVALID_DEFROST_OR_OIL_RETURN;
+  tick_passive_runtime(state, interruption);  // Oil return cannot grant a short interval.
+  assert(thermal_collection_config(state).target_duration_ms == 1800000U);
+  auto second_defrost = tick(3631000, epoch + 3630);
+  second_defrost.defrost_active = true;
+  tick_passive_runtime(state, second_defrost);
+  assert(thermal_collection_config(state).target_duration_ms == 900000U);
+  pause_passive_runtime(state, 3641000);
+  assert(thermal_collection_config(state).target_duration_ms == 1800000U);
+}
+
 }  // namespace
 
 int main() {
@@ -521,4 +589,6 @@ int main() {
   test_missing_utc_pauses_without_blocking_owner();
   test_summary_never_exposes_readiness_without_live_valid_context();
   test_forecast_can_use_ready_model_during_daily_stop_hold();
+  test_duo_defrost_windows_feed_the_thermal_model();
+  test_two_recovery_intervals_are_short_and_share_endpoints();
 }

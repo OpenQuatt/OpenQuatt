@@ -39,6 +39,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 #include "openquatt/includes/control/oq_defrost_logic.h"
 #include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
+#include "tests/fixtures/supervisory_low_load_stub.h"
 #include "openquatt/includes/control/oq_cooling_limiter_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_hp_boot_resume.h"
@@ -221,6 +222,7 @@ void reset() {
   oq_actuator_hp1_req=oq_actuator_hp2_req=0; startup_test_mask=0;
   oq_request_strategy_code=oq_request_hp1_level=oq_request_hp2_level=0;
   events.clear(); oq_water_temp_hard_trip_active=oq_lowflow_fault_active=false;
+  oq_supervisory_state_runtime::runtime().hold_hp=0;
   oq_cooling_stop_reason_code=0;
   hp1_is_online=hp2_is_online=true;
   oq_sources::hp1={}; oq_sources::hp2={};
@@ -297,6 +299,37 @@ int main() {
       oq_lowflow_fault_active=oq_water_temp_hard_trip_active=false; events.clear();
       assert(a.apply_level_(hp,17,false,c)==0 && events.empty());
     }
+  }
+  // The actuator can run once with cached requests after the supervisor enters
+  // its solo low-load hold. It must never start the peer or restart its owner.
+  for(bool hp1_running : {true,false}) {
+    reset(); ActuatorRuntime a; Cycle c; c.frequency=f;
+    const int owner=hp1_running?0:1, peer=1-owner;
+    oq_control_mode_code=2;
+    oq_request_strategy_code=oq_request::STRATEGY_POWER_HOUSE;
+    oq_supervisory_state_runtime::runtime().hold_hp=owner+1;
+    hp1_odu_defrost.cycle.active=hp1_odu_defrost.hold=false;
+    hp2_odu_defrost.cycle.active=hp2_odu_defrost.hold=false;
+    a.retained[0]=a.retained[1]={};
+    a.previous[peer]=a.physical[peer]=0;
+    a.start_limits_[peer].remaining=0;
+    oq_incident_manager.rest_ms[peer]=0;
+    auto& idle=oq_incident_manager.hp[peer];
+    idle.running_confirmed=false; idle.stop_confirmed=true;
+    idle.run_state=oq_incidents::RunState::STOPPED;
+    assert(a.apply_level_(!hp1_running,17,false,c)==0 && a.physical[peer]==0);
+    assert(std::find(events.begin(),events.end(),"start")==events.end());
+    a.allow_active_writes=true;
+    assert(a.apply_level_(hp1_running,17,false,c)==1 && a.physical[owner]==1);
+
+    a.allow_active_writes=false;
+    a.previous[owner]=a.physical[owner]=0;
+    a.start_limits_[owner].remaining=0;
+    oq_incident_manager.rest_ms[owner]=0;
+    oq_incident_manager.hp[owner]=idle;
+    events.clear();
+    assert(a.apply_level_(hp1_running,1,false,c)==0 && a.physical[owner]==0);
+    assert(std::find(events.begin(),events.end(),"start")==events.end());
   }
   // Normal holds, stale defrost telemetry and the pre-existing local safety route.
   for(bool hp : {true,false}) {

@@ -192,6 +192,11 @@ function getSettingsSelectOptionLabel(key, option) {
     if (option === "On") return t("common.on");
     if (option === "Schedule") return t("overview.silentSchedule");
   }
+  if (key === "hp1ExcludeScope" || key === "hp2ExcludeScope") {
+    if (option === "Always") return t("frequencyExclusion.always");
+    if (option === "Quiet hours") return t("frequencyExclusion.quietOnly");
+    if (option === "Off") return t("common.off");
+  }
   return formatSettingsOptionLabel(option);
 }
 
@@ -447,7 +452,7 @@ export function renderSettingsSliderField(key, title, copy, className = "", opti
   return renderSettingsFieldCard(key, title, copy, `<label class="oq-helper-slider-field"><div class="oq-helper-slider-meta"><span>${escapeHtml(minLabel)}</span><strong>${escapeHtml(valueLabel)}</strong><span>${escapeHtml(maxLabel)}</span></div><input class="oq-helper-range" type="range" data-oq-field="${escapeHtml(key)}" min="${min}" max="${max}" step="${meta.step}" value="${value}" ${state.loadingEntities ? "disabled" : ""}></label>`, className, options.footerMarkup || "");
 }
 
-export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
+export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy, showDisable = true) {
   if (!hasEntity(minKey) || !hasEntity(maxKey)) {
     return "";
   }
@@ -509,7 +514,7 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
       </div>
     </div>
   `;
-  const disableButton = `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${disabled || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>`;
+  const disableButton = showDisable ? `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${disabled || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>` : "";
   return renderSettingsFieldCard(minKey, title, copy, markup, "oq-settings-field--frequency-range", "", disableButton);
 }
 

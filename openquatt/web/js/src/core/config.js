@@ -635,6 +635,8 @@
     ["curve15", DOMAIN_NUMBER, "Curve Tsupply @ 15°C", false],
     ["hp1ExcludeMinHz", DOMAIN_NUMBER, "HP1 - Excluded frequency minimum"],
     ["hp1ExcludeMaxHz", DOMAIN_NUMBER, "HP1 - Excluded frequency maximum"],
+    ["hp1ExcludeScope", DOMAIN_SELECT, "HP1 - Frequency exclusion schedule"],
+    ["hp1AutomaticFrequencies", DOMAIN_TEXT_SENSOR, "HP1 - Automatic compressor frequencies"],
     ["hp1Power", DOMAIN_SENSOR, "HP1 - Power Input", false],
     ["hp1PowerInputQuality", DOMAIN_TEXT_SENSOR, "HP1 - Power Input quality"],
     ["hp1AcVoltage", DOMAIN_SENSOR, "HP1 - AC voltage"],
@@ -677,6 +679,8 @@
     ["hp1FourWay", DOMAIN_BINARY_SENSOR, "HP1 - 4-Way valve", false],
     ["hp2ExcludeMinHz", DOMAIN_NUMBER, "HP2 - Excluded frequency minimum"],
     ["hp2ExcludeMaxHz", DOMAIN_NUMBER, "HP2 - Excluded frequency maximum"],
+    ["hp2ExcludeScope", DOMAIN_SELECT, "HP2 - Frequency exclusion schedule"],
+    ["hp2AutomaticFrequencies", DOMAIN_TEXT_SENSOR, "HP2 - Automatic compressor frequencies"],
     ["hp2Power", DOMAIN_SENSOR, "HP2 - Power Input"],
     ["hp2PowerInputQuality", DOMAIN_TEXT_SENSOR, "HP2 - Power Input quality"],
     ["hp2AcVoltage", DOMAIN_SENSOR, "HP2 - AC voltage"],
@@ -825,6 +829,7 @@
         cop: "hp1Cop",
         compressor: "hp1Compressor",
         freq: "hp1Freq",
+        freqDemand: "hp1CompressorFrequencyDemand",
         fanSpeed: "hp1FanSpeed",
         flow: "hp1Flow",
         evaporatorCoilTemp: "hp1EvaporatorCoilTemp",
@@ -855,6 +860,7 @@
         cop: "hp2Cop",
         compressor: "hp2Compressor",
         freq: "hp2Freq",
+        freqDemand: "hp2CompressorFrequencyDemand",
         fanSpeed: "hp2FanSpeed",
         flow: "hp2Flow",
         evaporatorCoilTemp: "hp2EvaporatorCoilTemp",
@@ -1471,8 +1477,10 @@
     "heatingSupplyTargetActiveSource",
   ];
   export const EXCLUDED_FREQUENCY_KEYS = [
-    "hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz",
+    "hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp1ExcludeScope",
+    "hp2ExcludeMinHz", "hp2ExcludeMaxHz", "hp2ExcludeScope",
   ];
+  export const FREQUENCY_EXCLUSION_STATE_KEYS = ["hp1AutomaticFrequencies", "hp2AutomaticFrequencies", "silentActive", "silentStatus"];
   export const COMPRESSOR_SETTING_KEYS = ["minRuntime", ...EXCLUDED_FREQUENCY_KEYS];
   // Restore order: gate, thresholds and run-on first, the function last, so a backup
   // restore cannot energize the relay with stale gate settings in between.
@@ -2213,6 +2221,7 @@
     ...WARMUP_STATE_KEYS,
     ...CURVE_SETTING_KEYS,
     ...COMPRESSOR_SETTING_KEYS,
+    ...FREQUENCY_EXCLUSION_STATE_KEYS,
     ...SILENT_SETTING_KEYS,
     ...SERVICE_CONTROL_KEYS,
   ];

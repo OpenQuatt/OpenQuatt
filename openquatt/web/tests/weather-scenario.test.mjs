@@ -65,6 +65,59 @@ test("older restored issues stay hidden while the weather is still usable", () =
   assert.throws(() => normalizeWeatherForecast(p), /weather-scenario-format/);
 });
 
+test("defrost keeps only the remaining times from the last calculation", () => {
+  const p = payload();
+  p.now_epoch = p.fetched_epoch = p.scenario.issued_epoch + 1800;
+  p.last_scenario = { ...p.scenario, horizon_valid: [false, true, true], temperature_c: [null, 0.25, 0.5] };
+  Object.assign(p.scenario, { valid: false, reason: "defrost", horizon_valid: [false, false, false],
+    temperature_c: [null, null, null] });
+  state.weatherForecast = normalizeWeatherForecast(p);
+  assert.equal(weatherScenarioCanDisplay(state.weatherForecast), true);
+  for (const [locale, label] of [["nl", "Laatst berekend"], ["en", "Last calculated"]]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    const html = renderForecastProgress();
+    assert.match(html, /data-scenario-freshness="cached"/);
+    assert.ok(html.includes(label));
+    assert.ok(html.includes(t("learningWorkspace.forecast.defrostCopy")));
+    assert.ok(html.includes(t("learningWorkspace.forecast.expired")));
+    assert.doesNotMatch(html, /0[,.]0 °C/);
+  }
+  p.last_scenario.model_context++;
+  assert.throws(() => normalizeWeatherForecast(p), /weather-forecast-format/);
+  state.weatherForecast = normalizeWeatherForecast(payload());
+  assert.match(renderForecastProgress(), /data-scenario-freshness="current"/);
+});
+
+test("Outlook names the missing input above empty tiles, even before the first issue", () => {
+  const reasons = [
+    ["defrost", "geldige metingen na het ontdooien", "valid measurements after defrost"],
+    ["room_temperature_unavailable", "geldige binnentemperatuur", "valid indoor temperature"],
+    ["outside_temperature_unavailable", "geldige buitentemperatuur", "valid outdoor temperature"],
+    ["setpoint_unavailable", "geldige ingestelde kamertemperatuur", "valid room temperature setpoint"],
+    ["heat_output_unavailable", "geldige meting van de warmteafgifte", "valid heat output measurement"],
+    ["weather_unavailable", "geldige weersverwachting voor deze locatie", "valid weather forecast for this location"],
+    ["model_unavailable", "bruikbaar woningmodel", "usable home model"],
+    ["expired", "De vorige berekening is verlopen", "The previous calculation has expired"],
+  ];
+  for (const [locale, index] of [["nl", 1], ["en", 2]]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const entry of reasons) {
+      const p = payload();
+      Object.assign(p.scenario, { valid: false, reason: entry[0], issued_epoch: 0,
+        horizon_valid: [false, false, false], temperature_c: [null, null, null] });
+      if (entry[0] === "weather_unavailable") p.valid = false;
+      state.weatherForecast = normalizeWeatherForecast(p);
+      const html = renderForecastProgress();
+      assert.match(html, /data-scenario-freshness="unavailable"/);
+      assert.ok(html.indexOf(entry[index]) >= 0 && html.indexOf(entry[index]) < html.indexOf("<article"));
+      assert.equal(renderForecastProgress({ statusOnly: true }), "");
+    }
+  }
+  state.weatherForecastError = "failed";
+  assert.match(renderForecastProgress(), /Waiting for up-to-date data from the controller/);
+  assert.doesNotMatch(renderForecastProgress(), /The previous calculation has expired/);
+});
+
 test("weather settings show current errors despite a cached scenario", () => {
   state.weatherForecast = normalizeWeatherForecast(payload());
   state.learningPanel = "configuration";

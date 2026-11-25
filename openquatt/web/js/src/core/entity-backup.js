@@ -99,10 +99,10 @@ export function getEntityBackupSwitchState(payload) {
   return null;
 }
 
-export async function verifyEntityBackupSelectState(key, expected, normalize = (value) => String(value ?? "").trim()) {
+export async function verifyEntityBackupValue(key, expected, normalize = (value) => String(value ?? "").trim()) {
   const entity = ENTITY_DEFS[key];
-  if (!entity || (entity.domain !== "select" && entity.domain !== "time")) {
-    throw new Error(t("entityBackup.unknownSelectOrTime", { key }));
+  if (!entity || !["select", "time", "number"].includes(entity.domain)) {
+    throw new Error(t("entityBackup.unknownField", { key }));
   }
   const normalizedExpected = normalize(expected);
 
@@ -120,6 +120,8 @@ export async function verifyEntityBackupSelectState(key, expected, normalize = (
   }
   return actual === normalizedExpected;
 }
+
+export const verifyEntityBackupSelectState = verifyEntityBackupValue;
 
 export async function verifyEntityBackupSwitchState(key, expected) {
   const entity = ENTITY_DEFS[key];

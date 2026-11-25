@@ -148,6 +148,7 @@ void OpenQuattWeather::invalidate_() {
     storage_[0].current.generation = 0;
     oq_power_house::forecast::discard_pending(storage_[0].forecast);
     storage_[0].issued_scenario = {};
+    storage_[0].defrost_recovery = {};
   }
   publish_forecast_();
 }
@@ -447,7 +448,14 @@ void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& obse
   auto& state = storage_[0];
   auto checked = observation;
   const uint64_t now_ms = monotonic_ms();
-  if (checked.monotonic_ms > now_ms || now_ms - checked.monotonic_ms > 15000) checked.valid = false;
+  if (checked.monotonic_ms > now_ms || now_ms - checked.monotonic_ms > oq_power_house::forecast::kObservationFreshMs)
+    checked = {};
+  const auto& issue = state.issued_scenario;
+  const bool same_context =
+      issue.configuration == configuration_ && issue.model_context == checked.context && issue.model_samples > 0 &&
+      issue.model_samples <= checked.model_samples &&
+      scenario_clock_matches(issue.monotonic_ms, issue.epoch, checked.monotonic_ms, checked.epoch);
+  state.defrost_recovery.update(checked, same_context, state.forecast.previous);
   oq_power_house::forecast::observe(state.forecast, checked);
   const bool model_ready = oq_power_house::forecast::valid_model(checked);
   if (!model_ready) {
@@ -456,7 +464,9 @@ void OpenQuattWeather::observe(const oq_power_house::forecast::Observation& obse
     state.forecast.last_issue_ms = 0;
     for (auto& value : state.forecast.latest) value = NAN;
   }
-  if (!state.forecast.latest_issue_epoch) state.issued_scenario = {};
+  if (!state.forecast.latest_issue_epoch && !state.defrost_recovery.holding_issue &&
+      !state.defrost_recovery.pending_defrost_ms)
+    state.issued_scenario = {};
   if (model_ready && oq_weather::usable(state.current, checked.epoch, now_ms)) {
     float forcing[oq_power_house::forecast::kForcingSteps + 1];
     bool complete = true;
@@ -544,25 +554,38 @@ void OpenQuattWeather::publish_forecast_() {
   const uint64_t now_ms = monotonic_ms();
   const bool valid = allowed_() && now.is_valid() && oq_weather::usable(state.current, now.timestamp, now_ms);
   ScenarioSnapshot scenario;
-  scenario.issued = state.issued_scenario;
-  scenario.observation_ms = state.forecast.previous.monotonic_ms;
-  scenario.observation_epoch = state.forecast.previous.epoch;
+  if (state.forecast.latest_issue_epoch || state.defrost_recovery.holding_issue)
+    scenario.issued = state.issued_scenario;
+  scenario.observation_ms = state.defrost_recovery.holding_issue ? state.defrost_recovery.held_observation_ms
+                                                                 : state.forecast.previous.monotonic_ms;
+  scenario.observation_epoch = state.defrost_recovery.holding_issue ? state.defrost_recovery.held_observation_epoch
+                                                                    : state.forecast.previous.epoch;
+  using InputIssue = oq_power_house::forecast::InputIssue;
+  const auto input_issue = oq_power_house::forecast::current_input_issue(state.forecast, now_ms);
+  const auto input_reason = input_issue == InputIssue::ROOM_TEMPERATURE ? ScenarioReason::ROOM_TEMPERATURE_UNAVAILABLE
+                            : input_issue == InputIssue::OUTSIDE_TEMPERATURE
+                                ? ScenarioReason::OUTSIDE_TEMPERATURE_UNAVAILABLE
+                            : input_issue == InputIssue::SETPOINT    ? ScenarioReason::SETPOINT_UNAVAILABLE
+                            : input_issue == InputIssue::HEAT_OUTPUT ? ScenarioReason::HEAT_OUTPUT_UNAVAILABLE
+                                                                     : ScenarioReason::OBSERVATION_INVALID;
   scenario.reason =
       !enabled_ || !enabled_->state ? ScenarioReason::DISABLED
       : pending_save_               ? ScenarioReason::LOCATION_SAVING
       : configuration_error_ || std::strcmp(last_error_, "invalid_location") == 0 ||
               std::strcmp(last_error_, "location_persistence_failed") == 0
           ? ScenarioReason::LOCATION_INVALID
-      : !allowed_()                                                           ? ScenarioReason::PAUSED
-      : !now.is_valid() || std::strcmp(last_error_, "clock_changed") == 0     ? ScenarioReason::CLOCK_INVALID
-      : !valid                                                                ? ScenarioReason::WEATHER_UNAVAILABLE
-      : !oq_power_house::forecast::valid_observation(state.forecast.previous) ? ScenarioReason::OBSERVATION_INVALID
-      : !oq_power_house::forecast::valid_model(state.forecast.previous)       ? ScenarioReason::MODEL_UNAVAILABLE
+      : !allowed_()                                                                ? ScenarioReason::PAUSED
+      : !now.is_valid() || std::strcmp(last_error_, "clock_changed") == 0          ? ScenarioReason::CLOCK_INVALID
+      : !valid                                                                     ? ScenarioReason::WEATHER_UNAVAILABLE
+      : state.defrost_recovery.holding_issue || input_issue == InputIssue::DEFROST ? ScenarioReason::DEFROST
+      : !oq_power_house::forecast::valid_observation(state.forecast.previous)      ? input_reason
+      : !oq_power_house::forecast::valid_model(state.forecast.previous)            ? ScenarioReason::MODEL_UNAVAILABLE
       : !scenario.issued.epoch || scenario.issued.epoch != state.forecast.latest_issue_epoch ? ScenarioReason::NO_ISSUE
       : scenario.issued.configuration != configuration_                  ? ScenarioReason::CONFIGURATION_CHANGED
       : scenario.issued.model_context != state.forecast.previous.context ? ScenarioReason::CONTEXT_CHANGED
                                                                          : ScenarioReason::READY;
-  scenario.valid = scenario.reason == ScenarioReason::READY;
+  scenario.valid = scenario.reason == ScenarioReason::READY ||
+                   (scenario.reason == ScenarioReason::DEFROST && state.defrost_recovery.holding_issue);
   scenario.horizon_valid_mask = scenario.valid ? 7U : 0U;
   age_scenario_snapshot(scenario, now.is_valid() ? now.timestamp : 0U, now_ms, valid, configuration_);
   forecast_snapshots_.publish([&](ForecastSnapshot& snapshot) {
@@ -595,16 +618,17 @@ void OpenQuattWeather::publish_forecast_() {
     snapshot.location[sizeof(snapshot.location) - 1] = '\0';
     std::memcpy(snapshot.configured_location, state.location.query, sizeof(snapshot.configured_location));
   });
-  // REST and the loose entities share the same issue and validity decision.
+  // The historical issue is web-only. Entities continue to report live values.
+  const bool current_issue = scenario.valid && scenario.reason == ScenarioReason::READY;
   if (issued_epoch_) {
     char issued[16]{};
-    if (scenario.valid) std::snprintf(issued, sizeof(issued), "%u", static_cast<unsigned>(scenario.issued.epoch));
+    if (current_issue) std::snprintf(issued, sizeof(issued), "%u", static_cast<unsigned>(scenario.issued.epoch));
     if (issued_epoch_->state != issued) publish_text_(issued_epoch_, issued);
   }
   for (size_t i = 0; i < 3; ++i)
     if (temperatures_[i])
       temperatures_[i]->publish_state(
-          scenario.valid && (scenario.horizon_valid_mask & (1U << i)) ? scenario.issued.temperature_c[i] : NAN);
+          current_issue && (scenario.horizon_valid_mask & (1U << i)) ? scenario.issued.temperature_c[i] : NAN);
 }
 
 void OpenQuattWeather::dump_config() {

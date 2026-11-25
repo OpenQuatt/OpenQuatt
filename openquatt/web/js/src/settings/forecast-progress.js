@@ -3,7 +3,7 @@ import { getBinaryEntityState } from "../core/app-shared.js";
 import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
 import { formatDateTime, formatNumber, t } from "../i18n/index.js";
-import { weatherForecastIsCurrent, weatherScenarioCanDisplay, weatherScenarioNow } from "../core/weather-forecast.js";
+import { weatherForecastIsCurrent, weatherScenarioCanDisplay, weatherScenarioForDisplay, weatherScenarioNow } from "../core/weather-forecast.js";
 
 const renderedForecast = new WeakMap();
 const HORIZONS = [1800, 3600, 10800];
@@ -21,8 +21,11 @@ const STATUS_KEYS = {
   invalid_forecast: "weather.status.invalidForecast", request_deadline: "weather.status.timeout", cancelled: "weather.status.paused",
   location_invalid: "weather.invalidLocation", clock_invalid: "weather.status.clock", weather_unavailable: "learningWorkspace.forecast.weatherNeeded",
   waiting_for_scenario: "learningWorkspace.forecast.newCalculation", observation_invalid: "weather.status.waitingObservation",
-  model_unavailable: "weather.status.waitingModel", configuration_changed: "learningWorkspace.forecast.newCalculation",
-  context_changed: "learningWorkspace.forecast.newCalculation", expired: "learningWorkspace.forecast.newCalculation", snapshot_stale: "learningWorkspace.forecast.newCalculation",
+  room_temperature_unavailable: "learningWorkspace.forecast.roomNeeded", outside_temperature_unavailable: "learningWorkspace.forecast.outsideNeeded",
+  setpoint_unavailable: "learningWorkspace.forecast.setpointNeeded", heat_output_unavailable: "learningWorkspace.forecast.heatNeeded",
+  model_unavailable: "learningWorkspace.forecast.modelNeeded", configuration_changed: "learningWorkspace.forecast.newCalculation",
+  context_changed: "learningWorkspace.forecast.newCalculation", expired: "learningWorkspace.forecast.expiredScenario", snapshot_stale: "learningWorkspace.forecast.controllerNeeded",
+  defrost: "learningWorkspace.forecast.defrostCopy",
 };
 const NETWORK_STATES = ["dns_pending", "dns_queue_failed", "dns_failed", "request_size", "tls_connect_failed", "tls_write_failed", "invalid_http_response"];
 const time = (epoch) => formatDateTime(epoch * 1000, { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -32,14 +35,14 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
   const enabled = getBinaryEntityState("weatherEnabled") === true;
   const changing = ["save-weatherLocation", "switch-weatherEnabled"].includes(state.busyAction);
   const data = state.weatherForecast;
-  const scenario = data?.scenario;
+  const scenario = weatherScenarioForDisplay(data);
   const now = weatherScenarioNow(data);
   const issued = scenario?.issued_epoch;
   const canShow = enabled && !changing && weatherScenarioCanDisplay(data);
   const issuedValid = Number.isFinite(issued) && issued > 0 && issued <= now;
   const current = weatherForecastIsCurrent(data);
   const entityStatus = String(getEntityValue("weatherStatus") || "");
-  const status = statusOnly ? entityStatus : scenario?.valid ? "ready" : scenario?.reason || entityStatus;
+  const status = statusOnly ? entityStatus : data?.scenario?.reason || entityStatus;
   const horizons = HORIZONS.map((seconds, index) => {
     const target = issued + seconds;
     const value = scenario?.temperature_c[index];
@@ -47,6 +50,7 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
   });
   const available = horizons.some(({ valid }) => valid);
   const cached = available && !current;
+  const held = available && status === "defrost";
   let gapKey = "";
   const consent = state.entities.weatherStatus?.consent_state;
   if (entityStatus === "psram_allocation_failed") gapKey = "weather.status.memory";
@@ -59,6 +63,7 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
   else if (getEntityValue("houseLearningEnabled") !== true) gapKey = "weather.status.learningRequired";
   else if (statusOnly || !available) {
     if (!statusOnly && state.weatherForecastError === "unsupported") gapKey = "weather.graphUnsupported";
+    else if (!statusOnly && (state.weatherForecastError || (data && performance.now() - data.receivedMono > 30000))) gapKey = STATUS_KEYS.snapshot_stale;
     else if (NETWORK_STATES.includes(status)) gapKey = "learningWorkspace.forecast.network";
     else if (Object.hasOwn(STATUS_KEYS, status)) gapKey = STATUS_KEYS[status];
     else gapKey = status && status !== "ready" && status !== "observing" ? "weather.status.unknown" : "learningWorkspace.forecast.newCalculation";
@@ -68,11 +73,12 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
       ? `<p class="oq-settings-action-note" role="status">${escapeHtml(t(gapKey))}</p>`
       : "";
   }
-  const label = !enabled ? "weather.status.disabled" : cached ? "learningWorkspace.forecast.lastReceived" : available ? "learningWorkspace.forecast.provisional" : "learningWorkspace.forecast.waiting";
+  const label = !enabled ? "weather.status.disabled" : held ? "learningWorkspace.forecast.lastCalculated" : cached ? "learningWorkspace.forecast.lastReceived" : available ? "learningWorkspace.forecast.provisional" : "learningWorkspace.forecast.waiting";
   const earlierWeather = available && scenario.weather_generation !== data.generation;
-  return `<section class="oq-learning-workspace-scenario" data-oq-learning-scenario data-scenario-freshness="${available ? cached ? "cached" : "current" : "unavailable"}" data-quality="${available ? "provisional" : "unknown"}" aria-label="${escapeHtml(t("learningWorkspace.forecast.title"))}">
+  return `<section class="oq-learning-workspace-scenario" data-oq-learning-scenario data-scenario-freshness="${available ? (cached || held) ? "cached" : "current" : "unavailable"}" data-quality="${available ? "provisional" : "unknown"}" aria-label="${escapeHtml(t("learningWorkspace.forecast.title"))}">
     <div class="oq-learning-workspace-result-head"><h4>${escapeHtml(t("learningWorkspace.forecast.title"))}</h4><span class="oq-learning-workspace-quality" data-quality="${available ? "provisional" : "unknown"}">${escapeHtml(t(label))}</span></div>
-    ${cached ? `<p class="oq-learning-workspace-scenario-condition" role="status">${escapeHtml(t("learningWorkspace.forecast.cachedCopy"))}</p>` : ""}
+    ${held || cached ? `<p class="oq-learning-workspace-scenario-condition" role="status">${escapeHtml(t(held ? "learningWorkspace.forecast.defrostCopy" : "learningWorkspace.forecast.cachedCopy"))}</p>` : ""}
+    ${!available && gapKey ? `<p class="oq-weather-chart-note" role="status">${escapeHtml(t(gapKey))}</p>` : ""}
     <div class="oq-learning-workspace-targets">${horizons.map(({ seconds, target, value, valid }) => `<article data-scenario-horizon="${seconds}">
       <h5>${escapeHtml(issuedValid ? time(target) : t("learningWorkspace.forecast.afterMinutes", { minutes: seconds / 60 }))}</h5>
       <strong>${escapeHtml(valid ? `${formatNumber(value, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} °C` : "—")}</strong>
@@ -83,7 +89,7 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
     <div class="oq-learning-workspace-forecast-notes">
       ${available ? `<p class="oq-weather-chart-note">${escapeHtml(t("learningWorkspace.forecast.estimateExplanation"))}</p>` : ""}
       ${earlierWeather ? `<p class="oq-weather-chart-note">${escapeHtml(t("learningWorkspace.forecast.earlierWeather"))}</p>` : ""}
-      ${gapKey ? `<p class="oq-weather-chart-note" role="status">${escapeHtml(t(gapKey))}</p>` : ""}
+      ${available && gapKey ? `<p class="oq-weather-chart-note" role="status">${escapeHtml(t(gapKey))}</p>` : ""}
     </div>
   </section>`;
 }

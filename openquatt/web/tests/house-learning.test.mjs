@@ -739,7 +739,7 @@ test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
     sources: { ...statusPayload().sources, flow: { route: "selected_flow", valid: true } },
   })));
   assert.match(markup, /Modelstatus[\s\S]*Voorlopige schatting/);
-  assert.match(markup, /5 geaccepteerde perioden van 30 minuten/);
+  assert.match(markup, /5 geaccepteerde perioden/);
   assert.match(markup, /Geldige meetperioden[\s\S]*>5</);
   assert.match(markup, /Warmteverlies \(U\)[\s\S]*196,3 W\/K/);
   assert.match(markup, /Warmteopslag \(C\)[\s\S]*4\.803,5 Wh\/K/);
@@ -1537,6 +1537,13 @@ test("Leren toont twee aparte voortgangsbalken bij een kleine klokafwijking", (t
     assert.match(html, /12:00:00 \/ 24:00:00[\s\S]*width:50%[\s\S]*Modelstatus · Beoordeeld/, `offset ${offset} s`);
     assert.match(html, /7:30 \/ 30:00[\s\S]*width:25%[\s\S]*Modelstatus · Voorlopige schatting/, `offset ${offset} s`);
   }
+  const afterDefrost = normalizeHouseLearningStatus({
+    ...payload,
+    collection: { ...payload.collection, thermal_target_s: 900 },
+  });
+  const shortInterval = renderHouseLearningStatusMarkup(afterDefrost, "primary");
+  assert.match(shortInterval, /12:00:00 \/ 24:00:00[\s\S]*width:50%/);
+  assert.match(shortInterval, /7:30 \/ 15:00[\s\S]*width:50%/);
   for (const overrides of [
     { enabled: false },
     { tick_epoch: 0 },

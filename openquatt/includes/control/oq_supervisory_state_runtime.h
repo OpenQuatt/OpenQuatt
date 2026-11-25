@@ -24,6 +24,7 @@
 #include "oq_supervisory_power_limiter_runtime.h"
 #include "oq_supervisory_safety_runtime.h"
 #include "oq_supervisory_state_logic.h"
+#include "oq_thermal_request_logic.h"
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_supervisory_state_runtime {
 
@@ -47,6 +48,7 @@ struct TickConfig {
   uint32_t low_load_dyn_cache_max_s;
   uint32_t ph_start_confirm_s;
   uint32_t hp_min_off_s;
+  int hp_min_runtime_floor_s;
   uint32_t cm2_idle_exit_s;
   uint32_t cm2_min_run_s;
   uint32_t cm_flow_fault_s;
@@ -86,6 +88,7 @@ struct TickConfig {
 class Runtime {
  public:
   uint8_t heating_gate_reason() const { return this->heating_gate_reason_; }
+  uint8_t power_house_low_load_hold_hp() const { return this->power_house_low_load_hold_hp_; }
   void tick(const TickConfig& tick) {
     const uint32_t now_ms = (uint32_t)millis();
 
@@ -192,9 +195,11 @@ class Runtime {
         id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Heating";
     const bool hp1_target_cooling =
         id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Cooling";
+    const bool hp1_defrost_hold = id(hp1_odu_defrost).holding();
+    const bool hp1_defrost_observed = id(hp1_odu_defrost).cycle.observed_active();
     const bool hp1_active_guard =
         oq_defrost::hp_active(hp1_heating, hp1_cooling, hp1_target_heating, hp1_target_cooling, hp1_lvl,
-                              id(hp1_odu_defrost).holding(), id(hp1_odu_defrost).cycle.observed_active());
+                              hp1_defrost_hold, hp1_defrost_observed);
 #if OQ_TOPOLOGY_DUO
     const int hp2_lvl = id(hp2_last_applied_level);
     const int hp2_cmd_lvl =
@@ -208,9 +213,11 @@ class Runtime {
         id(hp2_set_working_mode).has_state() && id(hp2_set_working_mode).current_option() == "Heating";
     const bool hp2_target_cooling =
         id(hp2_set_working_mode).has_state() && id(hp2_set_working_mode).current_option() == "Cooling";
+    const bool hp2_defrost_hold = id(hp2_odu_defrost).holding();
+    const bool hp2_defrost_observed = id(hp2_odu_defrost).cycle.observed_active();
     const bool hp2_active_guard =
         oq_defrost::hp_active(hp2_heating, hp2_cooling, hp2_target_heating, hp2_target_cooling, hp2_lvl,
-                              id(hp2_odu_defrost).holding(), id(hp2_odu_defrost).cycle.observed_active());
+                              hp2_defrost_hold, hp2_defrost_observed);
     const bool any_hp_active_guard = hp1_active_guard || hp2_active_guard;
     const bool any_hp_compressor_active = hp1_lvl > 0 || hp2_lvl > 0 || hp1_cmd_lvl > 0 || hp2_cmd_lvl > 0;
 #else
@@ -588,6 +595,7 @@ class Runtime {
     bool cm3_fallback_handover_wait = false;
     static oq_hp_supervisory::Cm4ResumeTracker cm4_resume_tracker;
     bool stop_override_active = false;
+    uint8_t power_house_low_load_hold_hp = 0;
     auto resolve_desired_cm = [&]() -> int {
       // Helper: start CM1 window
       auto start_cm1 = [&](int next_after) -> void {
@@ -854,8 +862,65 @@ class Runtime {
                                                                : openquatt_decision_log::REASON_FLOW_PREFLOW;
               }
             } else {
-              if (strcmp(cur_cm, "CM2") == 0 || strcmp(cur_cm, "CM3") == 0 || strcmp(cur_cm, "CM4") == 0 ||
-                  strcmp(cur_cm, "CM5") == 0) {
+              if (in_cm2 && power_house_active && heating_req_raw && openquatt_enabled && heating_enable_valid_now &&
+                  heating_enable_selected_now && flow_ok && !id(oq_lowflow_fault_active) &&
+                  !id(oq_water_temp_hard_trip_active) && !id(oq_cold_start_hp_blocked) && std::isfinite(supply_c) &&
+                  !oq_manual_hp::owns_control() && id(oq_strategy_output_valid) &&
+                  id(oq_strategy_output_source_code) == strategy_active_code &&
+                  id(oq_strategy_output_updated_ms) != 0 && now_ms - id(oq_strategy_output_updated_ms) <= 30000U &&
+                  !low_load.state.heat_latched) {
+                const auto frequency = oq_frequency_runtime::capture();
+                const uint64_t receipt_now = oq_sources::monotonic_ms();
+                const uint32_t minimum_runtime_ms =
+                    oq_supervisory_state::seconds_to_ms(oq_request::minimum_runtime_seconds(
+                        id(oq_min_runtime_min).has_state(), id(oq_min_runtime_min).state, tick.hp_min_runtime_floor_s));
+                const auto can_hold = [&](uint8_t hp, const auto& incident, const auto& receipts, uint32_t started_ms) {
+                  const bool running = incident.running_confirmed && incident.available_for_start &&
+                                       !incident.must_stop && receipts.working_mode.fresh(receipt_now, 30000) &&
+                                       receipts.working_mode.value == 2.0f &&
+                                       receipts.compressor_frequency.fresh(receipt_now, 30000) &&
+                                       receipts.compressor_frequency.value > 0.0f;
+                  return !id(oq_incident_manager).boot_protection_hold(hp, now_ms) &&
+                         oq_supervisory_state::defer_power_house_low_load_stop(
+                             low_load, p_req_w, frequency.frequency_allowed(hp == 1, 2, 1), running,
+                             oq_request::min_runtime_window_active(now_ms, started_ms, minimum_runtime_ms));
+                };
+                const bool hp1_defrost_active =
+                    id(hp1_defrost).state || id(hp1_4_way_valve).state || hp1_defrost_hold || hp1_defrost_observed;
+                const bool hp1_can_hold = hp1_lvl > 0 && hp1_cmd_lvl > 0 && id(oq_actuator_hp1_req) > 0 &&
+                                          hp1_heating && hp1_target_heating && !hp1_defrost_active &&
+                                          can_hold(1, hp1_incidents, oq_sources::hp1, id(hp1_last_real_heat_start_ms));
+#if OQ_TOPOLOGY_DUO
+                const auto confirmed_idle = [&](const auto& incident, const auto& receipts) {
+                  return incident.link_state == oq_incidents::LinkState::HEALTHY && incident.stop_confirmed &&
+                         !incident.stop_confirmation_pending && !incident.stop_unconfirmed &&
+                         !incident.running_confirmed && receipts.working_mode.fresh(receipt_now, 30000) &&
+                         receipts.working_mode.value == 0.0f &&
+                         receipts.compressor_frequency.fresh(receipt_now, 30000) &&
+                         receipts.compressor_frequency.value == 0.0f;
+                };
+                const bool hp2_defrost_active =
+                    id(hp2_defrost).state || id(hp2_4_way_valve).state || hp2_defrost_hold || hp2_defrost_observed;
+                const bool hp2_can_hold = hp2_lvl > 0 && hp2_cmd_lvl > 0 && id(oq_actuator_hp2_req) > 0 &&
+                                          hp2_heating && hp2_target_heating && !hp2_defrost_active &&
+                                          can_hold(2, hp2_incidents, oq_sources::hp2, id(hp2_last_real_heat_start_ms));
+                // A queued start, a stop in flight, or an unconfirmed peer
+                // leaves the normal Duo transition in charge.
+                const bool hp1_stopped = !hp1_active_guard && !hp1_defrost_active && hp1_cmd_lvl == 0 &&
+                                         id(oq_actuator_hp1_req) == 0 && confirmed_idle(hp1_incidents, oq_sources::hp1);
+                const bool hp2_stopped = !hp2_active_guard && !hp2_defrost_active && hp2_cmd_lvl == 0 &&
+                                         id(oq_actuator_hp2_req) == 0 && confirmed_idle(hp2_incidents, oq_sources::hp2);
+                power_house_low_load_hold_hp = oq_supervisory_state::select_power_house_low_load_hold_hp(
+                    this->power_house_low_load_hold_hp_, hp1_can_hold, hp2_can_hold, hp1_stopped, hp2_stopped);
+#else
+                power_house_low_load_hold_hp = hp1_can_hold ? 1 : 0;
+#endif
+              }
+              if (power_house_low_load_hold_hp != 0) {
+                desired_local = 2;
+                cm_transition_reason = "Power House low load: waiting for minimum runtime";
+              } else if (strcmp(cur_cm, "CM2") == 0 || strcmp(cur_cm, "CM3") == 0 || strcmp(cur_cm, "CM4") == 0 ||
+                         strcmp(cur_cm, "CM5") == 0) {
                 start_cm1(0);  // postflow to CM0
                 desired_local = 1;
                 cm_transition_reason = "postflow before standby";
@@ -904,7 +969,7 @@ class Runtime {
           // CM3 that this tick still holds for the defrost assist only.
           const bool defrost_assist_owned = id(oq_defrost_assist_active) && cm_now == 3;
           if (heating_strategy_active && (boiler_assist_available || defrost_assist_available) && !fallback_requested &&
-              !no_hp_available_confirmed) {
+              !no_hp_available_confirmed && power_house_low_load_hold_hp == 0) {
             bool need_on = false;
             bool ok_off = true;
             const char* promote_reason = "boiler assist promoted to CM3";
@@ -1063,6 +1128,10 @@ class Runtime {
     // Overrides, commissioning and standby paths leave CM3 without passing the
     // assist bookkeeping above, so the ownership flag never outlives CM3.
     if (desired != 3) id(oq_defrost_assist_active) = false;
+    if (this->power_house_low_load_hold_hp_ != power_house_low_load_hold_hp) {
+      this->power_house_low_load_hold_hp_ = power_house_low_load_hold_hp;
+      id(oq_heat_last_loop_ms) = 0;
+    }
     this->heating_gate_reason_ = 0;
     if (desired != 2 && desired != 3) {
       if (stop_override_active)
@@ -1357,6 +1426,7 @@ class Runtime {
   uint8_t heating_gate_reason_{0};
   oq_boiler_defrost_assist::State defrost_assist_state_;
   bool defrost_assist_first_tick_{true};
+  uint8_t power_house_low_load_hold_hp_{0};
   oq_cold_start::WaterProbe hp1_water_probe_;
 #if OQ_TOPOLOGY_DUO
   oq_cold_start::WaterProbe hp2_water_probe_;

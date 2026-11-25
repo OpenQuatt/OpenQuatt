@@ -17,6 +17,8 @@ const { commitSelect, disableRange, getNumberSettingValidationError } = await im
 const { SETTINGS_GROUP_KEY_MAP, getSettingsGroupHydrationKeys, getSettingsRefreshKeys } = await import("../js/src/core/entity-sync.js");
 const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 const { renderControlModeOverrideBanner, renderSystemModal } = await import("../js/src/features/header-status.js");
+const { migrateLegacySettingsBackupSettings } = await import("../js/src/core/settings-backup-domain.js");
+const { getFrequencyExclusionSaveWarning } = await import("../js/src/features/frequency-exclusion.js");
 const { setLocale, t } = await import("../js/src/i18n/index.js");
 const { getCoolingScheduleStatus, renderSettingsCoolingSection } = await import("../js/src/settings/cooling.js");
 const {
@@ -722,6 +724,52 @@ test("compressorinstellingen tonen één tweepuntsbereik", () => {
   assert.match(markup, /data-oq-range-role="max"/);
   assert.match(markup, /data-oq-action="disable-range"/);
   assert.match(markup, />20Hz</);
+});
+
+test("uitsluiting voor stille uren toont de effectieve status en waarschuwt voor het laatste niveau", () => {
+  resetSettingsState({
+    hp1ExcludeMinHz: numberEntity(26, "Hz", { max_value: 120, step: 1 }),
+    hp1ExcludeMaxHz: numberEntity(30, "Hz", { max_value: 120, step: 1 }),
+    hp1ExcludeScope: { value: "Quiet hours", option: ["Always", "Quiet hours", "Off"] },
+    hp1AutomaticFrequencies: { value: "26,31,36|25,30,34" },
+    dayMaxHz: numberEntity(90),
+    silentMaxHz: numberEntity(31),
+    silentStatus: { value: "in_window" },
+    silentActive: { value: true },
+    silentEndTime: { value: "07:00:00" },
+  });
+  const renderCard = () => renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1");
+  assert.match(renderCard(), /Alleen tijdens stille uren/);
+  assert.match(renderCard(), /Actief tot 07:00/);
+  assert.match(renderCard(), /Verwarmen<\/strong>\s*<span>OpenQuatt slaat 26 Hz over\.<\/span>/);
+  assert.match(renderCard(), /Koelen<\/strong>\s*<span>OpenQuatt slaat 30 Hz over\.<\/span>/);
+  assert.match(renderCard(), /Beschikbare standen · Tijdens stille uren 1/);
+  assert.doesNotMatch(renderCard(), /Overdag [0-9]|F[12] \(|data-oq-action="disable-range"/);
+
+  state.entities.hp1ExcludeScope.value = "Always";
+  assert.match(renderCard(), /Beschikbare standen · Overdag 2 · Tijdens stille uren 1/);
+  state.entities.hp1ExcludeScope.value = "Quiet hours";
+
+  state.entities.silentStatus.value = "time_invalid";
+  assert.match(renderCard(), /Wacht op tijdsynchronisatie/);
+  state.entities.silentStatus.value = "forced_on";
+  assert.match(renderCard(), /stille modus handmatig aan/);
+
+  assert.match(getFrequencyExclusionSaveWarning("hp1", { MaxHz: 31 }), /verwarmen \(stille uren\)/);
+  assert.equal(getFrequencyExclusionSaveWarning("hp1", { Scope: "Off", MaxHz: 31 }), "");
+  state.entities.hp1ExcludeScope.value = "Off";
+  assert.match(renderCard(), /Uitsluiting uit/);
+  assert.match(renderCard(), /26–30 Hz/);
+  assert.doesNotMatch(renderCard(), /OpenQuatt slaat 26 Hz over/);
+  state.entities.hp1ExcludeMaxHz.value = 31;
+  assert.match(getFrequencyExclusionSaveWarning("hp1", { Scope: "Always" }), /verwarmen \(stille uren\)/);
+});
+
+test("backup zonder uitsluitingsschema herstelt het eerdere altijd-actieve bereik", () => {
+  const compressor = { hp1ExcludeMinHz: 30, hp1ExcludeMaxHz: 35, hp2ExcludeMinHz: 44 };
+  assert.deepEqual(migrateLegacySettingsBackupSettings({ compressor }).compressor, { ...compressor, hp1ExcludeScope: "Always" });
+  const explicit = { ...compressor, hp1ExcludeScope: "Off" };
+  assert.deepEqual(migrateLegacySettingsBackupSettings({ compressor: explicit }).compressor, explicit);
 });
 
 test("frequentiebereik accepteert 0 als uitschakelstand zonder terug te springen", () => {
