@@ -283,7 +283,7 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 - twee warmtepompen tegelijk zijn niet per definitie beter;
 - het systeem probeert een praktische en zuinige keuze te maken.
 
-Bij een vroege Solo-overname gebruikt de optimizer gekoppelde ODU-watermetingen en verse, stabiele compressorfeedback om te bepalen of de opvolger op zijn huidige stand genoeg warmte kan leveren. Zo nodig blijft de oorspronkelijke unit draaien. Deze toets geldt de eerste drie minuten na automatisch bijschakelen en kan doorlopen tijdens de eerste minimumlooptijd van de opvolger. De warmtevraag mag intussen niet sterk dalen. Een noodzakelijke stop, de minimumlooptijd en de vermogensgrenzen houden voorrang.
+Bij een vroege Solo-overname gebruikt de optimizer gekoppelde ODU-watermetingen en verse, stabiele compressorfeedback om te bepalen of de opvolger op zijn huidige stand genoeg warmte kan leveren. Zo nodig blijft de oorspronkelijke unit draaien. In CM2 (alleen warmtepompen) en CM3 (met ketelbijstand) geldt de toets de eerste drie minuten na automatisch bijschakelen. De toets kan doorlopen tijdens de eerste minimumlooptijd van de opvolger. De warmtevraag mag intussen niet sterk dalen. Een noodzakelijke stop, de minimumlooptijd en de vermogensgrenzen houden voorrang.
 
 ### Vermogensvoorspelling bij de levelkeuze
 

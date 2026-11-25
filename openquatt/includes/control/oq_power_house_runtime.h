@@ -116,7 +116,8 @@ class Runtime {
     const bool hp2_valve_defrost = id(hp2_4_way_valve).state;
     const bool hp2_oil_return = id(hp2_prot_oil_return).state;
     const int hp2_applied_level = id(hp2_last_applied_level);
-    const bool automatic_handoff = id(oq_control_mode_code) == 2 && !oq_manual_hp::owns_control();
+    const bool automatic_handoff =
+        oq_request::heating_cm_allows_hp(id(oq_control_mode_code)) && !oq_manual_hp::owns_control();
 #else
     const bool hp2_valve_defrost = false;
     const bool hp2_oil_return = false;
