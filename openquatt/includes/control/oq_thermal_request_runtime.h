@@ -10,6 +10,7 @@
 #include "oq_cooling_limiter_logic.h"
 #include "oq_heating_curve_logic.h"
 #include "oq_power_house_dispatch_logic.h"
+#include "oq_supervisory_state_runtime.h"
 #include "oq_thermal_request_logic.h"
 #include "../odu/oq_odu_compressor_levels.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
@@ -466,6 +467,14 @@ class Runtime {
     }
 #endif
     if (mode.power_house) request.reason = oq_power_house_dispatch::request_reason_name(id(oq_ph_request_reason_code));
+    const uint8_t hold_hp = mode.power_house && id(oq_control_mode_code) == 2
+                                ? oq_supervisory_state_runtime::runtime().power_house_low_load_hold_hp()
+                                : 0;
+    if (hold_hp != 0) {
+      request.hp1_level = hold_hp == 1 ? 1 : 0;
+      request.hp2_level = hold_hp == 2 ? 1 : 0;
+      request.reason = "ph_low_load_min_runtime";
+    }
     this->publish_request_(mode.thermal_mode_code, request.hp1_level, request.hp2_level, mode.strategy_code,
                            request.reason, frequency);
     int hp1_level = this->allowed_(true, mode.thermal_mode_code, id(oq_request_hp1_level), frequency);
@@ -504,11 +513,11 @@ class Runtime {
                                 mode.thermal_mode_code, hp1_level, hp2_level);
     if (this->startup_blocked_(true)) hp1_level = 0;
     if (this->startup_blocked_(false)) hp2_level = 0;
-    this->apply_minimum_runtime_(true, hp1_level, hard_stop || this->startup_blocked_(true), mode.cooling,
-                                 config.now_ms, minimum_runtime_ms, mode.thermal_mode_code, frequency);
+    this->apply_minimum_runtime_(true, hp1_level, hard_stop || this->startup_blocked_(true) || hold_hp != 0,
+                                 mode.cooling, config.now_ms, minimum_runtime_ms, mode.thermal_mode_code, frequency);
 #if OQ_TOPOLOGY_DUO
-    this->apply_minimum_runtime_(false, hp2_level, hard_stop || this->startup_blocked_(false), mode.cooling,
-                                 config.now_ms, minimum_runtime_ms, mode.thermal_mode_code, frequency);
+    this->apply_minimum_runtime_(false, hp2_level, hard_stop || this->startup_blocked_(false) || hold_hp != 0,
+                                 mode.cooling, config.now_ms, minimum_runtime_ms, mode.thermal_mode_code, frequency);
 #else
     hp2_level = 0;
 #endif

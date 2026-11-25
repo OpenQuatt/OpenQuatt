@@ -472,6 +472,15 @@ class Runtime {
   }
 
   int apply_level_(bool is_hp1, int requested, bool was_cooling, Cycle& cycle) {
+    const uint8_t hp_index = is_hp1 ? 1U : 2U;
+    const bool power_house_heating = !cycle.manual_service_active && cycle.request_mode_code == 2 &&
+                                     id(oq_control_mode_code) == 2 && id(oq_heat_mode_code) != 1 &&
+                                     id(oq_request_strategy_code) == oq_request::STRATEGY_POWER_HOUSE;
+    const uint8_t hold_hp =
+        power_house_heating ? oq_supervisory_state_runtime::runtime().power_house_low_load_hold_hp() : 0;
+    // Apply the hold to cached requests too, before their request tick has run.
+    // Retain the frequency-policy fallback if F1 is excluded between ticks.
+    if (hold_hp != 0) requested = hold_hp == hp_index ? std::min(1, requested) : 0;
     const int MAX_LEVEL = cycle.frequency.automatic_level_limit(is_hp1, cycle.request_mode_code);
     const int maximum = cycle.manual_service_active
                             ? oq_odu::physical_level_limit(cycle.frequency.configured_v2,
@@ -481,8 +490,9 @@ class Runtime {
     requested = level;
     const int previous = this->previous_applied_(is_hp1);
     if (oq_boot_resume_runtime::ota_hold(is_hp1)) return previous;
-    const uint8_t hp_index = is_hp1 ? 1U : 2U;
     const auto incident = id(oq_incident_manager).get_outputs(hp_index);
+    // A stale hold must never start a compressor or undo a stop.
+    if (hold_hp != 0 && (previous <= 0 || !incident.running_confirmed)) requested = level = 0;
     auto* defrost = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
     const bool stop_pending = incident.run_state == oq_incidents::RunState::STOPPING ||
                               incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
