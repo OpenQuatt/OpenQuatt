@@ -12,13 +12,13 @@
 namespace oq_flow_control {
 
 constexpr int kAutoStartFallbackIpwm = 440;
-constexpr int kStrongestPumpIpwm = 50;
-constexpr int kWeakestPumpIpwm = 850;
-
 // iPWM limits shared with YAML.
+constexpr int kMinimumIpwm = 50;
+constexpr int kMaximumIpwm = 850;
+
 inline int clamp_ipwm(int value) {
-  if (value < kStrongestPumpIpwm) return kStrongestPumpIpwm;
-  if (value > kWeakestPumpIpwm) return kWeakestPumpIpwm;
+  if (value < kMinimumIpwm) return kMinimumIpwm;
+  if (value > kMaximumIpwm) return kMaximumIpwm;
   return value;
 }
 
@@ -28,15 +28,40 @@ inline int update_circulation_ipwm_limit(int limit, int current_ipwm, bool postf
   // A lower iPWM drives the pump harder. Keep the stronger setting for this
   // circulation period so a recovered sample cannot undo the rescue.
   const bool already_boosted = limit <= kAutoStartFallbackIpwm || current_ipwm <= kAutoStartFallbackIpwm;
-  return postflow || already_boosted ? kStrongestPumpIpwm : kAutoStartFallbackIpwm;
+  return postflow || already_boosted ? kMinimumIpwm : kAutoStartFallbackIpwm;
 }
 
 inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm,
-                             bool cooling_target, int last_good_pwm_cooling) {
+                             bool cooling_target, int last_good_pwm_cooling, int ignored_pwm = 0) {
   if (commissioning_start) return clamp_ipwm(commissioning_start_pwm);
   const int candidate = cooling_target ? last_good_pwm_cooling : last_good_pwm;
-  if (candidate >= 50 && candidate <= 850) return clamp_ipwm(candidate);
-  return clamp_ipwm(kAutoStartFallbackIpwm);
+  if (candidate != ignored_pwm && candidate >= kMinimumIpwm && candidate <= kMaximumIpwm) return candidate;
+  return kAutoStartFallbackIpwm;
+}
+
+struct FrostRecoveryCommands {
+  bool fallback_queued{false};
+  bool maximum_drive_queued{false};
+
+  void record(int pwm) {
+    fallback_queued |= pwm == kAutoStartFallbackIpwm;
+    maximum_drive_queued |= pwm == kMinimumIpwm;
+  }
+
+  bool contains(float pwm) const {
+    return (fallback_queued && pwm == kAutoStartFallbackIpwm) || (maximum_drive_queued && pwm == kMinimumIpwm);
+  }
+};
+
+inline int confirmed_common_pump_pwm(const oq_sources::RawFloatReceipt& primary,
+                                     const oq_sources::RawFloatReceipt* peer, uint64_t now_ms, uint64_t max_age_ms,
+                                     int ignored_pwm, const FrostRecoveryCommands& frost_recovery = {}) {
+  if (!primary.fresh(now_ms, max_age_ms) || primary.value == ignored_pwm || frost_recovery.contains(primary.value) ||
+      primary.value < kMinimumIpwm || primary.value > kMaximumIpwm)
+    return 0;
+  // A shared write cannot preserve two different pump commands.
+  if (peer != nullptr && (!peer->fresh(now_ms, max_age_ms) || peer->value != primary.value)) return 0;
+  return static_cast<int>(primary.value);
 }
 
 struct LocalFlowSelection {

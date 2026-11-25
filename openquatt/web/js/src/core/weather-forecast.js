@@ -69,9 +69,13 @@ export function normalizeWeatherForecast(payload, receivedAt = Date.now(), recei
     || current.time_epoch > payload.now_epoch || payload.now_epoch - current.time_epoch > 1800
     || !finiteRange(current.temperature_c, -40, 55) || !finiteRange(current.relative_humidity_pct, 0, 100)
     || !finiteRange(current.dew_point_c, -40, 35) || current.dew_point_c > current.temperature_c + 0.5)) fail();
+  const scenario = Object.hasOwn(payload, "scenario") ? normalizeForecastScenario(payload.scenario, payload) : undefined;
+  const last = Object.hasOwn(payload, "last_scenario") ? normalizeForecastScenario(payload.last_scenario, payload) : undefined;
+  if (last && (scenario?.reason !== "defrost" || !last.valid || last.issued_epoch !== scenario.issued_epoch
+    || last.model_context !== scenario.model_context)) fail();
   return {
     ...payload, current: { ...current },
-    ...(Object.hasOwn(payload, "scenario") ? { scenario: normalizeForecastScenario(payload.scenario, payload) } : {}),
+    ...(scenario ? { scenario } : {}), ...(last ? { last_scenario: last } : {}),
     temperature_c: payload.valid ? [...payload.temperature_c] : [], wind_mps: payload.valid ? [...payload.wind_mps] : [],
     receivedAt, receivedMono, endpoint: getWeatherForecastEndpoint(),
   };
@@ -100,10 +104,15 @@ export function weatherCurrentModelIsCurrent(data, now = Date.now(), mono = perf
 export function weatherScenarioCanDisplay(data, now = Date.now(), mono = performance.now()) {
   // Keep a frozen issue through a brief transport interruption. Weather can
   // outlive it, but a room estimate needs recent controller confirmation.
-  return Boolean(data?.scenario?.valid && data.scenario.restored_model !== true && data.scenario.configuration === data.configuration
+  const scenario = weatherScenarioForDisplay(data);
+  return Boolean(scenario?.valid && scenario.restored_model !== true && scenario.configuration === data.configuration
     && getEntityValue("houseLearningEnabled") === true && state.busyAction !== "switch-houseLearningEnabled"
     && !["pending", "uncertain"].includes(state.houseLearningReset)
     && mono - data.receivedMono <= 30000 && weatherForecastCanDisplay(data, now, mono));
+}
+
+export function weatherScenarioForDisplay(data) {
+  return data?.scenario?.reason === "defrost" && !data.scenario.valid ? data.last_scenario : data?.scenario;
 }
 
 export function weatherScenarioNow(data, now = Date.now(), mono = performance.now()) {

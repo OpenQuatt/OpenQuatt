@@ -200,7 +200,7 @@ De standaard minimumflow voor compressorbedrijf is 400 L/h; precies 400 L/h vold
 
 Bij een stop naar CM0 of CM98 blijft de pompuitloop in CM1 actief tot de compressor aantoonbaar stilstaat. Bij te weinig of ontbrekende flow tijdens die uitloop stuurt de regeling de pomp harder aan.
 
-CM98 gebruikt standaard iPWM 800. Bij te weinig of ontbrekende flow verhoogt de regeling de pompaansturing in stappen en houdt die aan tot het einde van de vorstperiode. AUTO start met de laatst bekende goede iPWM voor verwarmen of koelen en valt bij een ongeldige waarde terug op iPWM 440.
+CM98 gebruikt standaard iPWM 800 voor vorstcirculatie. Bij te weinig of ontbrekende flow verhoogt de regeling de pompaansturing in stappen en houdt die aan tot het einde van de vorstperiode. Na CM98 gebruikt AUTO de laatst bekende goede iPWM voor verwarmen of koelen. Is die waarde ongeldig of gelijk aan de vorststand, dan gebruikt AUTO iPWM 440. Als een verwarmingscyclus doorloopt na een herstart, kan AUTO bij voldoende debiet de teruggemelde pompstand overnemen. AUTO slaat de standaardvorststand over, evenals herstelstanden die tijdens die vorstperiode in de Modbus-wachtrij zijn gezet. Bij een Duo moeten beide pompstanden daarvoor overeenkomen.
 
 Gebruik deze groep voorzichtig. Bij verkeerde bronwaarden of hydraulische problemen maak je hier snel meer ruis dan winst.
 

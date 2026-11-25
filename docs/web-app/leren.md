@@ -19,7 +19,8 @@ update vanaf de eerdere versie die altijd uit startte, wordt leren ingeschakeld.
   de afgegeven warmte, ook tijdens verwarmingspauzes en wijzigingen van de
   gewenste kamertemperatuur. Het gemiddelde warmtevermogen en de
   buitentemperatuur vormen samen een meetpunt, omgerekend naar 20 °C in huis.
-- **Opwarmen en afkoelen.** De balk loopt over 30 minuten. Uit geschikte
+- **Opwarmen en afkoelen.** De balk loopt normaal over 30 minuten. Na ontdooien
+  duren de eerste twee meetperioden elk 15 minuten. Uit geschikte
   meetperioden schat de controller het warmteverlies en hoeveel warmte de woning
   kan opslaan. Tijdens bijvoorbeeld ontdooien kan deze meting wachten terwijl
   de dagmeting doorgaat. Een voorlopige schatting is nog niet onafhankelijk bevestigd.
@@ -39,8 +40,9 @@ zonder duidelijke bestemming blijven uitgesloten.
 Na een geplande herstart kan de controller de dagmeting hervatten als er een geldig
 meetcheckpoint is, de meetcontext gelijk blijft en de herstart binnen vijf minuten
 valt. Als herstel wordt afgewezen, begint een nieuwe dagmeting. De lopende
-30-minutenmeting begint bij een herstart opnieuw. Eerder opgeslagen leerdata
-blijven beschikbaar. Zie voor de voorwaarden en bronafwijzingen het
+meetperiode voor opwarmen en afkoelen begint bij een herstart opnieuw. Eerder
+opgeslagen leerdata blijven beschikbaar. Zie voor de voorwaarden en
+bronafwijzingen het
 [meetbron- en kwaliteitscontract](../development/power-house-learning-sources.md).
 
 ## Wanneer is er een geleerde woninglijn?
@@ -211,10 +213,19 @@ extra informatie in de grafiek. Het scenario stuurt de regeling niet aan.
 
 Na een herstart zijn actuele metingen, een geldige weersverwachting en een
 actueel beoordeeld woningmodel nodig. De controller kan een opgeslagen schatting
-herstellen. Het scenario wacht op een nieuwe geldige meetperiode van 30 minuten.
-Bij een korte onderbreking kan het laatst ontvangen scenario tijdelijk zichtbaar
+herstellen. Het scenario wacht op een nieuwe geldige meetperiode, normaal
+30 minuten. Bij een korte onderbreking kan het laatst ontvangen scenario zichtbaar
 blijven. De waarden verdwijnen na 30 seconden zonder bevestiging of zodra hun
 tijdstip is verstreken.
+
+Onder **Nog geen scenario** staat waar Vooruitblik op wacht. Als de controller
+weet welke meting ontbreekt, zie je die daar ook.
+
+Tijdens ontdooien blijft de vorige berekening zichtbaar onder **Laatst berekend**
+zolang de doeltijden nog in de toekomst liggen. Bij geldige metingen rekent
+Vooruitblik verder met het al beoordeelde model. Het model zelf leert weer zodra
+er 15 minuten aaneengesloten geldige metingen zijn. Na het tweede geldige
+kwartier duurt een meetperiode weer 30 minuten.
 
 ## Warmtevraag vergelijken
 

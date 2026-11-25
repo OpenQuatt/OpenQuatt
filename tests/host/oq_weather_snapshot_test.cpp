@@ -1,6 +1,8 @@
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
+#include <string>
+#include "components/openquatt_weather/WeatherForecastJson.h"
 #include "components/openquatt_weather/WeatherForecastSnapshot.h"
 
 using namespace esphome::openquatt_weather;
@@ -160,4 +162,53 @@ int main() {
   value = issued_snapshot();
   age_forecast_snapshot(value, value.published_ms + 15001);
   assert(!value.scenario.valid && value.scenario.reason == ScenarioReason::SNAPSHOT_STALE);
+  value = snapshot();
+  value.now_epoch = 0;
+  value.scenario.reason = ScenarioReason::CLOCK_INVALID;
+  age_forecast_snapshot(value, value.published_ms);
+  assert(!value.valid && !value.scenario.valid && value.scenario.reason == ScenarioReason::CLOCK_INVALID);
+  age_forecast_snapshot(value, value.published_ms + 15001);
+  assert(value.scenario.reason == ScenarioReason::SNAPSHOT_STALE);
+
+  value = issued_snapshot();
+  value.scenario.reason = ScenarioReason::DEFROST;
+  value.published_ms += 1800000;
+  value.now_epoch += 1800;
+  value.scenario.observation_epoch = value.now_epoch;
+  value.scenario.observation_ms = value.published_ms;
+  age_forecast_snapshot(value, value.published_ms);
+  assert(value.scenario.valid && value.scenario.horizon_valid_mask == 6);
+  std::string json;
+  assert(write_forecast_json(value, [&json](const char* bytes, size_t size) {
+    json.append(bytes, size);
+    return true;
+  }));
+  const auto previous = json.find("\"last_scenario\":");
+  assert(previous != std::string::npos);
+  assert(json.find("\"scenario\":{\"schema\":1,\"valid\":false,\"reason\":\"defrost\"") < previous);
+  assert(json.find("\"horizon_valid\":[false,true,true]", previous) != std::string::npos);
+  auto expired_hold = value.scenario;
+  expired_hold.observation_ms += 9000000U;
+  expired_hold.observation_epoch += 9000U;
+  age_scenario_snapshot(expired_hold, expired_hold.observation_epoch, expired_hold.observation_ms, true,
+                        value.configuration);
+  assert(!expired_hold.valid && expired_hold.reason == ScenarioReason::DEFROST);
+
+  auto cold_start = value;
+  cold_start.scenario = {};
+  cold_start.scenario.reason = ScenarioReason::DEFROST;
+  json.clear();
+  assert(write_forecast_json(cold_start, [&json](const char* bytes, size_t size) {
+    json.append(bytes, size);
+    return true;
+  }));
+  assert(json.find("\"scenario\":{\"schema\":1,\"valid\":false,\"reason\":\"defrost\"", 0) != std::string::npos);
+  assert(json.find("\"last_scenario\":") == std::string::npos);
+
+  auto stale_hold = value.scenario;
+  age_scenario_snapshot(stale_hold, value.now_epoch + 31, value.published_ms + 31000, true, value.configuration);
+  assert(!stale_hold.valid && stale_hold.reason == ScenarioReason::OBSERVATION_INVALID);
+  ++value.configuration;
+  age_forecast_snapshot(value, value.published_ms);
+  assert(!value.scenario.valid && value.scenario.reason == ScenarioReason::CONFIGURATION_CHANGED);
 }

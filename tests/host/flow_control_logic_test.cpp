@@ -136,6 +136,80 @@ void test_compute_start_pwm() {
   assert(start_fallback_comm == 400);
 }
 
+void test_auto_start_ignores_a_saved_frost_command_after_frost() {
+  assert(compute_start_pwm(false, 400, 800, false, 0) == 800);
+  assert(compute_start_pwm(false, 400, 800, false, 0, 800) == 440);
+  assert(compute_start_pwm(false, 400, 409, false, 0, 800) == 409);
+  assert(compute_start_pwm(false, 400, 409, true, 800, 800) == 440);
+}
+
+void test_confirmed_common_pump_pwm() {
+  oq_sources::RawFloatReceipt primary, peer;
+  constexpr uint64_t now_ms = 50'000;
+  constexpr uint64_t max_age_ms = 45'000;
+  constexpr int frost_pwm = 800;
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+
+  primary.observe(415, 10'000, true);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 415);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+
+  peer.observe(415, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 415);
+  peer.invalidate();
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+  peer.observe(409, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+  peer.observe(415, 4'999, true);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+
+  primary.observe(1000, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+  primary.observe(0, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+  primary.observe(415, 20'000, false);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+}
+
+void test_confirmed_common_pump_pwm_rejects_frost_command() {
+  oq_sources::RawFloatReceipt primary, peer;
+  constexpr uint64_t now_ms = 50'000;
+  constexpr uint64_t max_age_ms = 45'000;
+  constexpr int frost_pwm = 800;
+  primary.observe(frost_pwm, 20'000, true);
+  peer.observe(frost_pwm, 20'000, true);
+
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, 625) == frost_pwm);
+}
+
+void test_confirmed_common_pump_pwm_rejects_queued_frost_recovery_steps() {
+  oq_sources::RawFloatReceipt primary, peer;
+  constexpr uint64_t now_ms = 50'000;
+  constexpr uint64_t max_age_ms = 45'000;
+  constexpr int frost_pwm = 800;
+  FrostRecoveryCommands recovery;
+  primary.observe(kAutoStartFallbackIpwm, 20'000, true);
+  peer.observe(kAutoStartFallbackIpwm, 20'000, true);
+  const auto resume_pwm = [&](const oq_sources::RawFloatReceipt* other) {
+    return confirmed_common_pump_pwm(primary, other, now_ms, max_age_ms, frost_pwm, recovery);
+  };
+
+  assert(resume_pwm(nullptr) == kAutoStartFallbackIpwm);
+  assert(resume_pwm(&peer) == kAutoStartFallbackIpwm);
+  recovery.record(kAutoStartFallbackIpwm);
+  assert(resume_pwm(nullptr) == 0);
+  recovery.record(kMinimumIpwm);
+  assert(resume_pwm(&peer) == 0);
+  primary.observe(kMinimumIpwm, 25'000, true);
+  peer.observe(kMinimumIpwm, 25'000, true);
+  assert(resume_pwm(nullptr) == 0);
+  assert(resume_pwm(&peer) == 0);
+  recovery = {};
+  assert(resume_pwm(&peer) == kMinimumIpwm);
+}
+
 void test_local_flow_selection() {
   assert(select_local_flow(false, 720.0f, 400.0f, 150.0f) == 720.0f);
   assert(isnan(select_local_flow(false, NAN, 400.0f, 150.0f)));
@@ -210,19 +284,19 @@ void test_flow_mismatch_hold_is_rollover_safe() {
 
 void test_circulation_recovery_keeps_stronger_pump_drive() {
   constexpr float minimum_flow_lph = 400.0f;
-  int limit = update_circulation_ipwm_limit(kWeakestPumpIpwm, 800, false, 550.0f, minimum_flow_lph);
-  assert(limit == kWeakestPumpIpwm);
+  int limit = update_circulation_ipwm_limit(kMaximumIpwm, 800, false, 550.0f, minimum_flow_lph);
+  assert(limit == kMaximumIpwm);
   limit = update_circulation_ipwm_limit(limit, 800, false, 0.0f, minimum_flow_lph);
   assert(limit == kAutoStartFallbackIpwm);
   limit = update_circulation_ipwm_limit(limit, 440, false, 400.0f, minimum_flow_lph);
   assert(limit == kAutoStartFallbackIpwm);
   limit = update_circulation_ipwm_limit(limit, 440, false, NAN, minimum_flow_lph);
-  assert(limit == kStrongestPumpIpwm);
-  assert(update_circulation_ipwm_limit(limit, 50, false, 700.0f, minimum_flow_lph) == kStrongestPumpIpwm);
+  assert(limit == kMinimumIpwm);
+  assert(update_circulation_ipwm_limit(limit, 50, false, 700.0f, minimum_flow_lph) == kMinimumIpwm);
 
-  assert(update_circulation_ipwm_limit(kWeakestPumpIpwm, 300, false, 0.0f, minimum_flow_lph) == kStrongestPumpIpwm);
-  assert(update_circulation_ipwm_limit(kWeakestPumpIpwm, 800, true, 399.0f, minimum_flow_lph) == kStrongestPumpIpwm);
-  assert(update_circulation_ipwm_limit(kWeakestPumpIpwm, 800, true, NAN, minimum_flow_lph) == kStrongestPumpIpwm);
+  assert(update_circulation_ipwm_limit(kMaximumIpwm, 300, false, 0.0f, minimum_flow_lph) == kMinimumIpwm);
+  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, true, 399.0f, minimum_flow_lph) == kMinimumIpwm);
+  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, true, NAN, minimum_flow_lph) == kMinimumIpwm);
 }
 
 void test_execution_mode_labels_are_stable() {
@@ -240,6 +314,10 @@ int main() {
   test_pv_around_target_no_big_step();
   test_nan_flow_failsafe();
   test_compute_start_pwm();
+  test_auto_start_ignores_a_saved_frost_command_after_frost();
+  test_confirmed_common_pump_pwm();
+  test_confirmed_common_pump_pwm_rejects_frost_command();
+  test_confirmed_common_pump_pwm_rejects_queued_frost_recovery_steps();
   test_local_flow_selection();
   test_local_flow_receipt_tracks_the_selected_contributors();
   test_normal_cooling_and_manual_flow_setpoint_selection();

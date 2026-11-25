@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #include "../sources/oq_source_receipt_runtime.h"
+#include "oq_boot_resume_runtime.h"
+#include "oq_defrost_logic.h"
 #include "oq_flow_control_logic.h"
 #include "oq_flow_delta_t_runtime.h"
 #include "../service/oq_service_logic.h"
@@ -91,7 +93,7 @@ class Runtime {
     const bool want_manual = id(oq_flow_control_mode).active_index().value_or(0) == 1;
     const bool frost = cm_code == 98;
     const bool postflow = cm_code == 1 && config.compressor_postflow_active;
-    if (!frost && !postflow) circulation_ipwm_limit_ = oq_flow_control::kWeakestPumpIpwm;
+    if (!frost && !postflow) circulation_ipwm_limit_ = oq_flow_control::kMaximumIpwm;
     const bool cm100_idle = cm_code == 100 && task_code == oq_commissioning::TASK_NONE;
     const bool flow_idle = cm_code == 0 || cm100_idle;
     const bool cm100_task_started =
@@ -99,6 +101,7 @@ class Runtime {
         (last_cm_code_ != 100 || last_task_code_ == oq_commissioning::TASK_NONE || last_task_code_ != task_code);
 
     if ((was_flow_idle_ && !flow_idle) || cm100_task_started) {
+      clear_frost_handoff_();
       start_auto_(config, cm100_task_started ? "CM100-task" : "idle->*");
     }
     was_flow_idle_ = flow_idle;
@@ -121,7 +124,7 @@ class Runtime {
     if (fixed_mode != last_fixed_mode_) {
       reset_pi_();
     }
-    if (!want_manual && !frost && auto_target_is_cooling != last_auto_target_is_cooling_) {
+    if (!want_manual && !frost && !auto_after_frost_ && auto_target_is_cooling != last_auto_target_is_cooling_) {
       ESP_LOGI("flow", "AUTO target switched to %s flow setpoint", auto_target_is_cooling ? "cooling" : "normal");
       start_auto_(config, auto_target_is_cooling ? "AUTO->cooling" : "AUTO->normal");
     }
@@ -163,11 +166,13 @@ class Runtime {
     oq_flow_control::ExecutionMode mode = oq_flow_control::ExecutionMode::AUTO;
 
     if (want_manual && !manual_flow_pi && !hp_water_calibration_pi && !frost) {
+      clear_frost_handoff_();
       pwm = oq_flow_control::clamp_ipwm((int)roundf(id(oq_flow_manual_pwm).state));
       reset_pi_();
       pi_.pi_failsafe = false;
       mode = oq_flow_control::ExecutionMode::MANUAL;
     } else if (frost) {
+      auto_after_frost_ = true;
       pwm = oq_flow_control::clamp_ipwm(config.frost_ipwm);
       pi_.stable_cnt = 0;
       pi_.pi_failsafe = false;
@@ -176,12 +181,28 @@ class Runtime {
     } else {
       const bool cooling_target = oq_flow_control::uses_cooling_setpoint(
           cm_code, oq_manual_hp::owns_control(), id(oq_manual_hp1_mode_code), id(oq_manual_hp2_mode_code));
+      float flow_lph = id(flow_rate_selected).state;
+      if (auto_after_frost_) {
+        const uint32_t now_ms = millis();
+        // Leave the physical pump commands in place until the boot handoff resolves.
+        if (pump_boot_resume_pending_(now_ms)) {
+          publish_mode_(oq_flow_control::ExecutionMode::AUTO_STARTING);
+          return;
+        }
+        const int frost_pwm = oq_flow_control::clamp_ipwm(config.frost_ipwm);
+        const auto resumed = cooling_target ? PumpResume{} : resumed_pump_(now_ms, frost_pwm);
+        // Use the checked flow sample even when a rejected readback falls back to a saved seed.
+        if (std::isfinite(resumed.flow_lph)) flow_lph = resumed.flow_lph;
+        start_auto_(config, "CM98->AUTO", resumed.pwm);
+        pwm = id(oq_flow_last_pwm);
+        clear_frost_handoff_();
+      }
       float setpoint_lph =
           oq_flow_control::select_flow_setpoint(manual_flow_pi, id(oq_manual_flow_setpoint_lph).state, cooling_target,
                                                 id(oq_cooling_flow_setpoint_lph).state, id(oq_flow_setpoint_lph).state);
       setpoint_lph = oq_flow_delta_t_runtime::apply(setpoint_lph, cm_code);
-      oq_flow_control::PiInputs inputs{id(flow_rate_selected).state, setpoint_lph,         pwm,
-                                       id(oq_flow_kp).state,         id(oq_flow_ki).state, config.dt_s};
+      oq_flow_control::PiInputs inputs{flow_lph,   setpoint_lph, pwm, id(oq_flow_kp).state, id(oq_flow_ki).state,
+                                       config.dt_s};
       const auto result = oq_flow_control::update_pi(pi_, inputs);
       pwm = result.pwm;
       if (result.failsafe) {
@@ -215,21 +236,71 @@ class Runtime {
     }
     pwm = oq_flow_control::clamp_ipwm(pwm);
     set_output_pwm_(pwm);
-    write_pumps_(pwm);
+    const bool pump_write_queued = write_pumps_(pwm);
+    if (pump_write_queued && frost && pwm < oq_flow_control::clamp_ipwm(config.frost_ipwm)) frost_recovery_.record(pwm);
     publish_mode_(mode, true, cm_code, want_manual, pi_.pi_failsafe, pi_.startup_hold, pwm);
   }
 
  private:
-  void start_auto_(const TickConfig& config, const char* reason) {
+  void clear_frost_handoff_() {
+    auto_after_frost_ = false;
+    frost_recovery_ = {};
+  }
+
+  static bool pump_boot_resume_pending_(uint32_t now_ms) {
+    const auto& incidents = id(oq_incident_manager);
+#if OQ_TOPOLOGY_DUO
+    if (incidents.boot_resume_pending(2U, now_ms)) return true;
+#endif
+    return incidents.boot_resume_pending(1U, now_ms);
+  }
+
+  struct PumpResume {
+    int pwm{0};
+    float flow_lph{NAN};
+  };
+
+  PumpResume resumed_pump_(uint32_t now_ms, int frost_pwm) {
+    const auto& incidents = id(oq_incident_manager);
+    bool resumed = incidents.boot_protection_hold(1U, now_ms);
+    const oq_sources::RawFloatReceipt* peer = nullptr;
+#if OQ_TOPOLOGY_DUO
+    resumed = resumed || incidents.boot_protection_hold(2U, now_ms);
+    if (!id(hp2_is_online)) return {};
+    peer = &oq_sources::hp2.pump_pwm;
+#endif
+    if (!resumed || !id(hp1_is_online) || id(oq_lowflow_fault_active) ||
+        oq_boot_resume_runtime::read_sources == nullptr)
+      return {};
+
+    const uint64_t now_monotonic_ms = oq_sources::monotonic_ms();
+    const auto sources = oq_boot_resume_runtime::read_sources(now_monotonic_ms);
+    if (!sources.flow_fresh ||
+        !oq_defrost::minimum_flow_ready(sources.flow_lph, oq_boot_resume_runtime::minimum_flow_lph))
+      return {};
+
+    // A fresh read can contain a frost command queued after boot acquisition ended.
+    // Remember both recovery steps since a retry or delayed poll can still read the first.
+    const int pwm = oq_flow_control::confirmed_common_pump_pwm(
+        oq_sources::hp1.pump_pwm, peer, now_monotonic_ms, oq_boot_resume::COMMAND_FRESH_MS, frost_pwm, frost_recovery_);
+    return {pwm, sources.flow_lph};
+  }
+
+  void start_auto_(const TickConfig& config, const char* reason, int resumed_pwm = 0) {
     const int cm_code = id(oq_control_mode_code);
     const bool cooling_target = cm_code == 5;
     const bool commissioning_start = cm_code == 100 && id(oq_commissioning_task_code) != oq_commissioning::TASK_NONE;
     const int last_good = cooling_target ? id(oq_flow_last_good_pwm_cooling) : id(oq_flow_last_good_pwm);
-    const int pwm = oq_flow_control::compute_start_pwm(commissioning_start, 400, id(oq_flow_last_good_pwm),
-                                                       cooling_target, id(oq_flow_last_good_pwm_cooling));
-    ESP_LOGI("flow", "AUTO start(%s): iPWM=%d (last_good=%d bank=%s fallback=%d commissioning=%s hold %ds, fixed iPWM)",
-             reason, pwm, last_good, cooling_target ? "cooling" : "normal", oq_flow_control::kAutoStartFallbackIpwm,
-             commissioning_start ? "yes" : "no", config.startup_hold_s);
+    // Older firmware could learn the fixed frost command while pump writes were blocked at boot.
+    const int ignored_pwm = auto_after_frost_ ? oq_flow_control::clamp_ipwm(config.frost_ipwm) : 0;
+    const int pwm = resumed_pwm > 0 ? resumed_pwm
+                                    : oq_flow_control::compute_start_pwm(
+                                          commissioning_start, 400, id(oq_flow_last_good_pwm), cooling_target,
+                                          id(oq_flow_last_good_pwm_cooling), ignored_pwm);
+    ESP_LOGI("flow",
+             "AUTO start(%s): iPWM=%d (last_good=%d source=%s fallback=%d commissioning=%s hold %ds, fixed iPWM)",
+             reason, pwm, last_good, resumed_pwm > 0 ? "pump readback" : (cooling_target ? "cooling" : "normal"),
+             oq_flow_control::kAutoStartFallbackIpwm, commissioning_start ? "yes" : "no", config.startup_hold_s);
     set_output_pwm_(pwm);
     pi_ = {};
     pi_.startup_hold = config.startup_hold_s <= 0 ? 0 : (int)roundf((float)config.startup_hold_s / config.dt_s);
@@ -255,18 +326,23 @@ class Runtime {
   }
 
   template <typename T>
-  static void write_pump_if_changed_(T& number, int pwm) {
+  static bool write_pump_if_changed_(T& number, int pwm) {
     const float current = number.state;
-    if (!isnan(current) && fabsf(current - pwm) <= 1.0f) return;
+    if (!isnan(current) && fabsf(current - pwm) <= 1.0f) return false;
     auto call = number.make_call();
     call.set_value(pwm);
     call.perform();
+    // ModbusNumber publishes synchronously once the hub accepts a write.
+    return number.state == pwm;
   }
 
-  static void write_pumps_(int pwm) {
-    write_pump_if_changed_(id(hp1_pump_speed), pwm);
+  static bool write_pumps_(int pwm) {
+    const bool hp1_queued = write_pump_if_changed_(id(hp1_pump_speed), pwm);
 #if OQ_TOPOLOGY_DUO
-    write_pump_if_changed_(id(hp2_pump_speed), pwm);
+    const bool hp2_queued = write_pump_if_changed_(id(hp2_pump_speed), pwm);
+    return hp1_queued || hp2_queued;
+#else
+    return hp1_queued;
 #endif
   }
 
@@ -287,11 +363,13 @@ class Runtime {
   oq_flow_control::MismatchState mismatch_{};
   bool was_flow_idle_ = true;
   bool was_manual_ = false;
+  bool auto_after_frost_ = false;
+  oq_flow_control::FrostRecoveryCommands frost_recovery_;
   bool last_auto_target_is_cooling_ = false;
   int last_cm_code_ = 0;
   int last_task_code_ = 0;
   int last_fixed_mode_ = 0;
-  int circulation_ipwm_limit_ = oq_flow_control::kWeakestPumpIpwm;
+  int circulation_ipwm_limit_ = oq_flow_control::kMaximumIpwm;
   bool have_published_mode_ = false;
   oq_flow_control::ExecutionMode published_mode_ = oq_flow_control::ExecutionMode::CM0;
 };

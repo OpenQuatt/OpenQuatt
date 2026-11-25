@@ -177,6 +177,131 @@ void bounded_queue_and_boundary_interpolation() {
   for (const auto& ticket : state.pending) count += ticket.active;
   assert(count <= kPendingSlots);
 }
+void input_issue_is_independent_of_previous_scenarios() {
+  State state;
+  auto pending = observation();
+  pending.valid = pending.model_ready = false;
+  pending.defrost_active = true;
+  pending.missing_input = InputIssue::ROOM_TEMPERATURE;
+  observe(state, pending);
+  assert(state.issued_count == 0);
+  assert(current_input_issue(state, pending.monotonic_ms - 1U) == InputIssue::NONE);
+  assert(current_input_issue(state, pending.monotonic_ms) == InputIssue::DEFROST);
+  assert(current_input_issue(state, pending.monotonic_ms + kObservationFreshMs + 1U) == InputIssue::NONE);
+
+  pending.defrost_active = false;
+  observe(state, pending);
+  assert(current_input_issue(state, pending.monotonic_ms) == InputIssue::ROOM_TEMPERATURE);
+  discard_pending(state);
+  assert(current_input_issue(state, pending.monotonic_ms) == InputIssue::NONE);
+  observe(state, pending);
+  observe(state, observation(10));
+  assert(current_input_issue(state, pending.monotonic_ms + 10000U) == InputIssue::NONE);
+}
+
+void defrost_can_confirm_after_an_invalid_measurement() {
+  DefrostForecastRecovery recovery;
+  auto last_model = observation();
+  ++last_model.model_samples;
+
+  auto valve_transition = observation(10);
+  valve_transition.valid = valve_transition.model_ready = false;
+  valve_transition.model_samples = last_model.model_samples;
+  recovery.update(valve_transition, true, last_model);
+  assert(!recovery.holding_issue && recovery.pending_defrost_ms == last_model.monotonic_ms);
+
+  auto defrost = valve_transition;
+  defrost.defrost_active = true;
+  defrost.monotonic_ms += 10000U;
+  defrost.epoch += 10U;
+  auto wrong_context = recovery;
+  wrong_context.update(defrost, false, {});
+  assert(!wrong_context.holding_issue && !wrong_context.pending_defrost_ms);
+  auto late = recovery;
+  auto late_defrost = defrost;
+  late_defrost.monotonic_ms += kMaxSampleGapMs;
+  late_defrost.epoch += kMaxSampleGapMs / 1000U;
+  late.update(late_defrost, true, {});
+  assert(!late.holding_issue && !late.pending_defrost_ms);
+  auto unrelated = recovery;
+  auto ordinary_measurement = observation(20);
+  ordinary_measurement.model_ready = false;
+  ordinary_measurement.model_reusable = true;
+  unrelated.update(ordinary_measurement, true, {});
+  assert(!ordinary_measurement.model_ready && !unrelated.holding_issue && !unrelated.pending_defrost_ms);
+
+  recovery.update(defrost, true, {});
+  assert(recovery.holding_issue && !recovery.pending_defrost_ms);
+  auto resumed = observation(30);
+  resumed.model_ready = false;
+  resumed.model_reusable = true;
+  resumed.model_samples = last_model.model_samples;
+  recovery.update(resumed, true, {});
+  assert(valid_model(resumed) && !recovery.holding_issue);
+}
+
+void defrost_holds_last_scenario_and_reuses_validated_model() {
+  State state;
+  DefrostForecastRecovery recovery;
+  float weather[kForcingSteps + 1]{};
+  observe(state, observation());
+  assert(issue(state, weather, 1));
+  auto fitted = observation(10);
+  ++fitted.model_samples;
+  observe(state, fitted);  // The next model fit can predate the next issue.
+  auto during = observation(20);
+  during.valid = during.model_ready = false;
+  during.defrost_active = true;
+  during.model_samples = fitted.model_samples;
+  recovery.update(during, true, state.previous);
+  assert(recovery.holding_issue);
+  observe(state, during);
+  assert(!issue(state, weather, 1));
+  assert(state.discarded_count == 1 && state.errors[0].issued.count == 0);
+  during.monotonic_ms += 600000;
+  during.epoch += 600;
+  recovery.update(during, true, state.previous);
+  observe(state, during);
+  assert(recovery.holding_issue);
+
+  auto settling = during;
+  settling.defrost_active = false;
+  settling.monotonic_ms += 10000;
+  settling.epoch += 10;
+  recovery.update(settling, true, state.previous);
+  assert(recovery.holding_issue);
+  observe(state, settling);
+
+  auto valid = observation(670);
+  valid.model_ready = false;
+  valid.model_reusable = true;
+  valid.model_samples = fitted.model_samples;
+  auto another_context = recovery;
+  another_context.update(valid, false, state.previous);
+  assert(!valid.model_ready && !another_context.holding_issue);
+  auto stale = observation(770);
+  stale.model_ready = false;
+  stale.model_reusable = true;
+  stale.model_samples = fitted.model_samples;
+  auto expired = recovery;
+  expired.update(stale, true, state.previous);
+  assert(!stale.model_ready && !expired.holding_issue);
+  auto unknown_model = valid;
+  ++unknown_model.model_samples;
+  auto changed_fit = recovery;
+  changed_fit.update(unknown_model, true, state.previous);
+  assert(!unknown_model.model_ready && !changed_fit.holding_issue);
+
+  recovery.update(valid, true, state.previous);
+  assert(valid_model(valid) && !recovery.holding_issue);
+  observe(state, valid);
+  assert(issue(state, weather, 1));
+  assert(state.latest_issue_epoch == valid.epoch);
+  auto unrelated_gap = observation(680);
+  unrelated_gap.valid = unrelated_gap.model_ready = false;
+  recovery.update(unrelated_gap, true, state.previous);
+  assert(!recovery.holding_issue);
+}
 }  // namespace
 
 int main() {
@@ -185,4 +310,7 @@ int main() {
   heating_assumption_is_not_a_model_error();
   gates_gaps_and_restart();
   bounded_queue_and_boundary_interpolation();
+  input_issue_is_independent_of_previous_scenarios();
+  defrost_can_confirm_after_an_invalid_measurement();
+  defrost_holds_last_scenario_and_reuses_validated_model();
 }
