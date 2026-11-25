@@ -150,13 +150,13 @@ test("buitenas blijft altijd -10 tot 20; meetpunten buiten beeld blijven buiten 
 });
 
 
-test("lege grafiek verklaart waarom 30-minutenperioden geen meetpunten opleveren", () => {
+test("lege grafiek verklaart waarom opwarmen en afkoelen geen meetpunten opleveren", () => {
   for (const locale of ["nl", "en"]) {
     setLocale(locale, { persist: false, applyDocument: false, notify: false });
     for (const configured of [{}, { coldC: -10, zeroC: 16, ratedW: 5200 }]) {
       const markup = renderHouseLearningChart([], configured, {});
       assert.match(markup, locale === "nl" ? /dagmetingen van 24 uur/ : /24-hour daily measurements/);
-      assert.match(markup, locale === "nl" ? /Opwarmen en afkoelen \(30 minuten\)/ : /Heating and cooling \(30 minutes\)/);
+      assert.match(markup, locale === "nl" ? /Opwarmen en afkoelen levert geen grafiekpunten/ : /Heating and cooling does not produce chart points/);
       assert.doesNotMatch(markup, /data-oq-house-learning-tip=|batch|chart-swatch--learned|chart-swatch--records/);
     }
   }

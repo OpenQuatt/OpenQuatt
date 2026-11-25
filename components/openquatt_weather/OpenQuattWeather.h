@@ -105,6 +105,7 @@ class OpenQuattWeather : public PollingComponent, public ota::OTAGlobalStateList
     oq_weather::Series current, candidate;
     oq_power_house::forecast::State forecast;
     IssuedScenario issued_scenario;
+    oq_power_house::forecast::DefrostForecastRecovery defrost_recovery;
     oq_weather::Location location, pending_location, request_location, result_location;
     oq_weather::HttpResponse http;
     alignas(std::max_align_t) uint8_t json_arena[8192]{};
