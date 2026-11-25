@@ -94,7 +94,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Compressor frequency demand in both overview modes: +376 B raw / +114 B gzip (Node 24.14.1).
     // Outlook during defrost and missing-input messages: +1,296 B raw / +267 B gzip versus dev 89e28f53 (Node 24.14.1).
     // House heat-capacity graph and interactive legend: +7,075 B raw / +2,536 B gzip versus dev (Node 24.14.1).
-    raw: 1_525_073,
+    // Local chart preferences add 530 B raw / 97 B gzip on Node 24.14.1.
+    raw: 1_525_603,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

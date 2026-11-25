@@ -2,7 +2,8 @@ import { escapeHtml } from "../core/html.js";
 import { formatDateTime, formatNumber, t } from "../i18n/index.js";
 import { renderHouseLearningReadiness, selectDisplayedHouseLine } from "./house-learning-readiness.js";
 import { renderSettingsInfoToggle } from "./controls.js";
-import { CAPACITY_SUPPLY_CHOICES, compareCapacityToDemand, getCapacitySegments } from "./house-learning-capacity.js";
+import { CAPACITY_SUPPLY_CHOICES } from "../core/house-learning-chart-preferences.js";
+import { compareCapacityToDemand, getCapacitySegments } from "./house-learning-capacity.js";
 
 const LEGEND_SWATCHES = {
   configured: "oq-house-learning-chart-swatch--configured",
@@ -11,7 +12,6 @@ const LEGEND_SWATCHES = {
   interval: "oq-house-learning-chart-swatch--interval",
   capacity: "oq-house-learning-chart-swatch--capacity",
 };
-export const HOUSE_LEARNING_SERIES = Object.keys(LEGEND_SWATCHES);
 
 const REQUIRED_COLUMNS = ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"];
 const QUALITY_COLUMNS = ["heat_coverage_bp", "temperature_coverage_bp", "heat_uncertainty_mean_w", "fit_eligible", "fit_weight_bp"];

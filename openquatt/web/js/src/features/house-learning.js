@@ -5,8 +5,9 @@ import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
-import { HOUSE_LEARNING_SERIES, normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
-import { CAPACITY_SUPPLY_CHOICES, normalizeHouseCapacity } from "../settings/house-learning-capacity.js";
+import { CAPACITY_SUPPLY_CHOICES, HOUSE_LEARNING_SERIES, rememberHiddenHouseLearningSeries, rememberHouseCapacitySupply } from "../core/house-learning-chart-preferences.js";
+import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
+import { normalizeHouseCapacity } from "../settings/house-learning-capacity.js";
 import { t } from "../i18n/index.js";
 
 export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
@@ -246,6 +247,7 @@ export function changeHouseCapacitySupply(input) {
   const supplyC = Number(input.value);
   if (!CAPACITY_SUPPLY_CHOICES.includes(supplyC)) return;
   state.houseLearningCapacitySupplyC = supplyC;
+  rememberHouseCapacitySupply(supplyC);
   if (!patchLearningDom()) render();
 }
 
@@ -383,6 +385,7 @@ export function handleHouseLearningAction(action, button, pressNamedButton, refr
     if (HOUSE_LEARNING_SERIES.includes(series)) {
       const hidden = state.houseLearningHiddenSeries;
       state.houseLearningHiddenSeries = hidden.includes(series) ? hidden.filter(item => item !== series) : [...hidden, series];
+      rememberHiddenHouseLearningSeries(state.houseLearningHiddenSeries);
       if (!patchLearningDom()) render();
     }
     return true;

@@ -1,4 +1,4 @@
-export const CAPACITY_SUPPLY_CHOICES = [35, 45];
+import { CAPACITY_SUPPLY_CHOICES } from "../core/house-learning-chart-preferences.js";
 
 export function normalizeHouseCapacity(value) {
   const { flow_lph: flowLph, limit_w: limitW, cap_hz: capHz, points } = value ?? {};

@@ -13,8 +13,10 @@ globalThis.window = {
 };
 
 const { invalidateHouseLearningShadow, state } = await import("../js/src/core/state.js");
+const { readHouseLearningChartPreferences } = await import("../js/src/core/house-learning-chart-preferences.js");
 const {
   HOUSE_LEARNING_STATUS_INTERVAL_MS,
+  changeHouseCapacitySupply,
   downloadHouseLearningExport,
   isHouseLearningResetConfirmed,
   loadHouseLearningChart,
@@ -65,6 +67,61 @@ test.afterEach(() => {
   state.root = null;
   state.focusedField = null;
   setRenderCallback(null);
+});
+
+test("woninglijngrafiek herstelt rekenaanvoer en zichtbaarheid bij een nieuwe paginastatus", t => {
+  const original = window.localStorage;
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  t.after(() => {
+    window.localStorage = original;
+    state.houseLearningCapacitySupplyC = 35;
+    state.houseLearningHiddenSeries = [];
+  });
+
+  const toggle = series => handleHouseLearningAction("toggle-house-learning-series", { dataset: { oqHouseLearningSeries: series } });
+  const check = (supply, hidden) => {
+    const restored = readHouseLearningChartPreferences();
+    assert.equal(restored.houseLearningCapacitySupplyC, supply);
+    assert.deepEqual(restored.houseLearningHiddenSeries, hidden);
+  };
+
+  check(35, []);
+  changeHouseCapacitySupply({ value: "45" });
+  toggle("records");
+  toggle("capacity");
+  check(45, ["records", "capacity"]);
+  toggle("records");
+  toggle("unknown");
+  changeHouseCapacitySupply({ value: "55" });
+  check(45, ["capacity"]);
+  changeHouseCapacitySupply({ value: "35" });
+  toggle("capacity");
+  check(35, []);
+});
+
+test("woninglijngrafiek gebruikt veilige standaardwaarden als browseropslag onbruikbaar is", t => {
+  const original = window.localStorage;
+  t.after(() => {
+    window.localStorage = original;
+    state.houseLearningCapacitySupplyC = 35;
+    state.houseLearningHiddenSeries = [];
+  });
+  window.localStorage = {
+    getItem: key => key.endsWith("supply") ? "55" : '["records","unknown","records",null]',
+  };
+  assert.deepEqual(readHouseLearningChartPreferences(), { houseLearningCapacitySupplyC: 35, houseLearningHiddenSeries: ["records"] });
+  window.localStorage = {
+    getItem: key => key.endsWith("supply") ? "45" : "invalid JSON",
+    setItem: () => { throw new Error("storage blocked"); },
+  };
+  assert.deepEqual(readHouseLearningChartPreferences(), { houseLearningCapacitySupplyC: 45, houseLearningHiddenSeries: [] });
+  changeHouseCapacitySupply({ value: "45" });
+  handleHouseLearningAction("toggle-house-learning-series", { dataset: { oqHouseLearningSeries: "learned" } });
+  assert.equal(state.houseLearningCapacitySupplyC, 45);
+  assert.deepEqual(state.houseLearningHiddenSeries, ["learned"]);
+  window.localStorage = { getItem: () => { throw new Error("storage blocked"); } };
+  assert.deepEqual(readHouseLearningChartPreferences(), { houseLearningCapacitySupplyC: 35, houseLearningHiddenSeries: [] });
 });
 
 test("fitvoortgang blijft optioneel en accepteert alleen samenhangende firmwarevelden", () => {

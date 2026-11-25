@@ -6,7 +6,8 @@ import { formatDateTime, formatNumber, getIntlLocale, getLocale, t } from "../i1
 import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
 import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsInfoToggle, renderSettingsSystemRow } from "./controls.js";
-import { HOUSE_LEARNING_SERIES, configuredLinePowerAt, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
+import { HOUSE_LEARNING_SERIES } from "../core/house-learning-chart-preferences.js";
+import { configuredLinePowerAt, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
 import { proposedHouseLineSettings, renderHouseLearningAdvice } from "./house-learning-advice.js";
 import { houseLearningBatchReasonKey, selectDisplayedHouseLine, usableHouseLinePreview } from "./house-learning-readiness.js";
 import { getSettingsSwitchModel } from "./field-models.js";

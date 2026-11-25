@@ -86,7 +86,8 @@ als dagmeting. Na goedkeuring is de groene lijn binnen het gemeten bereik
 doorgetrokken en daarbuiten gestippeld. Een voorlopige lijn blijft overal
 gestippeld, ook binnen het gemeten bereik.
 Gebruik de labels in de legenda om de lijnen, meetpunten en onzekerheidsband
-apart te tonen of te verbergen.
+apart te tonen of te verbergen. De webapp onthoudt per browser welke reeksen
+je hebt verborgen en welke rekenaanvoer je hebt gekozen.
 
 Open **Bekijk beoordeling** voor de voortgangsbalken en uitleg.
 
