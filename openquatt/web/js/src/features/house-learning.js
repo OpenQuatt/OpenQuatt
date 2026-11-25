@@ -5,7 +5,7 @@ import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
-import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
+import { HOUSE_LEARNING_SERIES, normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
 import { CAPACITY_SUPPLY_CHOICES, normalizeHouseCapacity } from "../settings/house-learning-capacity.js";
 import { t } from "../i18n/index.js";
 
@@ -378,6 +378,15 @@ async function changeHouseLine(action, button, refreshEntities) {
 }
 
 export function handleHouseLearningAction(action, button, pressNamedButton, refreshEntities) {
+  if (action === "toggle-house-learning-series") {
+    const series = button?.dataset?.oqHouseLearningSeries;
+    if (HOUSE_LEARNING_SERIES.includes(series)) {
+      const hidden = state.houseLearningHiddenSeries;
+      state.houseLearningHiddenSeries = hidden.includes(series) ? hidden.filter(item => item !== series) : [...hidden, series];
+      if (!patchLearningDom()) render();
+    }
+    return true;
+  }
   if (action === "apply-house-line" || action === "restore-house-line") {
     void changeHouseLine(action === "apply-house-line" ? "apply" : "restore", button, refreshEntities);
     return true;

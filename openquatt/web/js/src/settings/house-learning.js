@@ -6,7 +6,7 @@ import { formatDateTime, formatNumber, getIntlLocale, getLocale, t } from "../i1
 import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
 import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsInfoToggle, renderSettingsSystemRow } from "./controls.js";
-import { configuredLinePowerAt, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
+import { HOUSE_LEARNING_SERIES, configuredLinePowerAt, learnedLinePowerAt, renderHouseLearningChart } from "./house-learning-chart.js";
 import { proposedHouseLineSettings, renderHouseLearningAdvice } from "./house-learning-advice.js";
 import { houseLearningBatchReasonKey, selectDisplayedHouseLine, usableHouseLinePreview } from "./house-learning-readiness.js";
 import { getSettingsSwitchModel } from "./field-models.js";
@@ -474,7 +474,7 @@ function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.h
     state.houseLearningStatus?.records === 0 && state.houseLearningStatus.journalStatus === "cleared",
     houseLearningLine(), state.houseLearningStatus?.manualLineRestore, state.houseLearningStatus?.manualLineRetesting,
     state.houseLearningRetest, state.houseLearningLineNotice,
-    state.houseLearningCapacitySupplyC, currentHouseCapacity(),
+    state.houseLearningCapacitySupplyC, state.houseLearningHiddenSeries, currentHouseCapacity(),
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
@@ -520,7 +520,9 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
     ready: !retesting && learned.ready,
     retesting,
     proposal: settings ? { ...shown, h: settings.ratedW / (settings.zeroC - settings.coldC), t0: settings.zeroC } : shown,
-  }, { profile: currentHouseCapacity(), supplyC: state.houseLearningCapacitySupplyC });
+  }, {
+    profile: currentHouseCapacity(), supplyC: state.houseLearningCapacitySupplyC, hiddenSeries: state.houseLearningHiddenSeries,
+  });
   return `<div class="oq-settings-section-head">
     <div class="oq-house-learning-heading"><h3>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h3><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t("houseLearning.chart.refresh"))}</button></div>
     <p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p>
@@ -573,7 +575,9 @@ function patchLearningMarkup(node, markup) {
   const control = focused && active.dataset?.controlKey;
   const info = focused && active.dataset?.infoId;
   const action = focused && active.dataset?.oqAction;
-  const selector = focused && active.dataset?.oqHouseCapacitySupply !== undefined ? "[data-oq-house-capacity-supply]"
+  const series = focused && active.dataset?.oqHouseLearningSeries;
+  const selector = HOUSE_LEARNING_SERIES.includes(series) ? `[data-oq-house-learning-series="${series}"]`
+    : focused && active.dataset?.oqHouseCapacitySupply !== undefined ? "[data-oq-house-capacity-supply]"
     : control === "houseLearningEnabled" ? '[data-control-key="houseLearningEnabled"]'
     : ["house-learning-window", "house-learning-readiness", "house-learning-thermal", "house-learning-chart", "house-learning-shadow"].includes(info)
     ? `[data-info-id="${info}"]`

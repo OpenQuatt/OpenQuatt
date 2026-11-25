@@ -296,8 +296,9 @@ export default {
       crossingConfigured: "Estimated crossover near {temperature} °C · configured heat demand curve.",
       crossingLearned: "Estimated crossover near {temperature} °C · learned heat demand curve.",
       noCrossing: "No crossover was determined within the displayed model range.",
-      note: "The purple area shows the estimated capacity margin. Assumes {flow} L/h, a daytime cap of {cap} Hz and a {limit} kW electrical limit. Excludes defrost.",
-      legacyNote: "The purple area shows the estimated capacity margin. Assumes {flow} L/h, a daytime cap of {cap} Hz and a {limit} kW electrical limit. Excludes defrost. Above +7 °C the map has insufficient coverage for the maximum.",
+      marginNote: "The purple area shows the estimated capacity margin.",
+      note: "Assumes {flow} L/h, a daytime cap of {cap} Hz and a {limit} kW electrical limit. Excludes defrost.",
+      legacyNote: "Assumes {flow} L/h, a daytime cap of {cap} Hz and a {limit} kW electrical limit. Excludes defrost. Above +7 °C the map has insufficient coverage for the maximum.",
     },
     shadow: {
       title: "Compare heat demand",

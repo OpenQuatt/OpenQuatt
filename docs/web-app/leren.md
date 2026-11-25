@@ -85,6 +85,8 @@ lijn. Oude vieruursmetingen blijven herkenbaar in de grafiek en tellen niet mee
 als dagmeting. Na goedkeuring is de groene lijn binnen het gemeten bereik
 doorgetrokken en daarbuiten gestippeld. Een voorlopige lijn blijft overal
 gestippeld, ook binnen het gemeten bereik.
+Gebruik de labels in de legenda om de lijnen, meetpunten en onzekerheidsband
+apart te tonen of te verbergen.
 
 Open **Bekijk beoordeling** voor de voortgangsbalken en uitleg.
 
@@ -95,7 +97,7 @@ bereik rekent de webapp de lijnen door.
 ### Warmtecapaciteit bij Power House
 
 De paarse lijn schat het maximale thermische vermogen van de geïnstalleerde
-Quatt-buitenunits. Kies **35 °C** of **45 °C** bij **Rekenaanvoer**. Deze keuze
+Quatt-buitenunits. Kies **35 °C** of **45 °C** naast **Geschat Quatt-maximum**. Deze keuze
 geldt alleen voor de grafiek. De berekening gebruikt het ingestelde
 verwarmingsdebiet, de daglimiet, de frequentietabellen en uitsluitingen per
 buitenunit en de elektrische grens voor langdurig bedrijf. Bij Duo stroomt het

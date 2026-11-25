@@ -297,8 +297,9 @@ export default {
       crossingConfigured: "Geschat omslagpunt rond {temperature} °C · ingestelde woninglijn.",
       crossingLearned: "Geschat omslagpunt rond {temperature} °C · geleerde woninglijn.",
       noCrossing: "Geen omslagpunt bepaald in het getoonde modelbereik.",
-      note: "De paarse ruimte toont de geschatte vermogensmarge. Gerekend met {flow} L/h, {cap} Hz als daglimiet en {limit} kW elektrische rekenlimiet. Exclusief ontdooien.",
-      legacyNote: "De paarse ruimte toont de geschatte vermogensmarge. Gerekend met {flow} L/h, {cap} Hz als daglimiet en {limit} kW elektrische rekenlimiet. Exclusief ontdooien. Boven +7 °C ontbreekt voldoende kaartdekking voor het maximum.",
+      marginNote: "De paarse ruimte toont de geschatte vermogensmarge.",
+      note: "Gerekend met {flow} L/h, {cap} Hz als daglimiet en {limit} kW elektrische rekenlimiet. Exclusief ontdooien.",
+      legacyNote: "Gerekend met {flow} L/h, {cap} Hz als daglimiet en {limit} kW elektrische rekenlimiet. Exclusief ontdooien. Boven +7 °C ontbreekt voldoende kaartdekking voor het maximum.",
     },
     shadow: {
       title: "Warmtevraag vergelijken",

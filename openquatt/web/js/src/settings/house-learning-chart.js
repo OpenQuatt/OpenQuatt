@@ -4,6 +4,15 @@ import { renderHouseLearningReadiness, selectDisplayedHouseLine } from "./house-
 import { renderSettingsInfoToggle } from "./controls.js";
 import { CAPACITY_SUPPLY_CHOICES, compareCapacityToDemand, getCapacitySegments } from "./house-learning-capacity.js";
 
+const LEGEND_SWATCHES = {
+  configured: "oq-house-learning-chart-swatch--configured",
+  records: "oq-house-learning-chart-swatch--records",
+  learned: "oq-house-learning-chart-swatch--learned",
+  interval: "oq-house-learning-chart-swatch--interval",
+  capacity: "oq-house-learning-chart-swatch--capacity",
+};
+export const HOUSE_LEARNING_SERIES = Object.keys(LEGEND_SWATCHES);
+
 const REQUIRED_COLUMNS = ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"];
 const QUALITY_COLUMNS = ["heat_coverage_bp", "temperature_coverage_bp", "heat_uncertainty_mean_w", "fit_eligible", "fit_weight_bp"];
 const WIDTH = 720;
@@ -199,13 +208,16 @@ function chartPoint(model, outsideC, watts, copy, dotClass = "oq-house-learning-
   return `<g class="oq-house-learning-chart-point" data-oq-house-learning-tip="${label}" tabindex="0" role="button" aria-label="${label}"><title>${label}</title><circle cx="${x}" cy="${y}" r="12" class="oq-house-learning-chart-hit"/><circle cx="${x}" cy="${y}" r="3.2" class="${dotClass}"/></g>`;
 }
 
-function renderCapacity(model, profile, supplyC, segments, learnedBounds) {
+function legendButton(series, label, visible) {
+  return `<button type="button" class="oq-house-learning-chart-legend-button" data-oq-action="toggle-house-learning-series" data-oq-house-learning-series="${series}" aria-pressed="${visible}"><i class="oq-house-learning-chart-swatch ${LEGEND_SWATCHES[series]}" aria-hidden="true"></i>${escapeHtml(label)}</button>`;
+}
+
+function renderCapacity(model, profile, supplyC, segments, learnedBounds, visible) {
   if (!profile) return {};
-  const legend = segments.length
-    ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--capacity"></i>${escapeHtml(t("houseLearning.capacity.legend"))}</span>` : "";
   const supplyOptions = CAPACITY_SUPPLY_CHOICES.map(value => `<option value="${value}" ${value === supplyC ? "selected" : ""}>${value} °C</option>`).join("");
-  const control = `<label class="oq-house-learning-capacity-control"><span>${escapeHtml(t("houseLearning.capacity.supply"))}</span><select class="oq-helper-select" data-oq-house-capacity-supply>${supplyOptions}</select></label>`;
-  if (!segments.length) return { control, summary: t("houseLearning.capacity.unavailable") };
+  const legend = `<span class="oq-house-learning-capacity-legend">${legendButton("capacity", t("houseLearning.capacity.legend"), visible("capacity"))}<select class="oq-helper-select oq-house-learning-capacity-select" aria-label="${escapeHtml(t("houseLearning.capacity.supply"))}" data-oq-house-capacity-supply>${supplyOptions}</select></span>`;
+  if (!visible("capacity")) return { legend };
+  if (!segments.length) return { legend, summary: t("houseLearning.capacity.unavailable") };
   const coordinate = (outsideC, watts) => `${model.x(outsideC).toFixed(2)} ${model.y(watts).toFixed(2)}`;
   const path = (points, power) => points.map((point, index) => `${index ? "L" : "M"} ${coordinate(point.outsideC, power(point))}`).join(" ");
   const graph = segments.map(points => points.length < 2
@@ -213,8 +225,9 @@ function renderCapacity(model, profile, supplyC, segments, learnedBounds) {
     : `<path d="${path(points, point => point.watts)}" class="oq-house-learning-chart-line oq-house-learning-chart-line--capacity"/>`).join("");
   const learnedComparison = learnedBounds && compareCapacityToDemand(segments, c => learnedLinePowerAt(model, c), learnedBounds, model.t0);
   const useLearned = Boolean(learnedComparison?.crossing);
-  const comparison = useLearned ? learnedComparison : model.configuredValid
+  const referenceComparison = useLearned ? learnedComparison : model.configuredValid
     ? compareCapacityToDemand(segments, c => configuredLinePowerAt(model, c), undefined, model.zeroC) : null;
+  const comparison = visible(useLearned ? "learned" : "configured") ? referenceComparison : null;
   const tooltips = segments.flat().filter(({ outsideC }) => Number.isInteger(outsideC)).map(({ outsideC, watts }) => {
     const copy = [
       t("houseLearning.chart.estimateAt", { temperature: format(outsideC, 0) }),
@@ -238,15 +251,16 @@ function renderCapacity(model, profile, supplyC, segments, learnedBounds) {
   const summary = crossing
     ? t(useLearned ? "houseLearning.capacity.crossingLearned" : "houseLearning.capacity.crossingConfigured", {
       temperature: format(crossing.outsideC, 0),
-    }) : t("houseLearning.capacity.noCrossing");
+    }) : comparison ? t("houseLearning.capacity.noCrossing") : "";
   const maxC = profile.points.at(-1)[0] / 100;
   const note = t(maxC === 7 ? "houseLearning.capacity.legacyNote" : "houseLearning.capacity.note", {
     flow: format(profile.flowLph, 0), cap: format(profile.capHz, 0), limit: format(profile.limitW / 1000, 2),
   });
-  return { control, legend, graph, reserve, marker, summary, note, tooltips };
+  return { legend, graph, reserve, marker, summary, note, tooltips };
 }
 
-export function renderHouseLearningChart(records, configured, learned, { profile = null, supplyC = 35 } = {}) {
+export function renderHouseLearningChart(records, configured, learned, { profile = null, supplyC = 35, hiddenSeries = [] } = {}) {
+  const visible = series => !hiddenSeries.includes(series);
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
   const capacitySegments = getCapacitySegments(profile, supplyC);
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH, capacitySegments.flat());
@@ -269,7 +283,7 @@ export function renderHouseLearningChart(records, configured, learned, { profile
   const learnedEnd = rangeMax == null ? model.maxX : clamp(rangeMax, model.minX, model.maxX);
   const learnedBounds = model.ready && model.learnedValid && fitRecords.length && rangeMin != null && rangeMax != null && learnedEnd > learnedStart
     ? [learnedStart, learnedEnd] : null;
-  const capacity = renderCapacity(model, profile, supplyC, capacitySegments, learnedBounds);
+  const capacity = renderCapacity(model, profile, supplyC, capacitySegments, learnedBounds, visible);
   const measuredStart = model.ready ? learnedStart : measuredMin == null ? model.minX : clamp(measuredMin, model.minX, model.maxX);
   const measuredEnd = model.ready ? learnedEnd : measuredMax == null ? model.maxX : clamp(measuredMax, model.minX, model.maxX);
   const learnedRanges = !model.ready
@@ -281,7 +295,17 @@ export function renderHouseLearningChart(records, configured, learned, { profile
   const learnedLine = model.learnedValid ? learnedRanges.filter(([from, to]) => to > from).map(([from, to, dashed]) =>
     `<path d="${pathFor(model, from, to, learnedPower, model.t0)}" class="oq-house-learning-chart-line ${dashed ? "oq-house-learning-chart-line--learned-dashed" : "oq-house-learning-chart-line--learned"}"/>`).join("") : "";
   const visibleRecords = records.filter((record) => record.outsideC >= model.minX && record.outsideC <= model.maxX);
-  const tooltip = visibleRecords.map(record => chartPoint(model, record.outsideC, record.heatW, chartTooltip(record))).join("");
+  const tooltip = visible("records") ? visibleRecords.map(record => chartPoint(model, record.outsideC, record.heatW, chartTooltip(record))).join("") : "";
+  const legend = [
+    model.configuredValid && legendButton("configured", t("houseLearning.chart.legendConfigured"), visible("configured")),
+    visibleRecords.length && legendButton("records", t("houseLearning.chart.legendRecords"), visible("records")),
+    learnedLine && legendButton("learned", t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"), visible("learned")),
+    confidenceBand.html && legendButton("interval", t(confidenceBand.isConfidence ? "houseLearning.chart.legendInterval" : "houseLearning.chart.legendUncertainty"), visible("interval")),
+    capacity.legend,
+  ].filter(Boolean).join("");
+  const capacityNote = [capacity.reserve && t("houseLearning.capacity.marginNote"), capacity.note].filter(Boolean).join(" ");
+  const showMeasuredRange = fitRecords.length && measuredEnd > measuredStart
+    && (visible("records") || learnedLine && visible("learned") || confidenceBand.html && visible("interval"));
   const legacyRecords = records.filter((record) => record.recordKind === 0);
   const notes = [
     dailyFit
@@ -303,24 +327,23 @@ export function renderHouseLearningChart(records, configured, learned, { profile
     ? t("houseLearning.chart.qualitySummary", { retained: formatNumber(records.length), eligible: formatNumber(fitRecords.length) })
     : t(dailyFit ? "houseLearning.chart.compactDailySummary" : "houseLearning.chart.compactSummary", { count: formatNumber(fitRecords.length), temperature: format(finite(learned?.referenceRoomC) ?? 20) });
   return `${readiness}
-    ${capacity.control || ""}
-    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${learnedLine ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}${confidenceBand.html ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--interval"></i>${escapeHtml(t(confidenceBand.isConfidence ? "houseLearning.chart.legendInterval" : "houseLearning.chart.legendUncertainty"))}</span>` : ""}${capacity.legend || ""}</div>
+    <div class="oq-house-learning-chart-legend">${legend}</div>
     <div class="oq-house-learning-chart-wrap">
       <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="${escapeHtml(t("houseLearning.chart.ariaLabel"))}">
-        ${fitRecords.length && measuredEnd > measuredStart ? `<rect x="${model.x(measuredStart)}" y="${PADDING.top}" width="${model.x(measuredEnd) - model.x(measuredStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}${confidenceBand.html}${capacity.reserve || ""}
+        ${showMeasuredRange ? `<rect x="${model.x(measuredStart)}" y="${PADDING.top}" width="${model.x(measuredEnd) - model.x(measuredStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}${visible("interval") ? confidenceBand.html : ""}${capacity.reserve || ""}
         ${xGrid.map((value) => `<line x1="${model.x(value)}" x2="${model.x(value)}" y1="${PADDING.top}" y2="${HEIGHT - PADDING.bottom}" class="oq-house-learning-chart-grid"/>`).join("")}
         ${yGrid.map((value) => `<line x1="${PADDING.left}" y1="${model.y(value).toFixed(1)}" x2="${model.width - PADDING.right}" y2="${model.y(value).toFixed(1)}" class="oq-house-learning-chart-grid"/><text x="${PADDING.left - 9}" y="${(model.y(value) + 4).toFixed(1)}" text-anchor="end" class="oq-house-learning-chart-axis">${escapeHtml(format(value / 1000))}</text>`).join("")}
         ${xGrid.map((value) => `<text x="${model.x(value).toFixed(1)}" y="${HEIGHT - 16}" text-anchor="middle" class="oq-house-learning-chart-axis">${escapeHtml(format(value))}°</text>`).join("")}
         <text x="${PADDING.left}" y="16" class="oq-house-learning-chart-unit">kW</text><text x="${model.width - PADDING.right}" y="${HEIGHT - 3}" text-anchor="end" class="oq-house-learning-chart-unit">${escapeHtml(t("houseLearning.chart.outsideTemperatureAxis"))}</text>
-        ${model.configuredValid ? `<path d="${pathFor(model, model.minX, model.maxX, configuredPower, model.zeroC)}" class="oq-house-learning-chart-line oq-house-learning-chart-line--configured"/>` : ""}
-        ${learnedLine}
+        ${model.configuredValid && visible("configured") ? `<path d="${pathFor(model, model.minX, model.maxX, configuredPower, model.zeroC)}" class="oq-house-learning-chart-line oq-house-learning-chart-line--configured"/>` : ""}
+        ${visible("learned") ? learnedLine : ""}
         ${capacity.graph || ""}${capacity.marker || ""}${capacity.tooltips || ""}
         ${tooltip}
       </svg>
       <div class="oq-house-learning-chart-tooltip" aria-hidden="true"></div>
     </div>
-    ${capacity.summary ? `<p class="oq-house-learning-current-note"><strong>${escapeHtml(capacity.summary)}</strong> ${escapeHtml(capacity.note || "")}</p>` : ""}
-    ${learnedLine ? renderLineEstimates(model) : ""}
+    ${capacity.summary || capacityNote ? `<p class="oq-house-learning-current-note">${capacity.summary ? `<strong>${escapeHtml(capacity.summary)}</strong> ` : ""}${escapeHtml(capacityNote)}</p>` : ""}
+    ${learnedLine && visible("learned") ? renderLineEstimates(model) : ""}
 
     <div class="oq-house-learning-chart-footer"><span>${escapeHtml(summary)}</span>${renderSettingsInfoToggle("house-learning-chart", t("houseLearning.chart.panelTitle"), notes.join("\n\n"))}</div>
   `;

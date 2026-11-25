@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compareCapacityToDemand, getCapacitySegments, normalizeHouseCapacity } from "../js/src/settings/house-learning-capacity.js";
+globalThis.__OQ_PREVIEW__ = false;
+const { renderHouseLearningChart } = await import("../js/src/settings/house-learning-chart.js");
 
 const profile = (points) => normalizeHouseCapacity({ flow_lph: 800, limit_w: 3400, cap_hz: 90, points });
 
@@ -42,4 +44,30 @@ test("crossing follows the drawn demand line at a fractional heating cutoff", ()
   const result = compareCapacityToDemand(segments, demand, undefined, 5.5);
   assert(Math.abs(result.crossing.outsideC - (5.5 - 1 / 9)) < 1e-6);
   assert(result.reserves[0].some(point => point.outsideC === 5.5));
+});
+
+test("legend keeps all available controls while removing only the hidden series and their overlays", () => {
+  const records = [{ startEpoch: 100, endEpoch: 86500, outsideC: -6, heatW: 4200 }];
+  const configured = { coldC: -10, zeroC: 16, ratedW: 7000 };
+  const learned = { preview: { h: 240, t0: 17, minC: -7, maxC: 1, count: 10, days: 10, cov00: 2000, cov01: 0, cov11: 0 } };
+  const options = { profile: profile([[-1100, 6500, 6400], [-1000, 7000, 6900], [-900, 7500, 7400]]), supplyC: 45 };
+  const render = hiddenSeries => renderHouseLearningChart(records, configured, learned, { ...options, hiddenSeries });
+  const series = {
+    configured: "chart-line--configured", records: "chart-dot", learned: "chart-line--learned-dashed",
+    interval: "chart-interval", capacity: "chart-line--capacity",
+  };
+  const full = render([]);
+  assert.match(full, /class="oq-house-learning-capacity-crossing"/);
+  assert.match(full, /class="oq-house-learning-capacity-reserve"/);
+  for (const [key, className] of Object.entries(series)) {
+    assert.match(full, new RegExp(`data-oq-house-learning-series="${key}" aria-pressed="true"`));
+    assert.match(full, new RegExp(`oq-house-learning-${className}"`));
+    const hidden = render([key]);
+    assert.match(hidden, new RegExp(`data-oq-house-learning-series="${key}" aria-pressed="false"`));
+    assert.doesNotMatch(hidden, new RegExp(`oq-house-learning-${className}"`));
+    assert.match(hidden, /data-oq-house-capacity-supply><option value="35".*<option value="45" selected/s);
+    if (key === "configured" || key === "capacity") {
+      assert.doesNotMatch(hidden, /class="oq-house-learning-capacity-(crossing|reserve)"/);
+    }
+  }
 });
