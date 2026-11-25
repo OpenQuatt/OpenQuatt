@@ -136,6 +136,54 @@ void test_compute_start_pwm() {
   assert(start_fallback_comm == 400);
 }
 
+void test_auto_start_ignores_a_saved_frost_command_after_frost() {
+  assert(compute_start_pwm(false, 400, 800, false, 0) == 800);
+  assert(compute_start_pwm(false, 400, 800, false, 0, 800) == 440);
+  assert(compute_start_pwm(false, 400, 409, false, 0, 800) == 409);
+  assert(compute_start_pwm(false, 400, 409, true, 800, 800) == 440);
+}
+
+void test_confirmed_common_pump_pwm() {
+  oq_sources::RawFloatReceipt primary, peer;
+  constexpr uint64_t now_ms = 50'000;
+  constexpr uint64_t max_age_ms = 45'000;
+  constexpr int frost_pwm = 800;
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+
+  primary.observe(415, 10'000, true);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 415);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+
+  peer.observe(415, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 415);
+  peer.invalidate();
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+  peer.observe(409, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+  peer.observe(415, 4'999, true);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+
+  primary.observe(1000, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+  primary.observe(0, 20'000, true);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+  primary.observe(415, 20'000, false);
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+}
+
+void test_confirmed_common_pump_pwm_rejects_frost_command() {
+  oq_sources::RawFloatReceipt primary, peer;
+  constexpr uint64_t now_ms = 50'000;
+  constexpr uint64_t max_age_ms = 45'000;
+  constexpr int frost_pwm = 800;
+  primary.observe(frost_pwm, 20'000, true);
+  peer.observe(frost_pwm, 20'000, true);
+
+  assert(confirmed_common_pump_pwm(primary, nullptr, now_ms, max_age_ms, frost_pwm) == 0);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, frost_pwm) == 0);
+  assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, 625) == frost_pwm);
+}
+
 void test_local_flow_selection() {
   assert(select_local_flow(false, 720.0f, 400.0f, 150.0f) == 720.0f);
   assert(isnan(select_local_flow(false, NAN, 400.0f, 150.0f)));
@@ -223,6 +271,9 @@ int main() {
   test_pv_around_target_no_big_step();
   test_nan_flow_failsafe();
   test_compute_start_pwm();
+  test_auto_start_ignores_a_saved_frost_command_after_frost();
+  test_confirmed_common_pump_pwm();
+  test_confirmed_common_pump_pwm_rejects_frost_command();
   test_local_flow_selection();
   test_local_flow_receipt_tracks_the_selected_contributors();
   test_normal_cooling_and_manual_flow_setpoint_selection();

@@ -38,6 +38,8 @@ De vraag blijft in watt behouden tot de keuze van de compressorfrequenties. De e
 
 Volg de effectieve regelvraag via `Strategy requested power` in W. De stapdiagnostiek `Demand raw` en `Demand filtered` is tijdens Power House niet beschikbaar.
 
+Zakt de positieve warmtevraag onder de uitschakelgrens terwijl één buitenunit draait, dan kan Power House in CM2 op stand 1 blijven verwarmen tot de minimumlooptijd afloopt. Bij Duo geldt dit als de andere buitenunit bevestigd stilstaat en er geen startopdracht voor die unit loopt. Herstelt de vraag intussen tot de inschakelgrens, dan gaat Power House vanuit CM2 verder met moduleren. De water- en debietbeveiligingen houden voorrang.
+
 ### Te koud
 
 Onder de normale koude grens vraagt OpenQuatt extra warmte boven op de normale huisvraag. Die grens is het setpoint min `Power House comfort below setpoint`, in de web-app **Afkoeling onder gewenste temperatuur**.

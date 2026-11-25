@@ -38,6 +38,7 @@ HARNESS = r'''
 #include "openquatt/includes/control/oq_hp_candidate_logic.h"
 #include "openquatt/includes/control/oq_hp_boot_resume.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
+#include "tests/fixtures/supervisory_low_load_stub.h"
 #include "openquatt/includes/control/oq_cooling_limiter_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_incident_actuator_logic.h"
@@ -58,7 +59,7 @@ uint32_t millis() { return clock_ms; }
 namespace oq_sources { uint64_t monotonic_ms() { return clock_ms; } }
 struct Sensor { float state=0; };
 int oq_control_mode_code=2, oq_heat_mode_code=1;
-int oq_cooling_stop_reason_code=0;
+int oq_cooling_stop_reason_code=0, oq_request_strategy_code=0;
 bool manual_positive_intent=false;
 int hp1_last_applied_level=0, hp1_last_commanded_physical_level=0, hp1_minutes=100;
 uint32_t hp1_last_stop_ms=0, hp1_last_start_ms=0;
@@ -68,7 +69,7 @@ Sensor hp1_4_way_valve, hp1_defrost, hp1_prot_oil_return;
 #if OQ_TOPOLOGY_DUO
 bool hp1_is_online=true, hp2_is_online=true;
 int oq_actuator_hp1_req=0, oq_actuator_hp2_req=0;
-int oq_request_strategy_code=0, oq_request_hp1_level=0, oq_request_hp2_level=0;
+int oq_request_hp1_level=0, oq_request_hp2_level=0;
 int hp2_last_applied_level=0, hp2_last_commanded_physical_level=0, hp2_minutes=100;
 uint32_t hp2_last_stop_ms=0, hp2_last_start_ms=0;
 uint32_t hp2_last_real_heat_start_ms=0, hp2_last_level_change_ms=0;
