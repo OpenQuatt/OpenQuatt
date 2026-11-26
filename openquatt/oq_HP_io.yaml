@@ -117,6 +117,7 @@ modbus_controller:
             oq_sources::${hp_id}.water_out.invalidate();
             oq_sources::${hp_id}.flow.invalidate();
             oq_sources::${hp_id}.outside.invalidate();
+            oq_sources::${hp_id}.pump_pwm.invalidate();
             id(${hp_id}_status_2108_raw).publish_state(NAN);
             id(${hp_id}_status_2115_raw).publish_state(NAN);
             id(${hp_id}_pump_ipwm_feedback_raw).publish_state(NAN);
@@ -753,6 +754,20 @@ select:
       "Off": 0
       "On": 4096
 
+  - platform: template
+    id: ${hp_id}_excluded_frequency_scope
+    name: "${prefix}Frequency exclusion schedule"
+    icon: mdi:clock-outline
+    options:
+      - "Always"
+      - "Quiet hours"
+      - "Off"
+    initial_option: "Always"
+    optimistic: true
+    restore_value: true
+    disabled_by_default: true
+    entity_category: config
+
 # One shared range applies to heating and cooling. A zero boundary disables it.
 number:
   - platform: template
@@ -794,6 +809,10 @@ number:
     register_type: holding
     address: 2015
     value_type: U_WORD
+    lambda: |-
+      // Number state also changes on enqueue. Record only physical readback here.
+      oq_sources::${hp_id}.pump_pwm.observe(x, oq_sources::monotonic_ms(), true);
+      return x;
     write_lambda: |-
       if (!oq_command_runtime::guarded_write(${hp_index} == 1, 2015, x)) return {};
       return x;
@@ -1805,20 +1824,40 @@ text_sensor:
       }
 
   - platform: template
+    id: ${hp_id}_automatic_compressor_frequencies
+    name: "${prefix}Automatic compressor frequencies"
+    update_interval: 5s
+    disabled_by_default: true
+    entity_category: diagnostic
+    lambda: |-
+      // Ordered Hz values for F1 onward, heating then cooling, separated by '|'.
+      char frequencies[2 * oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX * 4 + 2]{};
+      size_t used = 0;
+      if (id(hp_generation).has_state() && id(${hp_id}_is_online) &&
+          !id(${hp_id}_runtime_frequency_revalidation_required)) {
+        const bool v2 = id(hp_generation).current_option() == "V2";
+        const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(id(${hp_id}_runtime_frequency_snapshot_storage));
+        for (const int mode : {2, 1}) {
+          if (mode == 1) frequencies[used++] = '|';
+          const int count = oq_odu::automatic_level_limit(v2, snapshot, mode);
+          for (int level = 1; level <= count; ++level) {
+            const int hz = oq_frequency_policy::automatic_frequency_hz(v2, snapshot, mode, level);
+            if (hz <= 0) break;
+            used += snprintf(frequencies + used, sizeof(frequencies) - used, level == 1 ? "%d" : ",%d", hz);
+          }
+        }
+      }
+      if (id(${hp_id}_automatic_compressor_frequencies).state == frequencies) return {};
+      return std::string(frequencies);
+
+  - platform: template
     id: ${hp_id}_excluded_frequency_range_summary
     name: "${prefix}Excluded compressor frequency range"
     icon: mdi:speedometer-slow
     update_interval: 10s
     lambda: |-
-      // Publish the effective shared exclusion as one diagnostic value.
-      auto read_hz = [](auto* number) -> int {
-        return number->has_state() && !isnan(number->state)
-                   ? (int) lroundf(number->state)
-                   : -1;
-      };
-      const oq_frequency_policy::FrequencyRange range{
-          read_hz(id(${hp_id}_excluded_frequency_min_hz)),
-          read_hz(id(${hp_id}_excluded_frequency_max_hz))};
+      // Reflect the range currently enforced by automatic control.
+      const auto range = oq_frequency_runtime::effective_excluded_range(${hp_index} == 1, id(oq_silent_active).state);
       if (!oq_frequency_policy::valid_frequency_range(range))
         return std::string("Invalid");
       if (oq_frequency_policy::frequency_range_disabled(range))

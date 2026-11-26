@@ -123,6 +123,9 @@ struct RuntimeStorage {
   bool measurement_context_changed = false, evaluation_policy_changed = false, reset_requested = false;
   const esp_partition_t* partition = nullptr;
   SnapshotDiagnostics source_diagnostics;
+#ifdef USE_OPENQUATT_WEATHER
+  bool forecast_heat_valid = false;
+#endif
   uint64_t max_tick_us = 0;
 };
 
@@ -203,6 +206,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
       state.daily_resume_reason = "none";
     }
     state.learner.thermal_accumulator = {};
+    state.learner.defrost_recovery_windows_remaining = 0;
     state.learner.thermal_state.recent_data_valid = false;
   }
 
@@ -470,6 +474,9 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const auto dynamic =
         build_learning_snapshot(input, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC, &calorimetry);
     state.source_diagnostics = combined_snapshot_diagnostics(batch, dynamic);
+#ifdef USE_OPENQUATT_WEATHER
+    state.forecast_heat_valid = calorimetry.valid;
+#endif
     state.tick = PassiveTickInput{};
     auto& tick = state.tick;
     tick.context = context_valid ? context
@@ -490,6 +497,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
     tick.dynamic_snapshot = dynamic.snapshot;
+    const auto defrosting = [now_ms](const HeatPumpRawMeasurements& hp) {
+      return hp.present && hp.defrost_active.value && live_measurement_fresh(hp.defrost_active, now_ms);
+    };
+    tick.defrost_active = defrosting(input.hp1) || defrosting(input.hp2);
     const bool valid_daily_observation =
         enabled && context_valid && tick.active_line_valid && tick.batch_snapshot_available &&
         validate_snapshot(tick.batch_snapshot, state.daily_quality) == LearningStatus::OK;
@@ -636,20 +647,42 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const auto& state = storage_[0];
     const auto& tick = state.tick;
     if (state.reset_requested || state.restart_prepared || state.measurement_context_changed || state.learner.blocked ||
-        !tick.opted_in || !tick.context_valid || !tick.dynamic_snapshot_available ||
-        !passive_runtime_detail::snapshot_matches_tick(tick.dynamic_snapshot, tick) ||
-        validate_snapshot(tick.dynamic_snapshot, state.config.quality) != LearningStatus::OK)
+        !tick.opted_in || !tick.context_valid || !tick.active_line_valid)
       return observation;
+    observation.monotonic_ms = tick.now_monotonic_ms;
+    observation.epoch = tick.now_epoch_s;
+    observation.context = tick.context.context_revision;
+    observation.model_samples = state.summary.thermal.accepted_samples;
+    observation.defrost_active = tick.defrost_active;
     const auto& snapshot = tick.dynamic_snapshot;
+    if (observation.defrost_active) return observation;
+    if (!tick.dynamic_snapshot_available || !passive_runtime_detail::snapshot_matches_tick(snapshot, tick) ||
+        validate_snapshot(snapshot, state.config.quality) != LearningStatus::OK) {
+      using Issue = oq_power_house::forecast::InputIssue;
+      const auto& quality = state.config.quality;
+      const auto available = [&](const PhysicalMeasurement<float>& value, float low, float high) {
+        source_detail::MeasurementMeta receipt;
+        size_t count = 0;
+        return source_detail::validate_available_value(value, low, high) == SnapshotSourceStatus::OK &&
+               source_detail::append_measurement(value, tick.now_monotonic_ms, &receipt, count) ==
+                   SnapshotSourceStatus::OK;
+      };
+      if (!available(state.input.room_c, quality.room_min_c, quality.room_max_c))
+        observation.missing_input = Issue::ROOM_TEMPERATURE;
+      else if (!available(state.input.outside_c, quality.outside_min_c, quality.outside_max_c))
+        observation.missing_input = Issue::OUTSIDE_TEMPERATURE;
+      else if (!available(state.input.setpoint_c, quality.setpoint_min_c, quality.setpoint_max_c))
+        observation.missing_input = Issue::SETPOINT;
+      else if (!state.forecast_heat_valid)
+        observation.missing_input = Issue::HEAT_OUTPUT;
+      return observation;
+    }
     observation.valid = true;
-    observation.monotonic_ms = snapshot.monotonic_ms;
-    observation.epoch = snapshot.epoch_s;
-    observation.context = snapshot.context_revision;
     observation.room_c = snapshot.room_c;
     observation.outside_c = snapshot.outside_c;
     observation.heat_w = snapshot.heat_to_water_w;
     observation.model_ready = forecast_model_ready(state.summary, tick);
-    observation.model_samples = state.summary.thermal.accepted_samples;
+    observation.model_reusable = state.summary.thermal.readiness_reasons == THERMAL_READY_RECENT_DATA_INVALID;
     observation.h_w_per_k = state.summary.thermal.heat_loss_w_per_k;
     observation.c_wh_per_k = state.summary.thermal.thermal_capacity_wh_per_k;
     return observation;
@@ -1469,7 +1502,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
                                                     : 0ULL,
         kSegmentDurationMs / 1000ULL, thermal_active ? "true" : "false",
         thermal_active ? (thermal_window.last.monotonic_ms - thermal_window.first.monotonic_ms) / 1000ULL : 0ULL,
-        state.config.thermal_window.target_duration_ms / 1000ULL, state.learner.diagnostics.accepted_thermal_intervals);
+        thermal_collection_config(state.learner).target_duration_ms / 1000ULL,
+        state.learner.diagnostics.accepted_thermal_intervals);
     if (state.learner.diagnostics.last_batch_rejection == LearningStatus::OK)
       json.add("null");
     else

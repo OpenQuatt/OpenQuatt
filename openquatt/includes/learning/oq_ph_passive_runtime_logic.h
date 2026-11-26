@@ -138,6 +138,7 @@ struct PassiveTickInput {
   SnapshotSourceStatus batch_source_status = SnapshotSourceStatus::OK;
   LearningSnapshot batch_snapshot;
   bool dynamic_snapshot_available = false;
+  bool defrost_active = false;
   LearningSnapshot dynamic_snapshot;
 };
 
@@ -160,6 +161,7 @@ struct PassiveRuntimeStorage {
   size_t record_count = 0;
   SegmentAccumulator batch_accumulator;
   ThermalWindowAccumulator thermal_accumulator;
+  uint8_t defrost_recovery_windows_remaining = 0;
   AdviceFitWorkspace fit_workspace;
   bool fit_running = false;
   bool fit_pending = false;
@@ -174,6 +176,14 @@ struct PassiveRuntimeStorage {
 
 static_assert(sizeof(PassiveRuntimeStorage) < 32U * 1024U,
               "Caller-owned passive learner state and fit workspace must stay within the PSRAM budget");
+
+inline ThermalWindowConfig thermal_collection_config(const PassiveRuntimeStorage& state) {
+  auto config = state.config.thermal_window;
+  if (state.defrost_recovery_windows_remaining != 0 &&
+      state.config.thermal_model.min_interval_ms < config.target_duration_ms)
+    config.target_duration_ms = state.config.thermal_model.min_interval_ms;
+  return config;
+}
 
 namespace passive_runtime_detail {
 
@@ -221,6 +231,7 @@ inline void clear_transient_collection(PassiveRuntimeStorage& state, LearningSta
   diagnose_daily_discard(state.daily_diagnostics, state.batch_accumulator, cause, rejection, state.last_epoch_s);
   reset_segment(state.batch_accumulator);
   state.thermal_accumulator = {};
+  state.defrost_recovery_windows_remaining = 0;
   cancel_fit(state);
   state.fit_pending = state.record_count > 0;
   state.current_observation_valid = false;
@@ -508,14 +519,20 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
 
   state.current_observation_valid = batch_current_valid;
-  if (!input.dynamic_snapshot_available || !snapshot_matches_tick(input.dynamic_snapshot, input)) {
+  if (input.defrost_active || !input.dynamic_snapshot_available ||
+      !snapshot_matches_tick(input.dynamic_snapshot, input)) {
     invalidate_dynamic(state, input.now_monotonic_ms);
+    if (input.defrost_active) state.defrost_recovery_windows_remaining = 2;
     state.diagnostics.last_thermal_window_status = ThermalWindowStatus::INVALID_MEASUREMENT;
   } else {
     const ThermalWindowResult window = observe_thermal_snapshot(state.thermal_accumulator, input.dynamic_snapshot,
-                                                                state.config.quality, state.config.thermal_window);
+                                                                state.config.quality, thermal_collection_config(state));
     state.diagnostics.last_thermal_window_status = window.status;
     if (window.has_interval) {
+      if (state.defrost_recovery_windows_remaining != 0) --state.defrost_recovery_windows_remaining;
+      // The accumulator already restarted at the shared endpoint, with no
+      // elapsed time. After two short windows it can use the ordinary target.
+      state.thermal_accumulator.config = thermal_collection_config(state);
       const ThermalUpdateResult update =
           observe_thermal_interval(state.thermal_state, window.interval, state.config.thermal_model);
       state.diagnostics.last_thermal_update_status = update.status;

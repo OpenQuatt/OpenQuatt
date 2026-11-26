@@ -1,4 +1,5 @@
 import { hasEntity, isEntityActive } from "../core/app-shared.js";
+import { AUTOMATIC_FREQUENCY_TABLE_KEYS, FREQUENCY_MINIMUM_KEYS } from "../core/config.js";
 import { CURVE_SETTING_KEYS, ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, FREQUENCY_CAP_KEYS, HEADER_ENTITY_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SILENT_SETTING_KEYS, TOPOLOGY_HINT_KEYS } from "../core/config.js";
 import { buildEntityPath } from "../core/domain-helpers.js";
 import { setEntityBackupValue } from "../core/entity-backup.js";
@@ -62,7 +63,7 @@ import { formatNumber, t } from "../i18n/index.js";
       return [...new Set([...base, "maxWater"])];
     }
     if (stepId === "silent") {
-      return [...new Set([...base, ...SILENT_SETTING_KEYS])];
+      return [...new Set([...base, ...SILENT_SETTING_KEYS, ...FREQUENCY_MINIMUM_KEYS, ...AUTOMATIC_FREQUENCY_TABLE_KEYS])];
     }
     if (stepId === "usage-telemetry") {
       return [...new Set([

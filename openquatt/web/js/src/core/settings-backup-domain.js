@@ -97,12 +97,23 @@ export function settingsBackupMqttNeedsPassword(mqtt) {
 // function must not inherit the controller's current run-on, so an absent run-on mode means Disabled.
 export function migrateLegacySettingsBackupSettings(settings) {
   const installation = settings?.installation;
-  if (!isObject(installation)
-      || !Object.prototype.hasOwnProperty.call(installation, "auxRelayFunction")
-      || Object.prototype.hasOwnProperty.call(installation, "auxRunOnMode")) {
-    return settings;
+  const compressor = settings?.compressor;
+  const restoreRelay = isObject(installation) && Object.hasOwn(installation, "auxRelayFunction")
+    && !Object.hasOwn(installation, "auxRunOnMode");
+  const scopes = {};
+  if (isObject(compressor)) {
+    for (const hp of ["hp1", "hp2"]) {
+      if (Object.hasOwn(compressor, `${hp}ExcludeMinHz`) && Object.hasOwn(compressor, `${hp}ExcludeMaxHz`)
+          && !Object.hasOwn(compressor, `${hp}ExcludeScope`)) {
+        scopes[`${hp}ExcludeScope`] = "Always";
+      }
+    }
   }
-  return { ...settings, installation: { ...installation, auxRunOnMode: "Disabled" } };
+  return {
+    ...settings,
+    ...(restoreRelay ? { installation: { ...installation, auxRunOnMode: "Disabled" } } : {}),
+    ...(Object.keys(scopes).length ? { compressor: { ...compressor, ...scopes } } : {}),
+  };
 }
 
 export function normalizeSettingsBackupOduProfiles(value) {

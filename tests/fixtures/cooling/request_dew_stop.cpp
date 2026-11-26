@@ -4,6 +4,7 @@
 #include <string>
 #include "openquatt/includes/control/oq_cooling_limiter_logic.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
+#include "tests/fixtures/supervisory_low_load_stub.h"
 #include "openquatt/includes/control/oq_heating_curve_logic.h"
 #include "openquatt/includes/odu/oq_odu_compressor_levels.h"
 #define id(x) x

@@ -1,3 +1,4 @@
+import { patchFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
 import { getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
@@ -284,6 +285,7 @@ function syncFrequencyRangeControl(control) {
       }
     });
 
+    patchFrequencyExclusionDetails(stack);
     const warmupStructureMatches = patchControlledWarmupField(stack);
     const runExtensionStructureMatches = patchRunExtensionThresholds();
     state.warmupSettingsRenderPending = !warmupStructureMatches || !runExtensionStructureMatches;

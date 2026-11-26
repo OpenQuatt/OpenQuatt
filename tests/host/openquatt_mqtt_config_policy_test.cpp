@@ -14,6 +14,16 @@ using esphome::openquatt_mqtt_config::storage_timeout_action;
 using esphome::openquatt_mqtt_config::StorageTimeoutAction;
 
 int main() {
+  using esphome::openquatt_mqtt_config::mqtt_sample_within_age;
+  constexpr uint32_t received_ms = 1250U;
+  constexpr uint32_t room_stale_ms = 600000U;
+  assert(mqtt_sample_within_age(received_ms + room_stale_ms, received_ms, room_stale_ms));
+  assert(!mqtt_sample_within_age(received_ms + room_stale_ms + 1U, received_ms, room_stale_ms));
+  assert(mqtt_sample_within_age(received_ms + room_stale_ms + 1U, received_ms, 0U));
+  assert(!mqtt_sample_within_age(received_ms, 0U, 0U));
+  assert(mqtt_sample_within_age(2U, UINT32_MAX - 2U, 5U));
+  assert(!mqtt_sample_within_age(3U, UINT32_MAX - 2U, 5U));
+
   // Disabling is always stop-first while an old client exists.
   assert(mqtt_client_action(false, true, true, true, false) == MqttClientAction::STOP);
   assert(mqtt_client_action(false, false, true, false, false) == MqttClientAction::IDLE);

@@ -199,6 +199,8 @@ void test_allowed_entry_slew_and_suspect_filter() {
   frequency.hp1_excluded = {20, 26};
   assert(frequency.limit_heating_slew(true, 7, 0, 119, 100, 20, 30) == 0);
   assert(frequency.limit_heating_slew(true, 7, 0, 120, 100, 20, 30) == 3);
+  assert(frequency.limit_heating_slew(true, 7, 1, 101, 100, 20, 30) == 3);
+  assert(frequency.limit_heating_slew(true, 0, 1, 101, 100, 20, 30) == 0);
   // A withdrawn incident availability forbids an upward policy fallback.
   const auto guarded = oq_incident_actuator::decide({7, 2, false, false});
   assert(guarded.guarded_level == 2);

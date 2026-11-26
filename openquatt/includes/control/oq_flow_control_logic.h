@@ -12,22 +12,33 @@
 namespace oq_flow_control {
 
 constexpr int kAutoStartFallbackIpwm = 440;
-
 // iPWM limits shared with YAML.
+constexpr int kMinimumIpwm = 50;
+constexpr int kMaximumIpwm = 850;
+
 inline int clamp_ipwm(int value) {
-  constexpr int kMin = 50;
-  constexpr int kMax = 850;
-  if (value < kMin) return kMin;
-  if (value > kMax) return kMax;
+  if (value < kMinimumIpwm) return kMinimumIpwm;
+  if (value > kMaximumIpwm) return kMaximumIpwm;
   return value;
 }
 
 inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm,
-                             bool cooling_target, int last_good_pwm_cooling) {
+                             bool cooling_target, int last_good_pwm_cooling, int ignored_pwm = 0) {
   if (commissioning_start) return clamp_ipwm(commissioning_start_pwm);
   const int candidate = cooling_target ? last_good_pwm_cooling : last_good_pwm;
-  if (candidate >= 50 && candidate <= 850) return clamp_ipwm(candidate);
-  return clamp_ipwm(kAutoStartFallbackIpwm);
+  if (candidate != ignored_pwm && candidate >= kMinimumIpwm && candidate <= kMaximumIpwm) return candidate;
+  return kAutoStartFallbackIpwm;
+}
+
+inline int confirmed_common_pump_pwm(const oq_sources::RawFloatReceipt& primary,
+                                     const oq_sources::RawFloatReceipt* peer, uint64_t now_ms, uint64_t max_age_ms,
+                                     int ignored_pwm) {
+  if (!primary.fresh(now_ms, max_age_ms) || primary.value == ignored_pwm || primary.value < kMinimumIpwm ||
+      primary.value > kMaximumIpwm)
+    return 0;
+  // A shared write cannot preserve two different pump commands.
+  if (peer != nullptr && (!peer->fresh(now_ms, max_age_ms) || peer->value != primary.value)) return 0;
+  return static_cast<int>(primary.value);
 }
 
 struct LocalFlowSelection {

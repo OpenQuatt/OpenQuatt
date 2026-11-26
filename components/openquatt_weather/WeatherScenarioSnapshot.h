@@ -29,11 +29,16 @@ enum class ScenarioReason : uint8_t {
   WEATHER_UNAVAILABLE,
   NO_ISSUE,
   OBSERVATION_INVALID,
+  ROOM_TEMPERATURE_UNAVAILABLE,
+  OUTSIDE_TEMPERATURE_UNAVAILABLE,
+  SETPOINT_UNAVAILABLE,
+  HEAT_OUTPUT_UNAVAILABLE,
   MODEL_UNAVAILABLE,
   CONFIGURATION_CHANGED,
   CONTEXT_CHANGED,
   EXPIRED,
   SNAPSHOT_STALE,
+  DEFROST,
 };
 
 inline const char* scenario_reason_name(ScenarioReason reason) {
@@ -56,6 +61,14 @@ inline const char* scenario_reason_name(ScenarioReason reason) {
       return "waiting_for_scenario";
     case ScenarioReason::OBSERVATION_INVALID:
       return "observation_invalid";
+    case ScenarioReason::ROOM_TEMPERATURE_UNAVAILABLE:
+      return "room_temperature_unavailable";
+    case ScenarioReason::OUTSIDE_TEMPERATURE_UNAVAILABLE:
+      return "outside_temperature_unavailable";
+    case ScenarioReason::SETPOINT_UNAVAILABLE:
+      return "setpoint_unavailable";
+    case ScenarioReason::HEAT_OUTPUT_UNAVAILABLE:
+      return "heat_output_unavailable";
     case ScenarioReason::MODEL_UNAVAILABLE:
       return "model_unavailable";
     case ScenarioReason::CONFIGURATION_CHANGED:
@@ -66,6 +79,8 @@ inline const char* scenario_reason_name(ScenarioReason reason) {
       return "expired";
     case ScenarioReason::SNAPSHOT_STALE:
       return "snapshot_stale";
+    case ScenarioReason::DEFROST:
+      return "defrost";
   }
   return "snapshot_stale";
 }
@@ -140,6 +155,7 @@ inline void age_scenario_snapshot(ScenarioSnapshot& s, uint32_t now_epoch, uint6
     if (static_cast<uint64_t>(issue.epoch) + horizons[i] <= now_epoch)
       s.horizon_valid_mask &= static_cast<uint8_t>(~(1U << i));
   }
-  if (!s.horizon_valid_mask) invalidate_scenario(s, ScenarioReason::EXPIRED);
+  if (!s.horizon_valid_mask)
+    invalidate_scenario(s, s.reason == ScenarioReason::DEFROST ? ScenarioReason::DEFROST : ScenarioReason::EXPIRED);
 }
 }  // namespace esphome::openquatt_weather

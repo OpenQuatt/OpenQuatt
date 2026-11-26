@@ -15,6 +15,7 @@
 #define OQ_TEST_INCIDENT_MANAGER_RUNTIME
 #include "tests/fixtures/compressor_command_runtime.h"
 #undef OQ_TEST_INCIDENT_MANAGER_RUNTIME
+#include "tests/fixtures/supervisory_low_load_stub.h"
 
 namespace {
 
@@ -103,6 +104,7 @@ enum : uint8_t {
   REASON_START_STOP_RATE_HIGH,
   REASON_NO_CANDIDATE,
   REASON_CANDIDATE_IN_DEFROST,
+  REASON_PH_COMFORT_HOLD,
 };
 }  // namespace openquatt_decision_log
 
@@ -116,6 +118,7 @@ struct TestActuator {
     bool request_thermal_active;
     const char* request_mode_option;
     bool manual_service_active{false}, restart_by_minimum_off_time{false};
+    bool ph_restart_blocked{false};
     struct {
       uint32_t remaining_ms{0};
       bool confirmation_pending{false};

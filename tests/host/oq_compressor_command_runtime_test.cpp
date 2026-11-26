@@ -388,6 +388,38 @@ void queued_heating_mode_rechecks_user_frequency_constraints() {
   assert(queued(true, 1999, 20));
 }
 
+void pending_heating_commands_follow_quiet_hours_and_each_units_scope() {
+  reset();
+  oq_day_max_frequency_hz.state = oq_silent_max_frequency_hz.state = 90;
+  hp1_excluded_frequency_min_hz.state = hp1_excluded_frequency_max_hz.state = 90;
+  hp1_excluded_frequency_scope.option = "Quiet hours";
+#if OQ_TOPOLOGY_DUO
+  hp2_excluded_frequency_min_hz.state = hp2_excluded_frequency_max_hz.state = 90;
+  hp2_excluded_frequency_scope.option = "Off";
+#endif
+  assert(oq_frequency_runtime::capture().frequency_allowed(true, 2, 17));
+  assert(queued(true, 3999, 2) && queued(true, 1999, 17));
+
+  oq_silent_active.state = true;
+  assert(!oq_frequency_runtime::capture().frequency_allowed(true, 2, 17));
+  assert(!queued(true, 3999, 2) && !queued(true, 1999, 17));
+  assert(hp1_compressor_command_revalidation_required);
+  assert(queued(true, 3999, 0) && queued(true, 1999, 0));
+#if OQ_TOPOLOGY_DUO
+  assert(oq_frequency_runtime::capture().frequency_allowed(false, 2, 17));
+  assert(queued(false, 3999, 2) && queued(false, 1999, 17));
+#endif
+  oq_silent_active.state = false;
+  assert(oq_frequency_runtime::capture().frequency_allowed(true, 2, 17));
+  assert(queued(true, 3999, 2) && queued(true, 1999, 17));
+
+  hp1_excluded_frequency_scope.option = "";
+  assert(!queued(true, 1999, 17));  // Legacy or uninitialized scope still enforces the configured band.
+  hp1_excluded_frequency_scope.option = "Off";
+  assert(queued(true, 1999, 17));
+  assert(hp1_excluded_frequency_max_hz.state == 90);
+}
+
 void confirmed_dew_stop_revalidates_queued_cooling_without_changing_heating_or_manual() {
   for (const bool first : {true, false}) {
     if (!OQ_TOPOLOGY_DUO && !first) continue;
@@ -443,5 +475,6 @@ int main() {
   queued_heating_rechecks_selected_level_and_frequency_policy();
   queued_positive_commands_lose_permission_after_a_technical_stop();
   queued_heating_mode_rechecks_user_frequency_constraints();
+  pending_heating_commands_follow_quiet_hours_and_each_units_scope();
   return 0;
 }

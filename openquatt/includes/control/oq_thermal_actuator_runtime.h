@@ -45,6 +45,9 @@ struct TickConfig {
   float minimum_flow_lph;
   bool room_temperature_fresh;
   bool room_setpoint_fresh;
+  uint32_t ha_room_temperature_stale_s;
+  uint32_t api_room_temperature_stale_s;
+  uint32_t api_room_setpoint_stale_s;
 };
 
 class Runtime {
@@ -59,6 +62,7 @@ class Runtime {
     CoolingWindow cooling;
     bool cooling_stop_planned{false};
     bool cooling_stop_armed{false};
+    bool ph_restart_blocked{false};
     uint8_t duo_defrost_start_block_mask{0};
     std::string service_guards[2]{"Vrijgegeven", "Vrijgegeven"};
   };
@@ -99,6 +103,16 @@ class Runtime {
         this->update_cooling_window(config.now_ms, static_cast<uint32_t>(cooling_off_s) * 1000UL,
                                     restart_by_minimum_off_time),
     };
+    // A room update during preflow can invalidate the cached PH request
+    // before the next demand tick. Apply the existing setpoint stop to the
+    // first command only, checking both units before applying either request.
+    const bool no_command = id(hp1_last_applied_level) == 0 && OQ_ACTUATOR_SECONDARY_ID(last_applied_level) == 0;
+    cycle.ph_restart_blocked =
+        request_mode_code == 2 && !manual_service_active && no_command &&
+        id(oq_request_strategy_code) == oq_request::STRATEGY_POWER_HOUSE &&
+        oq_power_house_runtime::runtime().pending_setpoint_restart_blocked(
+            config.now_ms, config.room_temperature_fresh, config.room_setpoint_fresh,
+            config.ha_room_temperature_stale_s, config.api_room_temperature_stale_s, config.api_room_setpoint_stale_s);
     this->update_defrost_(true, config.now_ms);
 #if OQ_TOPOLOGY_DUO
     this->update_defrost_(false, config.now_ms);
@@ -472,6 +486,15 @@ class Runtime {
   }
 
   int apply_level_(bool is_hp1, int requested, bool was_cooling, Cycle& cycle) {
+    const uint8_t hp_index = is_hp1 ? 1U : 2U;
+    const bool power_house_heating = !cycle.manual_service_active && cycle.request_mode_code == 2 &&
+                                     id(oq_control_mode_code) == 2 && id(oq_heat_mode_code) != 1 &&
+                                     id(oq_request_strategy_code) == oq_request::STRATEGY_POWER_HOUSE;
+    const uint8_t hold_hp =
+        power_house_heating ? oq_supervisory_state_runtime::runtime().power_house_low_load_hold_hp() : 0;
+    // Apply the hold to cached requests too, before their request tick has run.
+    // Retain the frequency-policy fallback if F1 is excluded between ticks.
+    if (hold_hp != 0) requested = hold_hp == hp_index ? std::min(1, requested) : 0;
     const int MAX_LEVEL = cycle.frequency.automatic_level_limit(is_hp1, cycle.request_mode_code);
     const int maximum = cycle.manual_service_active
                             ? oq_odu::physical_level_limit(cycle.frequency.configured_v2,
@@ -481,8 +504,9 @@ class Runtime {
     requested = level;
     const int previous = this->previous_applied_(is_hp1);
     if (oq_boot_resume_runtime::ota_hold(is_hp1)) return previous;
-    const uint8_t hp_index = is_hp1 ? 1U : 2U;
     const auto incident = id(oq_incident_manager).get_outputs(hp_index);
+    // A stale hold must never start a compressor or undo a stop.
+    if (hold_hp != 0 && (previous <= 0 || !incident.running_confirmed)) requested = level = 0;
     auto* defrost = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
     const bool stop_pending = incident.run_state == oq_incidents::RunState::STOPPING ||
                               incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
@@ -621,6 +645,13 @@ class Runtime {
       block_reason = "no valid thermal mode for compressor request";
       candidate_reason = openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
       this->service_guard_(cycle, is_hp1) = "geen geldige werkmodus voor compressorstart";
+      this->log_block_change(is_hp1, block_reason);
+    }
+
+    if (applied > 0 && cycle.ph_restart_blocked) {
+      applied = 0;
+      block_reason = "Power House comfort restart blocked by current room input";
+      candidate_reason = openquatt_decision_log::REASON_PH_COMFORT_HOLD;
       this->log_block_change(is_hp1, block_reason);
     }
 

@@ -80,6 +80,27 @@ void test_frequency_feedback_changes_duo_selection() {
     assert(comfort_level() == 1);
     cycle.hp2.candidate.previous_applied_level = 0;
     assert(comfort_level() == 2);
+    // A restart holds a resumed compressor at its level for a short time. That
+    // hold is temporary, like a modulation hold: F1 is still the comfort level,
+    // so the run-extension margin survives an update with the heat pump running.
+    auto resumed = dispatch_input(*model);
+    resumed.hp1.fixed_level = resumed.hp2.fixed_level = 2;
+    resumed.hp1.stop_inhibited = resumed.hp2.stop_inhibited = true;
+    const auto resumed_level = [&] {
+      return run_extension_minimum(resumed, limits, 500.0f, &CandidateModel::reference_f1_dispatch).comfort_level;
+    };
+    assert(resumed_level() == 1);
+    // A level that F1 really cannot serve still raises the comfort level.
+    resumed.hp1.levels[1].allowed = false;
+    assert(resumed_level() == 2);
+    // One resumed unit next to a unit that runs without a hold.
+    resumed = dispatch_input(*model);
+    resumed.hp1.fixed_level = 2;
+    resumed.hp1.stop_inhibited = true;
+    assert(resumed_level() == 1);
+    // A single resumed unit, as on a Single installation: the peer is idle.
+    resumed.hp2.candidate.previous_applied_level = 0;
+    assert(resumed_level() == 1);
   }
   const auto before = decide_dispatch(dispatch_input(nominal), limits, {}, &CandidateModel::confirmed_power);
   assert(topology(before.hp1_level, before.hp2_level) == 2);
@@ -712,7 +733,79 @@ void test_temporary_frequency_override_preserves_run_extension_margin() {
   }
 }
 
+void test_v15_early_handoff_with_zero_hz_on_successor() {
+  namespace dsp = oq_power_house_dispatch;
+  namespace water = oq_water_performance;
+  struct V15Frequency {
+    oq_odu::Variant performance_variant(bool) const { return oq_odu::Variant::V1_5; }
+    int automatic_frequency_hz(bool, int, int level) const {
+      constexpr std::array<int, 11> hz{0, 30, 39, 49, 55, 61, 67, 72, 79, 85, 90};
+      return level >= 0 && level < static_cast<int>(hz.size()) ? hz[level] : -1;
+    }
+  };
+  struct Field {
+    int incoming_level, observed_solo_level;
+    uint8_t incumbent_hz;
+    float outside_c, inlet_c, flow_lph, outlet_c, supply_c, earlier_request_w, request_w;
+  };
+  // 15:30:30 and 16:51:23. The replay assumes a fresh series route and a
+  // transient hold on HP1. The recorder reports 0 Hz for HP2 in both cases.
+  for (const auto& sample : {Field{4, 9, 72, 5.92f, 30.13f, 787.332f, 34.69f, 35.33906f, 5500.699f, 5710.289f},
+                             Field{5, 10, 77, 5.11f, 30.64f, 793.512f, 35.83f, 36.58223f, 5950.516f, 5950.516f}}) {
+    std::array<oq_compressor_feedback::Snapshot, 2> feedback{};
+    feedback[0].requested_hz = 30;
+    feedback[0].actual_hz = sample.incumbent_hz;
+    feedback[0].settling = true;
+    feedback[1].missing = true;
+    const water::CandidateModel model(V15Frequency{}, sample.outside_c, sample.inlet_c, sample.flow_lph,
+                                      {sample.outlet_c, sample.supply_c}, true, false, feedback);
+    dsp::DispatchInput in{};
+    in.now_ms = 600000;
+    in.requested_w = sample.request_w;
+    in.duo = in.performance_valid = in.lead_hp1 = true;
+    in.hp1.candidate = {1, true, false, false, true};
+    in.hp2.candidate = {sample.incoming_level, true, false, false, true};
+    in.hp1.feedback_hold_level = 1;
+    in.pair_context = &model;
+    in.pair_power = water::CandidateModel::dispatch;
+    for (int hp = 0; hp < 2; ++hp) {
+      auto& unit = hp == 0 ? in.hp1 : in.hp2;
+      for (int level = 1; level <= 10; ++level) {
+        const auto point = model.unit(hp == 0, level);
+        unit.levels[level] = {true,
+                              point.valid(),
+                              point.valid(),
+                              point.thermal_w,
+                              point.electrical_w,
+                              static_cast<uint8_t>(model.hz[hp][level])};
+      }
+    }
+    const dsp::DispatchTuning limits{3400, 3650, 5, 150, 450};
+    const auto solo = dsp::observe_protection({}, {in.now_ms - 20000, false, false, false, 7, 0});
+    const auto duo = dsp::observe_protection(solo, {in.now_ms - 10000, false, false, false, 1, sample.incoming_level});
+    const auto without_evidence = dsp::decide_dispatch(in, limits, duo, water::CandidateModel::confirmed_power);
+    assert(without_evidence.hp1_level == 0 && without_evidence.hp2_level == sample.observed_solo_level);
+    const auto incumbent = model.single_at_frequency(true, sample.incumbent_hz);
+    const dsp::HandoffEvidence evidence{{incumbent.thermal_w, NAN}, sample.earlier_request_w};
+    const auto guarded = dsp::decide_dispatch(in, limits, duo, water::CandidateModel::confirmed_power, {}, &evidence);
+    assert(guarded.hp1_level == 1 && guarded.hp2_level == 1);
+    const auto guarded_power = model.pair(guarded.hp1_level, guarded.hp2_level);
+    assert(guarded_power.valid() && guarded_power.electrical_w <= limits.soft_limit_w);
+  }
+}
+
 int main() {
+  test_v15_early_handoff_with_zero_hz_on_successor();
+  using oq_water_performance::series_water_available;
+  assert(series_water_available(false, true, true, 34.0f, 300.0f));
+  assert(series_water_available(false, true, true, 34.0f, 3000.0f));
+  assert(!series_water_available(true, true, true, 34.0f, 800.0f));
+  assert(!series_water_available(false, false, true, 34.0f, 800.0f));
+  assert(!series_water_available(false, true, false, 34.0f, 800.0f));
+  assert(!series_water_available(false, true, true, NAN, 800.0f));
+  assert(!series_water_available(false, true, true, 34.0f, NAN));
+  assert(!series_water_available(false, true, true, 34.0f, 299.0f));
+  assert(!series_water_available(false, true, true, 34.0f, 3001.0f));
   test_temporary_frequency_override_preserves_run_extension_margin();
   test_mixed_response_selects_duo_or_single_for_actual_capacity();
   test_inactive_outlet_is_not_required();

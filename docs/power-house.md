@@ -38,6 +38,8 @@ De vraag blijft in watt behouden tot de keuze van de compressorfrequenties. De e
 
 Volg de effectieve regelvraag via `Strategy requested power` in W. De stapdiagnostiek `Demand raw` en `Demand filtered` is tijdens Power House niet beschikbaar.
 
+Zakt de positieve warmtevraag onder de uitschakelgrens terwijl één buitenunit draait, dan kan Power House in CM2 op stand 1 blijven verwarmen tot de minimumlooptijd afloopt. Bij Duo geldt dit als de andere buitenunit bevestigd stilstaat en er geen startopdracht voor die unit loopt. Herstelt de vraag intussen tot de inschakelgrens, dan gaat Power House vanuit CM2 verder met moduleren. De water- en debietbeveiligingen houden voorrang.
+
 ### Te koud
 
 Onder de normale koude grens vraagt OpenQuatt extra warmte boven op de normale huisvraag. Die grens is het setpoint min `Power House comfort below setpoint`, in de web-app **Afkoeling onder gewenste temperatuur**.
@@ -283,6 +285,8 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 - twee warmtepompen tegelijk zijn niet per definitie beter;
 - het systeem probeert een praktische en zuinige keuze te maken.
 
+Bij een vroege Solo-overname gebruikt de optimizer gekoppelde ODU-watermetingen en verse, stabiele compressorfeedback om te bepalen of de opvolger op zijn huidige stand genoeg warmte kan leveren. Zo nodig blijft de oorspronkelijke unit draaien. In CM2 (alleen warmtepompen) en CM3 (met ketelbijstand) geldt de toets de eerste drie minuten na automatisch bijschakelen. De toets kan doorlopen tijdens de eerste minimumlooptijd van de opvolger. De warmtevraag mag intussen niet sterk dalen. Een noodzakelijke stop, de minimumlooptijd en de vermogensgrenzen houden voorrang.
+
 ### Vermogensvoorspelling bij de levelkeuze
 
 Bij beschikbare inlaattemperatuur en flow berekent OpenQuatt het vermogen voor ieder kandidaatpaar met de waterketen HP1 → HP2: de voorspelde uitlaat van HP1 wordt de inlaat van HP2. Dit geldt ook voor Water Temperature Control. Bij ontbrekende watermetingen gebruikt de regeling de eigen verse uitlaattemperatuur van een draaiende ODU, met de bestaande temperatuurreferentie als terugval. Stilstaande ODU's en defrost behouden die bestaande referentie. Alle frequentiegrenzen, stroomlimieten en wachttijden blijven actief; 90 Hz inclusief blijft toegestaan.
@@ -308,6 +312,8 @@ De modelversie is `oq-v2-heating-r2`. De voorspeltabel bevat de twintig V2-new-f
 Is de laagste geschikte stand hoger dan F1 en ligt de huisvraag onder dat minimumvermogen, dan vraagt langer doorverwarmen al bij de gewenste kamertemperatuur een stop aan. De extra stopmarge wordt dan niet op die hogere stand gevuld. Onder het setpoint kan de warmtepomp nog op de hogere minimumstand verwarmen; een huisvraag vanaf het minimumvermogen blijft de gewone stopgrens gebruiken. De minimumlooptijd en beveiligingen blijven gelden.
 
 Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd door **Afkoeling onder gewenste temperatuur**. Deze eerdere grens blijft tijdens uitlopen en wachten behouden, ook als F1 weer beschikbaar wordt of de vermogensvoorspelling tijdelijk ontbreekt. De web-app toont de actuele eerdere grens zodra de firmware die meldt; tijdens bewerken blijven de ingestelde grenzen als voorvertoning zichtbaar.
+
+Vlak vóór het eerste compressorcommando voor zo'n herstart leest Power House de kamertemperatuur en het setpoint opnieuw. De start wacht als een waarde ongeldig of verlopen is, of als de kamer het setpoint al heeft bereikt. Bij een verlaagd setpoint toetst Power House de herstart aan de nieuwe afkoelgrens.
 
 ### De instellingen
 
