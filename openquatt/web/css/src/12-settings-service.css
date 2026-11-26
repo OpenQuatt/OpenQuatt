@@ -672,6 +672,44 @@
 
 .oq-defrost-info-modal .oq-helper-modal-copy {
   max-width: 78ch;
+  margin-bottom: 10px;
+}
+
+.oq-defrost-info-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--oq-helper-modal-panel-border);
+}
+
+.oq-defrost-info-section h3 {
+  margin: 0 0 8px;
+  color: var(--oq-helper-modal-title);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.oq-defrost-info-section .oq-helper-modal-copy:last-child {
+  margin-bottom: 0;
+}
+
+.oq-defrost-info-table {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 0 10px;
+  border-collapse: collapse;
+  color: var(--oq-helper-modal-copy);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.oq-defrost-info-table :is(th, td) {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--oq-helper-modal-panel-border);
+  text-align: start;
+}
+
+.oq-defrost-info-table th {
+  font-weight: 600;
 }
 
 .oq-defrost-panel .oq-settings-odu-runtime-panel-head {

@@ -27,8 +27,10 @@ const GUARD_KEYS = {
 };
 
 const MODE_INFO_KEYS = {
-  0: "oduDefrost.mode0Info", 1: "oduDefrost.mode1Info",
-  3: "oduDefrost.mode3Info", 4: "oduDefrost.mode4Info",
+  0: ["oduDefrost.mode0Info"],
+  1: ["oduDefrost.mode1Info", "oduDefrost.mode1CounterInfo"],
+  3: ["oduDefrost.mode3Info", "oduDefrost.mode3TemperatureInfo"],
+  4: ["oduDefrost.mode4Info", "oduDefrost.mode4TimingInfo"],
 };
 
 function stateLabel(state) {
@@ -247,7 +249,7 @@ export function getDefrostModeName(mode, variant = null) {
   if (variant !== null && !isDefrostModeSupported(mode, variant)) return t("oduDefrost.modeUnsupported");
   return [
     t("oduDefrost.modeAdaptiveCoilInterval"), t("oduDefrost.modeFixedIntervalCoil"), t("oduDefrost.modeReserved"),
-    t("oduDefrost.modeAdaptiveTrend"), t("oduDefrost.modeTaTevap"),
+    t("oduDefrost.modeFanReference"), t("oduDefrost.modeTaTevap"),
   ][mode] || t("common.unknown");
 }
 
@@ -354,17 +356,46 @@ function renderPanel(hp) {
   });
 }
 
+function renderAdaptiveIntervalTable() {
+  const rules = [
+    ["oduDefrost.mode0DurationShort", "oduDefrost.mode0IntervalLonger"],
+    ["oduDefrost.mode0DurationMedium", "oduDefrost.mode0IntervalSame"],
+    ["oduDefrost.mode0DurationLong", "oduDefrost.mode0IntervalShorter"],
+    ["oduDefrost.mode0DurationLongest", "oduDefrost.mode0IntervalMinimum"],
+  ];
+  return `<table class="oq-defrost-info-table">
+    <thead><tr>
+      <th scope="col">${escapeHtml(t("oduDefrost.mode0PreviousDuration"))}</th>
+      <th scope="col">${escapeHtml(t("oduDefrost.mode0NextInterval"))}</th>
+    </tr></thead>
+    <tbody>${rules.map(([duration, interval]) => `<tr>
+      <th scope="row">${escapeHtml(t(duration))}</th>
+      <td>${escapeHtml(t(interval))}</td>
+    </tr>`).join("")}</tbody>
+  </table>`;
+}
+
+function renderDefrostModeInfo(mode) {
+  return `<section class="oq-defrost-info-section">
+    <h3>${mode} · ${escapeHtml(getDefrostModeName(mode))}</h3>
+    <p class="oq-helper-modal-copy">${escapeHtml(getDefrostModeCopy(mode))}</p>
+    ${mode === 0 ? renderAdaptiveIntervalTable() : ""}
+    ${MODE_INFO_KEYS[mode].map((key) => `<p class="oq-helper-modal-copy">${escapeHtml(t(key))}</p>`).join("")}
+  </section>`;
+}
+
 export function renderOduDefrostModal() {
   const info = /^odu-defrost-info-([12])$/.exec(state.systemModal || "");
   if (info) {
     const hp = Number(info[1]);
     const status = getOduDefrostStatus(hp);
+    const modes = [0, 1, 3, 4].filter((mode) => isDefrostModeSupported(mode, status?.variant));
     return renderModalShell({
       modalId: "odu-defrost-info", titleId: "oq-odu-defrost-info-title", kicker: `HP${hp}`,
       modalClass: "oq-helper-modal--scrollable oq-defrost-info-modal",
       title: t("oduDefrost.modeLabel"), closeAction: "odu-defrost-cancel", closeLabel: t("common.close"),
       bodyMarkup: `<p class="oq-helper-modal-copy">${escapeHtml(t("oduDefrost.methodInfo"))}</p>
-        ${[0, 1, 3, 4].filter((mode) => isDefrostModeSupported(mode, status?.variant)).map((mode) => `<section><h3>${mode} · ${escapeHtml(getDefrostModeName(mode))}</h3><p class="oq-helper-modal-copy">${escapeHtml(getDefrostModeCopy(mode, status.variant))} ${escapeHtml(t(MODE_INFO_KEYS[mode]))}</p></section>`).join("")}
+        ${modes.map(renderDefrostModeInfo).join("")}
         <div class="oq-helper-modal-actions">${renderOduEditorAction(hp, "odu-defrost-cancel", t("common.close"), false)}</div>`,
     });
   }
