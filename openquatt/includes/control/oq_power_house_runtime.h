@@ -17,8 +17,8 @@
 #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
 #include <atomic>
 #include "oq_ph_shadow_demand_types.h"
-#include "oq_sensor_source_runtime.h"
 #endif
+#include "oq_sensor_source_runtime.h"
 #include "oq_power_house_dispatch_logic.h"
 #if OQ_TOPOLOGY_DUO
 #include "../service/tasks/oq_manual_hp_logic.h"
@@ -758,6 +758,20 @@ class Runtime {
   float run_extension_effective_w() const { return this->run_ext_effective_w_; }
   float run_extension_comfort_stop_c() const { return this->run_ext_comfort_stop_c_; }
   float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
+
+  bool pending_setpoint_restart_blocked(uint32_t now_ms, bool ot_room_fresh, bool ot_setpoint_fresh,
+                                        uint32_t ha_stale_s, uint32_t api_room_stale_s,
+                                        uint32_t api_setpoint_stale_s) const {
+    if (!id(ph_run_extension_enabled).state ||
+        this->run_extension_state_.phase != oq_power_house_run_extension::Phase::WARM_RESTART ||
+        !this->run_extension_state_.stop_at_setpoint)
+      return false;
+    const auto [room, setpoint] = oq_sensor_source::runtime().current_room_inputs(
+        now_ms, ot_room_fresh, ot_setpoint_fresh, ha_stale_s, api_room_stale_s, api_setpoint_stale_s);
+    return oq_power_house_run_extension::pending_setpoint_restart_blocked(
+        this->run_extension_state_, room.valid && setpoint.valid, room.value, setpoint.value,
+        {0.0f, id(ph_run_extension_restart_cooldown_c).state, std::max(0.0f, id(ph_comfort_band_below_c).state)});
+  }
 
  private:
   std::array<oq_compressor_feedback::Snapshot, 2> observe_compressor_feedback_(

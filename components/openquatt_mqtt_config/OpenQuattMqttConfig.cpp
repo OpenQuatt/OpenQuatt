@@ -2285,6 +2285,35 @@ void OpenQuattMqttConfig::invalidate_binary_input_(size_t input_index) {
   this->publish_runtime_state_(true);
 }
 
+uint32_t OpenQuattMqttConfig::numeric_input_stale_ms_(size_t input_index) const {
+  if (input_index == static_cast<size_t>(NumericInputKind::ROOM_SETPOINT) &&
+      !this->is_numeric_input_accept_retained_(input_index)) {
+    return NON_RETAINED_STATEFUL_STALE_MS;
+  }
+  return this->numeric_inputs_[input_index].stale_ms;
+}
+
+bool OpenQuattMqttConfig::room_input_fresh_for_start(bool setpoint, uint32_t now_ms) {
+  const auto index =
+      static_cast<size_t>(setpoint ? NumericInputKind::ROOM_SETPOINT : NumericInputKind::ROOM_TEMPERATURE);
+  const auto& input = this->numeric_inputs_[index];
+  if (!this->enabled_.load() || !this->is_numeric_input_enabled_(index) || !std::isfinite(input.last_valid_value) ||
+      !mqtt_sample_within_age(now_ms, input.last_valid_ms, this->numeric_input_stale_ms_(index))) {
+    return false;
+  }
+
+  // Wait for any current-session payload or invalidation to reach the loop.
+  portENTER_CRITICAL(&this->pending_lock_);
+  const bool queued = input.pending_session_generation == this->mqtt_session_generation_.load() &&
+                      (input.pending_payload_ready || input.pending_invalid_payload_ready);
+  portEXIT_CRITICAL(&this->pending_lock_);
+  const uint8_t bit = numeric_input_bit_(index);
+  const bool session_scoped = (this->retained_disabled_mask_.load() & STATEFUL_INPUT_MASK & bit) != 0U;
+  const bool session_lost =
+      session_scoped && (!this->is_connected() || this->clear_session_scoped_inputs_pending_.load());
+  return !queued && !session_lost && (this->clear_input_mask_pending_.load() & bit) == 0U;
+}
+
 void OpenQuattMqttConfig::publish_runtime_state_(bool force) {
   const uint32_t now_ms = millis();
   if (!force && (uint32_t)(now_ms - this->last_sensor_publish_ms_) < SENSOR_PUBLISH_INTERVAL_MS) {
@@ -2298,11 +2327,8 @@ void OpenQuattMqttConfig::publish_runtime_state_(bool force) {
     const bool input_enabled = mqtt_enabled && this->is_numeric_input_enabled_(i);
     const bool has_sample = input.last_valid_ms != 0 && std::isfinite(input.last_valid_value);
     const uint32_t age_ms = has_sample ? (uint32_t)(now_ms - input.last_valid_ms) : 0U;
-    const uint32_t stale_ms = this->is_numeric_input_accept_retained_(i) ? input.stale_ms
-                              : i == static_cast<size_t>(NumericInputKind::ROOM_SETPOINT)
-                                  ? NON_RETAINED_STATEFUL_STALE_MS
-                                  : input.stale_ms;
-    const bool valid = input_enabled && has_sample && (stale_ms == 0U || age_ms <= stale_ms);
+    const bool valid = input_enabled && has_sample &&
+                       mqtt_sample_within_age(now_ms, input.last_valid_ms, this->numeric_input_stale_ms_(i));
 
     this->publish_binary_if_changed_(input.valid_binary_sensor, valid, force);
     this->publish_float_if_changed_(input.age_sensor,
