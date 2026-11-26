@@ -63,6 +63,7 @@ struct DispatchState {
   TimedTail hp2_defrost;
   TimedTail oil_return;
   bool topology_initialized = false, topology_hold_armed = false;
+  uint8_t applied_solo_owner = 0, handoff_incumbent = 0;
   int applied_topology = 0;
   uint32_t topology_hold_started_ms = 0;
 };
@@ -70,6 +71,7 @@ struct ProtectionObservation {
   uint32_t now_ms = 0;
   bool hp1_valve_defrost = false, hp2_valve_defrost = false, oil_return = false;
   int hp1_applied_level = 0, hp2_applied_level = 0;
+  bool observe_handoff = true;
 };
 using PairPower = std::array<float, 2> (*)(const void*, int, int);
 struct DispatchInput {
@@ -79,6 +81,10 @@ struct DispatchInput {
   HpInput hp1, hp2;
   PairPower pair_power = nullptr;
   const void* pair_context = nullptr;
+};
+struct HandoffEvidence {
+  std::array<float, 2> heat_w{NAN, NAN};
+  float request_w = NAN;
 };
 using ConfirmedPower = float (*)(const void*, int, int, float);
 struct PendingSinglePower {
@@ -183,6 +189,12 @@ inline DispatchState observe_protection(DispatchState state, const ProtectionObs
     state.topology_hold_armed = true;
     state.topology_hold_started_ms = observation.now_ms;
   }
+  if (!observation.observe_handoff || applied_topology != 2)
+    state.handoff_incumbent = 0;
+  else if (state.applied_topology == 1)
+    state.handoff_incumbent = state.applied_solo_owner;
+  state.applied_solo_owner =
+      observation.observe_handoff ? owner(observation.hp1_applied_level, observation.hp2_applied_level) : 0;
   state.topology_initialized = true;
   state.applied_topology = applied_topology;
   return state;
@@ -190,6 +202,24 @@ inline DispatchState observe_protection(DispatchState state, const ProtectionObs
 inline bool topology_hold_active(const DispatchState& state, uint32_t now_ms, uint32_t duration_ms) {
   return state.topology_hold_armed && duration_ms > 0 &&
          static_cast<uint32_t>(now_ms - state.topology_hold_started_ms) < duration_ms;
+}
+// Keep the original physical run as the only one that can extend this handoff's window.
+inline void expire_handoff(DispatchState& state, uint32_t& first_real_start, uint32_t now_ms, uint32_t command_start,
+                           uint32_t real_start, bool stop_inhibited) {
+  if (state.handoff_incumbent == 0) {
+    first_real_start = 0;
+    return;
+  }
+  if (command_start != 0 && real_start != 0 &&
+      static_cast<uint32_t>(now_ms - real_start) <= static_cast<uint32_t>(now_ms - command_start)) {
+    if (first_real_start != 0 && first_real_start != real_start) {
+      state.handoff_incumbent = 0;
+      return;
+    }
+    first_real_start = real_start;
+  }
+  if (!topology_hold_active(state, now_ms, kTopologyHoldMs) && (first_real_start == 0 || !stop_inhibited))
+    state.handoff_incumbent = 0;
 }
 inline bool electrical_limits_valid(const DispatchTuning& tuning) {
   return std::isfinite(tuning.soft_limit_w) && std::isfinite(tuning.peak_limit_w) && tuning.soft_limit_w >= 0.0f &&
@@ -353,10 +383,16 @@ inline RunExtensionMinimum run_extension_minimum(const DispatchInput& in, const 
 
 inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tuning, float target_w, int active_count,
                                float tie_band_w, bool require_confirmed = false,
-                               ConfirmedPower confirmed_power = nullptr) {
+                               ConfirmedPower confirmed_power = nullptr, int protected_incumbent = 0,
+                               bool successor_current_level_ready = false) {
   Candidate chosen;
   float best_error_w = INFINITY;
   const auto sufficient = [&](const Candidate& candidate) {
+    if (protected_incumbent != 0 && owner(candidate.hp1_level, candidate.hp2_level) != protected_incumbent) {
+      const bool keeping_verified_level = protected_incumbent == 1 ? candidate.hp2_level == applied_level(in.hp2)
+                                                                   : candidate.hp1_level == applied_level(in.hp1);
+      if (!successor_current_level_ready || !keeping_verified_level) return false;
+    }
     if (!require_confirmed || confirmed_power == nullptr) return true;
     const int first = candidate.hp1_level, second = candidate.hp2_level;
     const bool removing = (first == 0 && applied_level(in.hp1) > 0 && !in.hp1.candidate.must_stop) ||
@@ -396,7 +432,8 @@ inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tu
 }
 inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchTuning& tuning,
                                         const DispatchState& state, ConfirmedPower confirmed_power = nullptr,
-                                        PendingSinglePower pending_single = {}) {
+                                        PendingSinglePower pending_single = {},
+                                        const HandoffEvidence* handoff = nullptr) {
   DispatchDecision out;
   const bool request_valid = std::isfinite(in.requested_w) && in.requested_w >= 0.0f;
   bool model_available = false;
@@ -478,7 +515,29 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
     // Do not shed a running peer on temporary startup/oil-return power. When
     // Duo cannot safely run (including a forced stop or peak limit), Single
     // remains available even if it cannot cover the complete heat request.
-    const Candidate single = pick_topology(in, tuning, target_w, 1, tie_band_w, duo.valid, confirmed_power);
+    const int incumbent = state.handoff_incumbent;
+    int protected_incumbent = 0;
+    bool successor_current_level_ready = false;
+    if ((incumbent == 1 || incumbent == 2) && handoff != nullptr && duo.valid && duo.over_soft_w <= 0.0f &&
+        handoff->request_w > 0.0f && in.requested_w + tie_band_w >= handoff->request_w &&
+        topology(applied_level(in.hp1), applied_level(in.hp2)) == 2 && !in.hp1.defrost && !in.hp2.defrost &&
+        !in.hp1.valve_defrost && !in.hp2.valve_defrost && !in.hp1.candidate.must_stop && !in.hp2.candidate.must_stop &&
+        !in.hp1.candidate.link_suspect && !in.hp2.candidate.link_suspect && in.hp1.fixed_level == 0 &&
+        in.hp2.fixed_level == 0) {
+      const bool successor_stop_inhibited = (incumbent == 1 ? in.hp2 : in.hp1).stop_inhibited;
+      const float incumbent_heat = handoff->heat_w[incumbent - 1];
+      const float successor_heat = handoff->heat_w[2 - incumbent];
+      // A newly started peer cannot take over on nominal capacity alone.
+      // Leave an incumbent-only choice available when the new peer may stop.
+      const bool may_keep_incumbent = std::isfinite(incumbent_heat) && incumbent_heat > 0.0f;
+      if ((topology_hold_active(state, in.now_ms, kTopologyHoldMs) || successor_stop_inhibited) && may_keep_incumbent) {
+        protected_incumbent = incumbent;
+        successor_current_level_ready =
+            std::isfinite(successor_heat) && successor_heat > 0.0f && successor_heat + tie_band_w >= in.requested_w;
+      }
+    }
+    const Candidate single = pick_topology(in, tuning, target_w, 1, tie_band_w, duo.valid, confirmed_power,
+                                           protected_incumbent, successor_current_level_ready);
     Candidate best;
     const bool have_best = single.valid || duo.valid;
     if (single.valid && duo.valid) {

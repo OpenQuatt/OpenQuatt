@@ -285,6 +285,8 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 - twee warmtepompen tegelijk zijn niet per definitie beter;
 - het systeem probeert een praktische en zuinige keuze te maken.
 
+Bij een vroege Solo-overname gebruikt de optimizer gekoppelde ODU-watermetingen en verse, stabiele compressorfeedback om te bepalen of de opvolger op zijn huidige stand genoeg warmte kan leveren. Zo nodig blijft de oorspronkelijke unit draaien. In CM2 (alleen warmtepompen) en CM3 (met ketelbijstand) geldt de toets de eerste drie minuten na automatisch bijschakelen. De toets kan doorlopen tijdens de eerste minimumlooptijd van de opvolger. De warmtevraag mag intussen niet sterk dalen. Een noodzakelijke stop, de minimumlooptijd en de vermogensgrenzen houden voorrang.
+
 ### Vermogensvoorspelling bij de levelkeuze
 
 Bij beschikbare inlaattemperatuur en flow berekent OpenQuatt het vermogen voor ieder kandidaatpaar met de waterketen HP1 → HP2: de voorspelde uitlaat van HP1 wordt de inlaat van HP2. Dit geldt ook voor Water Temperature Control. Bij ontbrekende watermetingen gebruikt de regeling de eigen verse uitlaattemperatuur van een draaiende ODU, met de bestaande temperatuurreferentie als terugval. Stilstaande ODU's en defrost behouden die bestaande referentie. Alle frequentiegrenzen, stroomlimieten en wachttijden blijven actief; 90 Hz inclusief blijft toegestaan.
