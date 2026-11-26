@@ -190,10 +190,12 @@ test("autotune shows current gains and hides old suggestions until a result is r
 
 test("autotune result copy explains applying the proposal and distinguishes an applied result", () => {
   for (const [locale, resultCopy, appliedStatus, appliedCopy, idleCopy] of [
-    ["nl", "Bekijk de voorgestelde Kp/Ki en kies Toepassen", "Voorstel toegepast", "zijn toegepast als regelinstellingen", "Start de autotune wanneer je wilt"],
-    ["en", "Review the suggested Kp/Ki and select Apply", "Suggestion applied", "have been applied as controller settings", "Start autotune whenever you like"],
+    ["nl", "Bekijk de voorgestelde Kp/Ki en kies Toepassen", "Voorstel toegepast", "zijn toegepast als regelinstellingen", "CM100 is actief. Je kunt de test starten."],
+    ["en", "Review the suggested Kp/Ki and select Apply", "Suggestion applied", "have been applied as controller settings", "CM100 is active. You can start the test."],
   ]) {
     setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    state.entities.flowAutotuneStatus = { state: "IDLE" };
+    assert.ok(getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard().includes(idleCopy));
     for (const wire of ["DONE (CLOSED-LOOP)", "DONE (LIMITED)", "DONE (CLAMPED)"]) {
       state.entities.flowAutotuneStatus = { state: wire };
       const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
