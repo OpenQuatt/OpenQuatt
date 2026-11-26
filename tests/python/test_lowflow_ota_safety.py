@@ -20,9 +20,6 @@ def source_unit():
     prefix = fixture_prefix()
     # Peripheral incident outputs are controlled inputs; candidate eligibility
     # itself and the boot readback/adoption policy remain production code.
-    prefix = prefix.replace("struct FakeIncidentOutput {", """struct FakeIncidentOutput {
-  oq_incidents::LinkState link_state{oq_incidents::LinkState::HEALTHY};
-  bool available_for_start{true}, fault_active{false}, protection_active{false};""")
     manager = (ROOT / "components/openquatt_incident_manager/OpenQuattIncidentManager.cpp").read_text()
     candidate = re.search(r"bool OpenQuattIncidentManager::ota_resume_candidate\(.*?\n}", manager, re.S)
     if candidate is None:
@@ -31,7 +28,15 @@ def source_unit():
     old_manager = re.search(r"struct FakeIncidentManager \{.*?\n};", prefix, re.S)
     if old_manager is None:
         raise AssertionError("Host incident peripheral not found")
-    replacement = r'''struct FakeIncidentManager {
+    replacement = r'''struct FakeIncidentOutput : oq_incidents::DerivedOutputs {
+  FakeIncidentOutput() {
+    link_state = oq_incidents::LinkState::HEALTHY;
+    run_state = oq_incidents::RunState::RUNNING;
+    running_confirmed = true;
+    available_for_start = true;
+  }
+};
+struct FakeIncidentManager {
   struct UnitState { oq_boot_resume::Policy boot_resume{}; };
   std::array<UnitState,2> units{};
   std::array<FakeIncidentOutput,2> outputs{};
@@ -157,7 +162,7 @@ class LowflowOtaSafetyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="openquatt-ota-safety-") as directory:
             source, binary = Path(directory) / "test.cpp", Path(directory) / "test"
             source.write_text(source_unit())
-            built = run_process(compiler_command("-DOQ_TOPOLOGY_DUO=1", "-I", str(ROOT), str(source), "-o", str(binary)),
+            built = run_process(compiler_command("-DOQ_TOPOLOGY_DUO=1", "-I", str(ROOT), "-I", str(ROOT / "openquatt"), str(source), "-o", str(binary)),
                                 timeout=COMPILE_TIMEOUT_SECONDS, capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             result = run_process([str(binary)], timeout=RUN_TIMEOUT_SECONDS, capture_output=True, text=True)

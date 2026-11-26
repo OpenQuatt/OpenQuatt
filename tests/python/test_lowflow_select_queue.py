@@ -309,7 +309,7 @@ class LowflowSelectQueueTest(unittest.TestCase):
         gates = "\n".join("std::optional<int> gate%d(esphome::modbus_controller::ModbusSelect* item, int value) {\n%s\n}" % (index, body)
                           for index, body in enumerate(bodies))
         unit = '#include "modbus_select.h"\n' + fixture_prefix(real_incidents=True) + "\n" + gates + "\n" + MAIN.replace("MODE_OPTIMISTIC", optimistic[0]).replace("LEVEL_OPTIMISTIC", optimistic[1])
-        args = compiler_command("-std=c++20", "-I", str(ROOT))
+        args = compiler_command("-std=c++20", "-I", str(ROOT), "-I", str(ROOT / "openquatt"))
         with tempfile.TemporaryDirectory(prefix="openquatt-select-queue-") as directory:
             root = Path(directory)
             (root / "esphome/core").mkdir(parents=True)

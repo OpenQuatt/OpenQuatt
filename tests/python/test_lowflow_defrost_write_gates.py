@@ -111,7 +111,7 @@ int main() {
 """
         main = main.replace("int main() {", "int main() {" + setup)
         unit = fixture_prefix(real_incidents=True) + "\n#define clock_ms test_now_ms\n#define OQ_ACTUATOR_SECONDARY_ID(x) hp2_##x\nstruct Runtime {\n" + safety.group() + "\n} runtime;\n" + gates + "\n" + main
-        args = compiler_command("-I", str(ROOT))
+        args = compiler_command("-I", str(ROOT), "-I", str(ROOT / "openquatt"))
         with tempfile.TemporaryDirectory(prefix="openquatt-defrost-write-gates-") as directory:
             source, binary = Path(directory) / "test.cpp", Path(directory) / "test"
             source.write_text(unit)
