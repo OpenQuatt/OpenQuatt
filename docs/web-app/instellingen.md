@@ -205,6 +205,8 @@ Voorbeelden bij een gewenste temperatuur van **21,0 °C**, een stopgrens van **2
 
 Bij de stopgrens vraagt Power House de warmtepomp om te stoppen. De warmtepomp stopt later als hij zijn minimale looptijd nog moet afmaken. Ook daarna kunnen de radiatoren of vloer nog warmte afgeven. Bij opnieuw verwarmen bepaalt Power House weer hoeveel vermogen nodig is; de warmtepomp start dus niet altijd op minimumvermogen. De normale beveiligingen blijven gelden.
 
+De voorbeelden hierboven gaan uit van een comfortstop **boven** de gewenste temperatuur. Bij lage vraag met een minimumstand boven F1 kan Power House al stoppen **op** de gewenste temperatuur. Na zo'n stop controleert Power House de actuele kamerwaarde en het setpoint opnieuw vlak vóór het eerste compressorcommando. De start wacht bij een ongeldige of verlopen waarde of als de kamer op of boven het setpoint is.
+
 Langer doorverwarmen staat standaard aan. De instellingen blijven na een controllerherstart behouden. Zie [Power House: langer doorverwarmen](../power-house.md#langer-doorverwarmen) voor de precieze werking, statussen en het gedrag na een herstart.
 
 ##### Geavanceerd: afstelling van de regeling
