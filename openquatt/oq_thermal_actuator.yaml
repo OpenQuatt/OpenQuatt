@@ -29,4 +29,7 @@ interval:
               (float) ${oq_cm_min_flow_lph},
               (${oq_ot_room_temperature_fresh_expr}),
               (${oq_ot_room_setpoint_fresh_expr}),
+              (uint32_t) ${ha_room_temperature_stale_s}UL,
+              (uint32_t) ${api_input_room_temperature_stale_s}UL,
+              (uint32_t) ${api_input_room_setpoint_stale_s}UL,
           });
