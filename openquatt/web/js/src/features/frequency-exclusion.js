@@ -3,6 +3,7 @@ import { getEntityValue, parseLooseNumber, toTimeInputValue } from "../core/enti
 import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
 import { t } from "../i18n/index.js";
+import { getAutomaticFrequencyTables } from "./frequency-limits.js";
 
 const modes = ["Heating", "Cooling"];
 const periods = [
@@ -20,10 +21,10 @@ export function getFrequencyExclusionModel(hp, edits = {}, read = getEntityValue
   const min = parseLooseNumber(value("MinHz"));
   const max = parseLooseNumber(value("MaxHz"));
   const hasRange = min > 0 && max >= min && max <= 120;
-  const tables = String(read(`${hp}AutomaticFrequencies`) || "").split("|");
+  const tables = getAutomaticFrequencyTables(hp, read);
   const summaries = modes.map((mode, index) => {
-    const frequencies = tables[index]?.split(",").map(Number) || [];
-    const known = frequencies.length > 0 && frequencies.every((hz) => Number.isInteger(hz) && hz > 0 && hz <= 120);
+    const frequencies = tables[index];
+    const known = frequencies.length > 0;
     const available = periods.filter(({ label }) => scope !== "Quiet hours" || label === "quiet").map(({ key, label }) => {
       const cap = parseLooseNumber(read(key));
       const underCap = known && cap >= 0 && cap <= 120 ? frequencies.filter((hz) => hz <= cap) : null;

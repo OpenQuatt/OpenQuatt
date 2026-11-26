@@ -1,6 +1,6 @@
 import { invalidateWeatherForecast, refreshWeatherForecast, shouldRefreshWeatherForecast } from "../features/weather-forecast.js";
 import { syncPerformanceTelemetryPrompt } from "../features/performance-telemetry-prompt.js";
-import { FREQUENCY_MINIMUM_KEYS, HP_PANEL_CONFIGS } from "./config.js";
+import { AUTOMATIC_FREQUENCY_TABLE_KEYS, FREQUENCY_MINIMUM_KEYS, HP_PANEL_CONFIGS } from "./config.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { t } from "../i18n/index.js";
 import { getSetupCompleteState, isTrendHistoryEnabled, renderAppSummary } from "./app-shared.js";
@@ -1369,7 +1369,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
             ]
           : ["setupComplete", ...HEADER_ENTITY_KEYS, "strategy", ...staticKeys];
     const generationBefore = ODU_GENERATION_STATUS_KEYS.map(getEntityValue).join();
-    if (state.systemModal === "silent-settings") keys.push(...FREQUENCY_CAP_KEYS, ...FREQUENCY_MINIMUM_KEYS);
+    if (state.systemModal === "silent-settings" || (quickStartModalVisible && state.currentStep === "silent")) {
+      keys.push(...FREQUENCY_CAP_KEYS, ...FREQUENCY_MINIMUM_KEYS, ...AUTOMATIC_FREQUENCY_TABLE_KEYS);
+    }
 
     state.entitySyncInFlight = true;
     state.lastEntitySyncAttemptAt = now;
