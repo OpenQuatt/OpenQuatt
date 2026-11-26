@@ -88,7 +88,7 @@ test("defrost keeps only the remaining times from the last calculation", () => {
   assert.match(renderForecastProgress(), /data-scenario-freshness="current"/);
 });
 
-test("Outlook names the missing input above empty tiles, even before the first issue", () => {
+test("Outlook names the missing input in a single empty state before the first issue", () => {
   const reasons = [
     ["defrost", "geldige metingen na het ontdooien", "valid measurements after defrost"],
     ["room_temperature_unavailable", "geldige binnentemperatuur", "valid indoor temperature"],
@@ -109,7 +109,8 @@ test("Outlook names the missing input above empty tiles, even before the first i
       state.weatherForecast = normalizeWeatherForecast(p);
       const html = renderForecastProgress();
       assert.match(html, /data-scenario-freshness="unavailable"/);
-      assert.ok(html.indexOf(entry[index]) >= 0 && html.indexOf(entry[index]) < html.indexOf("<article"));
+      assert.ok(html.includes(entry[index]));
+      assert.doesNotMatch(html, /data-scenario-horizon|oq-learning-workspace-targets/);
       assert.equal(renderForecastProgress({ statusOnly: true }), "");
     }
   }

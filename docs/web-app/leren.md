@@ -228,13 +228,18 @@ Bij een firmwaredownload wacht de controller maximaal twee seconden op de vorige
 verbinding. Is die dan nog bezet, dan start de download niet; probeer de update
 later opnieuw.
 
-Het scherm toont 36 uur aan buitentemperatuur en wind. Wijs in de grafiek een uur
-aan, gebruik de pijltjestoetsen of open **Bekijk uurwaarden**.
+Het scherm toont 36 uur aan buitentemperatuur en windsnelheid, met windrichting
+en zoninstraling waar die beschikbaar zijn. In de windgrafiek wijzen de pijlen
+waarheen de wind waait. Bij het gekozen uur staat uit welke richting de wind komt.
+Zoninstraling staat in W/m² en is het gemiddelde over het uur dat op het
+aangegeven tijdstip eindigt. Wijs in de grafiek een uur aan, gebruik de
+pijltjestoetsen of open **Bekijk uurwaarden**.
 
 **Temperatuur in huis** geeft een voorlopig scenario voor 30, 60 en 180 minuten.
 De berekening neemt de actuele kamertemperatuur als beginpunt, houdt de gemeten
-warmteafgifte constant en gebruikt de verwachte buitentemperatuur. Wind is
-extra informatie in de grafiek. Het scenario stuurt de regeling niet aan.
+warmteafgifte constant en gebruikt de verwachte buitentemperatuur. Wind en
+zoninstraling geven extra informatie bij de weersverwachting. Het scenario
+stuurt de regeling niet aan.
 
 Na een herstart zijn actuele metingen, een geldige weersverwachting en een
 actueel beoordeeld woningmodel nodig. De controller kan een opgeslagen schatting

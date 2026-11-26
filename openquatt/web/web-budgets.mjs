@@ -97,7 +97,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Live COP during the defrost transition: +727 B raw / +307 B gzip (Node 24.14.1).
     // House heat-capacity graph and interactive legend: +7,075 B raw / +2,536 B gzip versus dev (Node 24.14.1).
     // Local chart preferences add 530 B raw / 97 B gzip on Node 24.14.1.
-    raw: 1_527_166,
+    // Solar and wind forecasts with local time axes and in-plot arrows: +4,124 B raw / +1,612 B gzip (Node 24.14.1).
+    raw: 1_531_290,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -132,5 +133,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // Compact compressor frequency demand: +77 B raw / +9 B gzip (Node 24.14.1).
   // Compressor level rows: +250 B raw / +39 B gzip (Node 24.14.1).
   // House heat-capacity graph and interactive legend: +650 B raw / +196 B gzip versus dev (Node 24.14.1).
-  { file: "css/openquatt-app.css", raw: 231_706, gzipBaselineCeiling: 44_985 },
+  // Weather charts, compass arrows and compact scenario state: +1,433 B raw / +282 B gzip (Node 24.14.1).
+  { file: "css/openquatt-app.css", raw: 233_139, gzipBaselineCeiling: 44_985 },
 ];
