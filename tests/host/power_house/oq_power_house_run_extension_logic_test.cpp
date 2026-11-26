@@ -2,7 +2,7 @@
 #include <math.h>
 #include <initializer_list>
 
-#include "../../openquatt/includes/control/oq_power_house_run_extension_logic.h"
+#include "openquatt/includes/control/oq_power_house_run_extension_logic.h"
 
 namespace {
 using namespace oq_power_house_run_extension;

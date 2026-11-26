@@ -59,6 +59,11 @@ struct Decision {
   float warm_restart_c = NAN;
 };
 
+inline float apply_to_request(const Decision& decision, float base_requested_w) {
+  if (decision.force_comfort_stop) return 0.0f;
+  return decision.floor_active ? std::max(base_requested_w, decision.floor_w) : base_requested_w;
+}
+
 inline const char* phase_name(Phase phase) {
   switch (phase) {
     case Phase::INACTIVE:

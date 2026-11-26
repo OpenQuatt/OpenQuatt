@@ -225,8 +225,8 @@ actuele waarde verklaart niet altijd een eerder genomen stopbesluit.
   [actuator runtime](../../openquatt/includes/control/oq_thermal_actuator_runtime.h) en
   [watergrenzen](../../openquatt/includes/control/oq_thermal_limits_logic.h).
 - [Warmte-intentie](../../tests/host/heat_intent_logic_test.cpp),
-  [Power House-vraag](../../tests/host/oq_power_house_demand_logic_test.cpp),
-  [run extension](../../tests/host/oq_power_house_run_extension_logic_test.cpp),
+  [Power House-vraag](../../tests/host/power_house/oq_power_house_demand_logic_test.cpp),
+  [run extension](../../tests/host/power_house/oq_power_house_run_extension_logic_test.cpp),
   [curveherstart](../../tests/host/heating_curve_restart_logic_test.cpp) en
   [frequentiedispatch](../../tests/host/heating_frequency_dispatch_test.cpp).
 

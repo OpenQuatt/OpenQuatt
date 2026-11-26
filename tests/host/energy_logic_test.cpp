@@ -156,11 +156,15 @@ int main() {
   assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
   invalid = running;
   invalid.defrost = 1.0f;
+  assert(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid) == 5.0f);
+  invalid.valve_reversed = true;
   assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
   invalid.defrost = NAN;
   assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
   invalid = running;
   invalid.working_mode = 4.0f;
+  assert(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid) == 5.0f);
+  invalid.valve_reversed = true;
   assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
   for (const float hz : {NAN, INFINITY, -1.0f, 121.0f}) {
     invalid = running;
@@ -173,7 +177,7 @@ int main() {
   assert(isnan(oq_energy::heating_cop_or_nan(233.0f, 36.0f, 10.0f, pumping, standby, true)));
   assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, running, {}, true)));
   invalid = running;
-  invalid.working_mode = 4.0f;
+  invalid.valve_reversed = true;
   assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, running, invalid, true)));
   // The signed thermal measurement and energy-ratio helpers retain real losses.
   assert(oq_energy::hp_heating_power(2.0f, 25.0f, 20.0f, 360.0f, 4186.0f) < 0.0f);

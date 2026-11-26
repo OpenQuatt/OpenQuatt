@@ -9,7 +9,8 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { formatOverviewStatValue, getDerivedEfficiencyValue, getLiveHeatingCopValue } = await import("../js/src/core/app-shared.js");
-const { getOverviewTrendSeriesCurrentValue } = await import("../js/src/views/overview.js");
+const { getOverviewTopCards, getOverviewTrendSeriesCurrentValue, renderOverviewStatCards } = await import("../js/src/views/overview.js");
+const { setLocale } = await import("../js/src/i18n/index.js");
 const { getOverviewLikeHydrationKeys } = await import("../js/src/core/entity-sync.js");
 
 function setup(overrides = {}) {
@@ -110,10 +111,59 @@ test("Duo permits one heating compressor but suppresses partial telemetry or def
   assert.equal(formatOverviewStatValue("totalCop"), "—");
 });
 
+test("total COP names the defrosting units and clears the explanation after defrost", () => {
+  const options = { persist: false, applyDocument: false, notify: false };
+  const renderTop = () => renderOverviewStatCards(getOverviewTopCards());
+  setup({
+    installationTopology: { value: "duo" },
+    hp2Mode: { value: "Heating" },
+    hp2Freq: { value: 72 },
+    hp2Defrost: { value: true },
+    hp2FourWay: { value: false },
+    hp2Cop: { value: 2.9 },
+  });
+  try {
+    setLocale("nl", options);
+    assert.equal(formatOverviewStatValue("totalCop"), "5.0");
+    assert.equal(getLiveHeatingCopValue("hp2Cop"), 2.9);
+    assert.doesNotMatch(renderTop(), /ontdooit/);
+
+    state.entities.hp2Mode = { value: "Defrost" };
+    assert.equal(getLiveHeatingCopValue("hp2Cop"), 2.9);
+    state.entities.hp2Cop = { value: -0.2 };
+    assert.ok(Number.isNaN(getLiveHeatingCopValue("hp2Cop")));
+    state.entities.hp2Cop = { value: 2.9 };
+
+    state.entities.hp2FourWay = { value: true };
+    assert.equal(formatOverviewStatValue("totalCop"), "—");
+    assert.equal(getLiveHeatingCopValue("hp1Cop"), 5);
+    assert.match(renderTop(), /<p class="oq-stat-note">HP2 ontdooit<\/p>/);
+
+    setLocale("en", options);
+    assert.match(renderTop(), /<p class="oq-stat-note">HP2 is defrosting<\/p>/);
+    state.entities.hp1Mode = { value: "Defrost" };
+    state.entities.hp1FourWay = { value: true };
+    assert.match(renderTop(), /<p class="oq-stat-note">HP1 and HP2 are defrosting<\/p>/);
+
+    state.entities.installationTopology = { value: "single" };
+    assert.match(renderTop(), /<p class="oq-stat-note">HP1 is defrosting<\/p>/);
+    state.entities.hp1Mode = { value: "Heating" };
+    state.entities.hp1FourWay = { value: false };
+    assert.doesNotMatch(renderTop(), /defrosting/);
+
+    state.entities.installationTopology = { value: "duo" };
+    state.entities.hp2FourWay = { value: false };
+    assert.equal(formatOverviewStatValue("totalCop"), "5.0");
+    assert.doesNotMatch(renderTop(), /defrosting/);
+  } finally {
+    setLocale("nl", options);
+  }
+});
+
 test("direct energy/results navigation keeps live COP operating telemetry hydrated", () => {
   for (const view of ["energy", "results"]) {
     const keys = getOverviewLikeHydrationKeys(view);
-    for (const key of ["controlModeLabel", "hp1Mode", "hp1Freq", "hp1Defrost", "hp2Mode", "hp2Freq", "hp2Defrost"]) {
+    for (const key of ["controlModeLabel", "hp1Mode", "hp1Freq", "hp1Defrost", "hp1FourWay", "hp2Mode", "hp2Freq", "hp2Defrost", "hp2FourWay"]) {
       assert.ok(keys.includes(key), `${view} must hydrate ${key}`);
     }
   }

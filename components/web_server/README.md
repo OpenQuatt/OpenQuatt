@@ -2,6 +2,8 @@
 
 Source: ESPHome 2026.10.0, `esphome/components/web_server`. Copyright ESPHome.
 C++ is GPLv3 (repository LICENSE); Python is MIT (../web_server_base/LICENSE-MIT).
+OpenQuatt adapts SSE calls and HTTPD socket accounting to ESPHome 2026.11.1.
+The auth and recovery overrides are based on the 2026.10.0 sources.
 Copied upstream files retain the existing component and generated index assets;
 C++ is formatted with the OpenQuatt formatter.
 
@@ -39,9 +41,9 @@ still need hardware validation under stalls, disconnect/reconnect and ordinary
 controller/API/MQTT load. Do not treat the upstream change as a proven diagnosis
 of the previously reported lwIP/heap crashes.
 
-## Temporary four-decimal formatter backport
+## Four-decimal formatter
 
-The accompanying `web_server_base` override applies the two-file core change
+The ESPHome 2026.10.0 baseline applies the two-file core change
 from [ESPHome #20800](https://github.com/esphome/esphome/pull/20800) after ESPHome
 copies sources into each build. Only generated `esphome/core/helpers.cpp` and
 `helpers.h` are replaced; the installed ESPHome package is not changed. This
@@ -65,27 +67,12 @@ decoded intermittent stack-overflow-detection backtrace, heap variation and
 limitations. This is measured stack headroom, not a proven crash fix or release
 qualification; power-off cold starts and full worst-case overlap remain open.
 
-Remove `core_four_decimals.py` and its `to_code()` call after upgrading to and
-validating an ESPHome release that contains #20800. Review the other local
-web-server compatibility changes independently during that upgrade.
+ESPHome 2026.11.0 introduced #20800. OpenQuatt uses the upstream formatter.
 
 ## Runtime manifest URL ownership
 
-The same version-gated `web_server_base` override applies
-`http_request_update_source.py` to the generated `http_request/update` header
-and source. ESPHome 2026.10.0 stores `set_source_url()` as a borrowed pointer to
-a codegen literal, while the PR installer also passes temporary runtime strings.
-The compatibility patch restores owned URL storage and takes a separate snapshot
-on the main loop before starting each manifest worker. The worker uses only this
-immutable snapshot for HTTP requests, error logs and relative firmware URLs.
-Changing the pending source or editing the PR text cannot invalidate an active
-request. The existing in-flight guard retains the snapshot until the worker's
-deferred completion; a failed task creation reports an error and permits retry.
-
-Both URL strings retain their capacity between checks. This adds two small
-component-owned strings and their URL allocations; it does not add worker-stack
-buffers or change heap-placement policy. Baseline/candidate heap margins and OTA
-under concurrent web/API/MQTT load still require hardware validation before
-release. The installed ESPHome package is untouched. Unexpected or partially
-patched source pairs stop generation; repeated generation and unrelated configs
-remain isolated. Review/remove this patch when upgrading ESPHome.
+ESPHome 2026.11.0 owns runtime URLs and keeps the active URL alive until
+the manifest worker completes. The build-local patch uses that snapshot to
+reject results for a superseded URL. It also retains the shared HTTPS slot
+for weather, manifest checks and HTTP OTA. A failed manifest allocation or
+worker start releases the slot and allows a retry.

@@ -22,6 +22,15 @@ inline int clamp_ipwm(int value) {
   return value;
 }
 
+inline int update_circulation_ipwm_limit(int limit, int current_ipwm, bool postflow, float flow_lph,
+                                         float minimum_flow_lph) {
+  if (isfinite(flow_lph) && flow_lph >= minimum_flow_lph) return limit;
+  // A lower iPWM drives the pump harder. Keep the stronger setting for this
+  // circulation period so a recovered sample cannot undo the rescue.
+  const bool already_boosted = limit <= kAutoStartFallbackIpwm || current_ipwm <= kAutoStartFallbackIpwm;
+  return postflow || already_boosted ? kMinimumIpwm : kAutoStartFallbackIpwm;
+}
+
 inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm,
                              bool cooling_target, int last_good_pwm_cooling, int ignored_pwm = 0) {
   if (commissioning_start) return clamp_ipwm(commissioning_start_pwm);
@@ -30,11 +39,25 @@ inline int compute_start_pwm(bool commissioning_start, int commissioning_start_p
   return kAutoStartFallbackIpwm;
 }
 
+struct FrostRecoveryCommands {
+  bool fallback_queued{false};
+  bool maximum_drive_queued{false};
+
+  void record(int pwm) {
+    fallback_queued |= pwm == kAutoStartFallbackIpwm;
+    maximum_drive_queued |= pwm == kMinimumIpwm;
+  }
+
+  bool contains(float pwm) const {
+    return (fallback_queued && pwm == kAutoStartFallbackIpwm) || (maximum_drive_queued && pwm == kMinimumIpwm);
+  }
+};
+
 inline int confirmed_common_pump_pwm(const oq_sources::RawFloatReceipt& primary,
                                      const oq_sources::RawFloatReceipt* peer, uint64_t now_ms, uint64_t max_age_ms,
-                                     int ignored_pwm) {
-  if (!primary.fresh(now_ms, max_age_ms) || primary.value == ignored_pwm || primary.value < kMinimumIpwm ||
-      primary.value > kMaximumIpwm)
+                                     int ignored_pwm, const FrostRecoveryCommands& frost_recovery = {}) {
+  if (!primary.fresh(now_ms, max_age_ms) || primary.value == ignored_pwm || frost_recovery.contains(primary.value) ||
+      primary.value < kMinimumIpwm || primary.value > kMaximumIpwm)
     return 0;
   // A shared write cannot preserve two different pump commands.
   if (peer != nullptr && (!peer->fresh(now_ms, max_age_ms) || peer->value != primary.value)) return 0;
@@ -65,6 +88,10 @@ inline LocalFlowSelection local_flow_selection(bool secondary_enabled, float hp1
 inline float select_local_flow(bool secondary_enabled, float hp1_flow_lph, float hp2_flow_lph,
                                float mismatch_threshold_lph) {
   return local_flow_selection(secondary_enabled, hp1_flow_lph, hp2_flow_lph, mismatch_threshold_lph).value;
+}
+
+inline float fresh_flow_lph(const oq_sources::RawFloatReceipt& receipt, uint64_t now_ms, uint64_t max_age_ms) {
+  return receipt.fresh(now_ms, max_age_ms) ? receipt.value : NAN;
 }
 
 inline oq_sources::RawFloatReceipt local_flow_receipt(const LocalFlowSelection& selection,
