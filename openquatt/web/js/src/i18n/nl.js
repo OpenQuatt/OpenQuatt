@@ -287,6 +287,20 @@ export default {
     }
   },
   houseLearning: {
+    capacity: {
+      legend: "Geschat Quatt-maximum",
+      supply: "Rekenaanvoer",
+      unavailable: "Bij deze aanvoer is geen capaciteitslijn beschikbaar.",
+      tooltipPower: "Geschat maximum {value} kW bij {supply} °C aanvoer",
+      tooltipReserve: "Geschatte vermogensmarge {value} kW",
+      tooltipDeficit: "Geschat vermogenstekort {value} kW",
+      crossingConfigured: "Geschat omslagpunt rond {temperature} °C · ingestelde woninglijn.",
+      crossingLearned: "Geschat omslagpunt rond {temperature} °C · geleerde woninglijn.",
+      noCrossing: "Geen omslagpunt bepaald in het getoonde modelbereik.",
+      marginNote: "De paarse ruimte toont de geschatte vermogensmarge.",
+      note: "Gerekend met {flow} L/h, {cap} Hz als daglimiet en {limit} kW elektrische rekenlimiet. Exclusief ontdooien.",
+      legacyNote: "Gerekend met {flow} L/h, {cap} Hz als daglimiet en {limit} kW elektrische rekenlimiet. Exclusief ontdooien. Boven +7 °C ontbreekt voldoende kaartdekking voor het maximum.",
+    },
     shadow: {
       title: "Warmtevraag vergelijken",
       copy: "Laatst berekende basiswarmtevraag. Beide woninglijnen rekenen onder dezelfde omstandigheden.",

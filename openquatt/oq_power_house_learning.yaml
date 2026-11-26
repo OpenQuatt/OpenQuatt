@@ -81,6 +81,11 @@ button:
           oq_ph_learning::runtime().request_reset();
 
 interval:
+  - interval: 250ms
+    startup_delay: 30s
+    then:
+      - lambda: |-
+          oq_ph_learning::runtime().update_house_capacity();
   - interval: 10s
     startup_delay: 30s
     then:

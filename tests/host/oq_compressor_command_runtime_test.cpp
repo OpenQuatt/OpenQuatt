@@ -402,6 +402,7 @@ void pending_heating_commands_follow_quiet_hours_and_each_units_scope() {
 
   oq_silent_active.state = true;
   assert(!oq_frequency_runtime::capture().frequency_allowed(true, 2, 17));
+  assert(oq_frequency_runtime::capture(false).frequency_allowed(true, 2, 17));
   assert(!queued(true, 3999, 2) && !queued(true, 1999, 17));
   assert(hp1_compressor_command_revalidation_required);
   assert(queued(true, 3999, 0) && queued(true, 1999, 0));

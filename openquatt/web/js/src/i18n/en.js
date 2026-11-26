@@ -286,6 +286,20 @@ export default {
     }
   },
   houseLearning: {
+    capacity: {
+      legend: "Estimated Quatt maximum",
+      supply: "Assumed supply temperature",
+      unavailable: "A capacity curve is unavailable at this supply temperature.",
+      tooltipPower: "Estimated maximum {value} kW at {supply} °C supply",
+      tooltipReserve: "Estimated capacity margin {value} kW",
+      tooltipDeficit: "Estimated capacity shortfall {value} kW",
+      crossingConfigured: "Estimated crossover near {temperature} °C · configured heat demand curve.",
+      crossingLearned: "Estimated crossover near {temperature} °C · learned heat demand curve.",
+      noCrossing: "No crossover was determined within the displayed model range.",
+      marginNote: "The purple area shows the estimated capacity margin.",
+      note: "Assumes {flow} L/h, a daytime cap of {cap} Hz and a {limit} kW electrical limit. Excludes defrost.",
+      legacyNote: "Assumes {flow} L/h, a daytime cap of {cap} Hz and a {limit} kW electrical limit. Excludes defrost. Above +7 °C the map has insufficient coverage for the maximum.",
+    },
     shadow: {
       title: "Compare heat demand",
       copy: "Last calculated base heat demand. Both curves use the same conditions.",

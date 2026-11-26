@@ -7,7 +7,7 @@
 
 namespace oq_ph_learning {
 
-constexpr size_t kStatusJsonBufferSize = 4U * 1024U;
+constexpr size_t kStatusJsonBufferSize = 5U * 1024U;
 constexpr size_t kExportJsonBufferSize = 37U * 1024U;
 constexpr size_t kMaxExportRecordRows = 128U;
 constexpr size_t kMaxExportDiagnosticRows = 60U;

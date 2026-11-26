@@ -1,4 +1,5 @@
 import { SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "./config.js";
+import { readHouseLearningChartPreferences } from "./house-learning-chart-preferences.js";
 import { createDiagnosticsState, createFirmwareState, createHistoryState, createMotionState, createSecurityState, createSettingsState } from "./state-slices.js";
 
 export const DEFAULT_TREND_WINDOW_HOURS = 24;
@@ -140,6 +141,7 @@ export const state = {
   settingsUndo: null,
   ...createDiagnosticsState(),
   ...createSettingsState(),
+  ...readHouseLearningChartPreferences(),
   quickStartSetupUpdateComplete: initialQuickStartSetupComplete,
   updateModalOpen: false,
   systemModal: "",
