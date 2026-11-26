@@ -2,8 +2,10 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <array>
 #include <string>
 
+#include "oq_api_ingress_runtime.h"
 #include "oq_flow_control_logic.h"
 #include "oq_flow_pump_logic.h"
 #include "oq_heating_supply_target_logic.h"
@@ -114,6 +116,46 @@ class Runtime {
                                                         uint32_t ha_stale_s) const {
     return {this->room_control_input_(false, ot_room_fresh, ha_stale_s),
             this->room_control_input_(true, ot_setpoint_fresh, ha_stale_s)};
+  }
+
+  // Read the configured producers before using a cached start command. A
+  // newer input can arrive between publications of the selected sensors.
+  std::array<oq_input_source::NumericSample, 2> current_room_inputs(uint32_t now_ms, bool ot_room_fresh,
+                                                                    bool ot_setpoint_fresh, uint32_t ha_stale_s,
+                                                                    uint32_t api_room_stale_s,
+                                                                    uint32_t api_setpoint_stale_s) const {
+    if (!id(room_temp_source).has_state() || !id(room_setpoint_source).has_state()) return {};
+    const auto room_source = parse_source(id(room_temp_source).current_option());
+    const auto setpoint_source = parse_source(id(room_setpoint_source).current_option());
+    auto room = oq_input_source::sample_for(room_source, room_sources(ot_room_fresh, false));
+    if (room_source == oq_input_source::Source::HA)
+      room.valid = room.valid && ha_live_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha), now_ms, ha_stale_s);
+    auto setpoint = oq_input_source::sample_for(setpoint_source, room_sources(ot_setpoint_fresh, true));
+    const auto& api = oq_api_ingress::runtime();
+    if (room_source == oq_input_source::Source::API)
+      room.valid = room.valid && api.fresh(oq_api_ingress::Slot::ROOM_TEMPERATURE, now_ms, api_room_stale_s);
+    if (setpoint_source == oq_input_source::Source::API)
+      setpoint.valid = setpoint.valid && api.fresh(oq_api_ingress::Slot::ROOM_SETPOINT, now_ms, api_setpoint_stale_s);
+    if (room_source == oq_input_source::Source::MQTT)
+      room.valid = room.valid && id(oq_mqtt_config).room_input_fresh_for_start(false, now_ms);
+    if (setpoint_source == oq_input_source::Source::MQTT)
+      setpoint.valid = setpoint.valid && id(oq_mqtt_config).room_input_fresh_for_start(true, now_ms);
+    if (room_source == oq_input_source::Source::OPENTHERM) {
+      const auto receipt = id(oq_ot_slave_hub).master_room_temperature_receipt();
+      room = oq_input_source::numeric_sample(ot_room_fresh && receipt.valid, receipt.received, receipt.value);
+    }
+    if (setpoint_source == oq_input_source::Source::OPENTHERM) {
+      const auto receipt = id(oq_ot_slave_hub).master_room_setpoint_receipt();
+      setpoint =
+          oq_input_source::room_setpoint_sample(ot_setpoint_fresh && receipt.valid, receipt.received, receipt.value);
+    }
+    if (room_source == oq_input_source::Source::CIC)
+      room.valid =
+          room.valid && oq_sources::current_receipt_matches(id(cic_component).room_temperature_receipt(), room.value);
+    if (setpoint_source == oq_input_source::Source::CIC)
+      setpoint.valid = setpoint.valid &&
+                       oq_sources::current_receipt_matches(id(cic_component).room_setpoint_receipt(), setpoint.value);
+    return {room, setpoint};
   }
 
   // Register this on every source-selector and CIC URL on_value callback. It

@@ -28,8 +28,8 @@ inline CandidateModel capture(const oq_frequency_runtime::Context& frequency, fl
   const auto now = oq_sources::monotonic_ms();
   const auto& raw = oq_sources::hp1;
   const float inlet = raw.water_in.value + id(hp1_water_in_temp_offset).state, flow = raw.flow.value;
-  const bool coupled = !defrost && raw.water_in.fresh(now, 30000) && raw.flow.fresh(now, 30000) &&
-                       std::isfinite(inlet) && flow >= 300 && flow <= 3000;
+  const bool coupled =
+      series_water_available(defrost, raw.water_in.fresh(now, 30000), raw.flow.fresh(now, 30000), inlet, flow);
   return {frequency,
           id(outside_temp_selected).state,
           inlet,
