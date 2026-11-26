@@ -1,6 +1,6 @@
 import { renderSettingsSection, renderSettingsSelectField, renderSettingsSliderField, renderSettingsTimeField } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
-import { getFrequencyLimitWarning } from "../features/frequency-limits.js";
+import { getFrequencyLimitWarning, renderFrequencyLimitLevels } from "../features/frequency-limits.js";
 import { t } from "../i18n/index.js";
 
   function renderFrequencyLimitWarning(key) {
@@ -14,8 +14,8 @@ import { t } from "../i18n/index.js";
         ${showMode ? renderSettingsSelectField("silentModeOverride", t("overview.silentCardTitle"), "", "oq-settings-field--span-2") : ""}
         ${renderSettingsTimeField("silentStartTime", t("settingsSilent.startTitle"), t("settingsSilent.startCopy"))}
         ${renderSettingsTimeField("silentEndTime", t("settingsSilent.endTitle"), t("settingsSilent.endCopy"))}
-        ${renderSettingsSliderField("silentMaxHz", t("settingsSilent.maxHzNightTitle"), t("settingsSilent.maxHzNightCopy"), "", { footerMarkup: renderFrequencyLimitWarning("silentMaxHz") })}
-        ${renderSettingsSliderField("dayMaxHz", t("settingsSilent.maxHzDayTitle"), t("settingsSilent.maxHzDayCopy"), "", { footerMarkup: renderFrequencyLimitWarning("dayMaxHz") })}
+        ${renderSettingsSliderField("silentMaxHz", t("settingsSilent.maxHzNightTitle"), t("settingsSilent.maxHzNightCopy"), "", { footerMarkup: renderFrequencyLimitLevels("silentMaxHz") + renderFrequencyLimitWarning("silentMaxHz") })}
+        ${renderSettingsSliderField("dayMaxHz", t("settingsSilent.maxHzDayTitle"), t("settingsSilent.maxHzDayCopy"), "", { footerMarkup: renderFrequencyLimitLevels("dayMaxHz") + renderFrequencyLimitWarning("dayMaxHz") })}
       </div>
     `;
   }

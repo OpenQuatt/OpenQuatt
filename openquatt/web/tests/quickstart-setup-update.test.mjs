@@ -48,6 +48,7 @@ const quickStartBundle = await build({
   stdin: {
     contents: `
       export { renderQuickStartModal, renderSetupWorkspace } from "../js/src/features/quickstart.js";
+      export { getQuickStartStepHydrationKeys } from "../js/src/features/quickstart-actions.js";
       export { state } from "../js/src/core/state.js";
     `,
     loader: "js",
@@ -78,10 +79,20 @@ try {
   await rm(quickStartBundleDirectory, { force: true, recursive: true });
 }
 const {
+  getQuickStartStepHydrationKeys,
   renderQuickStartModal,
   renderSetupWorkspace,
   state: quickStartState,
 } = quickStartModule;
+
+test("Quick Start requests the compressor tables and minima for the quiet-hours sliders", () => {
+  const keys = getQuickStartStepHydrationKeys("silent");
+  for (const unit of ["hp1", "hp2"]) {
+    assert.ok(keys.includes(`${unit}AutomaticFrequencies`));
+    assert.ok(keys.includes(`${unit}MinimumHeatingHz`));
+    assert.ok(keys.includes(`${unit}MinimumCoolingHz`));
+  }
+});
 
 function textEntity(value) {
   return { state: value, value };
