@@ -1139,6 +1139,125 @@ void test_mixed_generations_dispatch_with_individual_frequency_limits() {
   assert(hp1.electrical_w + hp2.electrical_w <= tuning.peak_limit_w);
 }
 
+struct TopologyOffers {
+  std::array<float, 2> applied_solo{4500.0f, 1100.0f};
+  std::array<float, 2> better_solo{4000.0f, 900.0f};
+  std::array<float, 2> further_solo{NAN, NAN};
+  std::array<float, 2> other_solo{4000.0f, 600.0f};
+  std::array<float, 2> duo{4000.0f, 881.0f};
+  float confirmed_w = 4000.0f;
+
+  static std::array<float, 2> pair(const void* context, int a, int b) {
+    const auto& offers = *static_cast<const TopologyOffers*>(context);
+    if (a == 2 && b == 0) return offers.applied_solo;
+    if (a == 3 && b == 0) return offers.better_solo;
+    if (a == 4 && b == 0) return offers.further_solo;
+    if (a == 0 && b == 3) return offers.other_solo;
+    if (a == 1 && b == 1) return offers.duo;
+    return {NAN, NAN};
+  }
+
+  static float confirmed(const void* context, int, int, float) {
+    return static_cast<const TopologyOffers*>(context)->confirmed_w;
+  }
+};
+
+void test_voluntary_start_compares_heat_equivalent_power() {
+  auto in = input(true);
+  TopologyOffers offers;
+  in.requested_w = 4000.0f;
+  in.hp1.candidate.previous_applied_level = 2;
+  in.pair_power = &TopologyOffers::pair;
+  in.pair_context = &offers;
+  DispatchDecision proposal{1, 1, 0, Reason::BETTER_HEAT, 8000.0f, 0.0f, 4000.0f, true, false};
+  const auto check = [&](int a, int b, float pump_w = 100.0f,
+                         std::array<uint32_t, 2> comparison_levels = {UINT32_MAX, UINT32_MAX}) {
+    const auto out =
+        retain_running_topology(in, tuning(), proposal, pump_w, &TopologyOffers::confirmed, comparison_levels);
+    assert(out.hp1_level == a && out.hp2_level == b);
+    assert(out.capacity_w == proposal.capacity_w && out.deficit_w == proposal.deficit_w && out.output_valid);
+    assert(out.owner_hp == owner(a, b));
+    return out;
+  };
+
+  // A 19 W saving on a 1,000 W compressor-and-pump input keeps Solo, using
+  // the running compressor at a different level.
+  assert(check(3, 0).reason == Reason::HOLD_ACTIVE);
+  // Incident policy would clamp the retained HP1 upshift to F2.
+  in.hp1.candidate.available_for_start = false;
+  check(1, 1);
+  in.hp1.candidate.available_for_start = true;
+  check(1, 1, 0.0f);
+  offers.duo[1] = 880.0f;
+  check(1, 1);
+
+  // The incumbent must meet the heat band with its extra reserve.
+  offers.duo[1] = 940.0f;
+  offers.better_solo[0] = 3850.0f;
+  check(3, 0);
+  offers.better_solo[0] = 3849.0f;
+  check(1, 1);
+  offers.better_solo[0] = 4000.0f;
+
+  // Keep a comparable current command to avoid an unnecessary modulation.
+  offers.applied_solo = {4000.0f, 904.0f};
+  assert(check(2, 0).expected_w == 4000.0f);
+  check(1, 1, NAN);
+  offers.applied_solo[1] = offers.better_solo[1] = 0.0f;
+  check(1, 1);
+
+  // Progressively closer heat offers must not drift the power reference
+  // upwards by two successive near-ties of less than one watt each.
+  offers.applied_solo = {3900.0f, 875.0f};  // 1,000.0 W at 4 kW heat
+  offers.better_solo = {3950.0f, 888.38875f};
+  offers.further_solo = {4000.0f, 901.8f};
+  offers.duo = {4000.0f, 881.5f};
+  check(2, 0);
+
+  // Both the actual proposed pair and the retained offer must pass the
+  // frequency filters supplied by the runtime for their respective units.
+  check(1, 1, 100.0f, {1U, UINT32_MAX});
+  check(1, 1, 100.0f, {UINT32_MAX, 1U});
+  constexpr uint32_t zero_and_first = (1U << 0) | (1U << 1);
+  check(1, 1, 100.0f, {zero_and_first, zero_and_first});
+  offers.further_solo[1] = 899.0f;
+  check(4, 0, 100.0f, {zero_and_first | (1U << 4), zero_and_first});
+}
+
+void test_voluntary_stop_needs_a_comparable_proposed_owner() {
+  auto in = input(true);
+  TopologyOffers offers;
+  in.requested_w = 4000.0f;
+  in.hp1.candidate.previous_applied_level = in.hp2.candidate.previous_applied_level = 1;
+  in.pair_power = &TopologyOffers::pair;
+  in.pair_context = &offers;
+  DispatchDecision proposal{3, 0, 1, Reason::BETTER_HEAT, 8000.0f, 0.0f, 4000.0f, true, false};
+  const auto check = [&](int a, int b) {
+    const auto out = retain_running_topology(in, tuning(), proposal, 100.0f, &TopologyOffers::confirmed);
+    assert(out.hp1_level == a && out.hp2_level == b);
+  };
+
+  // HP2 could provide cheaper Solo heat. The proposed stop switches to HP1,
+  // so only HP1's projected power can justify it.
+  check(1, 1);
+  offers.confirmed_w = 3750.0f;
+  check(3, 0);
+  offers.confirmed_w = 4000.0f;
+  in.hp2.candidate.must_stop = true;
+  check(3, 0);
+  in.hp2.candidate.must_stop = false;
+  proposal.reason = Reason::SOFT_GUARD;
+  check(3, 0);
+  proposal.reason = Reason::BETTER_HEAT;
+  proposal.saturated = true;
+  check(3, 0);
+  proposal.saturated = false;
+  in.hp2.candidate.previous_applied_level = 0;
+  proposal.hp1_level = 0;
+  proposal.hp2_level = 3;
+  check(0, 3);
+}
+
 }  // namespace
 int main() {
   test_cold_weather_request_reaches_dispatch_and_deficit();
@@ -1165,5 +1284,7 @@ int main() {
   test_cold_weather_boiler_assist_tracks_remaining_demand();
   test_duo_holds_and_boost();
   test_duo_replays_1203_field_vector();
+  test_voluntary_start_compares_heat_equivalent_power();
+  test_voluntary_stop_needs_a_comparable_proposed_owner();
   return 0;
 }

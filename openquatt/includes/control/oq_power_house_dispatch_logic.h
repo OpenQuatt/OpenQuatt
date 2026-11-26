@@ -419,6 +419,71 @@ inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tu
     }
   return chosen;
 }
+// Gate only voluntary changes in the number of running compressors. Compare
+// compressor and common pump energy per delivered unit of heat.
+inline DispatchDecision retain_running_topology(const DispatchInput& in, const DispatchTuning& tuning,
+                                                DispatchDecision proposed, float pump_w, ConfirmedPower confirmed_power,
+                                                std::array<uint32_t, 2> comparison_levels = {UINT32_MAX, UINT32_MAX}) {
+  const int hp1 = applied_level(in.hp1), hp2 = applied_level(in.hp2);
+  const int current_count = topology(hp1, hp2), next_count = topology(proposed.hp1_level, proposed.hp2_level);
+  if (!in.duo || !in.performance_valid || !in.pair_power || !proposed.output_valid || proposed.saturated ||
+      !in.hp1.candidate.available_for_start || !in.hp2.candidate.available_for_start || current_count == 0 ||
+      next_count == 0 || current_count == next_count || !std::isfinite(pump_w) || pump_w < 0.0f ||
+      !std::isfinite(in.requested_w) || in.requested_w <= 0.0f ||
+      (proposed.reason != Reason::BETTER_HEAT && proposed.reason != Reason::LESS_POWER))
+    return proposed;
+
+  constexpr float minimum_switch_saving = 0.02f;
+  constexpr float heat_reserve_w = 50.0f;
+  const float heat_band_w = std::max(150.0f, 0.05f * in.requested_w);
+  const auto comparable = [&](const Candidate& candidate, float max_error_w) {
+    return candidate.valid && candidate.over_soft_w <= 0.0f && candidate.thermal_w > 0.0f &&
+           candidate.electrical_w > 0.0f && candidate.error_w <= max_error_w &&
+           (comparison_levels[0] & (1U << candidate.hp1_level)) != 0U &&
+           (comparison_levels[1] & (1U << candidate.hp2_level)) != 0U;
+  };
+  const auto score = [&](const Candidate& candidate) {
+    return (candidate.electrical_w + pump_w) * in.requested_w / candidate.thermal_w;
+  };
+  const auto next = make_candidate(in, tuning, proposed.hp1_level, proposed.hp2_level, in.requested_w);
+  if (!comparable(next, heat_band_w)) return proposed;
+  if (next_count == 1) {
+    if (!confirmed_power) return proposed;
+    const float confirmed = confirmed_power(in.pair_context, next.hp1_level, next.hp2_level, next.thermal_w);
+    if (!std::isfinite(confirmed) || confirmed < 0.0f || confirmed + heat_band_w < in.requested_w) return proposed;
+  }
+
+  Candidate keep;
+  float keep_power = INFINITY;
+  const float incumbent_band_w = heat_band_w - heat_reserve_w;
+  for (int a = hp1 > 0 ? 1 : 0; a <= (hp1 > 0 ? kMaxLevel : 0); ++a) {
+    for (int b = hp2 > 0 ? 1 : 0; b <= (hp2 > 0 ? kMaxLevel : 0); ++b) {
+      const auto candidate = make_candidate(in, tuning, a, b, in.requested_w);
+      if (!comparable(candidate, incumbent_band_w)) continue;
+      const float power = score(candidate);
+      if (power < keep_power || (power == keep_power && candidate.error_w < keep.error_w)) {
+        keep = candidate;
+        keep_power = power;
+      }
+    }
+  }
+  const float next_power = score(next);
+  const auto justifies_switch = [&](float power) { return power - next_power >= minimum_switch_saving * power; };
+  if (!keep.valid || !std::isfinite(next_power) || justifies_switch(keep_power)) return proposed;
+
+  // Prefer the current levels if their scores are within the comparison precision.
+  const auto current = make_candidate(in, tuning, hp1, hp2, in.requested_w);
+  if (comparable(current, std::min(incumbent_band_w, keep.error_w + heat_reserve_w)) &&
+      score(current) <= keep_power + 5.0f && !justifies_switch(score(current)))
+    keep = current;
+  proposed.hp1_level = keep.hp1_level;
+  proposed.hp2_level = keep.hp2_level;
+  proposed.owner_hp = owner(keep.hp1_level, keep.hp2_level);
+  proposed.reason = Reason::HOLD_ACTIVE;
+  proposed.expected_w = keep.thermal_w;
+  return proposed;
+}
+
 inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tuning, bool* model_available = nullptr) {
   if (!in.performance_valid || !electrical_limits_valid(tuning)) return 0.0f;
   float capacity_w = 0.0f;

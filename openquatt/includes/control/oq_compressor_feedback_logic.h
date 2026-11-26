@@ -55,6 +55,10 @@ struct Response {
 
 class Observer {
  public:
+  bool running_for(uint32_t now_ms, uint32_t duration_ms) const {
+    return this->continuous_run_ && static_cast<uint32_t>(now_ms - this->run_since_ms_) >= duration_ms;
+  }
+
   Snapshot observe(const std::array<uint8_t, kLevels>& nominal, uint8_t variant, const Observation& in) {
     if (nominal != this->nominal_ || variant != this->variant_) {
       *this = {};

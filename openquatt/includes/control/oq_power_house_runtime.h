@@ -7,7 +7,9 @@
 #include "esphome/components/openquatt_decision_log/OpenQuattHeatingStop.h"
 #include "esphome/components/openquatt_debug_recorder/warmup_diagnostics.h"
 
+#include "../diagnostics/oq_pump_ipwm_feedback.h"
 #include "../performance/hp_perf_frequency.h"
+#include "../performance/oq_energy_logic.h"
 #include "../performance/oq_water_performance_runtime.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_heat_intent_runtime.h"
@@ -599,9 +601,63 @@ class Runtime {
       }
     }
 #endif
-    const auto dispatch = oq_power_house_dispatch::decide_dispatch(
-        dispatch_input, dispatch_tuning, this->dispatch_state_, &oq_water_performance::CandidateModel::confirmed_power,
-        pending_single, handoff_evidence);
+    auto dispatch = oq_power_house_dispatch::decide_dispatch(dispatch_input, dispatch_tuning, this->dispatch_state_,
+                                                             &oq_water_performance::CandidateModel::confirmed_power,
+                                                             pending_single, handoff_evidence);
+#if OQ_TOPOLOGY_DUO
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+    const auto current_topology = oq_power_house_dispatch::topology(retained_hp1, retained_hp2);
+    const auto next_topology = oq_power_house_dispatch::topology(dispatch.hp1_level, dispatch.hp2_level);
+    if (current_topology > 0 && next_topology > 0 && current_topology != next_topology && automatic_handoff &&
+        this->dispatch_state_.handoff_incumbent == 0 && model.coupled && water_guard_clear &&
+        dispatch_input.hp1.fixed_level == 0 && dispatch_input.hp2.fixed_level == 0 && !id(oq_lowflow_fault_active) &&
+        demand_input.water_limit_factor >= 0.999f && !any_resume_pending && !id(oq_cold_start_pending) &&
+        !id(oq_cold_start_hp_blocked) && !id(oq_cold_start_assist_active) && !protection_hold && !hp1_valve_defrost &&
+        !hp2_valve_defrost && !hp1_defrost_active && !hp2_defrost_active && !hp1_candidate.must_stop &&
+        !hp2_candidate.must_stop && !hp1_candidate.link_suspect && !hp2_candidate.link_suspect && !warming &&
+        heating_allowed && demand.valid && room_inputs_valid && !id(oq_outside_temp_selected_hold_active) &&
+        id(flow_source).current_option() == "Outdoor unit" && id(water_supply_source).current_option() == "Local") {
+      const auto receipt_now = oq_sources::monotonic_ms();
+      const auto& first = oq_sources::hp1;
+      const auto& second = oq_sources::hp2;
+      const auto supply = oq_sensor_source::runtime().system_supply_receipt();
+      const auto pump_power = [&](float raw, uint32_t updated) {
+        if (!oq_energy::measurement_fresh(now_ms, updated, kTopologyReceiptAgeMs) || !std::isfinite(raw) ||
+            raw < 50.0f || raw > 750.0f)
+          return NAN;
+        return oq_pump_ipwm::decode(static_cast<uint16_t>(raw)).power_w;
+      };
+      if (first.water_in.fresh(receipt_now, kTopologyReceiptAgeMs) &&
+          first.flow.fresh(receipt_now, kTopologyReceiptAgeMs) &&
+          first.water_out.fresh(receipt_now, kTopologyReceiptAgeMs) &&
+          second.water_out.fresh(receipt_now, kTopologyReceiptAgeMs) &&
+          supply.fresh(receipt_now, kTopologyReceiptAgeMs) &&
+          topology_feedback_ready_(1U, retained_hp1, feedback[0], now_ms, receipt_now) &&
+          topology_feedback_ready_(2U, retained_hp2, feedback[1], now_ms, receipt_now)) {
+        const float pump_w = pump_power(id(hp1_pump_ipwm_feedback_raw).state, id(hp1_pump_feedback_last_update_ms)) +
+                             pump_power(id(hp2_pump_ipwm_feedback_raw).state, id(hp2_pump_feedback_last_update_ms));
+        const auto comparison_levels = [&](size_t index) {
+          const auto variant = model.variants[index];
+          if (outside_c > 5.0f ||
+              (variant != oq_odu::Variant::V2_OLD_MODEL && variant != oq_odu::Variant::V2_NEW_MODEL))
+            return UINT32_MAX;
+          // Low-frequency V2 heat predictions around freezing can differ
+          // substantially from measured output, including after a learned override.
+          uint32_t levels = 1U;  // Zero is always available to the comparison.
+          for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
+            if (frequency.automatic_frequency_hz(index == 0, 2, level) >= 30 && model.hz[index][level] >= 30 &&
+                model.confirmed_hz[index][level] >= 30)
+              levels |= 1U << level;
+          }
+          return levels;
+        };
+        dispatch = oq_power_house_dispatch::retain_running_topology(
+            dispatch_input, dispatch_tuning, dispatch, pump_w, &oq_water_performance::CandidateModel::confirmed_power,
+            {comparison_levels(0), comparison_levels(1)});
+      }
+    }
+#endif
+#endif
     if (log_warmup_power) {
       ESP_LOGI("quatt.warmup",
                "power path=%s room=%.2f final=%.2f step=%.2f boost=%.2f effective=%.2f kp=%.0f below=%.2f base=%.0f "
@@ -770,6 +826,28 @@ class Runtime {
   }
 
  private:
+#if OQ_TOPOLOGY_DUO
+#if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+  static constexpr uint32_t kTopologyReceiptAgeMs = 25000;
+
+  bool topology_feedback_ready_(uint8_t hp, int applied, const oq_compressor_feedback::Snapshot& feedback,
+                                uint32_t now_ms, uint64_t receipt_now) const {
+    const auto& receipts = hp == 1 ? oq_sources::hp1 : oq_sources::hp2;
+    if (!receipts.working_mode.fresh(receipt_now, kTopologyReceiptAgeMs) ||
+        !receipts.compressor_frequency.fresh(receipt_now, kTopologyReceiptAgeMs))
+      return false;
+    const auto incident = id(oq_incident_manager).get_outputs(hp);
+    if (applied <= 0)
+      return incident.link_state == oq_incidents::LinkState::HEALTHY && incident.stop_confirmed &&
+             !incident.stop_confirmation_pending && !incident.stop_unconfirmed && !incident.running_confirmed &&
+             receipts.working_mode.value == 0.0f && receipts.compressor_frequency.value == 0.0f;
+    constexpr uint32_t stable_run_ms = 400000;
+    return incident.running_confirmed && receipts.working_mode.value == 2.0f &&
+           receipts.compressor_frequency.value > 3.0f && !feedback.missing && feedback.qualified_run &&
+           this->compressor_feedback_[hp - 1].running_for(now_ms, stable_run_ms);
+  }
+#endif
+#endif
   std::array<oq_compressor_feedback::Snapshot, 2> observe_compressor_feedback_(
       const oq_frequency_runtime::Context& frequency, uint32_t now_ms) {
     const auto capture_feedback = [&](bool hp1, int applied, bool defrost, bool valve_defrost) {
