@@ -83,6 +83,7 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
     "configs/heatpump_controller_q/duo.yaml": (
         "substitutions",
         "esphome",
+        "esp32",
         "packages",
     ),
     "openquatt/base/common.yaml": (

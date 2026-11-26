@@ -9,6 +9,11 @@ substitutions:
 esphome:
   build_path: ../../../.esphome/build/heatpump_controller_q_duo
 
+esp32:
+  framework:
+    sdkconfig_options:
+      CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY: y
+
 packages:
   openquatt_substitutions_common: !include ../../openquatt/oq_substitutions_common_package.yaml
   openquatt_profile_heatpump_controller_q: !include ../../openquatt/profiles/heatpump_controller_q.yaml
