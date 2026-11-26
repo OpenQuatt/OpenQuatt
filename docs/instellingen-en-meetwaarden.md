@@ -352,6 +352,13 @@ De signalen kunnen gelijktijdig actief zijn en worden weer inactief zodra de
 bijbehorende actuele conditie is hersteld. Een eerder gedetecteerde maar alleen
 nog gelatchte melding houdt `Compressor cycling warning` niet actief.
 
+De tellers voor gemeten compressorstarts van de afgelopen 2, 6, 24 en 72 uur
+gebruiken PSRAM. Als OpenQuatt daarvoor geen geheugen kan reserveren, tonen
+deze tellers een onbekende waarde en verschijnt een foutmelding in het log.
+De waarschuwingen voor de vensters van 2 en 72 uur kunnen dan geen alarm
+afleiden. De waarschuwing voor afwisselende starts bij Duo en de begrenzer
+voor startopdrachten blijven actief.
+
 ## Wanneer zit je waarschijnlijk in de verkeerde laag?
 
 Gebruik deze vuistregels:
