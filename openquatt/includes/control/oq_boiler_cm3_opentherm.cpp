@@ -27,8 +27,11 @@ Decision Control::tick(const Inputs& in) {
   const float minimum_w = nominal_minimum_w(in.capacity_kw, in.minimum_modulation_pct);
   const bool thermal_data_valid = isfinite(in.inlet_c) && isfinite(in.outlet_c) && isfinite(in.flow_lph) &&
                                   isfinite(in.maximum_water_c) && isfinite(in.water_cp_j_per_kgk);
-  // Keep the normal target on boilers without the telemetry needed for this policy.
-  managed_ |= in.heat_requested && in.status_valid && thermal_data_valid && isfinite(minimum_w);
+  const bool telemetry_valid = in.status_valid && thermal_data_valid && isfinite(minimum_w);
+  if (in.heat_requested && isfinite(in.ordinary_target_c)) ordinary_target_c_ = in.ordinary_target_c;
+  // Boilers without this telemetry can use the ordinary controller. Once CM3
+  // has taken over, require fresh feedback to run under this policy.
+  managed_ |= in.heat_requested && telemetry_valid;
   if (!managed_) return {};
 
   const uint32_t elapsed_ms = have_tick_ ? in.now_ms - previous_tick_ms_ : 0;
@@ -55,20 +58,36 @@ Decision Control::tick(const Inputs& in) {
   const bool room_below_target = isfinite(in.room_c) && isfinite(in.setpoint_c) && in.room_c < in.setpoint_c;
   const bool dose = in.requested_power_w < minimum_w;
 
-  if (!in.heat_requested || !in.flow_sufficient || waiting_for_setpoint_command_ || (dose && !room_below_target)) {
+  if (!in.flow_sufficient) {
     energy_ws_ = 0.0f;
     return stop();
   }
-  if (elapsed_ms > kMaximumTickGapMs || !thermal_data_valid || !isfinite(minimum_w) || !in.status_valid ||
-      in.dhw_active || in.fault_active) {
+  if (!telemetry_valid && (in.heat_requested || in.minimum_on_active)) {
+    discard_credit();
+    return stop(false, oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE);
+  }
+  if (elapsed_ms > kMaximumTickGapMs || in.dhw_active || in.fault_active) {
     discard_credit();
     return stop();
   }
 
   const float ceiling_c = in.maximum_water_c - kWaterLimitReserveC;
+  if (running_ && in.outlet_c >= in.maximum_water_c - kOutletCutoffReserveC) return failed(in.now_ms);
+  if (!in.heat_requested || waiting_for_setpoint_command_ || (dose && !room_below_target)) {
+    energy_ws_ = 0.0f;
+    // Keep CH on for a normal stop within the minimum run time, dropping
+    // ignition boost immediately. Do not ignite during defrost or hot water.
+    if (in.minimum_on_active && telemetry_valid && (!in.defrost_active || in.flame_on) &&
+        in.outlet_c < in.maximum_water_c - kOutletCutoffReserveC && isfinite(ordinary_target_c_)) {
+      const float hold_c = fminf(ordinary_target_c_, ceiling_c);
+      target_c_ = running_ ? fminf(target_c_, hold_c) : hold_c;
+      return {true, target_c_, oq_boiler::BLOCK_MIN_ON_TIME};
+    }
+    return stop();
+  }
+
   const auto target = oq_boiler::target_from_power(fmaxf(in.requested_power_w, minimum_w), in.capacity_kw * 1000.0f,
                                                    in.inlet_c, in.flow_lph, in.water_cp_j_per_kgk, ceiling_c);
-  if (running_ && in.outlet_c >= in.maximum_water_c - kOutletCutoffReserveC) return failed(in.now_ms);
   if (!isfinite(in.requested_power_w) || in.requested_power_w <= 0.0f || !target.valid ||
       target.requested_power_w < minimum_w) {
     discard_credit();

@@ -10,6 +10,7 @@ struct Inputs {
   bool heat_requested = false;
   bool start_allowed = false;
   bool ch_applied = false;
+  bool minimum_on_active = false;
   bool status_valid = false;
   bool flame_on = false;
   bool dhw_active = false;
@@ -25,6 +26,7 @@ struct Inputs {
   float flow_lph = NAN;
   float water_cp_j_per_kgk = NAN;
   float maximum_water_c = NAN;
+  float ordinary_target_c = NAN;
   float room_c = NAN;
   float setpoint_c = NAN;
 };
@@ -32,11 +34,19 @@ struct Inputs {
 struct Decision {
   bool managed = false;
   float target_c = NAN;
+  oq_boiler::BlockReason block_reason = oq_boiler::BLOCK_NONE;
 };
 
 class Control {
  public:
   bool running() const { return running_; }
+
+  void withdraw_output() {
+    // A temporary pause or link outage does not change the selected boiler.
+    const bool managed = managed_;
+    *this = {};
+    managed_ = managed;
+  }
 
   Decision tick(const Inputs& in);
 
@@ -51,11 +61,11 @@ class Control {
 
   void discard_credit() { energy_ws_ = fminf(0.0f, energy_ws_); }
 
-  Decision stop(bool account_residual_heat = false) {
+  Decision stop(bool account_residual_heat = false, oq_boiler::BlockReason block_reason = oq_boiler::BLOCK_NONE) {
     running_ = false;
     flame_seen_ = false;
     residual_heat_active_ = account_residual_heat;
-    return {true};
+    return {true, NAN, block_reason};
   }
 
   Decision failed(uint32_t now_ms, bool early_flame_loss = false) {
@@ -86,6 +96,7 @@ class Control {
   float energy_ws_ = 0.0f;
   float setpoint_c_ = NAN;
   float target_c_ = NAN;
+  float ordinary_target_c_ = NAN;
 };
 
 inline void apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::ControllerDecision& decision,
@@ -107,7 +118,12 @@ inline void apply(Control& control, bool cm3_context, const Inputs& in, oq_boile
   if (!cm3.managed || decision.force_off) return;
   output_target_c = cm3.target_c;
   decision.output_active = isfinite(output_target_c);
-  if (!decision.output_active && decision.desired_active && decision.block_reason == oq_boiler::BLOCK_NONE) {
+  if (cm3.block_reason != oq_boiler::BLOCK_NONE) {
+    decision.block_reason = cm3.block_reason;
+    decision.blocked = cm3.block_reason == oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE;
+  } else if (!decision.output_active && decision.block_reason == oq_boiler::BLOCK_MIN_ON_TIME) {
+    decision.block_reason = oq_boiler::BLOCK_NO_HEAT_REQUEST;
+  } else if (!decision.output_active && decision.desired_active && decision.block_reason == oq_boiler::BLOCK_NONE) {
     decision.block_reason = oq_boiler::BLOCK_CM3_OPENTHERM_WAITING;
     decision.blocked = false;
   }

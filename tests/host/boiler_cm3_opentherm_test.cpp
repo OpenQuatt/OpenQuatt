@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <math.h>
 
+#include <initializer_list>
+
 #include "../../openquatt/includes/control/oq_boiler_cm3_opentherm.cpp"
 
 namespace {
@@ -30,6 +32,7 @@ Inputs field_inputs() {
   in.flow_lph = kFlowLph;
   in.water_cp_j_per_kgk = kCp;
   in.maximum_water_c = 55.0f;
+  in.ordinary_target_c = in.inlet_c + in.requested_power_w / kConductance;
   in.room_c = 17.24f;
   in.setpoint_c = 18.5f;
   return in;
@@ -280,6 +283,135 @@ void test_idle_setpoint_drop_waits_for_refreshed_strategy_command() {
   assert(isfinite(control.tick(in).target_c));
 }
 
+void test_normal_cm3_stops_respect_minimum_on_time() {
+  enum StopCause { WITHDRAWN_REQUEST, DOSE_ROOM_SATISFIED, SETPOINT_REDUCED };
+  for (auto cause : {WITHDRAWN_REQUEST, DOSE_ROOM_SATISFIED, SETPOINT_REDUCED}) {
+    Control control;
+    auto in = field_inputs();
+    const float ordinary_c = in.ordinary_target_c;
+    const uint32_t started_ms = in.now_ms;
+    auto output_c = ordinary_c;
+    auto start = oq_boiler::ControllerDecision{true, true, true, false, false, oq_boiler::BLOCK_NONE};
+    oq_boiler_cm3_opentherm::apply(control, true, in, start, output_c);
+    assert(start.output_active && output_c > ordinary_c);
+
+    in.ch_applied = in.flame_on = true;
+    if (cause == WITHDRAWN_REQUEST) {
+      in.heat_requested = false;
+      in.ordinary_target_c = NAN;  // The idle PH command carries no target.
+    } else if (cause == DOSE_ROOM_SATISFIED) {
+      in.room_c = in.setpoint_c;
+      in.requested_power_w = 1800.0f;
+      in.ordinary_target_c = in.inlet_c + in.requested_power_w / kConductance;
+    } else {
+      in.setpoint_c -= 0.5f;
+    }
+    constexpr uint32_t minimum_on_ms = 30000;
+    for (uint32_t age_ms = kTickMs; age_ms <= minimum_on_ms; age_ms += kTickMs) {
+      in.now_ms = started_ms + age_ms;
+      in.minimum_on_active = oq_boiler::minimum_time_active(in.now_ms, started_ms, minimum_on_ms);
+      const auto normal_reason = in.heat_requested      ? oq_boiler::BLOCK_NONE
+                                 : in.minimum_on_active ? oq_boiler::BLOCK_MIN_ON_TIME
+                                                        : oq_boiler::BLOCK_NO_HEAT_REQUEST;
+      oq_boiler::ControllerDecision normal{true,  in.heat_requested, in.heat_requested || in.minimum_on_active, false,
+                                           false, normal_reason};
+      oq_boiler_cm3_opentherm::apply(control, true, in, normal, output_c);
+      assert(normal.output_active == in.minimum_on_active && !normal.blocked);
+      if (in.minimum_on_active) {
+        assert(normal.block_reason == oq_boiler::BLOCK_MIN_ON_TIME);
+        assert(output_c == (cause == DOSE_ROOM_SATISFIED ? in.ordinary_target_c : ordinary_c));
+      } else {
+        assert(isnan(output_c));
+        assert(normal.block_reason ==
+               (in.heat_requested ? oq_boiler::BLOCK_CM3_OPENTHERM_WAITING : oq_boiler::BLOCK_NO_HEAT_REQUEST));
+      }
+    }
+  }
+}
+
+void test_cm3_lost_feedback_is_reported_and_overrides_minimum_on() {
+  enum LostField { OUTLET, INLET, CAPACITY, STATUS };
+  for (auto lost : {OUTLET, INLET, CAPACITY, STATUS}) {
+    Control control;
+    auto in = field_inputs();
+    assert(isfinite(control.tick(in).target_c));
+    in.now_ms += kTickMs;
+    in.minimum_on_active = in.ch_applied = true;
+    auto valid = in;
+    if (lost == OUTLET) in.outlet_c = NAN;
+    if (lost == INLET) in.inlet_c = NAN;
+    if (lost == CAPACITY) in.capacity_kw = NAN;
+    if (lost == STATUS) in.status_valid = false;
+    constexpr auto telemetry_unavailable = oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE;
+    float output_c = in.ordinary_target_c;
+    for (int tick = 0; tick < 30; ++tick) {
+      auto normal = oq_boiler::ControllerDecision{true, true, true, false, false, oq_boiler::BLOCK_NONE};
+      oq_boiler_cm3_opentherm::apply(control, true, in, normal, output_c);
+      assert(!normal.output_active && !normal.force_off && normal.blocked &&
+             normal.block_reason == telemetry_unavailable);
+      assert(isnan(output_c));
+      in.now_ms += kTickMs;
+      in.minimum_on_active = in.ch_applied = false;
+    }
+
+    // Returning telemetry cannot bypass the ordinary minimum-off time.
+    valid.now_ms = in.now_ms;
+    valid.minimum_on_active = valid.ch_applied = valid.start_allowed = false;
+    auto resting = oq_boiler::ControllerDecision{true, true, false, false, true, oq_boiler::BLOCK_MIN_OFF_TIME};
+    oq_boiler_cm3_opentherm::apply(control, true, valid, resting, output_c);
+    assert(!resting.output_active && resting.block_reason == oq_boiler::BLOCK_MIN_OFF_TIME && isnan(output_c));
+    valid.now_ms += kTickMs;
+    valid.start_allowed = true;
+    auto recovered = oq_boiler::ControllerDecision{true, true, true, false, false, oq_boiler::BLOCK_NONE};
+    oq_boiler_cm3_opentherm::apply(control, true, valid, recovered, output_c);
+    assert(recovered.output_active && !recovered.blocked && isfinite(output_c));
+  }
+}
+
+void test_cm3_minimum_on_does_not_hold_an_unsafe_output() {
+  enum Inhibit { DHW, FAULT, DEFROST, HOT_OUTLET, LOW_FLOW };
+  for (auto reason : {DHW, FAULT, DEFROST, HOT_OUTLET, LOW_FLOW}) {
+    Control control;
+    auto in = field_inputs();
+    assert(isfinite(control.tick(in).target_c));
+    in.now_ms += kTickMs;
+    in.ch_applied = in.minimum_on_active = true;
+    in.heat_requested = false;
+    in.dhw_active = reason == DHW;
+    in.fault_active = reason == FAULT;
+    in.defrost_active = reason == DEFROST;
+    if (reason == HOT_OUTLET) in.outlet_c = in.maximum_water_c - 0.5f;
+    in.flow_sufficient = reason != LOW_FLOW;
+    auto hold = oq_boiler::ControllerDecision{true, false, true, false, false, oq_boiler::BLOCK_MIN_ON_TIME};
+    auto output_c = in.ordinary_target_c;
+    oq_boiler_cm3_opentherm::apply(control, true, in, hold, output_c);
+    assert(!hold.output_active && isnan(output_c) && hold.block_reason != oq_boiler::BLOCK_MIN_ON_TIME);
+  }
+}
+
+void test_cm3_link_recovery_requires_thermal_feedback() {
+  Control control;
+  auto in = field_inputs();
+  assert(isfinite(control.tick(in).target_c));
+  control.withdraw_output();  // Selected OpenTherm link lost.
+  assert(!control.running());
+  in.now_ms += kTickMs;
+  in.status_valid = in.heat_requested = in.start_allowed = false;
+  assert(isnan(control.tick(in).target_c));
+
+  control.withdraw_output();  // STATUS returns and the transport rearms.
+  in.now_ms += 120000;
+  in.status_valid = in.heat_requested = in.start_allowed = true;
+  in.outlet_c = NAN;
+  auto decision = control.tick(in);
+  assert(decision.managed && isnan(decision.target_c));
+  assert(decision.block_reason == oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE);
+
+  in.now_ms += kTickMs;
+  in.outlet_c = 31.4f;
+  assert(isfinite(control.tick(in).target_c));
+}
+
 void test_staggered_cm4_handover_and_force_off() {
   Control control;
   auto in = field_inputs();
@@ -408,6 +540,10 @@ int main() {
   test_preferred_boost_is_capped_for_warm_inlet();
   test_defrost_dhw_and_setpoint_drop();
   test_idle_setpoint_drop_waits_for_refreshed_strategy_command();
+  test_normal_cm3_stops_respect_minimum_on_time();
+  test_cm3_lost_feedback_is_reported_and_overrides_minimum_on();
+  test_cm3_minimum_on_does_not_hold_an_unsafe_output();
+  test_cm3_link_recovery_requires_thermal_feedback();
   test_staggered_cm4_handover_and_force_off();
   test_failed_ignition_observes_retry_rest();
   test_flame_loss_then_flow_confirmation_uses_normal_off_time();

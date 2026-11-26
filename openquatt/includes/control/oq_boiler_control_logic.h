@@ -177,6 +177,7 @@ inline BoilerLogDecision classify_boiler_controller_log(const BoilerControllerLo
     case BLOCK_OPENTHERM_NOT_VERIFIED:
     case BLOCK_OPENTHERM_LINK_LOST:
     case BLOCK_BOILER_TEMPERATURE_UNAVAILABLE:
+    case BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE:
       reason = BoilerLogReason::SENSOR_FALLBACK;
       break;
     case BLOCK_ASSIST_DISABLED:

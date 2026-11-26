@@ -54,6 +54,7 @@ enum BlockReason : uint8_t {
   // BLOCK_TARGET_SATISFIED this is a normal control stop, not a fault.
   BLOCK_TARGET_HOLD_OFF = 26,
   BLOCK_CM3_OPENTHERM_WAITING = 27,
+  BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE = 28,
 };
 
 enum BoilerStartThermalState : uint8_t {
@@ -486,6 +487,8 @@ inline const char* block_reason_text(uint8_t reason) {
       return "requested boiler target temperature satisfied";
     case BLOCK_CM3_OPENTHERM_WAITING:
       return "CM3 OpenTherm waiting for heating window";
+    case BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE:
+      return "CM3 OpenTherm boiler telemetry unavailable";
     case BLOCK_TARGET_HOLD_OFF:
       return "boiler target control holding off inside target band";
     case BLOCK_TRANSPORT_SETTLING:
