@@ -1,4 +1,4 @@
-import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive } from "../core/app-shared.js";
+import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive, isHeatPumpDefrosting } from "../core/app-shared.js";
 import { HP_PANEL_CONFIGS } from "../core/config.js";
 import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
@@ -19,8 +19,8 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
 import { renderStatCard } from "./stat-card.js";
 
   export function getHeatPumpRuntimeModel(title, keys, accent) {
-    const mode = formatWorkingMode(getEntityStateText(keys.mode, "Unknown"));
-    const defrostActive = isEntityActive(keys.defrost);
+    const defrostActive = isHeatPumpDefrosting(keys);
+    const mode = defrostActive ? t("heatpump.modeDefrost") : formatWorkingMode(getEntityStateText(keys.mode, "Unknown"));
     const failures = formatFailures(getEntityStateText(keys.failures, "None"));
     const warningFailures = formatWarningFailures(failures);
     const running = mode === t("heatpump.modeHeating") || mode === t("heatpump.modeCooling") || defrostActive;
@@ -47,6 +47,9 @@ import { renderStatCard } from "./stat-card.js";
     if (defrostActive) {
       return t("heatpump.summaryDefrost");
     }
+    if (mode === t("heatpump.modeDefrostTransition")) {
+      return t("heatpump.summaryDefrostTransition");
+    }
     if (mode === t("heatpump.modeHeating")) {
       return t("heatpump.summaryHeating");
     }
@@ -63,7 +66,7 @@ import { renderStatCard } from "./stat-card.js";
     if (!Array.isArray(heatPumpPanels) || heatPumpPanels.length === 0) {
       return "";
     }
-    return `<p class="oq-overview-hp-summary">${escapeHtml(heatPumpPanels.map((panel) => `${panel.title} ${formatHeatPumpSummaryMode(formatWorkingMode(getEntityStateText(panel.keys.mode, "Unknown")), isEntityActive(panel.keys.defrost))}`).join(", "))}</p>`;
+    return `<p class="oq-overview-hp-summary">${escapeHtml(heatPumpPanels.map((panel) => `${panel.title} ${formatHeatPumpSummaryMode(formatWorkingMode(getEntityStateText(panel.keys.mode, "Unknown")), isHeatPumpDefrosting(panel.keys))}`).join(", "))}</p>`;
   }
 
   export function formatComponentPositionLabel(key) {
@@ -98,6 +101,9 @@ import { renderStatCard } from "./stat-card.js";
     }
     if (raw === "Cooling") {
       return t("heatpump.modeCooling");
+    }
+    if (raw === "Defrost") {
+      return t("heatpump.modeDefrostTransition");
     }
     return raw;
   }
@@ -404,7 +410,7 @@ import { renderStatCard } from "./stat-card.js";
     const efficiencyValue = mode === t("heatpump.modeCooling")
       ? ((!Number.isNaN(powerValue) && powerValue >= 5.0 && !Number.isNaN(coolingValue)) ? (coolingValue / powerValue) : Number.NaN)
       : getLiveHeatingCopValue(keys.cop);
-    const efficiencyText = formatNumericState(efficiencyValue, 1);
+    const efficiencyText = defrostActive ? t("heatpump.copNotApplicable") : formatNumericState(efficiencyValue, 1);
     const efficiencyLabel = mode === t("heatpump.modeCooling") ? t("overview.topCopEer") : t("overview.topCop");
     const heatLabel = mode === t("heatpump.modeCooling") ? t("heatpump.heatCoolLabel") : t("heatpump.heatWarmLabel");
     const heatDescription = mode === t("heatpump.modeCooling") ? t("heatpump.heatCoolNote") : t("heatpump.heatWarmNote");
@@ -778,7 +784,7 @@ import { renderStatCard } from "./stat-card.js";
           ${renderOverviewStatCards([
             { key: keys.power, label: t("heatpump.compactPower"), tone: "blue", note: t("heatpump.compactPowerNote") },
             { key: thermalKey, label: schematicModel.heatLabel, tone: "orange", note: schematicModel.heatDescription },
-            { label: schematicModel.efficiencyLabel, value: schematicModel.efficiencyText, tone: "green", note: t("heatpump.compactEfficiencyNote") },
+            { label: schematicModel.efficiencyLabel, value: schematicModel.efficiencyText, tone: "green", note: defrostActive ? "" : t("heatpump.compactEfficiencyNote") },
           ])}
         </div>
         <div class="oq-overview-hp-meta">

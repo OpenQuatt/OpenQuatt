@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <new>
 #include <string>
 #include <utility>
 
@@ -16,6 +17,7 @@
 #define ESP_LOGD(...) ((void)0)
 #define ESP_LOGW(...) ((void)0)
 
+using LogString = char;
 using TaskHandle_t = void*;
 static constexpr int pdPASS = 1;
 static bool task_create_ok = true;
@@ -27,7 +29,7 @@ int xTaskCreate(void (*)(void*), const char*, unsigned stack_bytes, void*, unsig
   assert(stack_bytes == 8192);
 #endif
   ++task_starts;
-  *handle = task_create_ok ? reinterpret_cast<void*>(1) : nullptr;
+  assert(handle == nullptr);
   return task_create_ok ? pdPASS : 0;
 }
 
@@ -47,6 +49,7 @@ class PollingComponent {
   virtual float get_setup_priority() const { return 0; }
   void cancel_interval(unsigned) {}
   void status_set_error(const char* value) { error = value; }
+  void status_clear_error() { error.clear(); }
   bool status_has_error() const { return !error.empty(); }
   void set_timeout(unsigned id, unsigned delay, std::function<void()>&& callback) {
     assert(id == 1 && delay == 250 && !timeout);
@@ -66,6 +69,9 @@ class PollingComponent {
   std::string error;
 };
 namespace update {
+struct UpdateInfo {
+  std::string firmware_url;
+};
 enum UpdateState { UPDATE_STATE_INSTALLING, UPDATE_STATE_NO_UPDATE };
 class UpdateEntity {
  public:
@@ -101,11 +107,16 @@ void HttpRequestUpdate::update_task(void*) {}
 // GENERATED_UPDATE
 
 void complete_manifest([[maybe_unused]] HttpRequestUpdate* this_update) {
+  auto* result = this_update->task_result_;
+  assert(result != nullptr);
   // GENERATED_COMPLETION
+  this_update->manifest_result_current_ = result->error_str == nullptr;
+  if (result->error_str == nullptr) this_update->status_clear_error();
+  delete result;
 }
 
 std::string resolve_url(HttpRequestUpdate& component, const std::string& path) {
-  auto* this_update = &component;
+  const char* source_url = component.task_result_->source_url;
   struct {
     std::string firmware_url;
   } result{path};
@@ -127,17 +138,17 @@ int main() {
     component.set_source_url(temporary.c_str());
     temporary.assign(1024, 'x');
   }
-  assert(component.source_url_ == pr900);
+  assert(component.get_source_url() == pr900);
   esphome::network::connected = false;
   component.check();
-  assert(component.task_source_url_.empty());
+  assert(component.task_result_ == nullptr);
   esphome::network::connected = true;
   component.check();
-  assert(component.task_source_url_ == pr900);
-  const char* active = component.task_source_url_.c_str();
+  assert(component.task_result_->source_url == pr900);
+  const char* active = component.task_result_->source_url;
   component.set_source_url(std::string(pr901).c_str());
-  assert(component.source_url_ == pr901);
-  assert(component.task_source_url_ == pr900);
+  assert(component.get_source_url() == pr901);
+  assert(component.task_result_->source_url == pr900);
   assert(std::string(active) == pr900);
   assert(resolve_url(component, "firmware.ota.bin") ==
          "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-900/firmware.ota.bin");
@@ -149,11 +160,13 @@ int main() {
   // pending source change. The real worker releases this guard via defer().
   component.check();
   assert(task_starts == started);
-  assert(component.task_source_url_ == pr900);
+  assert(component.task_result_->source_url == pr900);
   complete_manifest(&component);
+  assert(!component.manifest_result_matches(pr901));
+  assert(!component.manifest_result_matches(pr900));
 #endif
   component.check();
-  assert(component.task_source_url_ == pr901);
+  assert(component.task_result_->source_url == pr901);
   assert(component.get_source_url() == pr901);
 #ifdef USE_ESP32
   assert(!component.manifest_result_matches(pr901));
@@ -167,11 +180,11 @@ int main() {
 #ifdef USE_ESP32
   task_create_ok = false;
   component.check();
-  assert(component.update_task_handle_ == nullptr);
+  assert(component.task_result_ == nullptr);
   assert(component.error == "Failed to start manifest check");
   task_create_ok = true;
   component.check();
-  assert(component.update_task_handle_ != nullptr);
+  assert(component.task_result_ != nullptr);
   complete_manifest(&component);
 #endif
 #ifdef USE_OPENQUATT_WEATHER
@@ -184,7 +197,7 @@ int main() {
   component.check();
   component.check();
   assert(task_starts == starts_before_weather && component.timeout);
-  assert(component.task_source_url_ == pr901);
+  assert(component.task_result_ == nullptr);
   assert(component.manifest_check_timeout_ms() > 20000);
   component.fire_timeout();
   assert(task_starts == starts_before_weather && component.timeout);
@@ -192,7 +205,7 @@ int main() {
   assert(!https_slot.try_acquire_weather());
   component.fire_timeout();
   assert(task_starts == starts_before_weather + 1 && !component.timeout);
-  assert(component.task_source_url_ == pr900 && component.manifest_check_timeout_ms() == 20000);
+  assert(component.task_result_->source_url == pr900 && component.manifest_check_timeout_ms() == 20000);
   assert(!https_slot.try_acquire());
   complete_manifest(&component);
   assert(https_slot.try_acquire());

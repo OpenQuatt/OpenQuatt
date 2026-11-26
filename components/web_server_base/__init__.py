@@ -16,6 +16,18 @@ web_server_base_ns = cg.esphome_ns.namespace("web_server_base")
 WebServerBase = web_server_base_ns.class_("WebServerBase")
 
 CONF_WEB_SERVER_BASE_ID = "web_server_base_id"
+DOMAIN = "web_server_base"
+
+
+def add_httpd_clients(count: int, consumer: str) -> None:
+    from esphome.components import socket
+
+    socket.consume_sockets(count, consumer)({})
+    CORE.data[DOMAIN] = get_httpd_client_count() + count
+
+
+def get_httpd_client_count() -> int:
+    return CORE.data.get(DOMAIN, 0)
 
 
 def _consume_web_server_base_sockets(config: ConfigType) -> ConfigType:
@@ -27,9 +39,9 @@ def _consume_web_server_base_sockets(config: ConfigType) -> ConfigType:
 
 
 def _validate_version(config: ConfigType) -> ConfigType:
-    if __version__ != "2026.10.0":
+    if __version__ != "2026.11.1":
         raise cv.Invalid(
-            "OpenQuatt web_server_base compatibility override requires ESPHome 2026.10.0; "
+            "OpenQuatt web_server_base compatibility override requires ESPHome 2026.11.1; "
             "review the upstream auth changes before updating this override."
         )
     if not CORE.is_esp32:
@@ -52,10 +64,8 @@ CONFIG_SCHEMA = cv.All(
 async def to_code(config: ConfigType) -> None:
     from esphome import writer
 
-    from .core_four_decimals import install_four_decimal_patch
     from .http_request_update_source import install_update_source_patch
 
-    install_four_decimal_patch(CORE, writer)
     if "update/http_request" in CORE.loaded_platforms:
         install_update_source_patch(CORE, writer)
     var = cg.new_Pvariable(config[CONF_ID])

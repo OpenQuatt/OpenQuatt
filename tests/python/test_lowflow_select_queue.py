@@ -1,4 +1,4 @@
-"""Execute production write lambdas with ESPHome 2026.10.0 ModbusSelect::control.
+"""Execute production write lambdas with the pinned ESPHome ModbusSelect::control.
 
 The verified complete SDK select.cpp is compiled unchanged against small host
 peripheral/queue stubs. This tests its real clear-before-lambda control path,
@@ -19,7 +19,8 @@ from tests.support.cpp import COMPILE_TIMEOUT_SECONDS, RUN_TIMEOUT_SECONDS, comp
 from tests.support.process import run_process
 
 ROOT = Path(__file__).resolve().parents[2]
-SDK_SHA256 = "28e226d167b5a56f6ab3029dc8c75fb3928b40edc4976ae415091b22dd0b3740"
+SDK_VERSION = "2026.11.1"
+SDK_SHA256 = "fffc44555ac975ab822e8f1666f0a939688ef2a4a9b155a30466c103edc4ae2f"
 
 
 def sdk_select_source():
@@ -35,12 +36,12 @@ def sdk_select_source():
     packages.extend(ROOT.glob(".venv/lib/python*/site-packages/esphome"))
     for package in packages:
         source = package / "components/modbus_controller/select/modbus_select.cpp"
-        metadata = package.parent / "esphome-2026.10.0.dist-info/METADATA"
-        if source.is_file() and metadata.is_file() and "Version: 2026.10.0\n" in metadata.read_text():
+        metadata = package.parent / f"esphome-{SDK_VERSION}.dist-info/METADATA"
+        if source.is_file() and metadata.is_file() and f"Version: {SDK_VERSION}\n" in metadata.read_text():
             data = source.read_bytes()
             if hashlib.sha256(data).hexdigest() == SDK_SHA256:
                 return data
-    raise AssertionError("Verified ESPHome 2026.10.0 modbus_select.cpp unavailable; set OQ_ESPHOME_PACKAGE to its package directory")
+    raise AssertionError(f"Verified ESPHome {SDK_VERSION} modbus_select.cpp unavailable; set OQ_ESPHOME_PACKAGE to its package directory")
 
 
 SDK_STUB = r'''#pragma once
@@ -99,6 +100,7 @@ LOG_STUB = r'''#pragma once
 #define ESP_LOGV(tag, ...) do { (void)(tag); } while (0)
 #define ESP_LOGW(tag, ...) do { (void)(tag); } while (0)
 #define ESP_LOGE(tag, ...) do { (void)(tag); } while (0)
+#define ESPHOME_LOG_TAG(tag, value) static const char* const tag = value
 #define LOG_SELECT(tag, ...) do { (void)(tag); } while (0)
 #define LOG_STR(value) value
 '''
@@ -309,7 +311,7 @@ class LowflowSelectQueueTest(unittest.TestCase):
         gates = "\n".join("std::optional<int> gate%d(esphome::modbus_controller::ModbusSelect* item, int value) {\n%s\n}" % (index, body)
                           for index, body in enumerate(bodies))
         unit = '#include "modbus_select.h"\n' + fixture_prefix(real_incidents=True) + "\n" + gates + "\n" + MAIN.replace("MODE_OPTIMISTIC", optimistic[0]).replace("LEVEL_OPTIMISTIC", optimistic[1])
-        args = compiler_command("-std=c++20", "-I", str(ROOT))
+        args = compiler_command("-std=c++20", "-I", str(ROOT), "-I", str(ROOT / "openquatt"))
         with tempfile.TemporaryDirectory(prefix="openquatt-select-queue-") as directory:
             root = Path(directory)
             (root / "esphome/core").mkdir(parents=True)

@@ -94,7 +94,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Compressor frequency demand in both overview modes: +376 B raw / +114 B gzip (Node 24.14.1).
     // Outlook during defrost and missing-input messages: +1,296 B raw / +267 B gzip versus dev 89e28f53 (Node 24.14.1).
     // Compressor levels below the quiet/day sliders: +836 B raw / +287 B gzip (Node 24.14.1).
-    raw: 1_518_834,
+    // Live COP during the defrost transition: +727 B raw / +307 B gzip (Node 24.14.1).
+    raw: 1_519_561,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

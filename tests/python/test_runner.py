@@ -58,10 +58,42 @@ class TestRunnerTest(unittest.TestCase):
                 self.assertEqual(run_tests.main(["host", "--list"]), 1)
             self.assertIn("move them to tests/python", output.getvalue())
 
+    def test_host_patterns_find_flat_and_nested_binaries(self):
+        with tempfile.TemporaryDirectory(prefix="openquatt-host-discovery-") as directory:
+            root = Path(directory)
+            host = root / "tests/host"
+            flat = host / "probe_test.cpp"
+            nested = host / "power_house/probe_test.cpp"
+            nested.parent.mkdir(parents=True)
+            for path in (flat, nested):
+                path.touch()
+            (nested.parent / "fixture.cpp").touch()
+            with mock.patch.object(run_tests, "ROOT", root):
+                self.assertCountEqual(run_tests.test_files("host"), [flat, nested])
+                self.assertCountEqual(run_tests.test_files("host", "probe_test.cpp"), [flat, nested])
+                self.assertEqual(run_tests.test_files("host", "power_house/*_test.cpp"), [nested])
+
+    def test_chain_test_generates_runtime_includes_at_any_depth(self):
+        with tempfile.TemporaryDirectory(prefix="openquatt-chain-discovery-") as directory:
+            root = Path(directory)
+            source = root / "tests/host/thermal/scenarios/renamed_chain_test.cpp"
+            source.parent.mkdir(parents=True)
+            source.write_text('#include "runtime_fixture.inc"\nint main() { return 0; }\n')
+
+            def write_runtime_includes(repo, build_directory):
+                self.assertEqual(repo, root)
+                (build_directory / "runtime_fixture.inc").touch()
+
+            with mock.patch.object(run_tests, "ROOT", root), mock.patch.object(
+                run_tests, "write_firmware_runtime_methods", side_effect=write_runtime_includes
+            ):
+                run_tests.run_host([source])
+
     def test_host_build_and_runtime_failures_propagate(self):
         with tempfile.TemporaryDirectory(prefix="openquatt-runner-test-") as directory:
             root = Path(directory)
-            source = root / "probe_test.cpp"
+            source = root / "tests/host/power_house/probe_test.cpp"
+            source.parent.mkdir(parents=True)
             with mock.patch.object(run_tests, "ROOT", root), mock.patch.dict(os.environ, {"OPENQUATT_TEST_SANITIZERS": "none"}):
                 source.write_text("int main() { return 0; }\n")
                 run_tests.run_host([source])
@@ -76,7 +108,8 @@ class TestRunnerTest(unittest.TestCase):
     def test_hung_host_test_is_terminated(self):
         with tempfile.TemporaryDirectory(prefix="openquatt-runner-timeout-") as directory:
             root = Path(directory)
-            source = root / "hung_test.cpp"
+            source = root / "tests/host/hung_test.cpp"
+            source.parent.mkdir(parents=True)
             source.write_text("int main() { for (;;) {} }\n")
             with mock.patch.object(run_tests, "ROOT", root), mock.patch.object(run_tests, "RUN_TIMEOUT_SECONDS", 0.2), mock.patch.dict(os.environ, {"OPENQUATT_TEST_SANITIZERS": "none"}):
                 with self.assertRaises(subprocess.TimeoutExpired):

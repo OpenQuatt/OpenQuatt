@@ -1,4 +1,4 @@
-"""Build-local manifest ownership and serialized HTTPS OTA for ESPHome 2026.10.0."""
+"""Build-local manifest validation and serialized HTTPS OTA for ESPHome 2026.11.1."""
 
 from __future__ import annotations
 
@@ -14,20 +14,13 @@ _ENABLED_KEY = "openquatt_http_request_update_source"
 _HOOK_MARKER = "_openquatt_http_request_update_source"
 _PATCHES = {
     "http_request_update.h": (
-        ("#pragma once\n", "#pragma once\n\n#include <string>\n", 1),
         (
             "  void update() override;\n",
             "  void update() override;\n"
             "  uint32_t manifest_check_timeout_ms() const;\n"
-            "  const std::string &get_source_url() const { return this->source_url_; }\n"
             "  bool manifest_result_matches(const std::string &source) const {\n"
-            "#ifdef USE_ESP32\n"
-            "    if (this->update_task_handle_ != nullptr) return false;\n"
-            "#endif\n"
-            "#ifdef USE_OPENQUATT_WEATHER\n"
-            "    if (this->manifest_waiting_for_weather_) return false;\n"
-            "#endif\n"
-            "    return !this->status_has_error() && this->source_url_ == source && this->task_source_url_ == source;\n"
+            "    return this->manifest_result_current_ && !this->status_has_error() &&\n"
+            "           this->source_url_ != nullptr && this->source_url_ == source;\n"
             "  }\n"
             "#ifdef USE_OPENQUATT_WEATHER\n"
             "  void set_manifest_check_paused(bool (*paused)()) { this->manifest_check_paused_ = paused; }\n"
@@ -35,23 +28,29 @@ _PATCHES = {
             1,
         ),
         (
-            "  const char *source_url_{nullptr};  // literal from codegen",
-            "  // Setters run on the main loop; the worker only reads its frozen snapshot.\n"
-            "  std::string source_url_;\n"
-            "  std::string task_source_url_;\n"
+            "  bool source_url_owned_{false};",
+            "  bool manifest_result_current_{false};\n"
             "#ifdef USE_OPENQUATT_WEATHER\n"
             "  static constexpr uint32_t WEATHER_CHECK_RETRY_ID = 1;\n"
             "  static constexpr uint32_t WEATHER_CHECK_RETRY_MS = 250;\n"
             "  bool manifest_waiting_for_weather_{false};\n"
             "  bool (*manifest_check_paused_)(){nullptr};\n"
-            "#endif",
+            "#endif\n"
+            "  bool source_url_owned_{false};",
+            1,
+        ),
+        (
+            "  void set_source_url_static(const char *source_url) {\n",
+            "  void set_source_url_static(const char *source_url) {\n"
+            "    this->manifest_result_current_ = false;\n",
             1,
         ),
     ),
     "http_request_update.cpp": (
         (
-            '#include "http_request_update.h"\n',
-            '#include "http_request_update.h"\n'
+            '#include <cstring>\n',
+            '#include <cstring>\n'
+            '#include <new>\n'
             "#ifdef USE_OPENQUATT_WEATHER\n"
             '#include "esphome/components/openquatt_weather/OpenQuattWeatherPolicy.h"\n'
             '#include "esphome/components/openquatt_weather/WeatherHttpsSlot.h"\n'
@@ -59,8 +58,17 @@ _PATCHES = {
             1,
         ),
         (
+            "  // Copy before releasing,",
+            "  if (this->source_url_ == nullptr || strlen(this->source_url_) != len ||\n"
+            "      memcmp(this->source_url_, source_url, len) != 0)\n"
+            "    this->manifest_result_current_ = false;\n"
+            "  // Copy before releasing,",
+            1,
+        ),
+        (
             "void HttpRequestUpdate::update() {\n",
             "void HttpRequestUpdate::update() {\n"
+            "  this->manifest_result_current_ = false;\n"
             "#ifdef USE_OPENQUATT_WEATHER\n"
             "  if (this->manifest_waiting_for_weather_) {\n"
             "    this->cancel_timeout(WEATHER_CHECK_RETRY_ID);\n"
@@ -71,7 +79,7 @@ _PATCHES = {
             1,
         ),
         (
-            '  xTaskCreate(HttpRequestUpdate::update_task, "update_task", 8192, (void *) this, 1, &this->update_task_handle_);',
+            "  auto *result = new TaskResult();\n",
             "#ifdef USE_OPENQUATT_WEATHER\n"
             "  if (!openquatt_weather::https_slot.try_acquire()) {\n"
             "    this->manifest_waiting_for_weather_ = true;\n"
@@ -85,19 +93,29 @@ _PATCHES = {
             "    });\n"
             "    return;\n"
             "  }\n"
+            "#endif\n"
+            "  auto *result = new (std::nothrow) TaskResult();\n"
+            "  if (result == nullptr) {\n"
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "    openquatt_weather::https_slot.release();\n"
+            "#endif\n"
+            '    this->status_set_error(LOG_STR("Failed to allocate manifest check"));\n'
+            "    return;\n"
+            "  }\n",
+            1,
+        ),
+        (
+            '  if (xTaskCreate(HttpRequestUpdate::update_task, "update_task", 8192, result, 1, nullptr) != pdPASS) {\n',
+            "#ifdef USE_OPENQUATT_WEATHER\n"
             "  constexpr uint32_t stack_size = 6144;\n"
             "#else\n"
             "  constexpr uint32_t stack_size = 8192;\n"
             "#endif\n"
-            "  this->task_source_url_ = this->source_url_;\n"
-            '  if (xTaskCreate(HttpRequestUpdate::update_task, "update_task", stack_size, (void *) this, 1,\n'
-            "                  &this->update_task_handle_) != pdPASS) {\n"
-            "    this->update_task_handle_ = nullptr;\n"
+            '  if (xTaskCreate(HttpRequestUpdate::update_task, "update_task", stack_size, result, 1, nullptr) != pdPASS) {\n'
             "#ifdef USE_OPENQUATT_WEATHER\n"
             "    openquatt_weather::https_slot.release();\n"
             "#endif\n"
-            '    this->status_set_error(LOG_STR("Failed to start manifest check"));\n'
-            "  }",
+            '    this->status_set_error(LOG_STR("Failed to start manifest check"));\n',
             1,
         ),
         (
@@ -114,22 +132,33 @@ _PATCHES = {
             1,
         ),
         (
-            "    this_update->update_task_handle_ = nullptr;\n",
-            "    this_update->update_task_handle_ = nullptr;\n"
-            "#ifdef USE_OPENQUATT_WEATHER\n"
-            "    // The worker has closed and released the HTTP container on every path.\n"
-            "    openquatt_weather::https_slot.release();\n"
-            "#endif\n",
+            "  this_update->defer([this_update, result]() {\n",
+            "  this_update->defer([this_update, result]() {\n"
+            "    const bool current = this_update->source_url_ != nullptr && result->source_url != nullptr &&\n"
+            "                         strcmp(this_update->source_url_, result->source_url) == 0;\n",
             1,
         ),
         (
-            "#else\n  this->update_task(this);",
-            "#else\n  this->task_source_url_ = this->source_url_;\n  this->update_task(this);",
+            "    if (result->error_str != nullptr) {\n",
+            "#ifdef USE_OPENQUATT_WEATHER\n"
+            "    openquatt_weather::https_slot.release();\n"
+            "#endif\n"
+            "    if (!current) {\n"
+            "      delete result;\n"
+            "      return;\n"
+            "    }\n"
+            "    if (result->error_str != nullptr) {\n",
             1,
         ),
-        ("this_update->source_url_", "this_update->task_source_url_.c_str()", 4),
+        (
+            "    this_update->status_clear_error();\n",
+            "    this_update->manifest_result_current_ = true;\n"
+            "    this_update->status_clear_error();\n",
+            1,
+        ),
     ),
 }
+
 
 _OTA_PATCHES = {
     "ota_http_request.cpp": (
@@ -162,16 +191,6 @@ _OTA_PATCHES = {
             "    ~HttpsLease() { openquatt_weather::https_slot.release(); }\n"
             "  } https_lease;\n"
             "#endif\n",
-            1,
-        ),
-        (
-            "  if (container == nullptr || container->status_code != HTTP_STATUS_OK) {\n"
-            "    return OTA_CONNECTION_ERROR;\n"
-            "  }\n",
-            "  if (container == nullptr || container->status_code != HTTP_STATUS_OK) {\n"
-            "    if (container != nullptr) container->end();\n"
-            "    return OTA_CONNECTION_ERROR;\n"
-            "  }\n",
             1,
         ),
     ),
@@ -227,7 +246,7 @@ def _patch_generated_sources(core: Any) -> None:
         finally:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
-    _LOGGER.info("OpenQuatt: owned manifest URLs, immutable update snapshots and serialized HTTPS OTA active")
+    _LOGGER.info("OpenQuatt: current manifest validation and serialized HTTPS OTA active")
 
 
 def install_update_source_patch(core: Any, writer: Any) -> None:

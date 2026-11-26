@@ -28,7 +28,8 @@ substitute a different interpreter or install dependencies.
 
 | Location | Purpose |
 | --- | --- |
-| `tests/host/*_test.cpp` | Executable C++ control, safety and policy regressions |
+| `tests/host/**/*_test.cpp` | Executable C++ control, safety and policy regressions |
+| `tests/host/power_house/` | Power House rule, dispatch and controller chain tests |
 | `tests/python/test_*.py` | Tooling, YAML/codegen contracts and component runtime harnesses |
 | `tests/fixtures/` | Peripheral stubs and C++ harness inputs |
 | `tests/support/cpp.py` | Shared compiler, SDK, assertion, sanitizer and timeout policy |
@@ -42,6 +43,13 @@ Use `snake_case` for Python tests and C++ host tests, with `test_*.py` and
 `*_test.cpp` discovery suffixes. Web and HIL tests follow the existing
 `*.test.mjs` convention. Fixtures belong to the test that needs them; shared
 support should contain infrastructure rather than copies of production logic.
+
+Add C++ rule tests near the tests for that domain. Use a host chain test when the
+assertion follows a request through multiple components, such as Power House,
+the actuator and the simulated Modbus bus. Name these files `*_chain_test.cpp`
+to generate the firmware method includes for the request runtime, actuator and
+incident manager in the host build directory. Use Python for tooling and for
+YAML, code generation and firmware configuration contracts that need Python.
 
 ## Commands
 
@@ -58,12 +66,14 @@ For focused work and discovery:
 
 ```sh
 python3 scripts/run_tests.py host --pattern '*supervisory*'
+python3 scripts/run_tests.py host --pattern 'power_house/*_test.cpp'
 python3 scripts/run_tests.py python --pattern 'test_nvs_*.py'
 python3 scripts/run_tests.py --list
 python3 scripts/run_tests.py host python --sanitize
 ```
 
-Quote patterns so the shell does not expand them. A pattern that selects no
+Host discovery searches subdirectories. A filename pattern matches in any
+host subdirectory. Quote patterns so the shell does not expand them. A pattern that selects no
 tests fails. `--list` only inventories files and requires no compiler or ESPHome.
 Tests left in the former `scripts/tests/` directory also fail discovery, so an
 older feature branch cannot silently add regressions outside the active suite.
