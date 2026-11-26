@@ -45,6 +45,12 @@ De web-app heeft vijf hoofdschermen.
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
 
+Na een ontdooimelding blijft de actuele COP zichtbaar zolang de vierwegklep
+in verwarmingsstand staat en de draaiende warmtepomp netto warmte afgeeft.
+Tijdens ontdooien staat bij die warmtepomp **n.v.t.**. Bij de totale COP staat
+welke warmtepomp ontdooit. De COP komt terug zodra de klep weer in verwarmingsstand
+staat, de metingen geldig zijn en de warmtepomp weer netto warmte afgeeft.
+
 In de `Beslislog` staat de nieuwste melding bovenaan, met seconden in het tijdstip.
 Een startverloop bundelt de gelogde voorbereiding, startopdracht en
 compressorbevestiging. Klik erop om de stappen te zien; onder de technische details

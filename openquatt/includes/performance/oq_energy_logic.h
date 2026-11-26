@@ -173,6 +173,7 @@ struct HeatingCopState {
   float compressor_hz{NAN};
   float defrost{NAN};
   bool fresh{false};
+  bool valve_reversed{false};
 };
 
 inline bool heating_cop_state_valid(const HeatingCopState& state) {
@@ -183,17 +184,18 @@ inline bool heating_cop_state_valid(const HeatingCopState& state) {
          (state.defrost == 0.0f || state.defrost == 1.0f);
 }
 
+inline bool heating_cop_compressor_running(const HeatingCopState& state) {
+  return (state.working_mode == 2.0f || state.working_mode == 4.0f) && state.compressor_hz > 0.0f;
+}
+
 inline float heating_cop_or_nan(float output, float input, float minimum_input, const HeatingCopState& first,
                                 const HeatingCopState& second = {}, bool second_required = false) {
   if (!heating_cop_state_valid(first) || (second_required && !heating_cop_state_valid(second))) return NAN;
-  const bool first_heating = first.working_mode == 2.0f;
-  const bool second_heating = second_required && second.working_mode == 2.0f;
-  if (first.working_mode == 4.0f || first.defrost != 0.0f ||
-      (second_required && (second.working_mode == 4.0f || second.defrost != 0.0f)))
-    return NAN;
+  if (first.valve_reversed || (second_required && second.valve_reversed)) return NAN;
   // Heating mode can precede compressor start. Positive heat alone may also be
   // residual heat or a sensor offset while only the circulation pump is running.
-  if (!(first_heating && first.compressor_hz > 0.0f) && !(second_heating && second.compressor_hz > 0.0f)) return NAN;
+  if (!heating_cop_compressor_running(first) && !(second_required && heating_cop_compressor_running(second)))
+    return NAN;
   if (!isfinite(output) || output <= 0.0f || !isfinite(input) || input <= 0.0f || input < minimum_input) return NAN;
   return output / input;
 }
