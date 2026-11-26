@@ -8,7 +8,7 @@
 #include "../../openquatt/includes/control/oq_hp_restart_guard.h"
 #include "../../openquatt/includes/control/oq_supervisory_state_logic.h"
 #include "../../openquatt/includes/control/oq_thermal_request_logic.h"
-#include "../../openquatt/includes/incidents/oq_hp_incident_types.h"
+#include "../../openquatt/includes/incidents/oq_hp_incident_engine.h"
 
 namespace {
 
@@ -445,6 +445,100 @@ void test_flow_guard_and_cm1_idle_hold() {
   assert(hold_cm1_until_hp_idle(true, 0, true));
 }
 
+void test_postflow_waits_for_both_fresh_stop_reads_after_watchdog_timeout() {
+  using namespace oq_supervisory_state;
+  oq_incidents::HpIncidentEngine hp;
+  CompressorPostflowGuard guard;
+  const auto required = [&](uint32_t now_ms, float hz = NAN) {
+    oq_sources::RawFloatReceipt frequency;
+    frequency.observe(hz, now_ms, true);
+    return guard.update(hp.outputs(), frequency, now_ms).required;
+  };
+  assert(!required(0U));
+
+  hp.observe_run({1U, true, true, false, true, 68.0f});
+  assert(required(1U, 68.0f));
+  assert(hp.request_stop(1000U));
+
+  hp.observe_run({31000U, true, false, true, true, 47.0f});
+  assert(standby_requires_postflow(98, required(31000U, 47.0f)));
+  assert(standby_requires_postflow(0, required(31000U, 47.0f)));
+  assert(flow_guard_required(false, required(31000U, 47.0f), false));
+
+  hp.observe_run({56000U, true, false, true, true, 27.0f});
+  hp.tick(61000U);
+  assert(hp.outputs().stop_unconfirmed);
+  assert(standby_requires_postflow(98, required(61000U)));
+  hp.observe_run({66000U, true, false, true, true, 20.0f});
+  assert(standby_requires_postflow(98, required(66000U, 20.0f)));
+  hp.observe_run({76000U, true, false, true, true, 0.0f});
+  assert(standby_requires_postflow(98, required(76000U, 0.0f)));
+  hp.observe_run({86000U, true, false, true, true, 0.0f});
+  assert(hp.outputs().stop_confirmed);
+  assert(!standby_requires_postflow(98, required(86000U, 0.0f)));
+  assert(standby_requires_postflow(98, required(86001U, 1.0f)));
+}
+
+void test_postflow_releases_an_offline_unit_without_clearing_incident_stop() {
+  using namespace oq_supervisory_state;
+  for (const bool previously_stopped : {false, true}) {
+    oq_incidents::HpIncidentEngine hp;
+    CompressorPostflowGuard guard;
+    if (previously_stopped) {
+      for (uint32_t t : {100U, 30100U, 60100U}) hp.observe_link_round(t, true);
+      hp.observe_run({60101U, true, false, true, true, 0.0f});
+      hp.observe_run({70101U, true, false, true, true, 0.0f});
+      assert(hp.outputs().stop_confirmed);
+    }
+    assert(!guard.update(hp.outputs(), {}, 80000U).required);
+    for (uint32_t t : {90100U, 121100U, 122100U}) hp.observe_link_round(t, false);
+    assert(hp.outputs().confirmed_link_loss_active && hp.outputs().stop_confirmation_pending);
+    assert(hp.request_stop(122100U));
+    assert(guard.update(hp.outputs(), {}, 122100U).required);
+    assert(guard.update(hp.outputs(), {}, 182099U).required);
+
+    hp.tick(182100U);
+    assert(hp.outputs().stop_unconfirmed && hp.outputs().must_stop);
+    assert(!hp.outputs().available_for_start);
+    const auto expired = guard.update(hp.outputs(), {}, 182100U);
+    assert(expired.link_loss_hold_expired && !expired.required);
+    assert(!standby_requires_postflow(0, expired.required));
+    assert(!standby_requires_postflow(98, expired.required));
+    assert(!guard.update(hp.outputs(), {}, 922100U).required);
+  }
+}
+
+void test_postflow_link_recovery_requires_new_motion_to_extend_hold() {
+  using namespace oq_supervisory_state;
+  using namespace oq_incidents;
+  DerivedOutputs outputs;
+  outputs.confirmed_link_loss_active = true;
+  outputs.stop_unconfirmed = true;
+  outputs.run_state = RunState::STOP_UNCONFIRMED;
+  outputs.link_state = LinkState::LOST;
+  CompressorPostflowGuard guard;
+  assert(guard.update(outputs, {}, 1000U).required);
+
+  outputs.link_state = LinkState::RECOVERING;
+  assert(guard.update(outputs, {}, 60000U).required);
+  assert(guard.update(outputs, {}, 61000U).link_loss_hold_expired);
+
+  oq_sources::RawFloatReceipt frequency;
+  frequency.observe(20.0f, 62000U, true);
+  assert(guard.update(outputs, frequency, 66000U).required);
+  assert(guard.update(outputs, frequency, 92000U).required);
+  outputs.link_state = LinkState::LOST;
+  assert(guard.update(outputs, frequency, 121999U).required);
+  assert(guard.update(outputs, frequency, 122000U).link_loss_hold_expired);
+
+  outputs.link_state = LinkState::HEALTHY;
+  outputs.confirmed_link_loss_active = false;
+  assert(guard.update(outputs, {}, 123000U).required);
+  outputs.link_state = LinkState::LOST;
+  outputs.confirmed_link_loss_active = true;
+  assert(guard.update(outputs, {}, 124000U).required);
+}
+
 void test_sticky_pump_timing() {
   using namespace oq_supervisory_state;
   auto output = update_sticky_pump(0, true, 1000, 500, {});
@@ -494,6 +588,9 @@ int main() {
   test_override_timeout();
   test_silent_window();
   test_flow_guard_and_cm1_idle_hold();
+  test_postflow_waits_for_both_fresh_stop_reads_after_watchdog_timeout();
+  test_postflow_releases_an_offline_unit_without_clearing_incident_stop();
+  test_postflow_link_recovery_requires_new_motion_to_extend_hold();
   test_sticky_pump_timing();
   return 0;
 }

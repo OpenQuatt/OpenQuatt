@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "oq_daily_window_logic.h"
+#include "../sources/oq_raw_receipt.h"
 
 namespace oq_supervisory_state {
 
@@ -315,7 +316,45 @@ inline bool hold_cm1_until_hp_idle(bool in_cm1, int desired_mode, bool hp_active
   return in_cm1 && (desired_mode == 0 || desired_mode == 98) && hp_active;
 }
 
-inline bool standby_requires_postflow(int desired_mode, bool hp_active) { return desired_mode == 0 && hp_active; }
+constexpr uint64_t kPostflowFrequencyMaxAgeMs = 30000;
+constexpr uint64_t kPostflowLinkLossHoldMs = 60000;
+
+struct CompressorPostflowStatus {
+  bool required;
+  bool link_loss_hold_expired;
+};
+
+class CompressorPostflowGuard {
+ public:
+  template <typename IncidentOutputs>
+  CompressorPostflowStatus update(const IncidentOutputs& outputs, const oq_sources::RawFloatReceipt& frequency,
+                                  uint64_t now_ms) {
+    const bool moving = frequency.fresh(now_ms, kPostflowFrequencyMaxAgeMs) && frequency.value > 0.5f;
+    if (outputs.confirmed_link_loss_active) {
+      if (!link_loss_active_) link_loss_hold_since_ms_ = now_ms;
+      if (moving) link_loss_hold_since_ms_ = std::max(link_loss_hold_since_ms_, frequency.received_ms);
+    }
+    link_loss_active_ = outputs.confirmed_link_loss_active;
+    // A disconnected ODU cannot supply a stop read. Bound only its effect on
+    // circulation, and restart the hold on fresh evidence of renewed motion.
+    if (link_loss_active_ && !moving && now_ms - link_loss_hold_since_ms_ >= kPostflowLinkLossHoldMs)
+      return {false, true};
+
+    using RunState = decltype(outputs.run_state);
+    const bool required = moving || outputs.running_confirmed || outputs.stop_confirmation_pending ||
+                          outputs.stop_unconfirmed ||
+                          (outputs.run_state != RunState::UNKNOWN && outputs.run_state != RunState::STOPPED);
+    return {required, false};
+  }
+
+ private:
+  uint64_t link_loss_hold_since_ms_{0};
+  bool link_loss_active_{false};
+};
+
+inline bool standby_requires_postflow(int desired_mode, bool hp_active) {
+  return (desired_mode == 0 || desired_mode == 98) && hp_active;
+}
 
 enum class SilentOverride : uint8_t { SCHEDULE, ON, OFF };
 
