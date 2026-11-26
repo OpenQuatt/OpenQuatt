@@ -23,6 +23,13 @@ constexpr float kDoseTargetBelowOutletC = 2.0f;
 
 }  // namespace
 
+void Control::withdraw_output() {
+  // A temporary pause or link outage does not change the selected boiler.
+  const bool managed = managed_;
+  *this = {};
+  managed_ = managed;
+}
+
 Decision Control::tick(const Inputs& in) {
   const float minimum_w = nominal_minimum_w(in.capacity_kw, in.minimum_modulation_pct);
   const bool thermal_data_valid = isfinite(in.inlet_c) && isfinite(in.outlet_c) && isfinite(in.flow_lph) &&
@@ -162,6 +169,36 @@ Decision Control::tick(const Inputs& in) {
   running_ = true;
   residual_heat_active_ = false;
   return {true, target_c_};
+}
+
+void apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::ControllerDecision& decision,
+           float& output_target_c) {
+  if (!cm3_context) {
+    // During an authorized CM3 -> CM4 handover, dispatch can still hold the
+    // previous PH command. Preserve the ordinary target and the CH-on edge,
+    // but never retain a boosted target through a minimum-on hold.
+    if (control.running() && !decision.desired_active && decision.output_active) {
+      decision.output_active = false;
+      decision.block_reason = oq_boiler::BLOCK_NO_HEAT_REQUEST;
+      output_target_c = NAN;
+    }
+    control = {};
+    return;
+  }
+
+  const auto cm3 = control.tick(in);
+  if (!cm3.managed || decision.force_off) return;
+  output_target_c = cm3.target_c;
+  decision.output_active = isfinite(output_target_c);
+  if (cm3.block_reason != oq_boiler::BLOCK_NONE) {
+    decision.block_reason = cm3.block_reason;
+    decision.blocked = cm3.block_reason == oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE;
+  } else if (!decision.output_active && decision.block_reason == oq_boiler::BLOCK_MIN_ON_TIME) {
+    decision.block_reason = oq_boiler::BLOCK_NO_HEAT_REQUEST;
+  } else if (!decision.output_active && decision.desired_active && decision.block_reason == oq_boiler::BLOCK_NONE) {
+    decision.block_reason = oq_boiler::BLOCK_CM3_OPENTHERM_WAITING;
+    decision.blocked = false;
+  }
 }
 
 }  // namespace oq_boiler_cm3_opentherm
