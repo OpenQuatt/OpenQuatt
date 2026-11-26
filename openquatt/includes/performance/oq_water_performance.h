@@ -81,6 +81,11 @@ inline std::array<Prediction, 2> series(const std::array<oq_odu::Variant, 2>& va
   const auto first = solve(variants[0], hz[0], outside_c, inlet_c, flow_lph);
   return {first, first.valid() ? solve(variants[1], hz[1], outside_c, first.outlet_c, flow_lph) : Prediction{}};
 }
+
+inline bool series_water_available(bool defrost, bool inlet_fresh, bool flow_fresh, float inlet_c, float flow_lph) {
+  return !defrost && inlet_fresh && flow_fresh && std::isfinite(inlet_c) && flow_lph >= 300 && flow_lph <= 3000;
+}
+
 // One control-tick snapshot. Only HP1 rows are reused; no pair matrix or heap allocation.
 struct CandidateModel {
   std::array<oq_odu::Variant, 2> variants;

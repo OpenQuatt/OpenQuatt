@@ -30,6 +30,8 @@ De kaart toont welke frequenties OpenQuatt overslaat. Onder **Beschikbare stande
 
 Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**.
 
+Onder de frequentiesliders zie je per bedrijfsmodus de hoogste compressorstand die binnen de ingestelde Hz-limiet valt. Bij een Duo verschijnen de buitenunits apart als hun frequentietabellen voor die modus verschillen.
+
 Bij **Quatt Hybrid-versie** staat de ingestelde generatie boven de uitgelezen generatie en firmwareversie per buitenunit. Via **Aanpassen** kun je de buitenunits opnieuw laten detecteren.
 
 #### Elektrische ingangsgrens

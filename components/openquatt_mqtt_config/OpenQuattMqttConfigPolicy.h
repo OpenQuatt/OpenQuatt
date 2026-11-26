@@ -25,6 +25,10 @@ enum class StorageTimeoutAction : uint8_t {
   REPORT_PERSISTENCE_PENDING = 2U,
 };
 
+inline bool mqtt_sample_within_age(uint32_t now_ms, uint32_t received_ms, uint32_t stale_ms) {
+  return received_ms != 0U && (stale_ms == 0U || now_ms - received_ms <= stale_ms);
+}
+
 inline MqttClientAction mqtt_client_action(bool desired_enabled, bool desired_broker_present, bool network_connected,
                                            bool client_present, bool client_matches_desired) {
   const bool should_run = desired_enabled && desired_broker_present;

@@ -135,6 +135,10 @@ inline int minimum_runtime_seconds(bool has_state, float value, int floor_s) {
   return static_cast<int>(roundf(std::min(value, static_cast<float>(MAX_SAFE_SECONDS))));
 }
 
+inline constexpr bool heating_cm_allows_hp(int control_mode_code) {
+  return control_mode_code == 2 || control_mode_code == 3;
+}
+
 inline ModeContext resolve_mode_context(int control_mode_code, int heat_mode_code) {
   const bool cooling = control_mode_code == 5;
   const bool curve = heat_mode_code == 1 || cooling;
@@ -142,7 +146,7 @@ inline ModeContext resolve_mode_context(int control_mode_code, int heat_mode_cod
       cooling,
       curve,
       !cooling && heat_mode_code != 1,
-      control_mode_code == 2 || control_mode_code == 3 || cooling,
+      heating_cm_allows_hp(control_mode_code) || cooling,
       cooling ? 2 : heat_mode_code,
       cooling ? 1 : 2,
       cooling ? STRATEGY_COOLING : (heat_mode_code == 1 ? STRATEGY_CURVE : STRATEGY_POWER_HOUSE),

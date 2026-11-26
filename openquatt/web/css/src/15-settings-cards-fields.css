@@ -712,6 +712,28 @@
   padding: 14px;
 }
 
+[data-oq-frequency-limit-levels] {
+  display: grid;
+  gap: 5px;
+}
+
+[data-oq-frequency-limit-levels]:empty {
+  display: none;
+}
+
+.oq-settings-frequency-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 8px;
+  color: var(--oq-helper-soft);
+  font-size: 0.82rem;
+}
+
+.oq-settings-frequency-caption strong {
+  color: var(--oq-helper-ink);
+}
+
 /* Inside a settings section a field is a label and a control, not another card. */
 .oq-settings-view .oq-settings-field.oq-helper-surface {
   padding: 0;

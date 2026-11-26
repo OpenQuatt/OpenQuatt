@@ -93,9 +93,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // Clearer exclusion summaries and restore feedback: +1,082 B raw / +180 B gzip (Node 24.14.1).
     // Compressor frequency demand in both overview modes: +376 B raw / +114 B gzip (Node 24.14.1).
     // Outlook during defrost and missing-input messages: +1,296 B raw / +267 B gzip versus dev 89e28f53 (Node 24.14.1).
+    // Compressor levels below the quiet/day sliders: +836 B raw / +287 B gzip (Node 24.14.1).
     // House heat-capacity graph and interactive legend: +7,075 B raw / +2,536 B gzip versus dev (Node 24.14.1).
     // Local chart preferences add 530 B raw / 97 B gzip on Node 24.14.1.
-    raw: 1_525_603,
+    raw: 1_526_439,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -128,6 +129,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // Measurement archive layout: +1,162 B raw / +239 B gzip versus dev f0da4507.
   // Frequency exclusion summaries span the card width: +67 B raw.
   // Compact compressor frequency demand: +77 B raw / +9 B gzip (Node 24.14.1).
+  // Compressor level rows: +250 B raw / +39 B gzip (Node 24.14.1).
   // House heat-capacity graph and interactive legend: +650 B raw / +196 B gzip versus dev (Node 24.14.1).
-  { file: "css/openquatt-app.css", raw: 231_456, gzipBaselineCeiling: 44_985 },
+  { file: "css/openquatt-app.css", raw: 231_706, gzipBaselineCeiling: 44_985 },
 ];
