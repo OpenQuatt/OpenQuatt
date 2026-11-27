@@ -7,6 +7,8 @@
 
 namespace esphome::openquatt_odu_defrost {
 namespace {
+constexpr uint32_t PROFILE_CHECK_INTERVAL_MS = 60000U;
+
 bool same_origin(AsyncWebServerRequest* request) {
   const auto host = request->get_header("Host");
   if (!host || host->empty()) return false;
@@ -157,7 +159,6 @@ void OpenQuattOduDefrost::set_odu_identity(oq_odu::Variant variant, uint16_t con
   portEXIT_CRITICAL(&mux_);
   if (profile_available_) {
     profile_state_ = oq_defrost::profile_state_after_identity(profile_state_, profile_, variant_, control_board_item_);
-    reconcile_due_ms_ = millis() + 5000U;
   }
 }
 
@@ -198,6 +199,14 @@ bool OpenQuattOduDefrost::enqueue_save(int desired, int expected, bool auto_reap
 }
 
 void OpenQuattOduDefrost::loop() {
+  if (profile_mode_read_pending_) {
+    // The read needs no service reservation. A queued user action can run once it completes.
+    if (millis() - loading_ms_ >= 30000U) {
+      clear_tx_queue_for_device();
+      finish_profile_(false);
+    }
+    return;
+  }
   Action action;
   int save_desired = -1, save_expected = -1;
   bool save_auto_reapply = false, request_pending = false;
@@ -216,10 +225,13 @@ void OpenQuattOduDefrost::loop() {
   if (action == Action::NONE && profile_available_ && consent_authorized_ &&
       oq_defrost::profile_reconcile_ready(profile_, profile_state_, variant_, control_board_item_, snapshot.online,
                                           snapshot.fresh, snapshot.identity, busy(), request_pending) &&
-      reconcile_due_ms_ != 0U && static_cast<int32_t>(millis() - reconcile_due_ms_) >= 0) {
-    reconcile_due_ms_ = millis() + 60000U;
-    if (oq_defrost::profile_matches(profile_, variant_, control_board_item_)) {
-      // Same guarded save route as a user request; fresh read supplies expected mode.
+      !dump_->is_active() && (!reconcile_due_ms_ || static_cast<int32_t>(millis() - *reconcile_due_ms_) >= 0)) {
+    if (!profile_full_check_due_) {
+      profile_mode_read_pending_ = true;
+      loading_ms_ = millis();
+      if (!read_holding_registers(oq_defrost::MODE_REGISTER, 1)) finish_profile_(false);
+    } else {
+      // Reuse the guarded save route, including a fresh full read before any write.
       portENTER_CRITICAL(&mux_);
       const bool accepted = !action_pending_ && !snapshot_.busy;
       if (accepted) action_pending_ = true;
@@ -231,8 +243,6 @@ void OpenQuattOduDefrost::loop() {
         save_expected = -1;
         save_auto_reapply = true;
       }
-    } else {
-      profile_state_ = "IDENTITY_MISMATCH";
     }
   }
   if (action != Action::NONE) {
@@ -242,6 +252,7 @@ void OpenQuattOduDefrost::loop() {
     } else if (!dump_->try_begin_external_operation()) {
       reject("BUSY");
     } else {
+      if (reconcile_) profile_full_check_due_ = false;
       reserved_ = true;
       parameters_ = {};
       parameters_.variant = variant();
@@ -290,6 +301,9 @@ void OpenQuattOduDefrost::offline() {
   snapshot_.online = snapshot_.fresh = snapshot_.identity = snapshot_.loaded = snapshot_.busy = false;
   snapshot_.mode = -1;
   portEXIT_CRITICAL(&mux_);
+  profile_mode_read_pending_ = false;
+  profile_full_check_due_ = true;
+  reconcile_due_ms_.reset();
   clear_tx_queue_for_device();
   cycle.offline();
   parameters_.loaded = loading_ = trigger_ready_ = false;
@@ -350,13 +364,15 @@ bool OpenQuattOduDefrost::persist_profile_() {
   profile_available_ = true;
   consent_authorized_ = candidate.flags == 1U;
   profile_state_ = "PENDING";
+  profile_full_check_due_ = false;
   return true;
 }
 void OpenQuattOduDefrost::finish_profile_(bool verified) {
+  profile_mode_read_pending_ = false;
   if (profile_available_ && !oq_defrost::profile_inhibited(profile_state_))
     profile_state_ = verified ? "IN_SYNC" : "PENDING";
   reconcile_ = false;
-  if (profile_available_ && consent_authorized_) reconcile_due_ms_ = millis() + 60000U;
+  if (profile_available_ && consent_authorized_) reconcile_due_ms_ = millis() + PROFILE_CHECK_INTERVAL_MS;
 }
 bool OpenQuattOduDefrost::take_trigger() {
   // Finish all previously accepted traffic before the single forced command.
@@ -451,6 +467,18 @@ bool OpenQuattOduDefrost::read_base_() {
 }
 void OpenQuattOduDefrost::on_read_holding_registers(uint16_t address, std::span<const uint16_t> values,
                                                     modbus::ResponseStatus status) {
+  if (address == oq_defrost::MODE_REGISTER) {
+    if (!profile_mode_read_pending_) return;
+    const bool valid = !status.has_value() && values.size() == 1;
+    if (valid && loaded()) parameters_.set_mode(values[0]);
+    const bool mismatch = valid && values[0] != profile_.mode;
+    finish_profile_(valid && !mismatch);
+    if (mismatch) {
+      profile_full_check_due_ = true;
+      reconcile_due_ms_.reset();
+    }
+    return;
+  }
   if (save_verifying_) {
     if (status.has_value() || address != 3270 || values.size() != 11) {
       save_writing_ = save_verifying_ = false;
@@ -489,6 +517,10 @@ void OpenQuattOduDefrost::on_read_holding_registers(uint16_t address, std::span<
   parameters_.loaded = true;
   loading_ = false;
   trigger_ready_ = trigger_after_load_;
+  if (reconcile_ && parameters_.mode() == save_desired_) {
+    save_after_load_ = false;
+    finish_profile_(true);
+  }
   save_ready_ = save_after_load_;
   if (save_ready_ && reconcile_) save_expected_ = parameters_.mode();
   if (save_ready_) save_ms_ = millis();
@@ -508,7 +540,9 @@ void OpenQuattOduDefrost::on_response(std::span<const uint8_t> request, std::spa
 }
 void OpenQuattOduDefrost::on_not_sent(std::span<const uint8_t>) {
   forced_write_pending_ = false;
-  if (loading_)
+  if (profile_mode_read_pending_)
+    finish_profile_(false);
+  else if (loading_)
     fail_("READ_FAILED");
   else if (save_writing_ || save_verifying_) {
     save_writing_ = save_verifying_ = save_ready_ = false;
@@ -545,6 +579,7 @@ void OpenQuattOduDefrost::update(Snapshot values, uint32_t now) {
              values.mode, values.ambient, values.coil, values.evaporation, values.hz);
     if (cycle.phase == oq_defrost::Phase::RESYNC) {
       clear_tx_queue_for_device();  // No latent forced command may outlive its acceptance window.
+      if (profile_mode_read_pending_) finish_profile_(false);
       if (previous_phase_ == oq_defrost::Phase::ACTIVE && cycle.continuous && !cycle.interrupted)
         diagnostics_.ended(cycle.duration_s);
       else

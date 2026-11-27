@@ -69,6 +69,9 @@ en HP2=3 nadat beide actuele identities en modes zijn vastgesteld.
 | NVS na restart, auto uit | Echte controllerrestart na voltooide save | Uptime reset én firmwareidentiteit vastgelegd; HP1 profiel/modekeuze/auto uit overleeft. Geen automatische P276-write. |
 | Auto aan en onafhankelijkheid | Save HP1 met auto aan; save HP2 met een andere mode en auto uit | Beide afzonderlijke NVS-keuzes en readbacks; wijziging HP2 verandert HP1 niet. Herhaal echte controllerrestart. |
 | Reconcile zichtbaar | Maak P276 van HP1 aantoonbaar anders dan zijn opgeslagen keuze via gedocumenteerde normale simulatorreset/profielconfiguratie; behoud controller-NVS; restart controller | Eerst mismatch vastleggen, daarna automatische load, P276-write en readback naar `desired_mode`, uiteindelijk `IN_SYNC`; HP2 blijft anders zolang auto uit staat. |
+| Periodieke controle bij gelijke methode | Bewaar een profiel met auto aan en laat P276 gedurende twee controle-intervallen gelijk aan de opgeslagen waarde. | Per interval één Modbus-read van P276. Geen volledige profieluitlezing of write. In een vorstproef blijven de compressoren uit en blijft CM98 actief. |
+| Korte ODU-herstart | Reset het ODU-model met dezelfde identiteit tussen twee Modbus-polls. Gebruik een opgeslagen modus die afwijkt van de resetwaarde. | Geen `Modbus OFFLINE` of `Modbus ONLINE`. De volgende losse P276-read vindt de afwijking. Volledige controle, één schrijfopdracht na vrijgave en bevestigde P276-readback. |
+| Modbus-herstel | Onderbreek Modbus tot de controller de unit offline meldt. Laat dezelfde unit terugkomen met een afwijkende P276. | Verse identiteit en meetwaarden, daarna volledige profielcontrole vóór de volgende geplande P276-read. Schrijfopdracht en teruglezing zodra de veiligheidsvoorwaarden kloppen. |
 | Auto uitschakelen | Idle HP1: save dezelfde actuele mode met auto uit; restart controller en creëer opnieuw gecontroleerde P276-mismatch | Consentwijziging overleeft NVS/restart; mismatch blijft bestaan gedurende minstens twee reconcile-intervallen; geen automatische write. |
 | Identity mismatch | Met auto aan: verander uitsluitend via bekende pending/active simulatorprofielroute naar een andere ondersteunde variant; geautoriseerde simulatorrestart | Nieuwe identity bevestigd; `IDENTITY_MISMATCH`, geen toepassen oud profiel, P276 blijft nieuwe fixturewaarde. HP2 blijft onafhankelijk. |
 
@@ -78,9 +81,11 @@ andere ondersteunde opgeslagen mode. Geen niet-bestaande register-write-URL
 bedenken. Als een geïnstalleerde simulator geen geschikte normale reset/
 profielroute heeft, is reconcile-dekking BLOCKED, geen PASS.
 
-Reconcile wordt na identitywijziging na 5 s geprobeerd en daarna met een
-60 s-interval. Een operatie heeft een 30 s-timeout. Gebruik begrensde waits met
-ruimte voor polling en minstens twee intervallen voor negatieve assertions.
+De volledige controle begint zodra na opstart, identiteitswijziging of
+Modbus-herstel verse identiteit en meetwaarden beschikbaar zijn. Tussendoor
+wordt P276 om de 60 s gecontroleerd. Een operatie heeft een 30 s-timeout. Geef
+een herpoging na een geweigerde schrijfopdracht de tijd om te wachten op de
+veiligheidsvrijgave. Gebruik voor negatieve controles minstens twee intervallen.
 Verifieer de writeguard afzonderlijk bij lopende compressor en bij actieve
 peer-defrost met normale simulatie: NVS-doel mag niet voortijdig op de ODU worden
 toegepast. De succesvolle retry volgt pas wanneer beide HPs weer idle zijn,

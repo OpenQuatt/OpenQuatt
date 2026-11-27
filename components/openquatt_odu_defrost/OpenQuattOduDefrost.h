@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
 #include "esphome/core/component.h"
@@ -115,7 +116,8 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   bool consent_authorized_{false};
   oq_defrost::Profile profile_{};
   const char* profile_state_{"NONE"};
-  uint32_t reconcile_due_ms_{0};
+  std::optional<uint32_t> reconcile_due_ms_;
+  bool profile_full_check_due_{true}, profile_mode_read_pending_{false};
   oq_defrost::Parameters parameters_{};
   oq_defrost::Diagnostics diagnostics_{};
   uint32_t sample_ms_[4]{};
