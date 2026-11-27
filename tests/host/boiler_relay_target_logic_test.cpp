@@ -327,6 +327,14 @@ void test_fixed_output_r1_follows_power_house_with_guards() {
   command.heat_request = false;
   assert(!oq_boiler::evaluate(command, input).output_active);
 
+  command.heat_request = true;
+  command.demand_present = false;
+  auto after_revoke = input;
+  after_revoke.output_last_change_ms = 4000U;
+  after_revoke.min_on_ms = 30000U;
+  const auto revoked = oq_boiler::evaluate(command, after_revoke);
+  assert(revoked.force_off && !revoked.output_active && revoked.block_reason == oq_boiler::BLOCK_NO_HEAT_REQUEST);
+
   auto no_flow = input;
   no_flow.flow_sufficient = false;
   assert_forced_off(no_flow, oq_boiler::BLOCK_FLOW_INSUFFICIENT);

@@ -95,9 +95,15 @@ class Runtime {
         id(oq_boiler_transport_settle_required), now_ms, id(oq_boiler_transport_change_ms), config.transport_settle_ms);
     if (transport_settled) id(oq_boiler_transport_settle_required) = false;
 
-    const auto command = command_();
+    auto command = command_();
     const bool fixed_power_r1 = config.relay_power_house_on_off && !opentherm_selected &&
                                 command.source == oq_boiler::COMMAND_SOURCE_POWER_HOUSE;
+    if (fixed_power_r1) {
+      // An earlier Power House request can outlive revocation of permission.
+      const bool heating_allowed = id(heating_enable_valid).has_state() && id(heating_enable_valid).state &&
+                                   id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
+      command.demand_present &= heating_allowed;
+    }
     // The fixed-output heater needs a live measurement after the heater.
     // An outdoor-unit outlet fallback cannot measure the heat it adds.
     const bool supply_valid =

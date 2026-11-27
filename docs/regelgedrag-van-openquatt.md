@@ -107,7 +107,8 @@ firmwarebuild `oq_boiler_relay_power_house_on_off` op `true` zetten. In
 Power House CM3 volgt R1 dan de bijstookvraag en levert de verwarmer bij
 inschakelen zijn eigen vermogen. Kies een lokale aanvoersensor die het water
 ná de verwarmer meet. Bij sensoruitval blijft R1 uit totdat die meting terug
-is. De maximale watertemperatuur en minimale flow blijven leidend.
+is. De verwarmingsvrijgave, maximale watertemperatuur en minimale flow
+blijven leidend.
 
 `CM4` heeft een andere betekenis. Deze stand is alleen voor foutfallback.
 OpenQuatt gaat pas naar `CM4` wanneer:
