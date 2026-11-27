@@ -202,7 +202,7 @@ Bij een stop naar CM0 of CM98 blijft de pompuitloop in CM1 actief tot de compres
 
 Bij een normale stop met een gezonde verbinding heeft de compressor 90 seconden om stilstand te melden. Bij het verstrijken van die termijn wacht OpenQuatt nog op de tweede nulmeting als de eerste minder dan 15 seconden oud is. Herstart en ketelvrijgave wachten op bevestigde stilstand.
 
-CM98 gebruikt standaard iPWM 800 voor vorstcirculatie. Bij te weinig, ontbrekende of verouderde flow verhoogt OpenQuatt de pompaansturing in stappen en houdt die aan tot het einde van de vorstperiode. De regeling controleert de meting van de geselecteerde flowbron. Na CM98 gebruikt AUTO de laatst bekende goede iPWM voor verwarmen of koelen. Is die waarde ongeldig of gelijk aan de vorststand, dan gebruikt AUTO iPWM 440. Als een verwarmingscyclus doorloopt na een herstart, kan AUTO bij voldoende debiet de teruggemelde pompstand overnemen. AUTO slaat de standaardvorststand over, evenals herstelstanden die tijdens die vorstperiode in de Modbus-wachtrij zijn gezet. Bij een Duo moeten beide pompstanden daarvoor overeenkomen.
+CM98 gebruikt een vaste pompstand van iPWM 800 voor vorstcirculatie. Na CM98 gebruikt AUTO de laatst bekende goede iPWM voor verwarmen of koelen. Is die waarde ongeldig of gelijk aan de vorststand, dan gebruikt AUTO iPWM 440. Als een verwarmingscyclus doorloopt na een herstart, kan AUTO bij voldoende debiet de teruggemelde pompstand overnemen. AUTO slaat de vorststand over. Bij een Duo moeten beide pompstanden daarvoor overeenkomen.
 
 Gebruik deze groep voorzichtig. Bij verkeerde bronwaarden of hydraulische problemen maak je hier snel meer ruis dan winst.
 
