@@ -14,12 +14,33 @@
 namespace oq_diagnostics {
 
 class InstallationMonitor {
+  static constexpr uint32_t kMinuteMs = 60U * 1000U;
+  static constexpr size_t kHistoryMinutes = 72U * 60U;
+  static constexpr uint8_t kBucketMax = 0x0F;
+  static constexpr size_t kPackedHistoryBytes = (kHistoryMinutes + 1U) / 2U;
+
  public:
   static constexpr uint32_t kHourMs = 60U * 60U * 1000U;
   static constexpr uint32_t kSixHoursMs = 6U * kHourMs;
   static constexpr uint32_t kDayMs = 24U * kHourMs;
   static constexpr uint32_t kTwoHoursMs = 2U * kHourMs;
   static constexpr uint32_t kSeventyTwoHoursMs = 72U * kHourMs;
+
+  // Two four-bit minute buckets per byte hold 72 hours of starts per unit.
+  using PackedBuckets = std::array<uint8_t, kPackedHistoryBytes>;
+  using HistoryStorage = std::array<PackedBuckets, OQ_TOPOLOGY_DUO ? 2U : 1U>;
+
+  explicit InstallationMonitor(HistoryStorage* storage) {
+    if (storage != nullptr) {
+      hp1_.history.packed_buckets = &(*storage)[0];
+#if OQ_TOPOLOGY_DUO
+      hp2_.history.packed_buckets = &(*storage)[1];
+#endif
+    }
+  }
+
+  InstallationMonitor(const InstallationMonitor&) = delete;
+  InstallationMonitor& operator=(const InstallationMonitor&) = delete;
 
   bool observe_compressor_frequency(int hp_index, float frequency_hz, uint32_t now_ms) {
     UnitState* unit_ptr = unit_for(hp_index);
@@ -82,11 +103,19 @@ class InstallationMonitor {
 
   size_t start_count(int hp_index, uint32_t now_ms, uint32_t window_ms) {
     UnitState* unit = unit_for(hp_index);
-    if (unit == nullptr) {
+    if (unit == nullptr || unit->history.packed_buckets == nullptr) {
       return 0;
     }
     advance_history(*unit, now_ms);
     return window_count(unit->history, window_ms);
+  }
+
+  float published_start_count(int hp_index, uint32_t now_ms, uint32_t window_ms) {
+    const UnitState* unit = unit_for(hp_index);
+    if (unit != nullptr && unit->history.packed_buckets == nullptr) {
+      return NAN;
+    }
+    return static_cast<float>(start_count(hp_index, now_ms, window_ms));
   }
 
   float last_start_age_minutes(int hp_index, uint32_t now_ms) const {
@@ -135,16 +164,10 @@ class InstallationMonitor {
  private:
   static constexpr uint32_t kStopConfirmMs = 20U * 1000U;
   static constexpr uint32_t kMaxObservationGapMs = 30U * 1000U;
-  static constexpr uint32_t kMinuteMs = 60U * 1000U;
-  static constexpr size_t kHistoryMinutes = 72U * 60U;
-  static constexpr uint8_t kBucketMax = 0x0F;
-  static constexpr size_t kPackedHistoryBytes = (kHistoryMinutes + 1U) / 2U;
   static constexpr size_t kEventsCapacity = 32;
   static_assert(kHistoryMinutes * kBucketMax <= std::numeric_limits<uint16_t>::max(),
                 "Rolling compressor start counters must fit in uint16_t.");
 
-  // Two four-bit minute buckets per byte keep 72 hours of rolling history
-  // compact while allowing considerably more starts than normal operation.
   struct StartHistory {
     bool initialized = false;
     uint32_t last_minute_tick_ms = 0;
@@ -153,7 +176,7 @@ class InstallationMonitor {
     uint16_t starts_6h = 0;
     uint16_t starts_24h = 0;
     uint16_t starts_72h = 0;
-    std::array<uint8_t, kPackedHistoryBytes> packed_buckets{};
+    PackedBuckets* packed_buckets = nullptr;
   };
 
   struct UnitState {
@@ -175,12 +198,12 @@ class InstallationMonitor {
   static uint32_t elapsed_ms(uint32_t now_ms, uint32_t then_ms) { return static_cast<uint32_t>(now_ms - then_ms); }
 
   static uint8_t bucket_at(const StartHistory& history, size_t minute) {
-    const uint8_t packed = history.packed_buckets[minute / 2U];
+    const uint8_t packed = (*history.packed_buckets)[minute / 2U];
     return minute % 2U == 0U ? packed & kBucketMax : packed >> 4U;
   }
 
   static void set_bucket(StartHistory& history, size_t minute, uint8_t value) {
-    uint8_t& packed = history.packed_buckets[minute / 2U];
+    uint8_t& packed = (*history.packed_buckets)[minute / 2U];
     if (minute % 2U == 0U) {
       packed = static_cast<uint8_t>((packed & 0xF0U) | (value & kBucketMax));
     } else {
@@ -193,7 +216,7 @@ class InstallationMonitor {
   }
 
   static void clear_history(StartHistory& history, uint32_t now_ms) {
-    history.packed_buckets.fill(0U);
+    history.packed_buckets->fill(0U);
     history.current_minute = 0;
     history.starts_2h = 0;
     history.starts_6h = 0;
@@ -219,6 +242,9 @@ class InstallationMonitor {
 
   static void advance_history(UnitState& unit, uint32_t now_ms) {
     StartHistory& history = unit.history;
+    if (history.packed_buckets == nullptr) {
+      return;
+    }
     if (!history.initialized) {
       history.initialized = true;
       history.last_minute_tick_ms = now_ms;
@@ -306,13 +332,15 @@ class InstallationMonitor {
     advance_history(unit, now_ms);
     prune_expired_events(now_ms);
     StartHistory& history = unit.history;
-    const uint8_t bucket = bucket_at(history, history.current_minute);
-    if (bucket < kBucketMax) {
-      set_bucket(history, history.current_minute, bucket + 1U);
-      ++history.starts_2h;
-      ++history.starts_6h;
-      ++history.starts_24h;
-      ++history.starts_72h;
+    if (history.packed_buckets != nullptr) {
+      const uint8_t bucket = bucket_at(history, history.current_minute);
+      if (bucket < kBucketMax) {
+        set_bucket(history, history.current_minute, bucket + 1U);
+        ++history.starts_2h;
+        ++history.starts_6h;
+        ++history.starts_24h;
+        ++history.starts_72h;
+      }
     }
     unit.has_last_start = true;
     unit.last_start_ms = now_ms;
@@ -332,10 +360,5 @@ class InstallationMonitor {
   size_t events_next_ = 0;
   std::array<StartEvent, kEventsCapacity> events_{};
 };
-
-inline InstallationMonitor& installation_monitor() {
-  static InstallationMonitor monitor;
-  return monitor;
-}
 
 }  // namespace oq_diagnostics
