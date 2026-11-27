@@ -50,7 +50,7 @@ class OpenQuattOduSettings : public Component {
   static constexpr uint32_t OPERATION_TIMEOUT_MS = 30000U;
   static constexpr uint32_t BUS_RETRY_MS = 60000U;
   static constexpr uint32_t FAILURE_RETRY_MS = 300000U;
-  static constexpr uint32_t PERIODIC_RECONCILE_MS = 21600000U;
+  static constexpr uint32_t PERIODIC_RECONCILE_MS = 10U * 60U * 1000U;
 
   enum class PendingAction : uint8_t { NONE = 0, LOAD, SAVE, RECONCILE };
   enum class Operation : uint8_t { NONE = 0, LOAD, APPLY, RECONCILE };
