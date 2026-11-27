@@ -45,8 +45,9 @@ De web-app heeft vijf hoofdschermen.
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
 
-Naast **Elektrisch vermogen** staat de geschatte stroomsterkte. OpenQuatt deelt
-het vermogen in watt door 230 V en rondt af op één decimaal.
+Naast **Elektrisch vermogen** en bij **Stroomverbruik** per warmtepomp staat de
+geschatte stroomsterkte. OpenQuatt deelt het betreffende vermogen in watt door
+230 V en rondt af op één decimaal.
 
 Na een ontdooimelding blijft de actuele COP zichtbaar zolang de vierwegklep
 in verwarmingsstand staat en de draaiende warmtepomp netto warmte afgeeft.

@@ -693,12 +693,15 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
-  export function getOverviewTopCards() {
-    const coolingActive = isCoolingOverviewActive();
-    const watts = parseLooseNumber(getEntityValue("totalPower"));
-    const estimatedCurrent = Number.isFinite(watts) && watts >= 0
+  export function formatEstimatedCurrent(watts) {
+    return Number.isFinite(watts) && watts >= 0
       ? `(~${formatNumber(watts / 230, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}A)`
       : "";
+  }
+
+  export function getOverviewTopCards() {
+    const coolingActive = isCoolingOverviewActive();
+    const estimatedCurrent = formatEstimatedCurrent(parseLooseNumber(getEntityValue("totalPower")));
     return [
       { key: "totalPower", label: t("overview.topPower"), tone: "blue", valueSuffix: estimatedCurrent },
       { key: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "orange" },
