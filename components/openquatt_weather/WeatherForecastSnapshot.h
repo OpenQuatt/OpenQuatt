@@ -26,12 +26,20 @@ struct ForecastSnapshot {
   float temperature_c[oq_weather::kHours]{}, wind_mps[oq_weather::kHours]{};
   float wind_direction_deg[oq_weather::kHours]{};
   uint64_t wind_direction_valid_mask = 0;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  uint64_t solar_valid_mask = 0;
+  uint16_t solar_wm2[oq_weather::kHours]{};
+#endif
   float latitude = NAN, longitude = NAN;
   char location[128]{}, configured_location[65]{};
   bool enabled = false, valid = false;
 };
 static_assert(std::is_trivially_copyable_v<ForecastSnapshot>);
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+static_assert(sizeof(ForecastSnapshot) <= 888, "forecast endpoint copies must stay compact with solar");
+#else
 static_assert(sizeof(ForecastSnapshot) <= 808, "forecast endpoint copies must stay compact");
+#endif
 
 inline void age_forecast_snapshot(ForecastSnapshot& snapshot, uint64_t now_ms) {
   // Only lower validity. HTTP may extrapolate a recently published clock from

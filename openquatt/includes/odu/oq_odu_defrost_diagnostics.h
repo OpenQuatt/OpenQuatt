@@ -16,6 +16,7 @@ struct Parameters {
   oq_odu::Variant variant{oq_odu::Variant::UNKNOWN};
   bool loaded{false};
   int mode() const { return base[5]; }
+  void set_mode(uint16_t value) { base[5] = value; }
   bool automatic() const { return loaded && base[4] == 1; }
 };
 inline float temperature(uint16_t raw) { return raw <= 255 ? static_cast<float>(raw) - 30.0f : NAN; }
