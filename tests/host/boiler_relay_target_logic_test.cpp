@@ -299,6 +299,52 @@ void test_only_normal_auxiliary_heat_sources_use_target_control() {
   assert(!oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_FALLBACK, false));
   assert(!oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_COMMISSIONING, false));
   assert(!oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_NONE, false));
+
+  assert(!oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_POWER_HOUSE, false, true));
+  assert(oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_HEATING_CURVE, false, true));
+  assert(oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_COLD_START, false, true));
+}
+
+void test_fixed_output_r1_follows_power_house_with_guards() {
+  auto command = power_house_command();
+  command.requested_power_w = 2500.0f;
+  const bool applicable = oq_boiler::relay_target_control_applies(command.source, false, true);
+  const auto target = oq_boiler::evaluate_relay_target(
+      {applicable, command.heat_request, false, 42.0f, command.target_temperature_c, kConfig});
+  assert(target.state == oq_boiler::RELAY_TARGET_NOT_APPLICABLE);
+  auto input = guarded_input(target);
+  assert(oq_boiler::evaluate(command, input).output_active);
+
+  input.output_active = true;
+  input.target_valid = false;
+  command.target_temperature_c = NAN;
+  const auto hold = oq_boiler::evaluate(command, input);
+  assert(hold.output_active && hold.block_reason == oq_boiler::BLOCK_NONE);
+
+  input.target_required = true;  // OpenTherm still requires TSet.
+  assert(oq_boiler::evaluate(command, input).block_reason == oq_boiler::BLOCK_TARGET_INVALID);
+  input.target_required = false;
+  command.heat_request = false;
+  assert(!oq_boiler::evaluate(command, input).output_active);
+
+  auto no_flow = input;
+  no_flow.flow_sufficient = false;
+  assert_forced_off(no_flow, oq_boiler::BLOCK_FLOW_INSUFFICIENT);
+  auto no_supply = input;
+  no_supply.supply_temperature_valid = false;
+  assert_forced_off(no_supply, oq_boiler::BLOCK_SUPPLY_UNAVAILABLE);
+  no_supply.output_active = false;
+  no_supply.supply_temperature_valid = true;
+  assert(oq_boiler::evaluate(power_house_command(), no_supply).output_active);
+  auto overheated = input;
+  overheated.boiler_inhibit_active = true;
+  assert_forced_off(overheated, oq_boiler::BLOCK_WATER_TEMP_INHIBIT);
+  auto mismatch = input;
+  mismatch.connection_mismatch = true;
+  assert_forced_off(mismatch, oq_boiler::BLOCK_CONNECTION_MISMATCH);
+  auto stale = input;
+  stale.now_ms += stale.command_max_age_ms;
+  assert_forced_off(stale, oq_boiler::BLOCK_COMMAND_STALE);
 }
 
 void test_source_policy_reaches_the_relay_decision() {
@@ -942,6 +988,7 @@ int main() {
   test_unusable_measurements_fail_safe();
   test_target_changes_move_the_request();
   test_only_normal_auxiliary_heat_sources_use_target_control();
+  test_fixed_output_r1_follows_power_house_with_guards();
   test_source_policy_reaches_the_relay_decision();
   test_cm4_fallback_keeps_its_on_off_semantics();
   test_cm100_commissioning_keeps_its_on_off_semantics();

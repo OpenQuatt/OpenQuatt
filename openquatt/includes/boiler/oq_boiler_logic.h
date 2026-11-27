@@ -291,9 +291,9 @@ inline bool relay_must_be_off(bool opentherm_selected, bool startup_probe_active
 // CM4 fault fallback and CM100 commissioning deliberately keep their existing
 // on/off semantics: they are not normal auxiliary heat and must not change
 // meaning as a side effect of target control.
-inline bool relay_target_control_applies(uint8_t source, bool opentherm_selected) {
+inline bool relay_target_control_applies(uint8_t source, bool opentherm_selected, bool power_house_on_off = false) {
   if (opentherm_selected) return false;
-  return source == COMMAND_SOURCE_POWER_HOUSE || source == COMMAND_SOURCE_HEATING_CURVE ||
+  return (source == COMMAND_SOURCE_POWER_HOUSE && !power_house_on_off) || source == COMMAND_SOURCE_HEATING_CURVE ||
          source == COMMAND_SOURCE_COLD_START;
 }
 
