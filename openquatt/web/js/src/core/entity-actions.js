@@ -10,7 +10,7 @@ import { reportUnknownAction } from "./action-router.js";
 import { commitQuickStartStrategySelection, handleControlAction } from "./control-actions.js";
 import { isCurveMode } from "./domain-helpers.js";
 import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, parseLooseNumber } from "./entity-store.js";
-import { commitDateTime, commitNumber, commitSelect, commitText, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
+import { commitDateTime, commitNumber, commitSelect, commitText, disableRange, getNumberRangeError, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { finishTimeInput, handleTimeInputFocus } from "./time-input.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
@@ -574,6 +574,16 @@ function updateFrequencyRangeControl(input) {
       }
       if (field === "electricalCurrentLimit") {
         void requestElectricalLimitChange(event.target.value);
+        return;
+      }
+      const rangeError = event.target.type === "number" ? getNumberRangeError(field, event.target.value) : "";
+      if (rangeError) {
+        state.controlNotice = "";
+        state.controlError = rangeError;
+        delete state.drafts[field];
+        delete state.inputDrafts[field];
+        event.target.value = String(getEntityValue(field));
+        render();
         return;
       }
       commitNumber(field, event.target.value);

@@ -5,7 +5,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEADER_ENTITY_KEYS, LIMIT_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
 import { armRestartRefresh, awaitRestartEvidence, beginDeviceReconnect, clearRestartRefresh } from "./device-reconnect.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
-import { formatOpenQuattResumeDateTime, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
+import { formatOpenQuattResumeDateTime, formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
 import { beginEntityWriteAction, buildBulkEntityChunks, ENTITY_REQUEST_TIMEOUT_MS, fetchBulkEntityChunk, getSettingsRefreshKeys, isEntityWriteActionCurrent, isLikelyDeviceConnectionError, mergeEntityPayload, ownsBusyAction, refreshEntities, refreshIncidentMonitoringData, startEntityWriteAction, syncEntities } from "./entity-sync.js";
 import {
   createIncidentActionRequestId,
@@ -356,6 +356,23 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
     }
   }
   return "";
+}
+
+// A typed value outside the firmware range is reported instead of silently snapped to the nearest boundary.
+export function getNumberRangeError(key, value) {
+  const numeric = parseLooseNumber(value);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+  const meta = getNumberMeta(key);
+  if (numeric >= meta.min && numeric <= meta.max) {
+    return "";
+  }
+  return t("actions.numberOutOfRange", {
+    name: getEntityFeedbackName(key),
+    min: formatValue(key, meta.min),
+    max: formatValue(key, meta.max),
+  });
 }
 
 async function confirmSwitchReadback(key, enabled, isCurrent) {
