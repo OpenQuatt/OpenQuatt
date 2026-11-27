@@ -7,6 +7,8 @@
 
 namespace {
 
+using oq_boiler::ControllerDecision;
+using oq_boiler_cm3_opentherm::apply;
 using oq_boiler_cm3_opentherm::Control;
 using oq_boiler_cm3_opentherm::Inputs;
 
@@ -15,6 +17,7 @@ constexpr float kFlowLph = 800.0f;
 constexpr float kCp = 4186.0f;
 constexpr float kConductance = kFlowLph * kCp / 3600.0f;
 constexpr float kMinimumW = 4340.0f;
+constexpr ControllerDecision kChRequested{true, true, true, false, false, oq_boiler::BLOCK_NONE};
 
 Inputs field_inputs() {
   Inputs in;
@@ -36,6 +39,17 @@ Inputs field_inputs() {
   in.room_c = 17.24f;
   in.setpoint_c = 18.5f;
   return in;
+}
+
+float next_target(Control& control, Inputs& in) {
+  in.now_ms += kTickMs;
+  return control.tick(in).target_c;
+}
+
+void expect_targets_for(Control& control, Inputs& in, uint32_t duration_ms, bool active) {
+  for (uint32_t elapsed = 0; elapsed < duration_ms; elapsed += kTickMs) {
+    assert(isfinite(next_target(control, in)) == active);
+  }
 }
 
 // The field capture shows prolonged CH-on, a roughly 30 s initial burn,
@@ -106,27 +120,22 @@ void test_warm_start_replay() {
 }
 
 void test_small_deficit_is_served_in_doses() {
-  constexpr float requested_w = 1800.0f;
-  constexpr uint32_t duration_ms = 5400000;
-  const auto baseline = replay(requested_w, false, duration_ms);
-  assert(baseline.short_burns > 4);
-  const auto candidate = replay(requested_w, true, duration_ms);
-  assert(candidate.starts >= 2 && candidate.starts <= 5);
-  assert(candidate.short_burns == 0);
-  assert(candidate.longest_burn_ms >= 175000);
-  const float measured_average_w = candidate.delivered_ws / (duration_ms / 1000.0f);
-  assert(measured_average_w >= 0.75f * requested_w && measured_average_w <= 1.25f * requested_w);
-}
-
-void test_low_demand_window_keeps_delivered_heat_bounded() {
-  // Replay the 1600 s HIL window with the measured rise from 1.85 to 2.11 kW.
-  constexpr uint32_t duration_ms = 1600000;
-  const auto boiler = replay(1850.0f, true, duration_ms, 260.0f);
-  const float measured_average_w = boiler.delivered_ws / (duration_ms / 1000.0f);
-  assert(boiler.starts == 2);
-  assert(boiler.short_burns == 0);
-  assert(boiler.longest_burn_ms >= 175000);
-  assert(measured_average_w >= 1600.0f && measured_average_w <= 2500.0f);
+  assert(replay(1800.0f, false, 5400000).short_burns > 4);
+  struct ReplayCase {
+    float initial_w, drift_w;
+    uint32_t duration_ms;
+    unsigned min_starts, max_starts;
+    float min_average_w, max_average_w;
+  };
+  // Constant demand and the 1600 s HIL window with a rise from 1.85 to 2.11 kW.
+  for (const auto& run : {ReplayCase{1800.0f, 0.0f, 5400000, 2, 5, 1350.0f, 2250.0f},
+                          {1850.0f, 260.0f, 1600000, 2, 2, 1600.0f, 2500.0f}}) {
+    const auto boiler = replay(run.initial_w, true, run.duration_ms, run.drift_w);
+    const float average_w = boiler.delivered_ws / (run.duration_ms / 1000.0f);
+    assert(boiler.starts >= run.min_starts && boiler.starts <= run.max_starts);
+    assert(boiler.short_burns == 0 && boiler.longest_burn_ms >= 175000);
+    assert(average_w >= run.min_average_w && average_w <= run.max_average_w);
+  }
 }
 
 void test_setpoint_recovery_in_room_model() {
@@ -163,29 +172,21 @@ void test_start_holds_then_ramps_to_the_hydraulic_target() {
   const float ignition_c = control.tick(in).target_c;
   const float steady_c = in.inlet_c + in.requested_power_w / kConductance;
   assert(ignition_c > 43.0f && ignition_c < 48.0f);
-  in.ch_applied = true;
-  in.flame_on = true;
-  for (int ticks = 0; ticks < 12; ++ticks) {
-    in.now_ms += kTickMs;
-    assert(control.tick(in).target_c == ignition_c);
-  }
-  in.now_ms += kTickMs;
-  assert(fabsf(control.tick(in).target_c - (ignition_c - 0.5f)) < 0.01f);
-  for (int ticks = 0; ticks < 35; ++ticks) {
-    in.now_ms += kTickMs;
-    assert(control.tick(in).target_c >= steady_c - 0.01f);
-  }
+  in.ch_applied = in.flame_on = true;
+  for (int tick = 0; tick < 12; ++tick) assert(next_target(control, in) == ignition_c);
+  assert(fabsf(next_target(control, in) - (ignition_c - 0.5f)) < 0.01f);
+  for (int tick = 0; tick < 35; ++tick) assert(next_target(control, in) >= steady_c - 0.01f);
   assert(fabsf(control.tick(in).target_c - steady_c) < 0.01f);
 }
 
 void test_missing_data_water_margin_and_baseline_permission() {
   auto in = field_inputs();
   Control control;
-  in.minimum_modulation_pct = NAN;
-  assert(!control.tick(in).managed);
-  in.minimum_modulation_pct = 101.0f;
-  assert(!control.tick(in).managed);
-  in.minimum_modulation_pct = 14.0f;
+  for (float unavailable : {NAN, 101.0f}) {
+    auto candidate = in;
+    candidate.minimum_modulation_pct = unavailable;
+    assert(!control.tick(candidate).managed);
+  }
   in.outlet_c = NAN;  // Boiler supports ID15 but not outlet temperature.
   for (int tick = 0; tick < 20; ++tick) {
     in.now_ms += kTickMs;
@@ -207,12 +208,6 @@ void test_missing_data_water_margin_and_baseline_permission() {
   in.outlet_c = 31.4f;
   assert(isfinite(control.tick(in).target_c));
   in.ch_applied = true;
-  in.capacity_kw = NAN;
-  assert(isnan(control.tick(in).target_c));
-  in.capacity_kw = 31.0f;
-  in.inlet_c = NAN;
-  assert(isnan(control.tick(in).target_c));
-  in.inlet_c = 28.2f;
   in.heat_requested = false;
   assert(isnan(control.tick(in).target_c));
 }
@@ -222,8 +217,7 @@ void test_in_target_band_keeps_continuous_heat_but_clears_dose() {
   auto in = field_inputs();
   in.room_c = in.setpoint_c + 0.01f;
   assert(isfinite(control.tick(in).target_c));
-  in.ch_applied = true;
-  in.flame_on = true;
+  in.ch_applied = in.flame_on = true;
   in.requested_power_w = 1800.0f;
   assert(isnan(control.tick(in).target_c));
 }
@@ -243,10 +237,8 @@ void test_defrost_dhw_and_setpoint_drop() {
   assert(isnan(control.tick(in).target_c));
   in.defrost_active = false;
   assert(isfinite(control.tick(in).target_c));
-  in.ch_applied = true;
-  in.flame_on = true;
-  in.now_ms += kTickMs;
-  assert(isfinite(control.tick(in).target_c));
+  in.ch_applied = in.flame_on = true;
+  assert(isfinite(next_target(control, in)));
   in.dhw_active = true;
   assert(isnan(control.tick(in).target_c));
   in.dhw_active = false;
@@ -291,8 +283,8 @@ void test_normal_cm3_stops_respect_minimum_on_time() {
     const float ordinary_c = in.ordinary_target_c;
     const uint32_t started_ms = in.now_ms;
     auto output_c = ordinary_c;
-    auto start = oq_boiler::ControllerDecision{true, true, true, false, false, oq_boiler::BLOCK_NONE};
-    oq_boiler_cm3_opentherm::apply(control, true, in, start, output_c);
+    auto start = kChRequested;
+    apply(control, true, in, start, output_c);
     assert(start.output_active && output_c > ordinary_c);
 
     in.ch_applied = in.flame_on = true;
@@ -313,9 +305,9 @@ void test_normal_cm3_stops_respect_minimum_on_time() {
       const auto normal_reason = in.heat_requested      ? oq_boiler::BLOCK_NONE
                                  : in.minimum_on_active ? oq_boiler::BLOCK_MIN_ON_TIME
                                                         : oq_boiler::BLOCK_NO_HEAT_REQUEST;
-      oq_boiler::ControllerDecision normal{true,  in.heat_requested, in.heat_requested || in.minimum_on_active, false,
-                                           false, normal_reason};
-      oq_boiler_cm3_opentherm::apply(control, true, in, normal, output_c);
+      ControllerDecision normal{true,  in.heat_requested, in.heat_requested || in.minimum_on_active, false,
+                                false, normal_reason};
+      apply(control, true, in, normal, output_c);
       assert(normal.output_active == in.minimum_on_active && !normal.blocked);
       if (in.minimum_on_active) {
         assert(normal.block_reason == oq_boiler::BLOCK_MIN_ON_TIME);
@@ -345,8 +337,8 @@ void test_cm3_lost_feedback_is_reported_and_overrides_minimum_on() {
     constexpr auto telemetry_unavailable = oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE;
     float output_c = in.ordinary_target_c;
     for (int tick = 0; tick < 30; ++tick) {
-      auto normal = oq_boiler::ControllerDecision{true, true, true, false, false, oq_boiler::BLOCK_NONE};
-      oq_boiler_cm3_opentherm::apply(control, true, in, normal, output_c);
+      auto normal = kChRequested;
+      apply(control, true, in, normal, output_c);
       assert(!normal.output_active && !normal.force_off && normal.blocked &&
              normal.block_reason == telemetry_unavailable);
       assert(isnan(output_c));
@@ -357,13 +349,13 @@ void test_cm3_lost_feedback_is_reported_and_overrides_minimum_on() {
     // Returning telemetry cannot bypass the ordinary minimum-off time.
     valid.now_ms = in.now_ms;
     valid.minimum_on_active = valid.ch_applied = valid.start_allowed = false;
-    auto resting = oq_boiler::ControllerDecision{true, true, false, false, true, oq_boiler::BLOCK_MIN_OFF_TIME};
-    oq_boiler_cm3_opentherm::apply(control, true, valid, resting, output_c);
+    auto resting = ControllerDecision{true, true, false, false, true, oq_boiler::BLOCK_MIN_OFF_TIME};
+    apply(control, true, valid, resting, output_c);
     assert(!resting.output_active && resting.block_reason == oq_boiler::BLOCK_MIN_OFF_TIME && isnan(output_c));
     valid.now_ms += kTickMs;
     valid.start_allowed = true;
-    auto recovered = oq_boiler::ControllerDecision{true, true, true, false, false, oq_boiler::BLOCK_NONE};
-    oq_boiler_cm3_opentherm::apply(control, true, valid, recovered, output_c);
+    auto recovered = kChRequested;
+    apply(control, true, valid, recovered, output_c);
     assert(recovered.output_active && !recovered.blocked && isfinite(output_c));
   }
 }
@@ -382,9 +374,9 @@ void test_cm3_minimum_on_does_not_hold_an_unsafe_output() {
     in.defrost_active = reason == DEFROST;
     if (reason == HOT_OUTLET) in.outlet_c = in.maximum_water_c - 0.5f;
     in.flow_sufficient = reason != LOW_FLOW;
-    auto hold = oq_boiler::ControllerDecision{true, false, true, false, false, oq_boiler::BLOCK_MIN_ON_TIME};
+    auto hold = ControllerDecision{true, false, true, false, false, oq_boiler::BLOCK_MIN_ON_TIME};
     auto output_c = in.ordinary_target_c;
-    oq_boiler_cm3_opentherm::apply(control, true, in, hold, output_c);
+    apply(control, true, in, hold, output_c);
     assert(!hold.output_active && isnan(output_c) && hold.block_reason != oq_boiler::BLOCK_MIN_ON_TIME);
   }
 }
@@ -416,29 +408,29 @@ void test_staggered_cm4_handover_and_force_off() {
   Control control;
   auto in = field_inputs();
   constexpr float unboosted_c = 33.6f;
-  auto normal = oq_boiler::ControllerDecision{true, true, true, false, false, oq_boiler::BLOCK_NONE};
+  auto normal = kChRequested;
   auto output_c = unboosted_c;
-  oq_boiler_cm3_opentherm::apply(control, true, in, normal, output_c);
+  apply(control, true, in, normal, output_c);
   assert(normal.output_active && output_c > unboosted_c);
 
   in.now_ms += kTickMs;
   output_c = unboosted_c;
-  oq_boiler_cm3_opentherm::apply(control, false, {}, normal, output_c);
+  apply(control, false, {}, normal, output_c);
   assert(normal.output_active && output_c == unboosted_c);  // CM4 supervisor tick, dispatcher still PH.
   output_c = 55.0f;
-  oq_boiler_cm3_opentherm::apply(control, false, {}, normal, output_c);
+  apply(control, false, {}, normal, output_c);
   assert(normal.output_active && output_c == 55.0f);  // Dispatcher has now published CM4.
 
-  oq_boiler_cm3_opentherm::apply(control, true, in, normal, output_c);
-  auto hold = oq_boiler::ControllerDecision{true, false, true, false, false, oq_boiler::BLOCK_MIN_ON_TIME};
-  oq_boiler_cm3_opentherm::apply(control, false, {}, hold, output_c);
+  apply(control, true, in, normal, output_c);
+  auto hold = ControllerDecision{true, false, true, false, false, oq_boiler::BLOCK_MIN_ON_TIME};
+  apply(control, false, {}, hold, output_c);
   assert(!hold.output_active && isnan(output_c));  // New owner is already published and has no heat request.
 
-  oq_boiler_cm3_opentherm::apply(control, true, in, normal, output_c);
-  auto trip = oq_boiler::ControllerDecision{true, false, false, true, true, oq_boiler::BLOCK_WATER_TEMP_HARD_TRIP};
+  apply(control, true, in, normal, output_c);
+  auto trip = ControllerDecision{true, false, false, true, true, oq_boiler::BLOCK_WATER_TEMP_HARD_TRIP};
   in.heat_requested = false;
   output_c = NAN;
-  oq_boiler_cm3_opentherm::apply(control, true, in, trip, output_c);
+  apply(control, true, in, trip, output_c);
   assert(!trip.output_active && isnan(output_c) && trip.block_reason == oq_boiler::BLOCK_WATER_TEMP_HARD_TRIP);
 }
 
@@ -447,82 +439,47 @@ void test_failed_ignition_observes_retry_rest() {
   auto in = field_inputs();
   in.now_ms = UINT32_MAX - 2 * kTickMs;
   assert(isfinite(control.tick(in).target_c));
-  in.ch_applied = true;
-  in.now_ms += kTickMs;
-  in.flame_on = true;
-  assert(isfinite(control.tick(in).target_c));
-  in.now_ms += kTickMs;
+  in.ch_applied = in.flame_on = true;
+  assert(isfinite(next_target(control, in)));
   in.flame_on = false;
-  assert(isnan(control.tick(in).target_c));
+  assert(isnan(next_target(control, in)));
+
   in.ch_applied = false;
-  for (unsigned elapsed = kTickMs; elapsed < 360000; elapsed += kTickMs) {
-    in.now_ms += kTickMs;
-    assert(isnan(control.tick(in).target_c));
-  }
-  in.now_ms += kTickMs;
-  assert(isfinite(control.tick(in).target_c));
+  expect_targets_for(control, in, 360000 - kTickMs, false);
+  assert(isfinite(next_target(control, in)));
   in.ch_applied = true;
-  for (unsigned elapsed = kTickMs; elapsed < 150000; elapsed += kTickMs) {
-    in.now_ms += kTickMs;
-    assert(isfinite(control.tick(in).target_c));
-  }
-  in.now_ms += kTickMs;
-  assert(isnan(control.tick(in).target_c));
+  expect_targets_for(control, in, 150000 - kTickMs, true);
+  assert(isnan(next_target(control, in)));
 }
 
-void test_flame_loss_then_flow_confirmation_uses_normal_off_time() {
-  constexpr bool flame_states[] = {false, true};
-  for (const bool stable_flame : flame_states) {
+void test_flow_confirmation_after_flame_loss() {
+  struct FlowCase {
+    uint32_t firing_ms, flow_loss_ms, flow_recovery_ms, expected_restart_ms;
+    bool flow_loss_confirmed;
+    float interrupted_flow_lph;
+  };
+  // Flame-off arrives first. Timely, confirmed flow loss permits ordinary
+  // minimum-off recovery even after an early flame loss. Late or missing
+  // confirmation leaves the ignition retry rest in effect.
+  for (const auto& run : {FlowCase{10000, kTickMs, 45000, 120000, true, kFlowLph},
+                          {100000, kTickMs, 45000, 120000, true, kFlowLph},
+                          {kTickMs, kTickMs, 60000, 360000, false, NAN},
+                          {kTickMs, 20000, 60000, 360000, true, 0.0f}}) {
     Control control;
     auto in = field_inputs();
     assert(isfinite(control.tick(in).target_c));
     in.ch_applied = in.flame_on = true;
-    for (int i = 0; i < (stable_flame ? 20 : 2); ++i) {
-      in.now_ms += kTickMs;
-      assert(isfinite(control.tick(in).target_c));
-    }
-
-    // Real bus ordering: the boiler reports flame-off one tick before the
-    // flow filter confirms the interruption.
-    in.now_ms += kTickMs;
+    expect_targets_for(control, in, run.firing_ms, true);
     in.flame_on = false;
-    assert(isnan(control.tick(in).target_c));
-    in.ch_applied = false;
-    in.start_allowed = false;
-    const uint32_t stopped_at = in.now_ms;
-    for (uint32_t elapsed = kTickMs; elapsed <= 120000; elapsed += kTickMs) {
-      in.now_ms = stopped_at + elapsed;
-      in.flow_sufficient = in.heat_requested = elapsed >= 45000;
-      in.flow_loss_confirmed = !in.flow_sufficient;
-      in.start_allowed = elapsed >= 120000;
-      assert(isfinite(control.tick(in).target_c) == in.start_allowed);
-    }
-  }
-}
-
-void test_missing_or_late_flow_preserves_ignition_rest() {
-  constexpr bool confirmed_losses[] = {false, true};
-  for (const bool confirmed_loss : confirmed_losses) {
-    Control control;
-    auto in = field_inputs();
-    assert(isfinite(control.tick(in).target_c));
-    in.ch_applied = in.flame_on = true;
-    in.now_ms += kTickMs;
-    assert(isfinite(control.tick(in).target_c));
-    in.flame_on = false;
-    in.now_ms += kTickMs;
-    assert(isnan(control.tick(in).target_c));
+    assert(isnan(next_target(control, in)));
 
     in.ch_applied = false;
-    const uint32_t failed_at = in.now_ms;
-    const uint32_t flow_loss_at = confirmed_loss ? 20000 : kTickMs;
-    for (uint32_t elapsed = kTickMs; elapsed <= 360000; elapsed += kTickMs) {
-      in.now_ms = failed_at + elapsed;
-      in.flow_sufficient = in.heat_requested = elapsed < flow_loss_at || elapsed >= 60000;
-      in.flow_loss_confirmed = confirmed_loss && !in.flow_sufficient;
-      in.flow_lph = in.flow_sufficient ? kFlowLph : confirmed_loss ? 0.0f : NAN;
+    for (uint32_t elapsed = kTickMs; elapsed <= run.expected_restart_ms; elapsed += kTickMs) {
+      in.flow_sufficient = in.heat_requested = elapsed < run.flow_loss_ms || elapsed >= run.flow_recovery_ms;
+      in.flow_loss_confirmed = run.flow_loss_confirmed && !in.flow_sufficient;
+      in.flow_lph = in.flow_sufficient ? kFlowLph : run.interrupted_flow_lph;
       in.start_allowed = elapsed >= 120000;
-      assert(isfinite(control.tick(in).target_c) == (elapsed == 360000));
+      assert(isfinite(next_target(control, in)) == (elapsed == run.expected_restart_ms));
     }
   }
 }
@@ -532,7 +489,6 @@ void test_missing_or_late_flow_preserves_ignition_rest() {
 int main() {
   test_warm_start_replay();
   test_small_deficit_is_served_in_doses();
-  test_low_demand_window_keeps_delivered_heat_bounded();
   test_setpoint_recovery_in_room_model();
   test_start_holds_then_ramps_to_the_hydraulic_target();
   test_missing_data_water_margin_and_baseline_permission();
@@ -546,6 +502,5 @@ int main() {
   test_cm3_link_recovery_requires_thermal_feedback();
   test_staggered_cm4_handover_and_force_off();
   test_failed_ignition_observes_retry_rest();
-  test_flame_loss_then_flow_confirmation_uses_normal_off_time();
-  test_missing_or_late_flow_preserves_ignition_rest();
+  test_flow_confirmation_after_flame_loss();
 }

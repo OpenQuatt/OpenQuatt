@@ -45,6 +45,8 @@ class Control {
   Decision tick(const Inputs& in);
 
  private:
+  enum class Retry : uint8_t { Ready, AwaitFlowConfirmation, Rest };
+
   static float nominal_minimum_w(float capacity_kw, float modulation_pct) {
     if (!isfinite(capacity_kw) || !isfinite(modulation_pct) || capacity_kw <= 0.0f || modulation_pct <= 0.0f ||
         modulation_pct > 100.0f) {
@@ -63,12 +65,11 @@ class Control {
   }
 
   Decision failed(uint32_t now_ms, bool early_flame_loss = false) {
-    retry_wait_ = true;
     failed_at_ms_ = now_ms;
     // The flame receipt can precede the controller's filtered flow reading.
     // Only a confirmed flow interruption in the next few ticks can explain
     // this early flame loss. A timeout or thermal cutoff keeps its own rest.
-    waiting_for_flow_confirmation_ = early_flame_loss;
+    retry_ = early_flame_loss ? Retry::AwaitFlowConfirmation : Retry::Rest;
     discard_credit();
     return stop();
   }
@@ -77,8 +78,7 @@ class Control {
   bool have_tick_ = false;
   bool running_ = false;
   bool flame_seen_ = false;
-  bool retry_wait_ = false;
-  bool waiting_for_flow_confirmation_ = false;
+  Retry retry_ = Retry::Ready;
   bool waiting_for_setpoint_command_ = false;
   bool residual_heat_active_ = false;
   uint32_t previous_tick_ms_ = 0;

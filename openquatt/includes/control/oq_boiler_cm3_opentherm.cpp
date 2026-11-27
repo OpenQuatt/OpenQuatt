@@ -32,9 +32,9 @@ void Control::withdraw_output() {
 
 Decision Control::tick(const Inputs& in) {
   const float minimum_w = nominal_minimum_w(in.capacity_kw, in.minimum_modulation_pct);
-  const bool thermal_data_valid = isfinite(in.inlet_c) && isfinite(in.outlet_c) && isfinite(in.flow_lph) &&
-                                  isfinite(in.maximum_water_c) && isfinite(in.water_cp_j_per_kgk);
-  const bool telemetry_valid = in.status_valid && thermal_data_valid && isfinite(minimum_w);
+  const bool telemetry_valid = in.status_valid && isfinite(minimum_w) && isfinite(in.inlet_c) &&
+                               isfinite(in.outlet_c) && isfinite(in.flow_lph) && isfinite(in.maximum_water_c) &&
+                               isfinite(in.water_cp_j_per_kgk);
   if (in.heat_requested && isfinite(in.ordinary_target_c)) ordinary_target_c_ = in.ordinary_target_c;
   // Boilers without this telemetry can use the ordinary controller. Once CM3
   // has taken over, require fresh feedback to run under this policy.
@@ -44,10 +44,12 @@ Decision Control::tick(const Inputs& in) {
   const uint32_t elapsed_ms = have_tick_ ? in.now_ms - previous_tick_ms_ : 0;
   previous_tick_ms_ = in.now_ms;
   have_tick_ = true;
-  if (waiting_for_flow_confirmation_) {
-    const bool within_window = in.now_ms - failed_at_ms_ <= kFlowConfirmationMs;
-    if (within_window && in.flow_loss_confirmed) retry_wait_ = false;
-    waiting_for_flow_confirmation_ = within_window && !in.flow_loss_confirmed;
+  if (retry_ == Retry::AwaitFlowConfirmation) {
+    if (in.now_ms - failed_at_ms_ > kFlowConfirmationMs) {
+      retry_ = Retry::Rest;
+    } else if (in.flow_loss_confirmed) {
+      retry_ = Retry::Ready;
+    }
   }
   if (isfinite(in.setpoint_c)) {
     if (isfinite(setpoint_c_) && in.setpoint_c < setpoint_c_ - 0.05f) {
@@ -79,13 +81,14 @@ Decision Control::tick(const Inputs& in) {
   }
 
   const float ceiling_c = in.maximum_water_c - kWaterLimitReserveC;
-  if (running_ && in.outlet_c >= in.maximum_water_c - kOutletCutoffReserveC) return failed(in.now_ms);
+  const float outlet_cutoff_c = in.maximum_water_c - kOutletCutoffReserveC;
+  if (running_ && in.outlet_c >= outlet_cutoff_c) return failed(in.now_ms);
   if (!in.heat_requested || waiting_for_setpoint_command_ || (dose && !room_below_target)) {
     energy_ws_ = 0.0f;
     // Keep CH on for a normal stop within the minimum run time, dropping
     // ignition boost immediately. Do not ignite during defrost or hot water.
-    if (in.minimum_on_active && telemetry_valid && (!in.defrost_active || in.flame_on) &&
-        in.outlet_c < in.maximum_water_c - kOutletCutoffReserveC && isfinite(ordinary_target_c_)) {
+    if (in.minimum_on_active && (!in.defrost_active || in.flame_on) && in.outlet_c < outlet_cutoff_c &&
+        isfinite(ordinary_target_c_)) {
       const float hold_c = fminf(ordinary_target_c_, ceiling_c);
       target_c_ = running_ ? fminf(target_c_, hold_c) : hold_c;
       return {true, target_c_, oq_boiler::BLOCK_MIN_ON_TIME};
@@ -149,8 +152,9 @@ Decision Control::tick(const Inputs& in) {
     return {true, target_c_};
   }
 
-  if (retry_wait_ && in.now_ms - failed_at_ms_ >= kFailedStartRestMs) retry_wait_ = false;
-  if (retry_wait_ || !in.start_allowed || in.defrost_active || (dose && energy_ws_ < reserve_ws)) return {true};
+  if (retry_ == Retry::Rest && in.now_ms - failed_at_ms_ >= kFailedStartRestMs) retry_ = Retry::Ready;
+  if (retry_ != Retry::Ready || !in.start_allowed || in.defrost_active || (dose && energy_ws_ < reserve_ws))
+    return {true};
   if (in.flame_on) {
     // A flame inherited at the CM3 handover cannot receive another boost.
     if (!in.ch_applied) return {true};
