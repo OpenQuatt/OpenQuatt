@@ -13,7 +13,7 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
-const { commitSelect, disableRange, getNumberSettingValidationError } = await import("../js/src/core/entity-write-actions.js");
+const { commitSelect, disableRange, getNumberRangeError, getNumberSettingValidationError } = await import("../js/src/core/entity-write-actions.js");
 const { SETTINGS_GROUP_KEY_MAP, getSettingsGroupHydrationKeys, getSettingsRefreshKeys } = await import("../js/src/core/entity-sync.js");
 const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 const { renderControlModeOverrideBanner, renderSystemModal } = await import("../js/src/features/header-status.js");
@@ -123,6 +123,18 @@ test("start- en stopgrens kunnen elkaar niet passeren", () => {
   assert.equal(getNumberSettingValidationError("boilerSupportStopThreshold", 1000, entities), "De stopgrens moet lager zijn dan de startgrens (1000 W).");
   assert.equal(getNumberSettingValidationError("boilerSupportStartThreshold", 1001, entities), "");
   assert.equal(getNumberSettingValidationError("boilerSupportStopThreshold", 399, entities), "");
+});
+
+test("waarde buiten het firmwarebereik geeft een foutmelding met het bereik", () => {
+  const margin = () => numberEntity(1, "°C", { min_value: 0.1, max_value: 2, step: 0.1 });
+  resetSettingsState({ phRunExtensionStopMargin: margin() });
+  assert.match(getNumberRangeError("phRunExtensionStopMargin", "2.2"), /kies een waarde van 0\.1 °C tot en met 2\.0 °C/);
+  assert.match(getNumberRangeError("phRunExtensionStopMargin", "0,05"), /kies een waarde/);
+  assert.equal(getNumberRangeError("phRunExtensionStopMargin", "1.3"), "");
+  assert.equal(getNumberRangeError("phRunExtensionStopMargin", "2"), "");
+  assert.equal(getNumberRangeError("phRunExtensionStopMargin", ""), "");
+
+  assert.match(mockDeviceSource, /\["Power House run extension stop margin", 0\.5, 0\.1, 2, 0\.1, "°C"\]/);
 });
 
 test("uitgesloten frequentiebereiken kunnen niet worden omgekeerd", () => {
