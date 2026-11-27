@@ -6,6 +6,7 @@ globalThis.window = { localStorage: { getItem: () => null } };
 const { state } = await import("../js/src/core/state.js");
 const { FAST_OVERVIEW_KEYS, HP_PANEL_CONFIGS } = await import("../js/src/core/config.js");
 const { getHeatPumpRuntimeModel, patchHeatPumpPanel, renderHeatPumpPanel, renderHeatPumpSchematic } = await import("../js/src/views/heatpump.js");
+const { setLocale } = await import("../js/src/i18n/index.js");
 
 test("schematic readings and live patches agree without replacing the board", () => {
   state.entities = {};
@@ -101,6 +102,41 @@ test("compact panels show demand for their own unit and distinguish zero from mi
   delete state.entities.hp2CompressorFrequencyDemand;
   const { title, keys, accent } = HP_PANEL_CONFIGS[1];
   assert.match(renderHeatPumpPanel(title, keys, accent), /<small>Gevraagd —<\/small>/);
+});
+
+test("both layouts estimate current from each unit's power and the schematic updates in place", () => {
+  const previousEntities = state.entities;
+  const previousVisualMode = state.hpVisualMode;
+  try {
+    setLocale("nl");
+    state.entities = { hp1Power: { value: 1588, uom: "W" }, hp2Power: { value: 1372, uom: "W" } };
+    for (const mode of ["compact", "schematic"]) {
+      state.hpVisualMode = mode;
+      const [hp1, hp2] = HP_PANEL_CONFIGS.map(({ title, keys, accent }) => renderHeatPumpPanel(title, keys, accent));
+      assert.match(hp1, /1588 W <small[^>]*>\(~6,9A\)<\/small>/);
+      assert.match(hp2, /1372 W <small[^>]*>\(~6,0A\)<\/small>/);
+    }
+
+    const { title, keys, accent } = HP_PANEL_CONFIGS[1];
+    const power = { innerHTML: "1372 W <small>(~6,0A)</small>" };
+    const board = { className: "", querySelector: selector => selector === '[data-oq-bind="footer-power"]' ? power : null };
+    const panel = { querySelector: selector => selector === "[data-oq-hp-board]" ? board : null };
+
+    state.entities.hp2Power.value = "unavailable";
+    patchHeatPumpPanel(panel, title, keys, accent);
+    assert.equal(power.innerHTML, "—");
+    state.entities.hp2Power.value = 0;
+    patchHeatPumpPanel(panel, title, keys, accent);
+    assert.equal(power.innerHTML, "0 W <small>(~0,0A)</small>");
+    setLocale("en");
+    state.entities.hp2Power.value = 1372;
+    patchHeatPumpPanel(panel, title, keys, accent);
+    assert.equal(power.innerHTML, "1372 W <small>(~6.0A)</small>");
+  } finally {
+    state.entities = previousEntities;
+    state.hpVisualMode = previousVisualMode;
+    setLocale("nl");
+  }
 });
 
 test("defrost takes priority over heating in both layouts and clears in the live schematic", () => {
