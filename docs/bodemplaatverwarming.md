@@ -119,6 +119,9 @@ teruggelezen om te controleren of ze zijn overgenomen.
 
 De fysieke EEPROM van de buitenunit blijft daarbij ongewijzigd.
 
-Met **Na herstart opnieuw toepassen** bewaart OpenQuatt het profiel en biedt het
-na een herstart opnieuw aan dezelfde herkende buitenunit aan. Zonder die optie
-valt de buitenunit na een herstart terug op zijn eigen opgeslagen waarden.
+Met **Na herstart opnieuw toepassen** controleert OpenQuatt het opgeslagen
+profiel bij opstart en na Modbus-herstel zodra dezelfde buitenunit is herkend.
+Tussendoor leest het de drie instellingen samen ongeveer eens per tien minuten.
+Bij een afwijking herstelt OpenQuatt de opgeslagen waarden en leest het ze terug.
+Zonder die optie valt de buitenunit na een herstart terug op zijn eigen
+opgeslagen waarden.

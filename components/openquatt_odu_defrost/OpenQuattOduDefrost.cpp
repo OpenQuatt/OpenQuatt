@@ -7,7 +7,8 @@
 
 namespace esphome::openquatt_odu_defrost {
 namespace {
-constexpr uint32_t PROFILE_CHECK_INTERVAL_MS = 60000U;
+constexpr uint32_t PROFILE_CHECK_INTERVAL_MS = 10U * 60U * 1000U;
+constexpr uint32_t PROFILE_RETRY_INTERVAL_MS = 60000U;
 
 bool same_origin(AsyncWebServerRequest* request) {
   const auto host = request->get_header("Host");
@@ -372,7 +373,8 @@ void OpenQuattOduDefrost::finish_profile_(bool verified) {
   if (profile_available_ && !oq_defrost::profile_inhibited(profile_state_))
     profile_state_ = verified ? "IN_SYNC" : "PENDING";
   reconcile_ = false;
-  if (profile_available_ && consent_authorized_) reconcile_due_ms_ = millis() + PROFILE_CHECK_INTERVAL_MS;
+  if (profile_available_ && consent_authorized_)
+    reconcile_due_ms_ = millis() + (verified ? PROFILE_CHECK_INTERVAL_MS : PROFILE_RETRY_INTERVAL_MS);
 }
 bool OpenQuattOduDefrost::take_trigger() {
   // Finish all previously accepted traffic before the single forced command.

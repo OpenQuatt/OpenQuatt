@@ -83,11 +83,18 @@ profielroute heeft, is reconcile-dekking BLOCKED, geen PASS.
 
 De volledige controle begint zodra na opstart, identiteitswijziging of
 Modbus-herstel verse identiteit en meetwaarden beschikbaar zijn. Tussendoor
-wordt P276 om de 60 s gecontroleerd. Een operatie heeft een 30 s-timeout. Geef
-een herpoging na een geweigerde schrijfopdracht de tijd om te wachten op de
-veiligheidsvrijgave. Gebruik voor negatieve controles minstens twee intervallen.
-Verifieer de writeguard afzonderlijk bij lopende compressor en bij actieve
-peer-defrost met normale simulatie: NVS-doel mag niet voortijdig op de ODU worden
+wordt P276 om de tien minuten gecontroleerd. Een operatie heeft een
+30 s-timeout. Na een mislukte controle of geweigerde schrijfopdracht volgt na
+ongeveer een minuut een herpoging zodra de voorwaarden weer kloppen. Gebruik
+voor negatieve controles minstens twee intervallen.
+
+Bewaar voor een gecombineerde proef ook een bodemplaatprofiel met automatisch
+herstel. Reset dezelfde buitenunit tussen twee Modbus-polls en leg vast dat
+deze online blijft. Verwacht op het tienminuteninterval een enkele read van
+`3236–3238` naast de losse P276-read. Controleer dat OpenQuatt per profiel alleen
+afwijkende waarden schrijft en de herstelde waarden terugleest.
+Verifieer de P276-schrijfbeveiliging afzonderlijk bij lopende compressor en bij
+actieve defrost van de andere buitenunit. Het NVS-doel mag niet voortijdig op de ODU worden
 toegepast. De succesvolle retry volgt pas wanneer beide HPs weer idle zijn,
 telemetrie vers is, identity geldig is en service-/incidentgates vrij zijn.
 Leg uitstel, ongewijzigde P276 en latere readback vast; logregels alleen zijn
