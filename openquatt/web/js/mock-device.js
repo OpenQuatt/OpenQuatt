@@ -5964,6 +5964,11 @@
       fetched_epoch: valid ? now : 0, start_epoch: now - now % 3600, step_s: 3600,
       temperature_c: valid ? Array.from({ length: 36 }, (_, i) => Math.round((9 + 4 * Math.sin(i / 4)) * 10) / 10) : [],
       wind_mps: valid ? Array.from({ length: 36 }, (_, i) => Math.round((2.5 + Math.sin(i / 3)) * 10) / 10) : [],
+      wind_direction_deg: valid ? Array.from({ length: 36 }, (_, i) => (235 + i * 4) % 360) : [],
+      solar_wm2: valid ? Array.from({ length: 36 }, (_, i) => {
+        const hour = new Date((now - now % 3600 + i * 3600) * 1000).getHours();
+        return hour > 8 && hour < 17 ? Math.round(280 * Math.sin((hour - 8) * Math.PI / 9)) : 0;
+      }) : [],
       scenario: { schema: 1, valid: ready, reason: ready ? "ready" : "model_unavailable",
         restored_model: false, issued_epoch: ready ? now : 0, configuration: 1,
         weather_generation: ready ? 1 : 0, weather_fetched_epoch: ready ? now : 0, weather_start_epoch: ready ? now - now % 3600 : 0,
