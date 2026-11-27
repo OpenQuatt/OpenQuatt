@@ -17,9 +17,9 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
 import { renderStatCard } from "./stat-card.js";
 
   const MATRIX_TARGET_BY_KEY = { flowSelected: "flow", totalCop: "cop", totalEer: "cop" };
-  export function renderOverviewStatCardMarkup({ label, value, tone, note, status = false, key = "" }) {
+  export function renderOverviewStatCardMarkup({ label, value, valueSuffix, tone, note, status = false, key = "" }) {
     const matrixTarget = MATRIX_TARGET_BY_KEY[key];
-    return renderStatCard({ label, value, tone, note, status, ...(matrixTarget ? { valueData: { "oq-matrix-target": matrixTarget } } : {}) });
+    return renderStatCard({ label, value, valueSuffix, tone, note, status, ...(matrixTarget ? { valueData: { "oq-matrix-target": matrixTarget } } : {}) });
   }
 
   export function renderOverviewStatCards(cards, status = false) {
@@ -170,12 +170,13 @@ import { renderStatCard } from "./stat-card.js";
   };
 
   // One focal value per card, with a short line that says what it means.
-  export function renderOverviewCardHero(value, detail = "", tone = "") {
+  export function renderOverviewCardHero(value, detail = "", tone = "", comparison = "") {
     const toneClass = OVERVIEW_HERO_TONE_CLASSES[tone] ? ` ${OVERVIEW_HERO_TONE_CLASSES[tone]}` : "";
     return `
       <div class="oq-overview-cardhero${toneClass}">
         <strong>${escapeHtml(value)}</strong>
         ${detail ? `<span>${escapeHtml(detail)}</span>` : ""}
+        ${comparison ? `<small>${escapeHtml(comparison)}</small>` : ""}
       </div>
     `;
   }
@@ -275,8 +276,8 @@ import { renderStatCard } from "./stat-card.js";
   export function getPowerHouseRequestedPower() {
     const keys = ["phouseReq", "strategyRequestedPower"];
     for (const key of keys) {
-      const numeric = getEntityNumericValue(key);
-      if (!Number.isNaN(numeric)) {
+      const numeric = parseLooseNumber(getEntityValue(key));
+      if (Number.isFinite(numeric)) {
         return numeric;
       }
     }
@@ -292,25 +293,32 @@ import { renderStatCard } from "./stat-card.js";
   export function getPowerHouseOverviewModel() {
     const requested = getPowerHouseRequestedPower();
     const house = getEntityNumericValue("phouseHouse");
-    const delivered = getEntityNumericValue("totalHeat");
+    const delivered = parseLooseNumber(getEntityValue("totalHeat"));
     const capacity = getOverviewHeatingCapacity();
     const roomCorrection = Number.isNaN(requested) || Number.isNaN(house) ? Number.NaN : requested - house;
+    const hasRequest = Number.isFinite(requested);
+    const hasDelivery = Number.isFinite(delivered);
 
     let statusTitle = t("overview.phBuildingTitle");
-    let statusCopy = t("overview.phBuildingCopy");
+    let statusComparison = "";
+    const formatPower = (watts) => `${formatNumber(watts / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u00a0kW`;
 
-    if (!Number.isNaN(requested) && !Number.isNaN(capacity) && requested > capacity + 150) {
+    if (hasRequest && requested > capacity + 150) {
       statusTitle = t("overview.phCapacityTitle");
-      statusCopy = t("overview.phCapacityCopy");
-    } else if (!Number.isNaN(requested) && !Number.isNaN(delivered) && delivered < requested - 250) {
+      statusComparison = t("overview.phCapacityComparison", {
+        requested: formatPower(requested),
+        capacity: formatPower(capacity),
+      });
+    } else if (hasRequest && hasDelivery && delivered < requested - 250) {
       statusTitle = t("overview.phBelowTitle");
-      statusCopy = t("overview.phBelowCopy");
-    } else if (!Number.isNaN(requested) && !Number.isNaN(delivered) && delivered > requested + 250) {
+      statusComparison = t("overview.phBelowComparison", {
+        requested: formatPower(requested),
+        delivered: formatPower(delivered),
+      });
+    } else if (hasRequest && hasDelivery && delivered > requested + 250) {
       statusTitle = t("overview.phAboveTitle");
-      statusCopy = t("overview.phAboveCopy");
-    } else if (!Number.isNaN(requested) && !Number.isNaN(delivered)) {
+    } else if (hasRequest && hasDelivery) {
       statusTitle = t("overview.phBalancedTitle");
-      statusCopy = t("overview.phBalancedCopy");
     }
 
     return {
@@ -319,7 +327,7 @@ import { renderStatCard } from "./stat-card.js";
       correctionText: formatSignedPower(roomCorrection),
       capacityText: formatNumericState(getOverviewHeatingCapacity(), 0, "W"),
       statusTitle,
-      statusCopy,
+      statusComparison,
     };
   }
 
@@ -593,6 +601,7 @@ import { renderStatCard } from "./stat-card.js";
       label: t("overview.primaryLabel"),
       value: title,
       tone,
+      comparison: model.statusComparison,
     };
   }
 
@@ -656,6 +665,7 @@ import { renderStatCard } from "./stat-card.js";
     return {
       title,
       detail,
+      comparison: primary.comparison || "",
       tone: modeCode === "CM4" || modeCode === "CM98" ? "orange" : primary.tone,
       rows: [
         { label: t("overview.cardStrategy"), value: strategyLabel },
@@ -670,7 +680,7 @@ import { renderStatCard } from "./stat-card.js";
     return `
       <section class="oq-overview-statuspanel" aria-label="${escapeHtml(t("overview.statusPanelLabel"))}" data-render-signature="${escapeHtml(getRenderSignature(model))}">
         ${renderOverviewSectionHead(t("overview.statusPanelLabel"))}
-        ${renderOverviewCardHero(model.title, model.detail, model.tone)}
+        ${renderOverviewCardHero(model.title, model.detail, model.tone, model.comparison)}
         <div class="oq-overview-cardrows">
           ${model.rows.map((row) => `
             <div class="oq-overview-row">
@@ -685,8 +695,12 @@ import { renderStatCard } from "./stat-card.js";
 
   export function getOverviewTopCards() {
     const coolingActive = isCoolingOverviewActive();
+    const watts = parseLooseNumber(getEntityValue("totalPower"));
+    const estimatedCurrent = Number.isFinite(watts) && watts >= 0
+      ? `(~${formatNumber(watts / 230, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}A)`
+      : "";
     return [
-      { key: "totalPower", label: t("overview.topPower"), tone: "blue" },
+      { key: "totalPower", label: t("overview.topPower"), tone: "blue", valueSuffix: estimatedCurrent },
       { key: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "orange" },
       coolingActive
         ? { key: "totalEer", label: t("overview.topCopEer"), tone: "green" }
