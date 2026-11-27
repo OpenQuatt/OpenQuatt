@@ -100,7 +100,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Error toast for a typed number outside the firmware range: +438 B raw / +166 B gzip versus dev 720f74b0 (Node 24.4.1).
     // Solar and wind forecasts with local time axes and in-plot arrows: +4,124 B raw / +1,617 B gzip
     // versus dev 40dff330 on Node 24.14.1, preserving 288 B raw headroom.
-    raw: 1_531_728,
+    // Defrost method dialog in NL and EN: +2,453 B raw / +868 B gzip versus dev 40dff330 (Node 24.14.1).
+    raw: 1_534_181,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -136,5 +137,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // Compressor level rows: +250 B raw / +39 B gzip (Node 24.14.1).
   // House heat-capacity graph and interactive legend: +650 B raw / +196 B gzip versus dev (Node 24.14.1).
   // Weather charts, compass arrows and compact scenario state: +1,433 B raw / +282 B gzip (Node 24.14.1).
-  { file: "css/openquatt-app.css", raw: 233_139, gzipBaselineCeiling: 44_985 },
+  // Defrost method sections and interval table: +447 B raw / +124 B gzip versus the same dev build.
+  { file: "css/openquatt-app.css", raw: 233_586, gzipBaselineCeiling: 44_985 },
 ];

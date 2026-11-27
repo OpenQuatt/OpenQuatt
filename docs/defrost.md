@@ -32,10 +32,10 @@ De API gebruikt bestaande webauthenticatie, origincontrole en CSRF voor acties. 
 
 OpenQuatt leest de actuele instellingen op aanvraag uit. Aanvullende instellingen voor methode 4 worden alleen gelezen voor varianten die deze methode ondersteunen. Er is geen periodieke scan van het buitenunitgeheugen.
 
-- Mode 0: geselecteerde verdampertemperatuurdrempel en geschatte lokale kwalificatietijd. Het interne adaptieve interval en de uitzonderingen daarop zijn niet volledig bekend.
-- Mode 1: verdampertemperatuurdrempel; geen exacte aftelling voor de nog onduidelijke 45-/50-minutenlogica.
+- Mode 0: de diagnostiek bevat de geselecteerde verdampertemperatuurdrempel en een schatting van de lokale kwalificatietijd. De buitenunit past zijn eigen interval aan op basis van de vorige ontdooiduur.
+- Mode 1: de diagnostiek bevat de verdampertemperatuurdrempel. De gebruikelijke start hangt af van compressorlooptijd en verdampertemperatuur. De verstreken tijd sinds de vorige cyclus geeft daarom geen exacte aftelling.
 - Mode 2: gereserveerd; geen instelbare strategie.
-- Mode 3: beperkte diagnostiek, geen reconstructie van interne trendhistorie.
+- Mode 3: de buitenunit vergelijkt metingen uit de omvormer met een eerder geleerde waarde voor dezelfde ventilatorstand. OpenQuatt toont metingen rond de cyclus, zoals de verdampertemperatuur.
 - Mode 4: parameterafhankelijke `Ta - Tevap`-drempel en normale interval-/looptijdparameters, alleen op de varianten die deze methode implementeren. V1.5 en beide onderzochte V2-varianten hebben hiervoor een gevuld eigen parameterprofiel; de waarden verschillen per variant en worden daarom live uitgelezen. Dit omvat niet alle interne startpaden.
 
 Lokale looptijden beginnen bij waarneming en kunnen na een herstart korter zijn dan de werkelijke ODU-looptijd. De tijdschalen van de interne duurbegrenzingen zijn niet volledig bekend: de benodigde eindbevestiging blijft daarom onbekend. Een mogelijke maximale-duur-eindreden blijft een afleiding, nooit een bewezen oorzaak.
