@@ -82,6 +82,9 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
     return cycle.owns() || trigger_ready_ || save_ready_ || save_writing_ || (loading_ && trigger_after_load_) ||
            (loading_ && save_after_load_);
   }
+  bool holds_circulation() const {
+    return oq_defrost::service_holds_circulation(holding(), reconcile_, save_writing_ || save_verifying_, cycle.owns());
+  }
   bool reserved() const { return reserved_; }
   void release();
   void on_read_holding_registers(uint16_t address, std::span<const uint16_t> values,
