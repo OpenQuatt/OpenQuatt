@@ -20,7 +20,7 @@ const bundle = await build({
     contents: `
       export { state } from "../js/src/core/state.js";
       export { setLocale } from "../js/src/i18n/index.js";
-      export { handleInput } from "../js/src/core/entity-actions.js";
+      export { handleChange, handleInput } from "../js/src/core/entity-actions.js";
       export { formatRunExtensionTemp, getRunExtensionStatusCopy, getRunExtensionThresholds,
         renderPowerHouseRunExtensionField, renderPowerHouseAdvancedField, renderPowerHouseComfortThresholds, patchRunExtensionThresholds } from "../js/src/settings/heating.js";
     `,
@@ -32,7 +32,7 @@ const bundle = await build({
     }));
   } }],
 });
-const { state, setLocale, handleInput, formatRunExtensionTemp, getRunExtensionStatusCopy,
+const { state, setLocale, handleChange, handleInput, formatRunExtensionTemp, getRunExtensionStatusCopy,
   getRunExtensionThresholds, renderPowerHouseRunExtensionField, renderPowerHouseAdvancedField, renderPowerHouseComfortThresholds, patchRunExtensionThresholds } =
   await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 
@@ -465,5 +465,40 @@ test("run-extension patch reports a structure change when the switch flips", () 
     assert.equal(patchRunExtensionThresholds(), false);
   } finally {
     state.root = previousRoot;
+  }
+});
+
+test("ingetypte stopmarge buiten het bereik geeft een fout en zet het veld terug", async () => {
+  const margin = () => numberEntity(1, "°C", { min_value: 0.1, max_value: 2, step: 0.1 });
+  const originalFetch = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (url, options = {}) => {
+    posts.push({ url: String(url), method: options.method || "GET" });
+    return { ok: true, json: async () => ({ value: 1.3, state: "1.3" }) };
+  };
+  try {
+    setLocale("nl");
+    state.entities = { phRunExtensionStopMargin: margin() };
+    state.drafts = { phRunExtensionStopMargin: 2 };
+    state.inputDrafts = { phRunExtensionStopMargin: "2.2" };
+    state.controlError = "";
+    const input = { type: "number", value: "2.2", dataset: { oqField: "phRunExtensionStopMargin" } };
+    handleChange({ target: input });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(posts.length, 0);
+    assert.match(state.controlError, /kies een waarde van 0\.1 °C tot en met 2\.0 °C/);
+    assert.equal(input.value, "1");
+    assert.equal(state.inputDrafts.phRunExtensionStopMargin, undefined);
+    assert.equal(state.drafts.phRunExtensionStopMargin, undefined);
+
+    // Binnen het bereik schrijft de app de waarde gewoon weg.
+    state.controlError = "";
+    handleChange({ target: { type: "number", value: "1.3", dataset: { oqField: "phRunExtensionStopMargin" } } });
+    for (let i = 0; i < 100 && posts.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(posts.some((post) => post.method === "POST" && post.url.includes("value=1.3")));
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

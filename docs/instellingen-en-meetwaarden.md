@@ -200,6 +200,8 @@ De standaard minimumflow voor compressorbedrijf is 400 L/h; precies 400 L/h vold
 
 Bij een stop naar CM0 of CM98 blijft de pompuitloop in CM1 actief tot de compressor aantoonbaar stilstaat. Bij bevestigd communicatieverlies begrenst OpenQuatt de uitloop voor die buitenunit tot 60 seconden vanaf het vaststellen van het verlies. Een latere verse frequentiemeting die aantoont dat de compressor nog draait, start die termijn opnieuw. De stopbewaking blijft actief. Bij te weinig of ontbrekende flow tijdens de uitloop stuurt OpenQuatt de pomp harder aan.
 
+Bij een normale stop met een gezonde verbinding heeft de compressor 90 seconden om stilstand te melden. Bij het verstrijken van die termijn wacht OpenQuatt nog op de tweede nulmeting als de eerste minder dan 15 seconden oud is. Herstart en ketelvrijgave wachten op bevestigde stilstand.
+
 CM98 gebruikt standaard iPWM 800 voor vorstcirculatie. Bij te weinig, ontbrekende of verouderde flow verhoogt OpenQuatt de pompaansturing in stappen en houdt die aan tot het einde van de vorstperiode. De regeling controleert de meting van de geselecteerde flowbron. Na CM98 gebruikt AUTO de laatst bekende goede iPWM voor verwarmen of koelen. Is die waarde ongeldig of gelijk aan de vorststand, dan gebruikt AUTO iPWM 440. Als een verwarmingscyclus doorloopt na een herstart, kan AUTO bij voldoende debiet de teruggemelde pompstand overnemen. AUTO slaat de standaardvorststand over, evenals herstelstanden die tijdens die vorstperiode in de Modbus-wachtrij zijn gezet. Bij een Duo moeten beide pompstanden daarvoor overeenkomen.
 
 Gebruik deze groep voorzichtig. Bij verkeerde bronwaarden of hydraulische problemen maak je hier snel meer ruis dan winst.
@@ -353,6 +355,13 @@ zichtbaar via:
 De signalen kunnen gelijktijdig actief zijn en worden weer inactief zodra de
 bijbehorende actuele conditie is hersteld. Een eerder gedetecteerde maar alleen
 nog gelatchte melding houdt `Compressor cycling warning` niet actief.
+
+De tellers voor gemeten compressorstarts van de afgelopen 2, 6, 24 en 72 uur
+gebruiken PSRAM. Als OpenQuatt daarvoor geen geheugen kan reserveren, tonen
+deze tellers een onbekende waarde en verschijnt een foutmelding in het log.
+De waarschuwingen voor de vensters van 2 en 72 uur kunnen dan geen alarm
+afleiden. De waarschuwing voor afwisselende starts bij Duo en de begrenzer
+voor startopdrachten blijven actief.
 
 ## Wanneer zit je waarschijnlijk in de verkeerde laag?
 

@@ -7,6 +7,13 @@
 # user explicitly acknowledges them or the controller restarts.
 # ==============================================================================
 
+esphome:
+  on_boot:
+    priority: 800
+    then:
+      - lambda: |-
+          (void) oq_diagnostics::installation_monitor();
+
 globals:
   - id: oq_compressor_cycling_alert_latched
     type: bool
@@ -105,7 +112,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           1, millis(), oq_diagnostics::InstallationMonitor::kTwoHoursMs);
 
   - platform: template
@@ -115,7 +122,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           1, millis(), oq_diagnostics::InstallationMonitor::kSixHoursMs);
 
   - platform: template
@@ -125,7 +132,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           1, millis(), oq_diagnostics::InstallationMonitor::kDayMs);
 
   - platform: template
@@ -135,7 +142,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           1, millis(), oq_diagnostics::InstallationMonitor::kSeventyTwoHoursMs);
 
   - platform: template
@@ -156,7 +163,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           2, millis(), oq_diagnostics::InstallationMonitor::kTwoHoursMs);
 
   - platform: template
@@ -166,7 +173,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           2, millis(), oq_diagnostics::InstallationMonitor::kSixHoursMs);
 
   - platform: template
@@ -176,7 +183,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           2, millis(), oq_diagnostics::InstallationMonitor::kDayMs);
 
   - platform: template
@@ -186,7 +193,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
-      return oq_diagnostics::installation_monitor().start_count(
+      return oq_diagnostics::installation_monitor().published_start_count(
           2, millis(), oq_diagnostics::InstallationMonitor::kSeventyTwoHoursMs);
 
   - platform: template

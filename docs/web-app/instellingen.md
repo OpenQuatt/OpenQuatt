@@ -187,7 +187,7 @@ Langer doorverwarmen staat standaard aan; uitzetten kan hier met de schakelaar *
 
 Dit blok staat binnen **Power House — comfort**. Bij weinig warmtebehoefte kan een draaiende warmtepomp op laag vermogen blijven verwarmen. Je kiest een aparte stoptemperatuur en hoeveel de kamer daarna moet afkoelen. Ook als de comfortregeling al warmte terugneemt, mag de lopende run op laag vermogen doorgaan tot deze stopgrens. Een stilstaande warmtepomp wordt hierdoor niet gestart. De overgang naar laag vermogen hangt af van hoeveel warmte je woning nodig heeft; daarvoor geldt geen vaste kamertemperatuur.
 
-1. Kies bij **Stopgrens boven gewenste temperatuur** hoeveel graden boven je gewenste temperatuur de stopgrens ligt: 0,1–1,0 °C, standaard +0,5 °C. Voorbeeld: je wilt **21,0 °C** en stelt **0,7 °C** in. De stopgrens wordt **21,7 °C**. Met **0,5 °C** wordt dat **21,5 °C**. Verander je deze instelling, kijk dan ook naar de berekende temperatuur voor opnieuw verwarmen: die kan meeveranderen.
+1. Kies bij **Stopgrens boven gewenste temperatuur** hoeveel graden boven je gewenste temperatuur de stopgrens ligt: 0,1–2,0 °C, standaard +0,5 °C. Voorbeeld: je wilt **21,0 °C** en stelt **0,7 °C** in. De stopgrens wordt **21,7 °C**. Met **0,5 °C** wordt dat **21,5 °C**. Verander je deze instelling, kijk dan ook naar de berekende temperatuur voor opnieuw verwarmen: die kan meeveranderen.
 2. Kies bij **Afkoeling na stoppen** hoeveel graden de kamer na de stop moet afkoelen: 0,1–3,0 °C, standaard 0,2 °C. Voorbeeld: de stopgrens is **21,7 °C** en je stelt **0,2 °C afkoeling** in. Opnieuw verwarmen is dan mogelijk bij **21,5 °C of lager**. Met **0,7 °C afkoeling** wordt dat **21,0 °C**. We rekenen vanaf de ingestelde stopgrens, ook als de kamer na het stoppen nog warmer wordt. Dezelfde afkoelgrens geldt na een comfortstop én na een gewone stopperiode.
 
 De twee getalvelden staan altijd in dit blok. Daaronder staan **Stopgrens** en **Opnieuw verwarmen mogelijk bij**, berekend met je gewenste temperatuur. Tijdens bewerken staat er **Voorbeeld van je wijziging — nog niet bevestigd**; de huidige instellingen blijven daarnaast leesbaar. De informatieknoppen geven uitleg met getalvoorbeelden. De status toont wat er nu gebeurt, bijvoorbeeld **Wacht op afkoeling** of **Stop aangevraagd**.
@@ -204,6 +204,8 @@ Voorbeelden bij een gewenste temperatuur van **21,0 °C**, een stopgrens van **2
 | 1,2 °C | 20,8 °C | De instelling **Afkoeling onder gewenste temperatuur** gaat voor: je hoeft niet tot 20,5 °C te wachten |
 
 Bij de stopgrens vraagt Power House de warmtepomp om te stoppen. De warmtepomp stopt later als hij zijn minimale looptijd nog moet afmaken. Ook daarna kunnen de radiatoren of vloer nog warmte afgeven. Bij opnieuw verwarmen bepaalt Power House weer hoeveel vermogen nodig is; de warmtepomp start dus niet altijd op minimumvermogen. De normale beveiligingen blijven gelden.
+
+De voorbeelden hierboven gaan uit van een comfortstop **boven** de gewenste temperatuur. Bij lage vraag met een minimumstand boven F1 kan Power House al stoppen **op** de gewenste temperatuur. Na zo'n stop controleert Power House de actuele kamerwaarde en het setpoint opnieuw vlak vóór het eerste compressorcommando. De start wacht bij een ongeldige of verlopen waarde of als de kamer op of boven het setpoint is.
 
 Langer doorverwarmen staat standaard aan. De instellingen blijven na een controllerherstart behouden. Zie [Power House: langer doorverwarmen](../power-house.md#langer-doorverwarmen) voor de precieze werking, statussen en het gedrag na een herstart.
 

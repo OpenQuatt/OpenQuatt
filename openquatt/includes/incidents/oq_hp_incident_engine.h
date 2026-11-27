@@ -63,7 +63,7 @@ class HpIncidentEngine {
       // A complete or partial stop confirmation predating the fault cannot
       // authorize CM4. Re-arm the stop command and its feedback generations.
       stopped_read_streak_ = 0U;
-      update_stop_timeout(observation.now_ms);
+      update_stop_timeout(observation.now_ms, true);
       invalidate_stop_confirmation_();
     }
     refresh_derived();
@@ -406,16 +406,20 @@ class HpIncidentEngine {
     update_stop_timeout(now_ms);
   }
 
-  void update_stop_timeout(uint32_t now_ms) {
-    if (!stop_request_initialized_ || run_state_ == RunState::STOPPED ||
-        !elapsed_at_least(now_ms, stop_requested_at_ms_, tuning_.stop_confirm_timeout_ms)) {
-      return;
-    }
-    // A regular stop with timely standby/zero-speed feedback may wait for
-    // the next poll. STOPPING still requires the full streak before a restart
-    // or fallback. The first reading anchors this window across retries.
-    if (run_state_ == RunState::STOPPING && !stop_confirmation_pending_ && !start_timed_out_ &&
-        link_state_ == LinkState::HEALTHY && stopped_read_streak_ > 0U &&
+  void update_stop_timeout(uint32_t now_ms, bool hard_fault_just_confirmed = false) {
+    if (!stop_request_initialized_ || run_state_ == RunState::STOPPED) return;
+
+    // Keep the original deadline when the link becomes suspect, so link loss
+    // cannot grant degraded boiler fallback for an already overdue stop.
+    const bool normal_stop = run_state_ == RunState::STOPPING && !stop_confirmation_pending_ && !start_timed_out_ &&
+                             !hard_fault_just_confirmed && outputs_.protection_state != ProtectionState::FAULT_ACTIVE &&
+                             link_state_ == LinkState::HEALTHY;
+    const uint32_t timeout_ms = normal_stop ? tuning_.normal_stop_confirm_timeout_ms : tuning_.stop_confirm_timeout_ms;
+    if (!elapsed_at_least(now_ms, stop_requested_at_ms_, timeout_ms)) return;
+
+    // A timely standby/zero read may wait for the next poll. STOPPING still
+    // requires the full streak before a restart or fallback.
+    if (normal_stop && stopped_read_streak_ > 0U &&
         !elapsed_at_least(now_ms, first_stopped_read_at_ms_, tuning_.stop_confirm_read_grace_ms)) {
       return;
     }

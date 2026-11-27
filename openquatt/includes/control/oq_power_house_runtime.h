@@ -455,7 +455,7 @@ class Runtime {
     const float setpoint_c = id(room_setpoint_selected).state;
     float stop_margin_c = 0.5f;
     if (id(ph_run_extension_stop_margin_c).has_state() && std::isfinite(id(ph_run_extension_stop_margin_c).state))
-      stop_margin_c = std::max(0.1f, std::min(1.0f, id(ph_run_extension_stop_margin_c).state));
+      stop_margin_c = std::max(0.1f, std::min(2.0f, id(ph_run_extension_stop_margin_c).state));
     const bool room_inputs_valid = std::isfinite(room_c) && std::isfinite(setpoint_c) &&
                                    oq_heat_intent_runtime::room_temperature_fresh(config.ot_room_temperature_fresh) &&
                                    oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh);
