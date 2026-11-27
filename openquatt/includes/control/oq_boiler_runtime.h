@@ -102,7 +102,11 @@ class Runtime {
       // An earlier Power House request can outlive revocation of permission.
       const bool heating_allowed = id(heating_enable_valid).has_state() && id(heating_enable_valid).state &&
                                    id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
-      command.demand_present &= heating_allowed;
+      const auto relay_power =
+          oq_boiler::evaluate_fixed_relay_power(command.requested_power_w, id(oq_cm3_deficit_on_w).state,
+                                                id(oq_cm3_deficit_off_w).state, id(oq_boiler_output_request));
+      command.demand_present &= heating_allowed && relay_power.valid;
+      command.heat_request &= relay_power.heat_requested;
     }
     // The fixed-output heater needs a live measurement after the heater.
     // An outdoor-unit outlet fallback cannot measure the heat it adds.

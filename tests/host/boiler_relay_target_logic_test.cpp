@@ -305,6 +305,35 @@ void test_only_normal_auxiliary_heat_sources_use_target_control() {
   assert(oq_boiler::relay_target_control_applies(oq_boiler::COMMAND_SOURCE_COLD_START, false, true));
 }
 
+void test_fixed_output_r1_uses_power_hysteresis() {
+  auto command = power_house_command();
+  auto input = guarded_input({});
+  const auto apply_request = [&command, &input](float watts, float start_w = 1000.0f, float stop_w = 400.0f) {
+    command.requested_power_w = watts;
+    const auto power = oq_boiler::evaluate_fixed_relay_power(watts, start_w, stop_w, input.output_active);
+    command.demand_present = power.valid;
+    command.heat_request = power.heat_requested;
+    const auto decision = oq_boiler::evaluate(command, input);
+    input.output_active = decision.output_active;
+    return decision;
+  };
+  assert(!apply_request(30.0f).output_active);
+  assert(!apply_request(999.0f).output_active);
+  assert(apply_request(1000.0f).output_active);
+  assert(apply_request(401.0f).output_active);
+  assert(!apply_request(400.0f).output_active);
+  assert(!apply_request(405.0f).output_active);
+  assert(apply_request(2500.0f).output_active);
+  assert(!apply_request(30.0f).output_active);
+  assert(apply_request(2500.0f).output_active);
+  input.output_last_change_ms = 4000U;
+  input.min_on_ms = 30000U;
+  assert(apply_request(30.0f).block_reason == oq_boiler::BLOCK_MIN_ON_TIME);
+  const auto missing = apply_request(NAN);
+  assert(missing.force_off && !missing.output_active);
+  assert(!apply_request(2500.0f, 400.0f, 400.0f).output_active);
+}
+
 void test_fixed_output_r1_follows_power_house_with_guards() {
   auto command = power_house_command();
   command.requested_power_w = 2500.0f;
@@ -996,6 +1025,7 @@ int main() {
   test_unusable_measurements_fail_safe();
   test_target_changes_move_the_request();
   test_only_normal_auxiliary_heat_sources_use_target_control();
+  test_fixed_output_r1_uses_power_hysteresis();
   test_fixed_output_r1_follows_power_house_with_guards();
   test_source_policy_reaches_the_relay_decision();
   test_cm4_fallback_keeps_its_on_off_semantics();

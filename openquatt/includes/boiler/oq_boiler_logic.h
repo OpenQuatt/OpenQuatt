@@ -180,6 +180,20 @@ inline AssistSignal power_house_assist(float deficit_w, float on_threshold_w, fl
   };
 }
 
+struct FixedRelayPowerDecision {
+  bool valid;
+  bool heat_requested;
+};
+
+inline FixedRelayPowerDecision evaluate_fixed_relay_power(float requested_w, float start_w, float stop_w,
+                                                          bool output_active) {
+  if (!isfinite(requested_w) || !isfinite(start_w) || !isfinite(stop_w) || requested_w < 0.0f || stop_w < 0.0f ||
+      start_w <= stop_w) {
+    return {false, false};
+  }
+  return {true, output_active ? requested_w > stop_w : requested_w >= start_w};
+}
+
 inline AssistSignal heating_curve_assist(bool heat_request, bool hp_saturated, float target_temperature_c,
                                          float supply_temperature_c, float on_delta_c, float off_delta_c) {
   const bool temperatures_valid = !isnan(target_temperature_c) && !isnan(supply_temperature_c);

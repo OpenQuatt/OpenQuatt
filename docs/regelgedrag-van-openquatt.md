@@ -104,9 +104,14 @@ onderscheiden van een ketel die door een beveiliging wordt tegengehouden.
 
 Voor een R1-doorstroomverwarmer met vast vermogen kun je in een eigen
 firmwarebuild `oq_boiler_relay_power_house_on_off` op `true` zetten. In
-Power House CM3 volgt R1 dan de bijstookvraag en levert de verwarmer bij
-inschakelen zijn eigen vermogen. Kies een lokale aanvoersensor die het water
-ná de verwarmer meet. Bij sensoruitval blijft R1 uit totdat die meting terug
+Power House CM3 schakelt R1 in zodra het gevraagde bijstookvermogen
+**Ondersteuning starten vanaf** bereikt. R1 schakelt uit op of onder
+**Ondersteuning stoppen onder**, ook als CM3 nog actief is. Standaard zijn
+deze drempels 1.000 W en 400 W. Kies een startdrempel die boven de
+stopdrempel ligt en die de verwarmer kan leveren. Tussen de drempels
+geldt de huidige relaisstand en bij normaal schakelen gelden de eventuele
+minimale aan- en uittijden. De verwarmer levert bij inschakelen zijn eigen
+vermogen. Kies een lokale aanvoersensor die het water ná de verwarmer meet. Bij sensoruitval blijft R1 uit totdat die meting terug
 is. De verwarmingsvrijgave, maximale watertemperatuur en minimale flow
 blijven leidend.
 
