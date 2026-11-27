@@ -97,7 +97,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Live COP during the defrost transition: +727 B raw / +307 B gzip (Node 24.14.1).
     // House heat-capacity graph and interactive legend: +7,075 B raw / +2,536 B gzip versus dev (Node 24.14.1).
     // Local chart preferences add 530 B raw / 97 B gzip on Node 24.14.1.
-    raw: 1_527_166,
+    // Error toast for a typed number outside the firmware range: +438 B raw / +166 B gzip versus dev 720f74b0 (Node 24.4.1).
+    raw: 1_527_604,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
