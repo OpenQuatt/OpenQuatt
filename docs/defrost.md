@@ -84,39 +84,22 @@ Ook beide ondersteunde V2-varianten gebruiken de mode-4-instellingen van de aang
 
 ## Bediening
 
-Onder **Instellingen buitenunit → Ontdooien** zie je de cyclusstatus per buitenunit en kun je **Handmatig ontdooien** aanvragen. Kies **Instellingen uitlezen** om de huidige methode te laden. Het info-icoon naast **Ontdooimethode** geeft uitleg per ondersteunde methode. Je wijziging blijft een concept tot je **Toepassen** kiest en de wijziging bevestigt. De uitgelezen methode blijft zichtbaar.
+Open **Instellingen buitenunit → Ontdooien** en kies **Instellingen uitlezen**. Bij een Duo kies je de buitenunit die je wilt bekijken.
 
-Onder **Technische metingen** staan de buitenluchttemperatuur, de temperatuur van de verdamper, de verdampingstemperatuur van het koudemiddel en de compressorfrequentie. OpenQuatt toont ook de duur van de gemeten cyclus en, zodra een eerdere ontdooibeurt is waargenomen, de tijd sinds die beurt. De buitenunit houdt zijn eigen startvoorwaarden bij.
+### Handmatig ontdooien
 
-## Technische werking
+Kies **Handmatig ontdooien** en bevestig de aanvraag. De knop is beschikbaar als de buitenunit verwarmt, de compressor draait en er voldoende water door het systeem stroomt. Een actieve ontdooiing, een blokkering of een andere serviceactie kan de aanvraag tegenhouden. Bij een Duo moet OpenQuatt ook kunnen vaststellen dat de andere buitenunit niet aan het ontdooien is.
 
-OpenQuatt volgt de ontdooicyclus van de buitenunit. De buitenunit regelt daarbij zijn eigen compressor, ventilator en vierwegklep.
+OpenQuatt stuurt één aanvraag. De buitenunit beslist of de cyclus start. Volg de status in de web-app om te zien of de buitenunit daadwerkelijk ontdooit.
 
-### Instellingen en ontdooiaanvragen
+### Ontdooimethode wijzigen
 
-OpenQuatt leest de instellingen op aanvraag uit. De aanvullende instellingen voor modus 4 worden alleen gelezen bij buitenunits die deze methode ondersteunen. Met **Na herstart opnieuw toepassen** controleert OpenQuatt het bewaarde profiel zodra de identiteit en metingen na opstart of verbindingsherstel weer geldig zijn. Daarna leest OpenQuatt ongeveer eens per tien minuten alleen de gekozen ontdooimethode. Bij een afwijking leest OpenQuatt de instellingen opnieuw en gelden dezelfde voorwaarden voordat het iets terugschrijft.
+Het info-icoon naast **Ontdooimethode** legt de beschikbare modi uit. V1 biedt modus 0, 1 en 3. V1.5 en de ondersteunde V2-buitenunits bieden ook modus 4.
 
-- Laad de actuele parameters uit de aangesloten ODU; voorbeeldwaarden zijn geen defaults.
-- Een handmatige aanvraag vereist verse meetwaarden, een bekende ODU, ODU-gestuurde defrost, een draaiende compressor in verwarmen, geldige actuele flow en geen blokkerende incidenten of servicetaak. Bij Duo mag de andere HP niet bezig of onbekend zijn.
-- Na bevestiging wordt eenmaal een ontdooiaanvraag verzonden. Een verloren antwoord veroorzaakt geen automatische herhaling. De terugmelding van de werkmodus bevestigt acceptatie; alleen de ontdooistatus niet.
-- Alleen de ontdooimethode kan per buitenunit worden gewijzigd. **V1 ondersteunt 0, 1 en 3. V1.5 en de ondersteunde V2-buitenunits ondersteunen ook 4.** Wijzigen vereist een bekende buitenunit, verse metingen en een stilstaande compressor. Een ontdooiing, incident of conflicterende serviceactie blokkeert de wijziging. OpenQuatt leest de actuele methode opnieuw uit vóór het schrijven. Wijkt deze af van de getoonde waarde, laad de instellingen dan opnieuw. Bij een wijziging schrijft OpenQuatt de methode eenmaal en bevestigt die met een overeenkomende teruglezing. Bij een onzekere uitkomst kun je de actuele methode opnieuw uitlezen.
-- **Na herstart opnieuw toepassen** bewaart optioneel per HP alleen de methode en de bijbehorende ODU-identiteit in NVS. Hertoepassing wacht op verse identiteit, een stilstaande compressor en dezelfde veiligheidsvrijgave; een andere variant of control-board-identiteit blokkeert herstel. Opslagfouten worden gemeld en mogen niet als geslaagde toepassing worden getoond. Zonder deze optie wordt de bewaarde methode niet automatisch hersteld. Andere defrostparameters blijven alleen-lezen.
-- Bij opslag wordt automatische hertoepassing eerst duurzaam geblokkeerd. Alleen een volledig bevestigde opslag met deze optie aan verleent opnieuw toestemming. Een fout ná die blokkering kan de oude toestemming na een herstart niet terugbrengen. Mislukt al de eerste opslag van de blokkering, dan kan OpenQuatt dit niet garanderen: de interface meldt dat de oude keuze na een herstart kan terugkomen. Sla de keuze opnieuw op en controleer de bevestiging. Oudere profielen zonder bevestigde toestemming worden na een upgrade niet automatisch toegepast; bevestig de optie opnieuw als je haar wilt blijven gebruiken.
-- V1 ondersteunt interval-/trendmethoden (waaronder methode 3), maar **niet** de V1.5 mode-4-regeling op `Ta − Tevap`. Een uitgelezen methode 4 op een V1 mag daarom niet als dezelfde methode worden geïnterpreteerd of opnieuw worden toegepast. De backend blokkeert dit ook buiten de UI om. Onbekende identiteiten kunnen niet schrijven.
-- Tijdens wachten/ontdooien worden normale mode- en niveaucommando's vastgehouden. Veiligheidsstops blijven mogelijk.
-- Een stopverzoek, ook `Force CM0`, wacht in CM1 met normale circulatie zolang de ODU of actuator nog actief is. De bestaande minimumlooptijd en defrosthold blijven gelden; CM0 volgt pas na stilstand. Veiligheidsstops worden hierdoor niet uitgesteld.
-- Als OpenQuatt binnen 210 seconden geen cyclus waarneemt, verloopt de aanvraag zodra beide terugmeldingen vers zijn en aangeven dat de unit niet ontdooit. Na een actieve cyclus moeten beide meldingen ook opnieuw aangeven dat de ontdooiing voorbij is. Daarna stuurt OpenQuatt de werkmodus die op dat moment bij de warmtevraag past.
-- Herstart of communicatieverlies wist meetzekerheid en lokale historie. Een nog actieve ODU-cyclus wordt opnieuw herkend. Incidentstops blijven ook bij herstart leidend.
+Kies een methode als de compressor stilstaat. Klik op **Toepassen** en bevestig de wijziging. Onder **Uitgelezen** zie je welke methode de buitenunit terugmeldt. Als OpenQuatt vraagt om opnieuw uit te lezen, kies je eerst **Instellingen uitlezen**.
 
-De API gebruikt bestaande webauthenticatie, origincontrole en CSRF voor acties. HTTP en Modbus delen alleen een kleine gesynchroniseerde snapshot; regeling en Modbus-transities lopen op de hoofdloop. Het optionele NVS-profiel wijzigt geen EEPROM-persistentie in de buitenunit en start nooit een handmatige defrostcyclus.
+Met **Na herstart opnieuw toepassen** kan OpenQuatt je keuze voor deze buitenunit bewaren. Na een herstart van OpenQuatt of na herstel van de verbinding leest OpenQuatt de methode opnieuw uit. Daarna controleert het ongeveer eens per tien minuten of die nog overeenkomt met je opgeslagen keuze. Als er een verschil is, wacht OpenQuatt tot wijzigen veilig kan. Meldt de web-app dat de keuze niet is opgeslagen, pas haar dan opnieuw toe en controleer de bevestiging.
 
-### Wegvallende telemetrie
+### Metingen en cyclusduur
 
-- Zolang mode-/defrostterugmeldingen vers zijn (30 s) volgt de regeling de ODU. Is de telemetrie stale maar is er geen bewezen defrost actief of aangevraagd, dan blijft het vorige compressorcommando staan; gewone demandwijzigingen wachten. Dit is bewust conservatief: een ongemerkt lopende ODU-cyclus mag niet door een normale write worden verstoord. Andere ODU-serviceoperaties kunnen de normale polling tijdelijk pauzeren; daarom is dit als contracttest vastgelegd.
-- Pas na 90 seconden zonder geldige mode-/defrostmeting volgt een veiligheidsstop via `telemetry_fault`. Transportverlies zelf gaat elders sneller fail-closed; deze 30/90 s-keuze vervangt dat niet.
-
-Lokale looptijden beginnen bij waarneming en kunnen na een herstart korter zijn dan de werkelijke ODU-looptijd. De tijdschalen van de interne duurbegrenzingen zijn niet volledig bekend: de benodigde eindbevestiging blijft daarom onbekend. Een mogelijke maximale-duur-eindreden blijft een afleiding, nooit een bewezen oorzaak.
-
-### Hardwarevalidatie
-
-Voor het testen van de aansturing en het opslaan en opnieuw toepassen van de ontdooimethode gelden de [HIL-testaanpak](development/hil-testing.md) en het [HIL-plan voor ontdooiprofielen](development/hil-defrost-profiles.md).
+Onder **Technische metingen** staan de buitenluchttemperatuur, de verdampertemperatuur, de verdampingstemperatuur van het koudemiddel en de compressorfrequentie. Tijdens het ontdooien zie je de verstreken tijd. Na een waargenomen ontdooiing zie je hoelang die duurde en hoeveel tijd sindsdien is verstreken. Na een herstart kan die geschiedenis ontbreken. De buitenunit bepaalt zelf wanneer de volgende cyclus begint.
