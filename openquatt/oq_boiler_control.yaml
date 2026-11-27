@@ -339,9 +339,6 @@ interval:
     startup_delay: 4600ms
     then:
       - lambda: |-
-          // De laatste policy is de R1-doelregeling: die regelt het binaire
-          // relais om het gevraagde keteldoel heen. De OpenTherm-transport
-          // blijft het doel over de bus ontvangen en moduleert zelf.
           oq_boiler_runtime::runtime().tick({
               ${oq_otb_supported},
               ${oq_cm_min_flow_lph},
@@ -354,4 +351,5 @@ interval:
               (uint32_t) (${oq_otb_field_timeout_s} * 1000UL),
               oq_boiler::RelayTargetConfig{${oq_boiler_relay_target_start_delta_c},
                                            ${oq_boiler_relay_target_stop_delta_c}},
+              ${oq_boiler_relay_power_house_on_off},
           });

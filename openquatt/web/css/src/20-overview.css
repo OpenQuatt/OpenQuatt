@@ -235,7 +235,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.oq-overview-cardhero span {
+.oq-overview-cardhero span,
+.oq-overview-cardhero small {
   color: var(--oq-overview-soft);
   font-size: 0.9rem;
   line-height: 1.45;

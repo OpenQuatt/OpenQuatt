@@ -138,6 +138,11 @@ inline const char* refusal(const Guard& g) {
   if (!std::isfinite(g.hz) || g.hz <= 0) return "COMPRESSOR_NOT_RUNNING";
   return "READY";
 }
+inline bool service_holds_circulation(bool holding, bool reconciling_profile, bool writing_profile, bool cycle_owned) {
+  // Reading a persisted profile does not imply compressor activity.
+  return holding && (!reconciling_profile || writing_profile || cycle_owned);
+}
+
 inline bool hp_active(bool heating, bool cooling, bool target_heating, bool target_cooling, int level, bool holding,
                       bool observed) {
   return heating || cooling || target_heating || target_cooling || level > 0 || holding || observed;

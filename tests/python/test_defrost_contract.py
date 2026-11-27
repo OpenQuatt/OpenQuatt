@@ -51,9 +51,11 @@ class DefrostContractTest(unittest.TestCase):
         loop = SERVICE[SERVICE.index("void OpenQuattOduDefrost::loop()"):SERVICE.index("void OpenQuattOduDefrost::release()")]
         self.assertIn("snapshot.online,", loop)
         self.assertIn("snapshot.fresh, snapshot.identity, busy(), request_pending", loop)
-        self.assertIn("oq_defrost::profile_matches", loop)
         self.assertIn("action = Action::SAVE", loop)
         self.assertIn("profile_reconcile_ready(profile_, profile_state_", loop)
+        profile = (ROOT / "openquatt/includes/odu/oq_odu_defrost_profile.h").read_text()
+        ready = profile[profile.index("inline bool profile_reconcile_ready("):profile.index("inline bool profile_commit_confirmed(")]
+        self.assertIn("profile_matches(p, variant, item)", ready)
         identity = SERVICE[SERVICE.index("void OpenQuattOduDefrost::set_odu_identity"):SERVICE.index("oq_odu::Variant OpenQuattOduDefrost::variant")]
         self.assertIn("profile_state_after_identity(profile_state_, profile_, variant_, control_board_item_)", identity)
         self.assertIn("if (save_ready_ && reconcile_) save_expected_ = parameters_.mode();", SERVICE)

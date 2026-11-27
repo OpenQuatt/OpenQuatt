@@ -5,21 +5,49 @@ import { renderStatCard } from "../js/src/views/stat-card.js";
 
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.localStorage = { getItem: () => null };
-const { renderOverviewMetricCard, renderOverviewStatCardMarkup } = await import("../js/src/views/overview.js");
+const { getOverviewTopCards, renderOverviewMetricCard, renderOverviewStatCardMarkup, renderOverviewStatCards } = await import("../js/src/views/overview.js");
 const { renderEnergyHistoryStat } = await import("../js/src/views/energy.js");
 const { getBoilerPanelModel, renderBoilerCompactPanel, patchBoilerPanelRuntime } = await import("../js/src/views/heatpump.js");
 const { state } = await import("../js/src/core/state.js");
+const { setLocale } = await import("../js/src/i18n/index.js");
 
 test("stat cards escape all text and value attributes; empty notes add no element", () => {
-  const html = renderStatCard({ label: '<Label>', value: '<img src=x onerror="alert(1)">', note: "A & B", valueData: { "oq-bind": 'value" onclick="alert(1)' } });
+  const html = renderStatCard({ label: '<Label>', value: '<img src=x onerror="alert(1)">', valueSuffix: "<Suffix>", note: "A & B", valueData: { "oq-bind": 'value" onclick="alert(1)' } });
   assert.match(html, /&lt;Label&gt;/);
   assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.match(html, /&lt;Suffix&gt;/);
   assert.match(html, /A &amp; B/);
   assert.match(html, /data-oq-bind="value&quot; onclick=&quot;alert\(1\)"/);
   assert.doesNotMatch(html, /<img| onclick="/);
   assert.doesNotMatch(renderStatCard({ label: "Zero", value: 0 }), /oq-stat-note/);
   assert.match(renderStatCard({ label: "Zero", value: 0 }), />0<\/strong>/);
   assert.throws(() => renderStatCard({ valueData: { 'bind" onclick': "bad" } }), /Invalid stat data attribute/);
+});
+
+test("overview estimates current from power at 230 V and hides the estimate when power is unavailable", () => {
+  const previousEntities = state.entities;
+  const renderTop = () => renderOverviewStatCards(getOverviewTopCards());
+  try {
+    setLocale("nl");
+    state.entities = { totalPower: { value: 3196, uom: "W" } };
+    assert.match(renderTop(), />3196 W <small class="oq-stat-note">\(~13,9A\)<\/small>/);
+
+    state.entities.totalPower.value = 0;
+    assert.match(renderTop(), /\(~0,0A\)/);
+
+    setLocale("en");
+    state.entities.totalPower.value = 575;
+    assert.match(renderTop(), /\(~2\.5A\)/);
+    for (const value of ["", "unavailable", NaN, Infinity, -1]) {
+      state.entities.totalPower.value = value;
+      assert.doesNotMatch(renderTop(), /<small/);
+    }
+    delete state.entities.totalPower;
+    assert.doesNotMatch(renderTop(), /<small/);
+  } finally {
+    state.entities = previousEntities;
+    setLocale("nl");
+  }
 });
 
 test("shared cards retain overview label colors and metric accents while energy stays neutral", () => {

@@ -611,6 +611,10 @@ void OpenQuattWeather::publish_forecast_() {
     std::memcpy(snapshot.temperature_c, state.current.temperature, sizeof(snapshot.temperature_c));
     std::memcpy(snapshot.wind_mps, state.current.wind_mps, sizeof(snapshot.wind_mps));
     std::memcpy(snapshot.wind_direction_deg, state.current.wind_direction_deg, sizeof(snapshot.wind_direction_deg));
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    snapshot.solar_valid_mask = state.current.solar_valid_mask;
+    std::memcpy(snapshot.solar_wm2, state.current.solar_wm2, sizeof(snapshot.solar_wm2));
+#endif
     // These main-loop-owned strings are copied only by their owner. HTTP sees
     // bounded immutable bytes, never EntityBase flags or live std::strings.
     const char* label = resolved_ && !resolved_->state.empty() ? resolved_->state.c_str() : state.location.query;
