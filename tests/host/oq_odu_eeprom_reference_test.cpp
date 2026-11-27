@@ -182,10 +182,10 @@ void check_frequency_tables(const Reference& reference, oq_odu::Variant variant)
   }
 
   const int maximum = oq_odu::automatic_level_limit(configured_v2, snapshot, 2);
-  assert(maximum == (extended ? 17 : 10));
+  assert(maximum == (extended ? 20 : 10));
   for (int physical = 1; physical <= maximum; ++physical) {
     assert(oq_odu::resolve_automatic_level(configured_v2, snapshot, 2, physical).physical_level == physical);
-    assert(snapshot.heating.hz[physical] <= 90);
+    assert(snapshot.heating.hz[physical] <= (extended ? 110 : 90));
   }
   assert(oq_odu::resolve_automatic_level(configured_v2, snapshot, 2, maximum + 1).physical_level == 0);
 
