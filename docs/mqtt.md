@@ -117,6 +117,8 @@ Een geldige MQTT-waarde blijft beperkt geldig. Komt er in die tijd geen nieuwe M
 
 Publiceer daarom periodiek, bijvoorbeeld elke minuut of telkens wanneer de bronwaarde verandert.
 
+Als het accepteren van retained berichten voor het kamer-setpoint uitstaat, vervalt die waarde meteen zodra de MQTT-verbinding wegvalt. Na verbinding met de broker is een nieuwe live publicatie nodig. Gaat Power House na een comfortstop op het setpoint opnieuw starten, dan wacht het eerste compressorcommando zolang voor de gekozen MQTT-kamerbron nog een ontvangen waarde moet worden verwerkt. Zie [Power House: langer doorverwarmen](power-house.md#langer-doorverwarmen).
+
 ## Bronselectie
 
 Ga in de web-app naar **Instellingen → Bronnen / integraties → Sensorselectie**.

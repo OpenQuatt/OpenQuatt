@@ -3266,6 +3266,7 @@ export default {
     releaseChannelUpdated: "Release channel updated.", loggerLevelUpdated: "Logger level updated.",
     startAboveStop: "The start threshold must be higher than the stop threshold ({value} W).", stopBelowStart: "The stop threshold must be lower than the start threshold ({value} W).",
     minBelowMax: "The lower boundary must not exceed the upper boundary ({value} Hz).", maxAboveMin: "The upper boundary must not be below the lower boundary ({value} Hz).",
+    numberOutOfRange: "{name}: choose a value from {min} to {max}.",
     frequencyExclusionDisabled: "Frequency exclusion disabled.", frequencyExclusionDisableFailed: "Frequency exclusion could not be fully disabled or confirmed.",
     timeNotConfirmed: "the controller did not confirm the configured time", setupCompleted: "Setup marked as completed.",
     quickStartReset: "Quick Start reset to the beginning. Current tuning values remain in place for now.",

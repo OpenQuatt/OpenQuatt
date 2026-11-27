@@ -3266,6 +3266,7 @@ export default {
     releaseChannelUpdated: "Releasekanaal bijgewerkt.", loggerLevelUpdated: "Logger level bijgewerkt.",
     startAboveStop: "De startgrens moet hoger zijn dan de stopgrens ({value} W).", stopBelowStart: "De stopgrens moet lager zijn dan de startgrens ({value} W).",
     minBelowMax: "De ondergrens mag niet hoger zijn dan de bovengrens ({value} Hz).", maxAboveMin: "De bovengrens mag niet lager zijn dan de ondergrens ({value} Hz).",
+    numberOutOfRange: "{name}: kies een waarde van {min} tot en met {max}.",
     frequencyExclusionDisabled: "Frequentie-uitsluiting uitgeschakeld.", frequencyExclusionDisableFailed: "Frequentie-uitsluiting kon niet volledig worden uitgeschakeld of bevestigd.",
     timeNotConfirmed: "de controller heeft de ingestelde tijd niet bevestigd", setupCompleted: "Setup gemarkeerd als afgerond.",
     quickStartReset: "Quick Start teruggezet naar het begin. Huidige tuningwaarden blijven voorlopig staan.",

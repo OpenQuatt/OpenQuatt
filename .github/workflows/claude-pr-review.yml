@@ -24,6 +24,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # De meeste PR's komen uit forks; de action slaat die tegenwoordig standaard over.
+          # Claude mag hier alleen lezen en commenten, dus de fork-code wordt niet uitgevoerd.
+          allow_fork_prs: "true"
           # jeroen85 has no write access. The action only accepts allowed_non_write_users
           # with its own github_token, so his reviews run on GITHUB_TOKEN; everyone else
           # keeps the Claude GitHub App token.
@@ -60,3 +63,4 @@ jobs:
             --model claude-opus-5-5
             --max-turns 40
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --disallowedTools "Bash(git push:*)"

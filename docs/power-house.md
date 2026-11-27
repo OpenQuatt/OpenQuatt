@@ -40,8 +40,6 @@ Volg de effectieve regelvraag via `Strategy requested power` in W. De stapdiagno
 
 Zakt de positieve warmtevraag onder de uitschakelgrens terwijl één buitenunit draait, dan kan Power House in CM2 op stand 1 blijven verwarmen tot de minimumlooptijd afloopt. Bij Duo geldt dit als de andere buitenunit bevestigd stilstaat en er geen startopdracht voor die unit loopt. Herstelt de vraag intussen tot de inschakelgrens, dan gaat Power House vanuit CM2 verder met moduleren. De water- en debietbeveiligingen houden voorrang.
 
-Bij Q Duo kan Power House de draaiende compressor of compressoren laten doorlopen als de huidige bedrijfsvorm binnen de berekende warmtemarge blijft. Bij een vrijwillige overgang tussen Solo en Duo vergelijkt de regeling het verwachte stroomverbruik bij gelijke warmte. Bij minder dan 2% voordeel blijft de huidige bedrijfsvorm aan en kan ze verder moduleren. Deze vergelijking gebruikt verse ODU-gegevens en lokale aanvoer. Een tekort buiten de warmtemarge en de bestaande beveiligingen hebben voorrang. Bij een V2-compressor vergelijkt de regeling bij een geselecteerde buitentemperatuur van 5 °C of lager alleen standen vanaf 30 Hz.
-
 ### Te koud
 
 Onder de normale koude grens vraagt OpenQuatt extra warmte boven op de normale huisvraag. Die grens is het setpoint min `Power House comfort below setpoint`, in de web-app **Afkoeling onder gewenste temperatuur**.
@@ -273,21 +271,33 @@ Bij `Single` is het gedrag het makkelijkst te begrijpen:
 
 ### Duo
 
-Bij `Duo` kiest OpenQuatt niet automatisch altijd voor één warmtepomp of altijd voor twee.
+Op een Duo-installatie betekent **Solo** dat één compressor draait en **Duo** dat beide draaien. De optimizer krijgt van Power House de effectieve warmtevraag in watt. Hij kiest een stand voor HP1 en een stand voor HP2. Zo vraagt `F5/F2` stand 5 van HP1 en stand 2 van HP2. Bij `F7/0` draait alleen HP1.
 
-In gewone taal:
+#### Hoe worden de twee standen gekozen?
 
-- OpenQuatt kijkt welke combinaties logisch en toegestaan zijn;
-- vergelijkt welke combinatie de vraag goed dekt;
-- en probeert onnodig wisselen tussen `Single` en `Duo` te vermijden.
+De optimizer probeert de combinaties die op dat moment zijn toegestaan. Een stand kan afvallen door bijvoorbeeld een frequentiegrens, een elektrische limiet of de minimale rusttijd van een compressor. Iedere stand hoort bij een compressorfrequentie. Hoeveel warmte die oplevert en hoeveel stroom die vraagt, hangt onder meer af van de buiten- en watertemperatuur. De optimizer schat die vermogens met de vermogenskaart. Bij verse watermetingen rekent hij mee dat het water eerst door HP1 en daarna door HP2 stroomt. Zie [Vermogensvoorspelling bij de levelkeuze](#vermogensvoorspelling-bij-de-levelkeuze).
 
-Voor de meeste gebruikers is vooral dit belangrijk:
+Binnen Solo en binnen Duo zoekt de optimizer eerst welke combinaties het dichtst bij de warmtevraag komen. Bij vergelijkbare warmteafgifte geeft hij voorrang aan combinaties die beter binnen de elektrische limieten passen en minder stroom vragen. Daarna vergelijkt hij de beste Solo- en Duo-optie. Een duidelijk betere dekking van de vraag kan zwaarder wegen dan lager verbruik. De twee standen kunnen uiteenlopen als dat zuiniger is. Bij verder gelijkwaardige Duo-opties kan een kleiner verschil in compressorfrequentie de doorslag geven.
 
-- `Duo` hoeft dus niet altijd "meer vermogen" te betekenen;
-- twee warmtepompen tegelijk zijn niet per definitie beter;
-- het systeem probeert een praktische en zuinige keuze te maken.
+Stel dat Power House **4,4 kW warmte** vraagt. De volgende standen en vermogens zijn illustratief.
 
-Bij een vroege Solo-overname gebruikt de optimizer gekoppelde ODU-watermetingen en verse, stabiele compressorfeedback om te bepalen of de opvolger op zijn huidige stand genoeg warmte kan leveren. Zo nodig blijft de oorspronkelijke unit draaien. In CM2 (alleen warmtepompen) en CM3 (met ketelbijstand) geldt de toets de eerste drie minuten na automatisch bijschakelen. De toets kan doorlopen tijdens de eerste minimumlooptijd van de opvolger. De warmtevraag mag intussen niet sterk dalen. Een noodzakelijke stop, de minimumlooptijd en de vermogensgrenzen houden voorrang.
+| Stand HP1/HP2 | Verwachte warmte | Geschat elektrisch vermogen van de buitenunits |
+|---|---:|---:|
+| `F7/0` | 4,40 kW | 1.210 W |
+| `F5/F2` | 4,45 kW | 1.040 W |
+| `F4/F3` | 4,38 kW | 1.080 W |
+
+Ze komen alle drie dicht bij de vraag. `F5/F2` is hier de zuinigste kandidaat. Of de regeling ook echt naar die combinatie overgaat, hangt af van de huidige standen, wachttijden en beveiligingen.
+
+#### Wanneer blijft de huidige bedrijfsvorm draaien?
+
+Bij Q Duo kan de optimizer een voorgestelde Solo/Duo-wissel overslaan en verder moduleren met dezelfde draaiende compressoren. Dat kan als de huidige bedrijfsvorm binnen de warmtemarge blijft en wisselen bij gelijke waterwarmte minder dan **2%** geschatte stroom bespaart. Het vermogen uit de feedback van beide pompen telt in beide opties mee. Bij dezelfde warmteafgifte is een daling van 1.000 naar 985 W elektrisch vermogen bijvoorbeeld 1,5%. In dat geval blijft de huidige bedrijfsvorm behouden.
+
+Deze vergelijking vereist **Buitenunit** als debietbron, **Lokaal** als aanvoerbron en verse water-, pomp- en compressorfeedback. Een draaiende compressor moet minstens **6 min 40 s** onafgebroken als draaiend zijn waargenomen. Een al stilstaande compressor moet als gestopt zijn bevestigd. Bij een geselecteerde buitentemperatuur van **5 °C of lager** telt een draaiende V2-compressor voor deze vergelijking alleen mee vanaf **30 Hz**. Een warmtetekort buiten de marge, een beschermde overname en de bestaande beveiligingen krijgen voorrang.
+
+#### Wat gebeurt er vlak na het bijschakelen?
+
+De nieuwe compressor heeft tijd nodig om vermogen op te bouwen. De optimizer gebruikt gekoppelde watermetingen en verse, stabiele compressorfeedback om te toetsen of die compressor op zijn huidige stand genoeg warmte levert om het over te nemen. Zo nodig blijft de oorspronkelijke compressor meedraaien. In CM2 (alleen warmtepompen) en CM3 (met ketelbijstand) geldt de toets de eerste drie minuten na automatisch bijschakelen. Hij kan doorlopen tijdens de eerste minimumlooptijd van de nieuwe compressor. De toets vervalt als de warmtevraag sterk daalt. Noodzakelijke stops, minimumtijden en vermogensgrenzen houden voorrang.
 
 ### Vermogensvoorspelling bij de levelkeuze
 
@@ -315,14 +325,14 @@ Is de laagste geschikte stand hoger dan F1 en ligt de huisvraag onder dat minimu
 
 Na zo'n eerdere stop wordt de afkoeling vanaf het setpoint gerekend, begrensd door **Afkoeling onder gewenste temperatuur**. Deze eerdere grens blijft tijdens uitlopen en wachten behouden, ook als F1 weer beschikbaar wordt of de vermogensvoorspelling tijdelijk ontbreekt. De web-app toont de actuele eerdere grens zodra de firmware die meldt; tijdens bewerken blijven de ingestelde grenzen als voorvertoning zichtbaar.
 
-Vlak vóór het eerste compressorcommando voor zo'n herstart leest Power House de kamertemperatuur en het setpoint opnieuw. De start wacht als een waarde ongeldig of verlopen is, of als de kamer het setpoint al heeft bereikt. Bij een verlaagd setpoint toetst Power House de herstart aan de nieuwe afkoelgrens.
+Na een comfortstop **op het setpoint** leest Power House vlak vóór het eerste compressorcommando de kamertemperatuur en het setpoint opnieuw. De start wacht als een waarde ongeldig of verlopen is, of als de kamer het setpoint al heeft bereikt. Bij een verlaagd setpoint toetst Power House de herstart aan de nieuwe afkoelgrens. Na een gewone comfortstop **boven het setpoint** kan de ingestelde afkoelgrens een herstart boven het setpoint toelaten.
 
 ### De instellingen
 
 | In de web-app | Home Assistant / firmware | Bereik en standaard |
 |---|---|---|
 | Langer doorverwarmen inschakelen | `Power House run extension enabled` | Aan/uit; standaard aan |
-| Stopgrens boven gewenste temperatuur | `Power House run extension stop margin` | 0,1–1,0 °C boven setpoint; standaard 0,5 °C |
+| Stopgrens boven gewenste temperatuur | `Power House run extension stop margin` | 0,1–2,0 °C boven setpoint; standaard 0,5 °C |
 | Afkoeling na stoppen | `Power House run extension restart cooldown` | 0,1–3,0 °C onder de comfortstop; standaard 0,2 °C |
 
 De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden. In Home Assistant zijn beide extension‑instellingen standaard uitgeschakeld; je kunt ze daar zelf inschakelen. De web-app toont stop- en herstarttemperatuur berekend met de getoonde instellingen. Tijdens bewerken is dat een voorvertoning van je wijziging.

@@ -5,9 +5,23 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "PsramBuffer.h"
+#include "esphome/core/log.h"
 #include "oq_installation_monitoring.h"
 
 namespace oq_diagnostics {
+
+inline InstallationMonitor& installation_monitor() {
+  static esphome::openquatt_common::PsramObjectArray<InstallationMonitor::HistoryStorage, 1U> storage;
+  static InstallationMonitor monitor([]() -> InstallationMonitor::HistoryStorage* {
+    if (storage.allocate()) {
+      return storage.data();
+    }
+    ESP_LOGE("oq_diag", "Compressor start history unavailable: PSRAM allocation failed");
+    return nullptr;
+  }());
+  return monitor;
+}
 
 inline size_t compressor_starts_warning_limit_2h() {
   return static_cast<size_t>(lroundf(id(oq_compressor_starts_warning_limit_2h).state));
