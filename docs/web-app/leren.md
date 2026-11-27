@@ -251,10 +251,11 @@ tijdstip is verstreken.
 Onder **Nog geen scenario** staat waar Vooruitblik op wacht. Als de controller
 weet welke meting ontbreekt, zie je die daar ook.
 
-Tijdens ontdooien blijft de vorige berekening zichtbaar onder **Laatst berekend**
-zolang de doeltijden nog in de toekomst liggen. Bij geldige metingen rekent
-Vooruitblik verder met het al beoordeelde model. Het model zelf leert weer zodra
-er 15 minuten aaneengesloten geldige metingen zijn. Na het tweede geldige
+Tijdens ontdooien en maximaal tien minuten erna kan de vorige berekening
+zichtbaar blijven onder **Laatst berekend**, zolang de doeltijden nog in de
+toekomst liggen. Zodra er weer geldige metingen zijn, kan Vooruitblik verder
+rekenen met het al beoordeelde model. Het model zelf leert weer zodra er
+15 minuten aaneengesloten geldige metingen zijn. Na het tweede geldige
 kwartier duurt een meetperiode weer 30 minuten.
 
 ## Warmtevraag vergelijken

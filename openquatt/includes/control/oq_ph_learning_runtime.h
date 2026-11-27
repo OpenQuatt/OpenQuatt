@@ -708,6 +708,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     observation.context = tick.context.context_revision;
     observation.model_samples = state.summary.thermal.accepted_samples;
     observation.defrost_active = tick.defrost_active;
+    observation.defrost_recovering = state.learner.defrost_recovery_windows_remaining != 0;
     const auto& snapshot = tick.dynamic_snapshot;
     if (observation.defrost_active) return observation;
     if (!tick.dynamic_snapshot_available || !passive_runtime_detail::snapshot_matches_tick(snapshot, tick) ||

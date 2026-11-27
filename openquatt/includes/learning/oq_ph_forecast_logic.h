@@ -13,6 +13,7 @@ constexpr size_t kForcingSteps = 12;
 constexpr size_t kPendingSlots = 13;
 constexpr uint64_t kMaxSampleGapMs = 30000;
 constexpr uint64_t kObservationFreshMs = 15000;
+constexpr uint64_t kPostDefrostRecoveryMs = 10 * 60 * 1000;
 
 enum class InputIssue : uint8_t { NONE, DEFROST, ROOM_TEMPERATURE, OUTSIDE_TEMPERATURE, SETPOINT, HEAT_OUTPUT };
 
@@ -22,7 +23,7 @@ struct Observation {
   bool valid = false, model_ready = false;
   double room_c = NAN, outside_c = NAN, heat_w = NAN;
   double h_w_per_k = NAN, c_wh_per_k = NAN;
-  bool defrost_active = false, model_reusable = false;
+  bool defrost_active = false, model_reusable = false, defrost_recovering = false;
   InputIssue missing_input = InputIssue::NONE;
 };
 
@@ -53,6 +54,13 @@ struct DefrostForecastRecovery {
       *this = {};
       return;
     }
+    // Invalid observations clear the forecast's previous valid observation.
+    const uint64_t last_seen_ms = previous.monotonic_ms ? previous.monotonic_ms : held_observation_ms;
+    if (last_defrost_ms &&
+        (observation.monotonic_ms < last_seen_ms || observation.monotonic_ms - last_seen_ms > kMaxSampleGapMs)) {
+      *this = {};
+      return;
+    }
     const bool current_valid = valid_observation(observation);
     const bool previous_valid = valid_observation(previous);
     if (!current_valid && previous_valid && valid_model(previous)) {
@@ -72,8 +80,8 @@ struct DefrostForecastRecovery {
       pending_defrost_ms = 0;
     }
     if (observation.defrost_active) last_defrost_ms = observation.monotonic_ms;
-    const bool settling =
-        observation.monotonic_ms >= last_defrost_ms && observation.monotonic_ms - last_defrost_ms <= 120000U;
+    const bool settling = observation.monotonic_ms >= last_defrost_ms &&
+                          observation.monotonic_ms - last_defrost_ms <= kPostDefrostRecoveryMs;
     if (current_valid) {
       if (observation.model_reusable && observation.model_samples == model_samples && (previous_valid || settling))
         observation.model_ready = true;
@@ -81,9 +89,11 @@ struct DefrostForecastRecovery {
         *this = {};
       return;
     }
-    // Valve and mode receipts can settle after the defrost flag drops. A
-    // different interruption after valid observations resumed ends this hold.
-    holding_issue = observation.defrost_active || (!previous_valid && settling);
+    // Water-side measurements can remain unusable after the flag drops.
+    // A missing room, outside or setpoint input ends the defrost hold.
+    const bool settling_input =
+        observation.missing_input == InputIssue::NONE || observation.missing_input == InputIssue::HEAT_OUTPUT;
+    holding_issue = observation.defrost_active || (!previous_valid && settling && settling_input);
     if (holding_issue) {
       held_observation_ms = observation.monotonic_ms;
       held_observation_epoch = observation.epoch;
@@ -163,16 +173,22 @@ inline double ticket_weather(const Ticket& t, double elapsed_s) {
 }
 
 inline InputIssue current_input_issue(const State& state, uint64_t now_ms) {
-  return state.input_issue_ms && now_ms >= state.input_issue_ms && now_ms - state.input_issue_ms <= kObservationFreshMs
-             ? state.input_issue
-             : InputIssue::NONE;
+  if (state.input_issue_ms && now_ms >= state.input_issue_ms && now_ms - state.input_issue_ms <= kObservationFreshMs)
+    return state.input_issue;
+  const auto& previous = state.previous;
+  if (previous.defrost_recovering && !valid_model(previous) && now_ms >= previous.monotonic_ms &&
+      now_ms - previous.monotonic_ms <= kObservationFreshMs)
+    return InputIssue::DEFROST;
+  return InputIssue::NONE;
 }
 
 inline void observe(State& state, const Observation& observation) {
   if (!valid_observation(observation)) {
     discard_pending(state);
     state.input_issue_ms = observation.monotonic_ms;
-    state.input_issue = observation.defrost_active ? InputIssue::DEFROST : observation.missing_input;
+    const bool defrost =
+        observation.defrost_active || (observation.defrost_recovering && observation.missing_input == InputIssue::NONE);
+    state.input_issue = defrost ? InputIssue::DEFROST : observation.missing_input;
     state.status = "invalid_observation";
     return;
   }
