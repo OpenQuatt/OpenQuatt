@@ -1833,7 +1833,8 @@ text_sensor:
     entity_category: diagnostic
     lambda: |-
       // Ordered Hz values for F1 onward, heating then cooling, separated by '|'.
-      char frequencies[2 * oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX * 4 + 2]{};
+      // The optional third section is the ODU's silent level, heating Hz and cooling Hz.
+      char frequencies[2 * oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX * 4 + 16]{};
       size_t used = 0;
       if (id(hp_generation).has_state() && id(${hp_id}_is_online) &&
           !id(${hp_id}_runtime_frequency_revalidation_required)) {
@@ -1846,6 +1847,17 @@ text_sensor:
             const int hz = oq_frequency_policy::automatic_frequency_hz(v2, snapshot, mode, level);
             if (hz <= 0) break;
             used += snprintf(frequencies + used, sizeof(frequencies) - used, level == 1 ? "%d" : ",%d", hz);
+          }
+        }
+        if (id(${hp_id}_pcb_firmware_raw).has_state()) {
+          const uint16_t program = esphome::openquatt_common::odu_firmware_raw(id(${hp_id}_pcb_firmware_raw).state);
+          const int level = oq_odu::known_odu_silent_level(snapshot.variant, program);
+          if (level > 0) {
+            const int heating_hz = oq_odu::frequency_for_physical_level(snapshot.heating, level);
+            const int cooling_hz = oq_odu::frequency_for_physical_level(snapshot.cooling, level);
+            if (heating_hz > 0 || cooling_hz > 0) {
+              snprintf(frequencies + used, sizeof(frequencies) - used, "|%d,%d,%d", level, heating_hz, cooling_hz);
+            }
           }
         }
       }
