@@ -9,6 +9,8 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
+const { getSettingsGroupHydrationKeys } = await import("../js/src/core/entity-sync.js");
+const { getSettingsRenderSignature } = await import("../js/src/core/render-signatures.js");
 const { getSettingsServiceModel, renderHpWaterCalibrationWizard } = await import("../js/src/settings/service.js");
 const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 const { getWaterSupplyCorrectionView, renderHpWaterSensorOffsetSettings, renderHpWaterSensorOffsetsModal, renderWaterSettingsFields } = await import("../js/src/settings/water.js");
@@ -214,11 +216,14 @@ test("waterinstellingen openen sensorcorrecties in een modal", () => {
 });
 
 test("de optie voor doorlopen na tapwater verschijnt alleen bij ondersteunende firmware", () => {
+  assert.ok(getSettingsGroupHydrationKeys("installation").includes("postDhwRunThrough"));
   state.loadingEntities = false;
   state.entities = {};
+  const unsupportedSignature = getSettingsRenderSignature();
   assert.doesNotMatch(renderWaterSettingsFields(), /Warmtepomp laten doorlopen na tapwater/);
 
   state.entities.postDhwRunThrough = { value: false, state: "OFF" };
+  assert.notEqual(getSettingsRenderSignature(), unsupportedSignature);
   const markup = renderWaterSettingsFields();
   assert.match(markup, /Warmtepomp laten doorlopen na tapwater/);
   assert.match(markup, /CV-circuit de korte aanvoerpiek veilig verdraagt/);

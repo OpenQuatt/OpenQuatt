@@ -2216,6 +2216,7 @@
     ...INSTALLATION_MONITORING_STATE_KEYS,
     ...COOLING_SETTING_KEYS,
     ...LIMIT_KEYS,
+    "postDhwRunThrough",
     ...POWER_HOUSE_KEYS,
     ...WARMUP_SETTING_KEYS,
     ...WARMUP_STATE_KEYS,
@@ -2232,6 +2233,8 @@
     "preferredConnection",
     // Passive learning always requires an explicit opt-in after boot.
     "houseLearningEnabled",
+    // Reassess the hydraulic circuit before enabling this on another installation.
+    "postDhwRunThrough",
     // Keep location and external weather consent local to this controller.
     "weatherLocation",
     "weatherEnabled",
