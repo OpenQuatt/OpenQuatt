@@ -96,7 +96,6 @@ inline bool field_is_session_scoped(Field field) {
 }
 
 constexpr uint64_t kBoilerStatusFreshMs = 10000;
-constexpr uint64_t kRecentDhwEndMs = 60000;
 constexpr uint16_t kDhwActiveStatus = 0x0004U;
 
 inline bool status_may_deliver_cv_heat(uint16_t status) {
@@ -260,11 +259,10 @@ class TelemetryState {
                : 0;
   }
 
-  uint64_t recent_dhw_end_ms(uint64_t now_ms) const {
+  uint64_t recent_dhw_end_ms(uint64_t now_ms, uint64_t max_age_ms) const {
     const auto status = this->field_receipt(FIELD_STATUS);
     return this->dhw_ended_ms_ != 0 && this->dhw_status_seen_ && status.valid && now_ms >= status.received_ms &&
-                   now_ms - status.received_ms <= kBoilerStatusFreshMs &&
-                   now_ms - this->dhw_ended_ms_ <= kRecentDhwEndMs
+                   now_ms - status.received_ms <= kBoilerStatusFreshMs && now_ms - this->dhw_ended_ms_ <= max_age_ms
                ? this->dhw_ended_ms_
                : 0;
   }

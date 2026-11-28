@@ -152,7 +152,7 @@ class Runtime {
         flow_sufficient,
         fallback_outputs_safe,
         boiler_inhibit,
-        id(oq_water_temp_hard_trip_active),
+        id(oq_system_water_temp_hard_trip_active),
         id(oq_boiler_connection_mismatch_state),
         transport_available,
         transport_settled,
@@ -317,7 +317,7 @@ class Runtime {
                               : role == oq_boiler::BoilerRole::FALLBACK_CM4      ? "CM4 fallback"
                                                                                  : "CM3";
         ESP_LOGI("quatt.boiler", "Boiler enabled: %s and safety guards clear", context);
-      } else if (id(oq_water_temp_hard_trip_active)) {
+      } else if (id(oq_system_water_temp_hard_trip_active)) {
         ESP_LOGW("quatt.boiler", "Boiler blocked: %s", reason);
       } else if (blocked && decision.block_reason == oq_boiler::BLOCK_COMMISSIONING_WAITING) {
         ESP_LOGI("quatt.boiler", "Boiler commissioning: waiting for flow to settle");

@@ -2,6 +2,8 @@
 
 #include "../../openquatt/includes/control/oq_control_mode_log_logic.h"
 #include "../../openquatt/includes/control/oq_hp_supervisory_logic.h"
+#include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
+#include "../../openquatt/includes/control/oq_thermal_limits_logic.h"
 
 namespace {
 
@@ -197,6 +199,34 @@ oq_hp_supervisory::FallbackEvaluationInputs eligible_fallback_evaluation_inputs(
   inputs.supply_temperature_valid = true;
   inputs.boiler_guards_clear = true;
   return inputs;
+}
+
+void test_post_dhw_odu_failure_keeps_the_compressor_stopped_and_releases_safe_boiler_fallback() {
+  oq_thermal_limits::State thermal;
+  auto fallback = eligible_fallback_evaluation_inputs();
+  oq_power_house::DemandInput demand{1000, 5.0f, -10.0f, 16.0f, 8000.0f, 17.0f, 20.0f, 4200.0f, 1.0f, true};
+  const oq_power_house::DemandTuning tuning{3.0f, 400.0f, 0.3f, 0.3f, 5.0f, 2.0f, 0.2f};
+  const auto cm4_allowed = [&]() {
+    demand.water_limit_factor = thermal.limit_factor;
+    const auto house_demand = oq_power_house::decide_demand(demand, tuning, {});
+    assert(house_demand.valid);
+    fallback.heating_demand = house_demand.requested_w > 0.0f;
+    fallback.boiler_guards_clear = !thermal.boiler_inhibit && !thermal.hard_trip;
+    return oq_hp_supervisory::evaluate_fallback(fallback).decision.cm4_allowed;
+  };
+
+  oq_thermal_limits::update(thermal, {1000, 65.6f, 46.0f, 3, 200, 34.0f});
+  assert(thermal.post_dhw_active);
+  oq_thermal_limits::update(thermal, {2000, 65.6f, 46.0f, 3, 0, NAN, true, false, false});
+  assert(thermal.heat_pump_hard_trip() && thermal.hard_trip && !cm4_allowed());
+
+  oq_thermal_limits::update(thermal, {3000, 35.0f, 46.0f, 1, 0, NAN, false, false, false});
+  assert(thermal.heat_pump_hard_trip() && !cm4_allowed());
+  oq_thermal_limits::update(thermal, {4000, 35.0f, 46.0f, 1, 0, NAN, true, false, false});
+  assert(thermal.heat_pump_hard_trip() && thermal.limit_factor == 1.0f && cm4_allowed());
+
+  oq_thermal_limits::update(thermal, {5000, 35.0f, 46.0f, 4, 0, NAN, false, false, false});
+  assert(thermal.heat_pump_hard_trip() && !cm4_allowed());
 }
 
 void test_fallback_evaluation_and_recovering_handover() {
@@ -519,6 +549,7 @@ int main() {
   assert(recovered_heating_mode(3, false, true, true) == 1);
 
   test_fallback_evaluation_and_recovering_handover();
+  test_post_dhw_odu_failure_keeps_the_compressor_stopped_and_releases_safe_boiler_fallback();
   test_degraded_link_loss_cm4_evaluation();
   test_heating_mode_decisions();
   test_control_mode_log_classification();

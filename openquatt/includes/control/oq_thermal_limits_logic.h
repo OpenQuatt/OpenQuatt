@@ -5,9 +5,15 @@
 
 namespace oq_thermal_limits {
 
-constexpr uint64_t kPostDhwMaxAgeMs = 45000;
+constexpr uint64_t kPostDhwStartMaxAgeMs = 30000;
+constexpr uint64_t kPostDhwMaxAgeMs = 90000;
 constexpr float kPostDhwSystemCeilingC = 70.0f;
 constexpr float kPostDhwHeatPumpCeilingC = 55.0f;
+
+inline bool post_dhw_window_open(uint64_t now_ms, uint64_t dhw_end_ms, bool active) {
+  const uint64_t max_age = active ? kPostDhwMaxAgeMs : kPostDhwStartMaxAgeMs;
+  return dhw_end_ms != 0 && now_ms >= dhw_end_ms && now_ms - dhw_end_ms < max_age;
+}
 
 inline float clamp(float value, float minimum, float maximum) {
   if (value < minimum) return minimum;
@@ -46,6 +52,8 @@ struct State {
   bool post_dhw_active = false;
   bool awaiting_supply = false;
   bool awaiting_heat_pump_water = false;
+
+  bool heat_pump_hard_trip() const { return hard_trip || awaiting_heat_pump_water; }
 };
 
 struct Result {
@@ -64,15 +72,19 @@ inline Result update(State& state, const Inputs& inputs, const Config& config = 
 
   const bool was_post_dhw = state.post_dhw_active;
   const bool hot_supply = inputs.supply_c > result.soft_start_c;
+  const bool new_pulse =
+      inputs.supply_c >= result.max_c && inputs.supply_c - inputs.heat_pump_water_c >= config.trip_offset_c;
   const bool current_edge = inputs.dhw_end_ms != 0 && (was_post_dhw ? inputs.dhw_end_ms == state.used_dhw_end_ms
                                                                     : inputs.dhw_end_ms != state.used_dhw_end_ms);
-  const bool post_dhw_relevant = was_post_dhw || (current_edge && inputs.supply_observed && inputs.running_heat_pumps);
+  const bool post_dhw_relevant = was_post_dhw || (current_edge && inputs.supply_observed && inputs.running_heat_pumps &&
+                                                  (new_pulse || inputs.supply_c >= kPostDhwSystemCeilingC));
   const float heat_pump_trip_c = fminf(result.trip_c, kPostDhwHeatPumpCeilingC);
   const float heat_pump_release_c = fminf(result.max_c, kPostDhwHeatPumpCeilingC - config.trip_offset_c);
 
   // A fallback sensor cannot attest that the hot water at the system probe cleared.
   state.awaiting_supply =
-      (was_post_dhw && !inputs.supply_observed) || (post_dhw_relevant && inputs.supply_c >= kPostDhwSystemCeilingC) ||
+      ((was_post_dhw || state.awaiting_heat_pump_water) && !inputs.supply_observed) ||
+      (post_dhw_relevant && inputs.supply_c >= kPostDhwSystemCeilingC) ||
       (state.awaiting_supply &&
        (!inputs.supply_observed || inputs.supply_c > fminf(result.max_c, kPostDhwSystemCeilingC - 1.0f)));
   state.awaiting_heat_pump_water =
@@ -80,14 +92,14 @@ inline Result update(State& state, const Inputs& inputs, const Config& config = 
       (was_post_dhw && hot_supply && !inputs.heat_pump_water_observed) ||
       (state.awaiting_heat_pump_water && (!inputs.heat_pump_water_observed || !isfinite(inputs.heat_pump_water_c) ||
                                           inputs.heat_pump_water_c > heat_pump_release_c));
-  state.post_dhw_active = current_edge && hot_supply && inputs.supply_observed && inputs.running_heat_pumps &&
-                          inputs.heat_pump_water_observed && isfinite(inputs.heat_pump_water_c) &&
-                          inputs.heat_pump_water_c <= result.soft_start_c &&
+  state.post_dhw_active = current_edge && hot_supply && (was_post_dhw || new_pulse) && inputs.supply_observed &&
+                          inputs.running_heat_pumps && inputs.heat_pump_water_observed &&
+                          isfinite(inputs.heat_pump_water_c) && inputs.heat_pump_water_c < result.max_c &&
                           inputs.heat_pump_water_c < heat_pump_trip_c && !state.awaiting_supply &&
                           !state.awaiting_heat_pump_water && !state.trip && !state.hard_trip;
   if (state.post_dhw_active) state.used_dhw_end_ms = inputs.dhw_end_ms;
-  const bool force_stop = state.awaiting_supply || state.awaiting_heat_pump_water ||
-                          (was_post_dhw && !state.post_dhw_active && inputs.supply_c >= result.trip_c);
+  const bool force_stop =
+      state.awaiting_supply || (was_post_dhw && !state.post_dhw_active && inputs.supply_c >= result.trip_c);
   if (force_stop) {
     state.boiler_inhibit = true;
     state.trip = true;
@@ -142,6 +154,8 @@ inline Result update(State& state, const Inputs& inputs, const Config& config = 
     state.trip_timer_running = false;
   }
 
+  // Power House also uses this factor for house demand, which CM4 still needs.
+  // An ODU-only latch blocks compressor writes through heat_pump_hard_trip().
   if (state.hard_trip) state.limit_factor = 0.0f;
   state.limit_factor = clamp(state.limit_factor, 0.0f, 1.0f);
   return result;

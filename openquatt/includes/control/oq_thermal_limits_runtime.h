@@ -30,7 +30,8 @@ class Runtime {
                                !id(oq_water_supply_temp_selected_hold_active) && (!local_pt1000 || fresh_pt1000);
       if (local_pt1000 && inputs.supply_observed) inputs.dhw_end_ms = post_dhw_end_(now, inputs.control_mode);
       if (local_pt1000 && inputs.supply_observed &&
-          (inputs.dhw_end_ms != 0 || state_.post_dhw_active || state_.awaiting_supply)) {
+          (inputs.dhw_end_ms != 0 || state_.post_dhw_active || state_.awaiting_supply ||
+           state_.awaiting_heat_pump_water)) {
         // Check the newest receipt as well as the last selected update. The
         // selection and the MAX31865 publish independently of this loop.
         const float offset = id(water_supply_temp_calibration_offset).state;
@@ -54,13 +55,14 @@ class Runtime {
     id(oq_post_dhw_hp_water_c) = state_.post_dhw_active ? inputs.heat_pump_water_c : NAN;
     id(oq_water_temp_limit_factor) = state_.limit_factor;
     id(oq_water_temp_boiler_inhibit_active) = state_.boiler_inhibit;
-    id(oq_water_temp_trip_active) = state_.trip;
-    id(oq_water_temp_hard_trip_active) = state_.hard_trip;
+    id(oq_water_temp_trip_active) = state_.trip || state_.awaiting_heat_pump_water;
+    id(oq_water_temp_hard_trip_active) = state_.heat_pump_hard_trip();
+    id(oq_system_water_temp_hard_trip_active) = state_.hard_trip;
   }
 
  private:
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-  static uint64_t post_dhw_end_(uint64_t now, int cm) {
+  uint64_t post_dhw_end_(uint64_t now, int cm) const {
     if (!id(oq_post_dhw_run_through).state || (cm != 2 && cm != 3) || id(oq_heat_mode_code) != 0 ||
         id(oq_strategy_output_source_code) != 3 || id(oq_commissioning_active) || id(oq_runtime_polling_paused).state ||
         id(oq_lowflow_fault_active) || !id(oq_aux_heat_source_present).state || !id(oq_otb_link_available_state) ||
@@ -69,8 +71,8 @@ class Runtime {
     const auto status = oq_otb::telemetry_state.field_receipt(oq_otb::FIELD_STATUS);
     // Fault, flame, or diagnostic indication invalidate the handover.
     if ((status.value & 0x0049U) != 0) return 0;
-    const auto end = oq_otb::telemetry_state.recent_dhw_end_ms(now);
-    return end != 0 && now - end < oq_thermal_limits::kPostDhwMaxAgeMs ? end : 0;
+    const auto end = oq_otb::telemetry_state.recent_dhw_end_ms(now, oq_thermal_limits::kPostDhwMaxAgeMs);
+    return oq_thermal_limits::post_dhw_window_open(now, end, state_.post_dhw_active) ? end : 0;
   }
 
   static uint8_t applied_units_() {

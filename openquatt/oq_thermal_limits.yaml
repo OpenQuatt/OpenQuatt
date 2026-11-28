@@ -39,6 +39,11 @@ globals:
     restore_value: false
     initial_value: 'false'
 
+  - id: oq_system_water_temp_hard_trip_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
   - id: oq_post_dhw_hp_water_c
     type: float
     restore_value: false

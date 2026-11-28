@@ -8,65 +8,73 @@ void test_recent_dhw_end_requires_continuous_status() {
     state.record_request(0, oq_otb::MESSAGE_TYPE_READ_DATA);
     state.record_response(static_cast<uint32_t>(ms), ms, 0, type, payload);
   };
+  const auto recent_end = [&](uint64_t ms) { return state.recent_dhw_end_ms(ms, 60000); };
   const auto miss_status = [&]() {
     state.record_request(0, oq_otb::MESSAGE_TYPE_READ_DATA);
     state.record_missing_response();
   };
 
   status(1000, 0);
-  assert(state.recent_dhw_end_ms(1000) == 0);
+  assert(recent_end(1000) == 0);
   status(2000, 0x000cU);
-  assert(state.recent_dhw_end_ms(2000) == 0);
+  assert(recent_end(2000) == 0);
   miss_status();
   status(3000, 0);
-  assert(state.recent_dhw_end_ms(3000) == 0);
+  assert(recent_end(3000) == 0);
   status(4000, 0x000cU);
   status(14001, 0);  // The last active sample is too old to date the end.
-  assert(state.recent_dhw_end_ms(14001) == 0);
+  assert(recent_end(14001) == 0);
 
   constexpr uint64_t edge = static_cast<uint64_t>(UINT32_MAX) + 1;
   status(edge - 1000, 0x000cU);
   status(edge, 0x000aU);  // DHW ends while CH and flame remain active.
-  assert(state.recent_dhw_end_ms(edge - 1) == 0);
-  assert(state.recent_dhw_end_ms(edge) == edge);
-  assert(state.recent_dhw_end_ms(edge + 10001) == 0);
+  assert(recent_end(edge - 1) == 0);
+  assert(recent_end(edge) == edge);
+  assert(recent_end(edge + 10001) == 0);
   for (uint64_t offset = 10000; offset <= 60000; offset += 10000) status(edge + offset, 0);
-  assert(state.recent_dhw_end_ms(edge + 60000) == edge);
-  assert(state.recent_dhw_end_ms(edge + 60001) == 0);
+  assert(recent_end(edge + 60000) == edge);
+  assert(recent_end(edge + 60001) == 0);
 
   status(edge + 61000, 0x0004U);
   status(edge + 62000, 0);
   state.record_request(25, oq_otb::MESSAGE_TYPE_READ_DATA);
   state.record_missing_response();
-  assert(state.recent_dhw_end_ms(edge + 62000) == edge + 62000);
+  assert(recent_end(edge + 62000) == edge + 62000);
   status(edge + 63000, 0x0004U);
-  assert(state.recent_dhw_end_ms(edge + 63000) == 0);
+  assert(recent_end(edge + 63000) == 0);
   status(edge + 64000, 0, oq_otb::MESSAGE_TYPE_DATA_INVALID);
   status(edge + 65000, 0);
-  assert(state.recent_dhw_end_ms(edge + 65000) == 0);
+  assert(recent_end(edge + 65000) == 0);
   status(edge + 66000, 0x0004U);
   status(edge + 65999, 0);  // An out-of-order inactive status cannot date the end.
-  assert(state.recent_dhw_end_ms(edge + 66000) == 0);
+  assert(recent_end(edge + 66000) == 0);
   status(edge + 66000, 0x0004U);
   status(edge + 66001, 0);  // A delayed active status cannot establish a new edge.
-  assert(state.recent_dhw_end_ms(edge + 66001) == 0);
+  assert(recent_end(edge + 66001) == 0);
 
   status(edge + 67000, 0x0004U);
   status(edge + 68000, 0);
   miss_status();
-  assert(state.recent_dhw_end_ms(edge + 68000) == 0);
+  assert(recent_end(edge + 68000) == 0);
   status(edge + 69000, 0);
-  assert(state.recent_dhw_end_ms(edge + 69000) == 0);
+  assert(recent_end(edge + 69000) == 0);
   status(edge + 70000, 0x0004U);
   status(edge + 71000, 0);
   assert(state.expire_response_session_if_stale(static_cast<uint32_t>(edge + 72001), 1000));
   status(edge + 73000, 0);
-  assert(state.recent_dhw_end_ms(edge + 73000) == 0);
+  assert(recent_end(edge + 73000) == 0);
   status(edge + 74000, 0x0004U);
   status(edge + 75000, 0);
   state.reset_link_session();
   status(edge + 76000, 0);
-  assert(state.recent_dhw_end_ms(edge + 76000) == 0);
+  assert(recent_end(edge + 76000) == 0);
+
+  constexpr uint64_t second_end = edge + 78000;
+  status(second_end - 1000, 0x0004U);
+  status(second_end, 0);
+  for (uint64_t offset = 10000; offset <= 90000; offset += 10000) status(second_end + offset, 0);
+  assert(state.recent_dhw_end_ms(second_end + 90000, 90000) == second_end);
+  assert(state.recent_dhw_end_ms(second_end + 90001, 90000) == 0);
 }
 
 int main() {

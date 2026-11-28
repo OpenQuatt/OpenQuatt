@@ -7,6 +7,7 @@ CONTROL_YAML = (ROOT / "openquatt/oq_boiler_control.yaml").read_text()
 DISPATCH_YAML = (ROOT / "openquatt/oq_boiler_dispatch.yaml").read_text()
 OTB_YAML = (ROOT / "openquatt/oq_boiler_opentherm.yaml").read_text()
 CONTROL_RUNTIME = (ROOT / "openquatt/includes/control/oq_boiler_runtime.h").read_text()
+SUPERVISORY_RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_state_runtime.h").read_text()
 DISPATCH_RUNTIME = (ROOT / "openquatt/includes/control/oq_boiler_dispatch_runtime.h").read_text()
 OTB_RUNTIME = (ROOT / "openquatt/includes/boiler/oq_boiler_otb_runtime.h").read_text()
 BOILER_LOGIC = (ROOT / "openquatt/includes/boiler/oq_boiler_logic.h").read_text()
@@ -38,6 +39,12 @@ class BoilerRuntimeContractTest(unittest.TestCase):
 
     def test_q_only_otb_binding_is_guarded(self) -> None:
         self.assertIn("#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q", OTB_RUNTIME)
+
+    def test_cm4_uses_the_system_water_trip_in_both_boiler_gates(self) -> None:
+        selection_guard = SUPERVISORY_RUNTIME.split("fallback_inputs.boiler_guards_clear =", 1)[1].split(";", 1)[0]
+        output_settings = CONTROL_RUNTIME.split("const oq_boiler::ControllerInput input{", 1)[1].split("};", 1)[0]
+        self.assertIn("!id(oq_system_water_temp_hard_trip_active)", selection_guard)
+        self.assertIn("id(oq_system_water_temp_hard_trip_active)", output_settings)
 
     def test_relay_target_control_is_isolated_policy(self) -> None:
         # De hysterese is boiler-specifiek beleid en staat niet als losse

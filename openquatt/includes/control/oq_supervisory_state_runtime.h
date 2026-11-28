@@ -600,8 +600,8 @@ class Runtime {
       fallback_inputs.flow_sufficient = flow_ok && !id(oq_lowflow_fault_active);
       fallback_inputs.supply_temperature_valid = !isnan(id(water_supply_temp_selected).state);
       fallback_inputs.boiler_guards_clear = !id(oq_water_temp_boiler_inhibit_active) &&
-                                            !id(oq_water_temp_hard_trip_active) && fallback_transport_available &&
-                                            fallback_transport_settled;
+                                            !id(oq_system_water_temp_hard_trip_active) &&
+                                            fallback_transport_available && fallback_transport_settled;
       fallback_inputs.cooling_active = cooling_req;
       fallback_inputs.frost_active = frost;
       fallback_inputs.commissioning_active = commissioning_in_progress;

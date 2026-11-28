@@ -199,15 +199,20 @@ geen bewezen veilige temperatuur.
 
 Op Heatpump Controller Q kan **Warmtepomp laten doorlopen na tapwater**
 een Power House-run door een korte aanvoerpiek heen helpen. Bij geldige
-OpenTherm-status zonder vlam en voldoende doorstroming eindigt de vrijgave op
-de eerste regeltick vanaf 45 s na het bevestigde tapwatereinde. De ketelbegrenzing
-volgt de lokale PT1000. De warmtepompbegrenzing
-volgt tijdelijk de hoogste verse in- of uitlaattemperatuur van de draaiende units.
-Die moet binnen de normale zachte bandgrens en onder 55 °C blijven. Vanaf
-70 °C aan de systeemaanvoer eindigt de vrijgave eveneens. Alleen het huidige
-compressorbedrijf kan doorlopen. Bij te heet ODU-water of ontbrekende
-temperatuurmetingen tijdens de aanvoerpiek blijft de veiligheidsstop actief
-tot verse metingen herstel bevestigen.
+OpenTherm-status zonder vlam en voldoende doorstroming kan de vrijgave beginnen
+in de eerste 30 s na het bevestigde tapwatereinde. De systeemaanvoer moet
+daarvoor de ingestelde maximumtemperatuur bereiken en ten minste 5 K warmer
+zijn dan het ODU-water. De vrijgave eindigt zodra de systeemaanvoer terug is
+op of onder de zachte grens, of op de eerste regeltick vanaf 90 s na het
+tapwatereinde.
+
+De ketelbegrenzing volgt de lokale PT1000. De warmtepomp regelt tijdelijk terug
+op de hoogste verse in- of uitlaattemperatuur van de draaiende units. De
+vrijgave eindigt zodra dit water de ingestelde maximumtemperatuur of 55 °C
+bereikt, of als de systeemaanvoer 70 °C bereikt. Alleen het huidige
+compressorbedrijf kan doorlopen. Bij een stop door een ODU-meting kan de ketel
+via CM4 overnemen zodra een verse systeemmeting en de normale fallbackvoorwaarden
+dat toestaan.
 
 CM3-ketelassistentie en CM4-foutfallback hebben aparte ingangsvoorwaarden.
 Een tekort, ontdooicyclus of positieve strategy-status is op zichzelf geen
