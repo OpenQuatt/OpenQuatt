@@ -1,16 +1,28 @@
 import { formatValue, getEntityValue, parseLooseNumber } from "../core/entity-store.js";
-import { parseAutomaticFrequencyTables, readAutomaticFrequencyParts } from "../core/frequency-exclusion-model.js";
 import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
 import { t } from "../i18n/index.js";
 import { getInstallationTopology } from "./device-context.js";
 
-export { getAutomaticFrequencyTables } from "../core/frequency-exclusion-model.js";
-
 function readFrequency(key, useDrafts = false) {
   const entity = state.entities[key];
   const value = parseLooseNumber(useDrafts ? getEntityValue(key) : entity?.value ?? entity?.state);
   return Number.isFinite(value) && value >= 0 && value <= 120 ? Math.round(value) : null;
+}
+
+function readAutomaticFrequencyParts(hp, read) {
+  return String(read(`${hp}AutomaticFrequencies`) || "").split("|");
+}
+
+function parseAutomaticFrequencyTables(tables) {
+  return [0, 1].map((index) => {
+    const frequencies = tables[index]?.split(",").map(Number) || [];
+    return frequencies.every((hz) => Number.isInteger(hz) && hz > 0 && hz <= 120) ? frequencies : [];
+  });
+}
+
+export function getAutomaticFrequencyTables(hp, read = getEntityValue) {
+  return parseAutomaticFrequencyTables(readAutomaticFrequencyParts(hp, read));
 }
 
 function getFrequencyLevelOptions(hp, quiet) {

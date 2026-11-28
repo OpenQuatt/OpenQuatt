@@ -103,8 +103,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // Defrost method dialog in NL and EN: +2,453 B raw / +868 B gzip versus dev 40dff330 (Node 24.14.1).
     // Outdoor unit ceilings below the quiet-hours slider: +1,234 B raw / +467 B gzip
     // versus dev 40dff330 (Node 24.14.1); preserves 288 B of raw headroom.
-    // Confirm frequency boundaries and keep partial ranges visible: +4,335 B raw / +1,202 B gzip versus dev 3d2ca639.
-    raw: 1_539_750,
+    // Confirm frequency boundaries and keep partial ranges visible: +4,325 B raw / +1,184 B gzip versus dev 3d2ca639.
+    raw: 1_539_740,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

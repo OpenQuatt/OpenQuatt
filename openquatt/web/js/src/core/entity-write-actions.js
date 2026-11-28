@@ -1,6 +1,6 @@
 import { commitWeatherLocation } from "../features/weather.js";
 import { invalidateWeatherForecast, refreshWeatherForecast } from "../features/weather-forecast.js";
-import { getFrequencyExclusionSaveWarning } from "./frequency-exclusion-model.js";
+import { getFrequencyExclusionSaveWarning } from "../features/frequency-exclusion.js";
 import { hasEntity } from "./app-shared.js";
 import { fetchWithTimeout } from "./browser-utils.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEADER_ENTITY_KEYS, LIMIT_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
