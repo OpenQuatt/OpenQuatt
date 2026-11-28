@@ -880,11 +880,12 @@
   }
 }
 
+/* No base transform: WebKit (iOS) derives the implicit spin start frame from it as a matrix, and
+   matrix-to-rotate(360deg) interpolates as identity, so the fan would never turn. */
 .oq-hp-tech-fan-blades {
   fill: rgba(203, 213, 225, 0.62);
   transform-box: fill-box;
   transform-origin: center;
-  transform: rotate(0deg);
   will-change: transform;
 }
 
