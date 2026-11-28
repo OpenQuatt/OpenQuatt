@@ -49,16 +49,22 @@ class Runtime {
   // timestamp. The producer and the display sensor publish independently.
   // Neither an outdoor-unit fallback nor a held value measures after the boiler.
   oq_sources::RawFloatReceipt system_supply_receipt(float* applied_offset_c = nullptr) const {
-    if (applied_offset_c) *applied_offset_c = 0.0f;
+    float offset_c = 0.0f;
+    auto receipt = system_supply_raw_receipt(offset_c);
+    if (applied_offset_c) *applied_offset_c = offset_c;
+    if (receipt.valid) receipt.value += offset_c;
+    return receipt;
+  }
+
+  oq_sources::RawFloatReceipt system_supply_raw_receipt(float& offset_c) const {
+    offset_c = 0.0f;
     if (!id(oq_water_supply_temp_current_source_ready)) return {};
     const bool available = !id(oq_water_supply_temp_selected_hold_active) &&
                            !id(oq_water_supply_temp_fallback_runtime_active) &&
                            id(water_supply_temp_selected).has_state();
-    if (!available && !applied_offset_c) return {};
     const auto source = current_calibration_source();
     const auto record = calibration_record(source.code);
-    const float offset = oq_supply_calibration::record_matches(record, source) ? record.offset_c : 0.0f;
-    if (applied_offset_c) *applied_offset_c = offset;
+    if (oq_supply_calibration::record_matches(record, source)) offset_c = record.offset_c;
     if (!available) return {};
     oq_sources::RawFloatReceipt receipt;
     switch (source.code) {
@@ -77,9 +83,7 @@ class Runtime {
       default:
         break;
     }
-    if (!receipt.valid) return {};
-    receipt.value += offset;
-    return receipt;
+    return receipt.valid ? receipt : oq_sources::RawFloatReceipt{};
   }
 
   oq_sources::RawFloatReceipt system_flow_receipt(uint64_t now_ms, uint32_t max_age_ms,
@@ -185,6 +189,7 @@ class Runtime {
     if (unchanged) return;
     id(oq_water_supply_temp_current_source_ready) = false;
     if (id(oq_hp_water_calibration_active)) id(oq_hp_water_calibration_abort) = true;
+    if (option == "Local") id(water_supply_temp_esp).update();
     id(water_supply_temp_selected).update();
   }
 

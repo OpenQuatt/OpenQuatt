@@ -3,7 +3,7 @@ import { getInputDraftValue } from "../core/control-drafts.js";
 import { getNumberMeta, parseLooseNumber } from "../core/entity-store.js";
 import { renderModalShell } from "../core/modal-shell.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
-import { formatSettingsNumberValue, getSettingsTemperatureValue, renderSettingsNumberField, renderSettingsSection, renderSettingsSystemRow } from "./controls.js";
+import { formatSettingsNumberValue, getSettingsTemperatureValue, renderSettingsNumberField, renderSettingsSection, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
 import { t } from "../i18n/index.js";
 import { getInstallationTopology } from "../features/device-context.js";
@@ -63,6 +63,7 @@ import { getInstallationTopology } from "../features/device-context.js";
     return `
       <div class="${escapeHtml(className)}">
         ${renderSettingsNumberField("maxWater", t("settingsWater.maxWaterTitle"), t("settingsWater.maxWaterCopy"))}
+        ${hasEntity("postDhwRunThrough") ? renderSettingsSwitchField("postDhwRunThrough", t("settingsWater.postDhwTitle"), t("settingsWater.postDhwCopy")) : ""}
       </div>
       ${offsetLauncher}
     `;

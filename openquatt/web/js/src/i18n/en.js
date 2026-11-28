@@ -4788,6 +4788,8 @@ export default {
     launcherAction: "Open corrections",
     maxWaterTitle: "Maximum water temperature",
     maxWaterCopy: "Normal upper water temperature limit during operation. OpenQuatt starts reducing output several degrees below it and monitors a safety trip threshold 5°C above this limit.",
+    postDhwTitle: "Continue heat pump after hot water",
+    postDhwCopy: "Power House can briefly keep a running heat pump on after a spike from residual boiler heat. Enable only if the heating circuit can safely handle the brief supply spike. Requires OpenTherm and a fresh system supply reading.",
     rowActiveSuffix: "{value} active",
     rowCorrectionAria: "{label} correction",
     rawLabel: "Raw",

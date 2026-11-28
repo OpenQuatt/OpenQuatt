@@ -39,6 +39,16 @@ globals:
     restore_value: false
     initial_value: 'false'
 
+  - id: oq_system_water_temp_hard_trip_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+  - id: oq_post_dhw_hp_water_c
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
+
 # ----------------------------
 # CONTROL INPUTS
 # ----------------------------
@@ -83,4 +93,4 @@ interval:
     startup_delay: 800ms
     then:
       - lambda: |-
-          oq_thermal_limits_runtime::runtime().tick();
+          oq_thermal_limits_runtime::runtime().tick(${oq_cm_min_flow_lph}, ${oq_flow_mismatch_threshold_lph});

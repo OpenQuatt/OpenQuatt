@@ -4788,6 +4788,8 @@ export default {
     launcherAction: "Correcties openen",
     maxWaterTitle: "Maximale watertemperatuur",
     maxWaterCopy: "Normale bovengrens voor de watertemperatuur tijdens bedrijf. OpenQuatt begint enkele graden eerder al terug te regelen en bewaakt een harde trip op 5°C boven deze grens.",
+    postDhwTitle: "Warmtepomp laten doorlopen na tapwater",
+    postDhwCopy: "Power House kan een draaiende warmtepomp kort laten doorlopen bij ketelrestwarmte. Zet dit alleen aan als het CV-circuit de korte aanvoerpiek veilig verdraagt. Vereist OpenTherm en een verse systeemaanvoermeting.",
     rowActiveSuffix: "{value} actief",
     rowCorrectionAria: "{label} correctie",
     rawLabel: "Raw",

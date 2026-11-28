@@ -265,6 +265,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...SENSOR_CALIBRATION_KEYS,
       ...SENSOR_CALIBRATION_STATE_KEYS,
       "maxWater",
+      "postDhwRunThrough",
     ],
     service: [
       ...INSTALLATION_MONITORING_STATE_KEYS,

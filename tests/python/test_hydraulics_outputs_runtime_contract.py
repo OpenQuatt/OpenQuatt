@@ -22,7 +22,10 @@ class HydraulicsOutputsRuntimeContractTest(unittest.TestCase):
             "oq_flow_runtime::runtime().tick(",
         ):
             self.assertIn(call, FLOW_YAML)
-        self.assertIn("oq_thermal_limits_runtime::runtime().tick()", THERMAL_YAML)
+        self.assertIn(
+            "oq_thermal_limits_runtime::runtime().tick(${oq_cm_min_flow_lph}, ${oq_flow_mismatch_threshold_lph});",
+            THERMAL_YAML,
+        )
         self.assertIn("oq_aux_relay_runtime::runtime().tick()", AUX_YAML)
         self.assertEqual(AUX_YAML.count("oq_aux_relay_runtime::runtime().external_command("), 2)
 

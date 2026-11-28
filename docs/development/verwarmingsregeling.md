@@ -197,6 +197,31 @@ de tripgrens ligt 5 K erboven. CM3 kent een eigen hard-tripbevestiging. Bij
 daarnaast door hun consumenten worden afgehandeld. Een ontbrekende meting is
 geen bewezen veilige temperatuur.
 
+Op Heatpump Controller Q kan **Warmtepomp laten doorlopen na tapwater**
+een Power House-run door een korte aanvoerpiek heen helpen. Bij geldige
+OpenTherm-status zonder vlam en voldoende doorstroming kan de vrijgave beginnen
+in de eerste 30 s na het bevestigde tapwatereinde. De systeemaanvoer moet
+daarvoor de ingestelde maximumtemperatuur bereiken en ten minste 5 K warmer
+zijn dan het ODU-water. De vrijgave eindigt zodra de systeemaanvoer terug is
+op of onder de zachte grens, of op de eerste regeltick vanaf 90 s na het
+tapwatereinde.
+
+De ketelbegrenzing volgt de geselecteerde systeemaanvoer. De lokale PT1000,
+DS18B20, CIC en Home Assistant kunnen de meting leveren. Voor lokale bronnen
+mag de ontvangst maximaal 7,5 s oud zijn en voor CIC en Home Assistant maximaal
+15 s. Een externe bron moet ook bij een gelijkblijvende temperatuur verse
+waarden aanleveren. Na een bronwissel kan de vrijgave doorgaan met een verse,
+geldige meting van de nieuwe bron. Bij een vastgehouden waarde of ODU-fallback
+eindigt de vrijgave.
+
+De warmtepomp regelt tijdelijk terug
+op de hoogste verse in- of uitlaattemperatuur van de draaiende units. De
+vrijgave eindigt zodra dit water de ingestelde maximumtemperatuur of 55 °C
+bereikt, of als de systeemaanvoer 70 °C bereikt. Alleen het huidige
+compressorbedrijf kan doorlopen. Bij een stop door een ODU-meting kan de ketel
+via CM4 overnemen zodra een verse systeemmeting en de normale fallbackvoorwaarden
+dat toestaan.
+
 CM3-ketelassistentie en CM4-foutfallback hebben aparte ingangsvoorwaarden.
 Een tekort, ontdooicyclus of positieve strategy-status is op zichzelf geen
 ketelvrijgave. Zie [de keten van ketelopdracht tot uitgang](system-overview.md#81-transport-neutral-command-target-fulfilling-output).

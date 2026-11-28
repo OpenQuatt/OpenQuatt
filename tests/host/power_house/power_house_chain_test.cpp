@@ -57,6 +57,7 @@ int oq_curve_regime_code{};
 uint32_t oq_boot_startup_inhibit_until_ms{}, oq_duo_request_hold_until_ms{};
 bool oq_boot_startup_inhibit_active{}, oq_boot_startup_inhibit_logged{}, oq_boot_startup_inhibit_cleared_logged{};
 FakeSensor oq_min_runtime_min{};
+float oq_post_dhw_hp_water_c{NAN};
 
 struct TestRequestRuntime {
   struct TickConfig {
@@ -666,6 +667,28 @@ void power_house_low_flow_cancels_a_queued_duo_start() {
   assert(bus.pumps[1].mode == 0 && bus.pumps[1].level == 0 && oq_incident_manager.starts[1] == 1);
 }
 
+void power_house_post_dhw_keeps_the_incumbent_and_blocks_a_new_start() {
+  reset();
+  PowerHouseDuo control;
+  auto& bus = control.bus;
+  assert(control.tick(kSingleHeatW).owner_hp == 1);
+  bus.deliver();
+  bus.report(true);
+
+  oq_post_dhw_hp_water_c = 34.0f;
+  test_now_ms += 5000;
+  assert(control.tick(kDuoHeatW).hp2_level == kHouseLevel);
+  bus.deliver();
+  assert(bus.pumps[0].level == kHouseLevel && bus.pumps[1].level == 0);
+  assert(oq_incident_manager.starts[1] == 0);
+
+  oq_post_dhw_hp_water_c = NAN;
+  test_now_ms += 5000;
+  assert(control.tick(kDuoHeatW).hp2_level == kHouseLevel);
+  bus.deliver();
+  assert(bus.pumps[1].level == kHouseLevel && oq_incident_manager.starts[1] == 1);
+}
+
 void power_house_stop_confirmation_requires_post_command_modbus_feedback() {
   using oq_incidents::RunState;
   enum class Reply { MODE, FREQUENCY };
@@ -826,6 +849,7 @@ int main() {
   power_house_waits_for_boot_adoption_before_staging_the_peer();
   power_house_start_timeout_blocks_late_hp2_confirmation();
   power_house_low_flow_cancels_a_queued_duo_start();
+  power_house_post_dhw_keeps_the_incumbent_and_blocks_a_new_start();
   power_house_stop_confirmation_requires_post_command_modbus_feedback();
   power_house_restarts_hp2_only_after_confirmed_minimum_off_time();
   return 0;

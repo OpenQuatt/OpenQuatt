@@ -503,6 +503,9 @@ class Runtime {
     int level = std::max(0, std::min(maximum, requested));
     requested = level;
     const int previous = this->previous_applied_(is_hp1);
+    // During the handover, only retain or reduce an already applied level.
+    const bool post_dhw = isfinite(id(oq_post_dhw_hp_water_c));
+    if (post_dhw) requested = level = std::min(level, std::max(0, previous));
     if (oq_boot_resume_runtime::ota_hold(is_hp1)) return previous;
     const auto incident = id(oq_incident_manager).get_outputs(hp_index);
     // A stale hold must never start a compressor or undo a stop.
@@ -677,8 +680,8 @@ class Runtime {
     if (applied > 0 && use_frequency_policy) {
       cap_hz = cycle.frequency.cap_hz;
       // A policy fallback may not undo bounded continuation's no-increase
-      // verdict when the incident manager has withdrawn the HP's availability.
-      const int policy_maximum = incident.available_for_start ? MAX_LEVEL : std::min(MAX_LEVEL, previous);
+      // verdict after tap water or when the incident manager withdraws availability.
+      const int policy_maximum = incident.available_for_start && !post_dhw ? MAX_LEVEL : std::min(MAX_LEVEL, previous);
       applied = cycle.frequency.pick_allowed_level(is_hp1, expected_mode, applied, 1, policy_maximum);
     }
 

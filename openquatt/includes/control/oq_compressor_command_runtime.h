@@ -70,6 +70,9 @@ inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = f
     return false;
   if (value == 0) return true;  // Stops never depend on temperature data.
   if (fault) return false;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+  if (isfinite(id(oq_post_dhw_hp_water_c)) && !incident.running_confirmed) return false;
+#endif
   auto& mode = hp1 ? id(hp1_set_working_mode) : OQ_COMMAND_SECONDARY_ID(set_working_mode);
   auto& level = hp1 ? id(hp1_compressor_level) : OQ_COMMAND_SECONDARY_ID(compressor_level);
   const auto selected = level.active_index();

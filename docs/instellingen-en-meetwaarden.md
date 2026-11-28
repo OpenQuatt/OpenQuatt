@@ -135,6 +135,13 @@ De stooklijneditor toont de zes opgeslagen punten in één grafiek. De schuiven 
 Voor beide strategieën blijft belangrijk:
 
 - `Maximum water temperature`
+- `Continue heat pump after hot water` (standaard uit). Hiermee kan een draaiende
+  warmtepomp in Power House kort doorlopen als ketelrestwarmte na tapwater de
+  geselecteerde systeemaanvoer opwarmt. Vereist een Heatpump Controller Q, een
+  OpenTherm-ketel en verse aanvoermetingen via PT1000, DS18B20, CIC of Home Assistant.
+  Schakel dit alleen in als het CV-circuit korte aanvoerpieken veilig verdraagt.
+  De controller bewaart deze keuze bij een herstart. Een instellingenbackup neemt
+  de keuze niet mee naar een andere installatie.
 
 Voor koeling zijn vooral belangrijk:
 

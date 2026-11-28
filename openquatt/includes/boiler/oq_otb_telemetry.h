@@ -96,10 +96,11 @@ inline bool field_is_session_scoped(Field field) {
 }
 
 constexpr uint64_t kBoilerStatusFreshMs = 10000;
+constexpr uint16_t kDhwActiveStatus = 0x0004U;
 
 inline bool status_may_deliver_cv_heat(uint16_t status) {
   const bool ch_active = (status & 0x0022U) != 0U;  // CH or CH2.
-  const bool dhw_only = (status & 0x0004U) != 0U && !ch_active && (status & 0x0010U) == 0U;
+  const bool dhw_only = (status & kDhwActiveStatus) != 0U && !ch_active && (status & 0x0010U) == 0U;
   return ch_active || ((status & 0x0008U) != 0U && !dhw_only);
 }
 
@@ -107,6 +108,8 @@ class TelemetryState {
  public:
   void reset_link_session() {
     this->cv_off_since_ms_ = 0;
+    this->clear_dhw_status_();
+    this->dhw_last_status_ms_ = 0;
     this->session_has_response_ = false;
     this->last_response_ms_ = 0;
     this->pending_request_ = false;
@@ -128,8 +131,10 @@ class TelemetryState {
 
   void record_missing_response() {
     if (this->pending_request_ && this->last_request_id_ >= 0 &&
-        field_index_for_message_id(this->last_request_id_) == FIELD_STATUS)
+        field_index_for_message_id(this->last_request_id_) == FIELD_STATUS) {
       this->cv_off_since_ms_ = 0;
+      this->clear_dhw_status_();
+    }
     this->pending_request_ = false;
   }
 
@@ -199,6 +204,7 @@ class TelemetryState {
 
     auto& field = this->fields_[field_index];
     const uint64_t previous_received_ms = field.received_ms;
+    const uint16_t previous_payload = field.value;
     // An ID-mismatched frame is not a physical receipt for the requested
     // field. It still revokes legacy/current validity below.
     if (this->last_response_correlation_ != RESPONSE_CORRELATION_ID_MISMATCH) {
@@ -216,6 +222,19 @@ class TelemetryState {
       field.valid = false;
     }
     if (field_index == FIELD_STATUS) {
+      if (!field.valid || !field.payload_valid || received_ms <= this->dhw_last_status_ms_) {
+        this->clear_dhw_status_();
+      } else {
+        const bool continuous =
+            this->dhw_status_seen_ && received_ms - this->dhw_last_status_ms_ <= kBoilerStatusFreshMs;
+        if (!continuous || (field.value & kDhwActiveStatus) != 0U) {
+          this->dhw_ended_ms_ = 0;
+        } else if ((previous_payload & kDhwActiveStatus) != 0U) {
+          this->dhw_ended_ms_ = received_ms;
+        }
+        this->dhw_last_status_ms_ = received_ms;
+        this->dhw_status_seen_ = true;
+      }
       if (!field.valid || !field.payload_valid || status_may_deliver_cv_heat(field.value)) {
         this->cv_off_since_ms_ = 0;
       } else if (this->cv_off_since_ms_ == 0 || received_ms < previous_received_ms ||
@@ -237,6 +256,14 @@ class TelemetryState {
     const auto status = this->field_receipt(FIELD_STATUS);
     return status.valid && now_ms >= status.received_ms && now_ms - status.received_ms <= kBoilerStatusFreshMs
                ? this->cv_off_since_ms_
+               : 0;
+  }
+
+  uint64_t recent_dhw_end_ms(uint64_t now_ms, uint64_t max_age_ms) const {
+    const auto status = this->field_receipt(FIELD_STATUS);
+    return this->dhw_ended_ms_ != 0 && this->dhw_status_seen_ && status.valid && now_ms >= status.received_ms &&
+                   now_ms - status.received_ms <= kBoilerStatusFreshMs && now_ms - this->dhw_ended_ms_ <= max_age_ms
+               ? this->dhw_ended_ms_
                : 0;
   }
 
@@ -262,6 +289,7 @@ class TelemetryState {
     this->session_has_response_ = false;
     this->last_response_ms_ = 0;
     this->cv_off_since_ms_ = 0;
+    this->clear_dhw_status_();
     for (auto& field : this->fields_) {
       field.valid = false;
     }
@@ -396,6 +424,11 @@ class TelemetryState {
   }
 
  private:
+  void clear_dhw_status_() {
+    this->dhw_ended_ms_ = 0;
+    this->dhw_status_seen_ = false;
+  }
+
   static int field_index_for_message_id(uint8_t message_id) {
     switch (message_id) {
       case 0:
@@ -429,6 +462,9 @@ class TelemetryState {
 
   FieldState fields_[FIELD_COUNT]{};
   uint64_t cv_off_since_ms_{0};
+  uint64_t dhw_ended_ms_{0};
+  uint64_t dhw_last_status_ms_{0};
+  bool dhw_status_seen_{false};
 
   bool session_has_response_{false};
   uint32_t last_response_ms_{0};

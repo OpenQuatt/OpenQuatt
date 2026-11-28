@@ -399,6 +399,7 @@
     ["silentEndTime", DOMAIN_TIME, "Silent end time", false],
     ["openquattResumeAt", DOMAIN_DATETIME, "OpenQuatt resume at"],
     ["maxWater", DOMAIN_NUMBER, "Maximum water temperature", false],
+    ["postDhwRunThrough", DOMAIN_SWITCH, "Continue heat pump after hot water"],
     ["minRuntime", DOMAIN_NUMBER, "Minimum runtime", false],
     ["totalPower", DOMAIN_SENSOR, "Total Power Input", false],
     ["heatingPowerInput", DOMAIN_SENSOR, "Heating Power Input"],
@@ -2215,6 +2216,7 @@
     ...INSTALLATION_MONITORING_STATE_KEYS,
     ...COOLING_SETTING_KEYS,
     ...LIMIT_KEYS,
+    "postDhwRunThrough",
     ...POWER_HOUSE_KEYS,
     ...WARMUP_SETTING_KEYS,
     ...WARMUP_STATE_KEYS,
@@ -2231,6 +2233,8 @@
     "preferredConnection",
     // Passive learning always requires an explicit opt-in after boot.
     "houseLearningEnabled",
+    // Reassess the hydraulic circuit before enabling this on another installation.
+    "postDhwRunThrough",
     // Keep location and external weather consent local to this controller.
     "weatherLocation",
     "weatherEnabled",

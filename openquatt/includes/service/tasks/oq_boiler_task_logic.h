@@ -484,7 +484,7 @@ class BoilerPowerTestRuntime {
   }
 
   bool guards_ok() {
-    if (id(oq_water_temp_hard_trip_active)) {
+    if (id(oq_system_water_temp_hard_trip_active)) {
       ESP_LOGW("quatt.cm100.boiler", "Boiler test failed: hard trip active");
       finish_task("FAILED: hard trip active", STATE_FAILED, false, true);
       return false;

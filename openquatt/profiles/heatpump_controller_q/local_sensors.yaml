@@ -7,6 +7,15 @@ external_components:
       path: ../../../components
     components: [max31865]
 
+switch:
+  - platform: template
+    id: oq_post_dhw_run_through
+    name: "Continue heat pump after hot water"
+    icon: mdi:heat-pump
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
 select:
   - platform: template
     id: oq_local_supply_temp_source

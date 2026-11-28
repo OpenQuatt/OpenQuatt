@@ -60,6 +60,7 @@ inline Safety capture(bool) { return {false, true}; }
 #define OQ_REQUEST_SECONDARY_ID(x) hp2_##x
 #define OQ_ACTUATOR_SECONDARY_ID(x) hp2_##x
 bool oq_water_temp_hard_trip_active=false, oq_lowflow_fault_active=false;
+float oq_post_dhw_hp_water_c=NAN;
 int oq_cooling_stop_reason_code=0;
 uint32_t clock_ms=100000;
 uint32_t millis() { return clock_ms; }
