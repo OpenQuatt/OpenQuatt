@@ -83,6 +83,7 @@ bool hp2_prev_heating_mode_active=false;
 bool oq_curve_heat_request_active=true, oq_dual_hp_enabled=false;
 bool oq_cold_start_session_active=false, oq_cold_start_hp_blocked=false;
 bool oq_water_temp_hard_trip_active=false, oq_lowflow_fault_active=false;
+float oq_post_dhw_hp_water_c=NAN;
 int oq_curve_single_owner_hp=0, oq_curve_regime_code=1;
 int oq_demand_raw=5, oq_power_cap_f=20, oq_demand_filtered=0, oq_demand_filtered_prev=0;
 int oq_heating_demand_filtered=0, oq_last_lead_hp=0;

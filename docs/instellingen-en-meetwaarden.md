@@ -139,6 +139,8 @@ Voor beide strategieën blijft belangrijk:
   warmtepomp in Power House kort doorlopen als ketelrestwarmte na tapwater de
   lokale PT1000 verwarmt. Vereist een Heatpump Controller Q en een OpenTherm-ketel.
   Schakel dit alleen in als het CV-circuit korte aanvoerpieken veilig verdraagt.
+  De controller bewaart deze keuze bij een herstart. Een instellingenbackup neemt
+  de keuze niet mee naar een andere installatie.
 
 Voor koeling zijn vooral belangrijk:
 
