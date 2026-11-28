@@ -45,20 +45,6 @@ geen achteraf ingevulde meetwaarden.
 Na een stop kan de kamer nog opwarmen door opgeslagen warmte en kan de circulatiepomp
 nalopen. Dat telt niet als een nieuwe compressorstart of extra stop.
 
-### Aanvoer te warm na tapwater
-
-Bij OpenTherm-ketels kan het Beslislog **aanvoer te warm na tapwater** tonen.
-OpenQuatt heeft dan een stopopdracht wegens de waterbeveiliging gegeven, binnen
-60 seconden nadat de ketel het einde van het tapwaterbedrijf meldde. Bij de stop
-staat hoeveel seconden ertussen zaten. Bij ontbrekende, verouderde of
-onderbroken ketelstatus toont het Beslislog de gewone melding **water te warm**.
-
-Een korte piek past bij restwarmte die na het tappen vanuit de ketel in het
-CV-circuit terechtkomt. Meet bij herhaling tegelijk bij de aanvoervoeler en
-verderop op de gezamenlijke CV-aanvoer. Als alleen de voelerplek opwarmt, laat de
-meetplek controleren. Bereikt de piek ook de gezamenlijke aanvoer, laat dan
-beoordelen hoe de installatie de restwarmte kan afvoeren of dempen. Houd de
-ingestelde waterbeveiliging actief.
 
 ## Systeemrecorder voor support
 

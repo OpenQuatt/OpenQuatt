@@ -77,29 +77,6 @@ test("water stops use their saved water threshold and omit an incomplete compari
   }
 });
 
-test("a water-limit stop can show recent boiler-reported DHW without changing legacy reasons", () => {
-  for (const locale of ["nl", "en"]) {
-    setLocale(locale);
-    const list = records("heating_water_limit");
-    list[2].value_a = 6562;
-    list[3].value_b = 18;
-    const event = attachHeatingStopSnapshots(list).at(-1);
-    const result = getHeatingStopCopy(event, "HP1");
-    const afterDhw = locale === "nl" ? /te warm na tapwater/ : /too hot after hot water/;
-    assert.match(result.title, afterDhw);
-    assert.match(result.summary, /17 s/);
-    assert.match(result.snapshotSummary, /65[.,]62 °C/);
-    assert.match(getHeatingStopCopy({ ...event, value_b: 1 }, "HP1").summary, /\b0 s\b/);
-    assert.match(getHeatingStopCopy({ ...event, value_b: 61 }, "HP1").summary, /60 s/);
-    for (const value_b of [null, undefined, 0, -1, 2.5, 62, "18"]) {
-      assert.doesNotMatch(getHeatingStopCopy({ ...event, value_b }, "HP1").title, afterDhw);
-    }
-    for (const overrides of [{ flags: 0 }, { reason: "heating_flow_limit" }]) {
-      assert.doesNotMatch(getHeatingStopCopy({ ...event, ...overrides }, "HP1").title, afterDhw);
-    }
-  }
-});
-
 test("unknown is not zero, saturated values are explicit and every new reason has both languages", () => {
   const codes = ["ph_demand_zero", "ph_low_load", "ph_comfort_stop", "ph_comfort_hold", "curve_water_stop", "curve_low_load", "heating_input_invalid", "heating_single_sufficient", "heating_electrical_limit", "heating_no_candidate", "heating_disabled", "heating_water_limit", "heating_flow_limit", "heating_source_unavailable", "heating_optimizer", "heating_central_pause", "supervisory_override", "frost_protection", "heating_request_cleared"];
   for (const locale of ["nl", "en"]) {
@@ -148,13 +125,6 @@ test("context records are hidden, cooling keeps its original meaning, timeline a
   assert.equal(ordinaryDetails.split(item.summary).length - 1, 1);
   assert.doesNotMatch(ordinaryDetails, /900 W|2\.500 W|CM1|Is dit normaal/);
   assert.match(details.slice(details.indexOf("<details")), /900 W.*0 W.*2\.500 W/s);
-  const waterStop = records("heating_water_limit");
-  waterStop[2].value_a = 6562;
-  waterStop[3].value_b = 18;
-  const waterEvent = replay.enrichControlWorkingDecisionLogEvents(waterStop).at(-1);
-  const waterItem = replay.mapDecisionEventToControlWorkingItem(waterEvent, window, 1700000100000);
-  assert.match(replay.renderControlWorkingTimelineItem(waterItem, null), /aanvoer te warm na tapwater/);
-  assert.match(replay.renderControlWorkingDetails(waterItem), /17 s vóór de stopopdracht/);
   const html = replay.renderControlWorkingTimelineItem({ id: "stop", kind: "event", severity: "normal", time: "07:10", title: "Stop", summary: "Reden", snapshotSummary: "<script>" }, null);
   assert.match(html, /&lt;script&gt;/);
   assert.doesNotMatch(replay.getDecisionEventCopy({ event_type: "source_stop", reason: "dew_stop", subject: "HP1", cm: 5 }).title, /kamer|stooklijn/);

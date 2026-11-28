@@ -95,22 +95,7 @@ Een optimalisatiekeuze betekent niet noodzakelijk dat de warmtevraag is gedaald.
 Een `source_stop` met `FLAG_RAW_VALUE_VALID` krijgt direct ervoor drie
 `heating_stop_context`-records, met dezelfde bron, reden en mode. De bestaande
 24-byte flashrecords, versie en ringbuffer blijven ongewijzigd. `source_stop`
-houdt `value_a` als vorige compressorstand. Bij `heating_water_limit` kan
-`value_b` de leeftijd in seconden plus één bevatten van de laatst waargenomen
-DHW-uit-overgang bij de stopopdracht. `0` betekent dat de context ontbreekt,
-zoals in oudere opnames. Deze diagnose vereist geldige, aansluitende
-OpenTherm-statusberichten en vervalt na 60 seconden.
-
-Voor een virtuele proef verwarmt HP1 met `Local - PT1000` op 35,2 °C en
-`Maximum water temperature` op 46 °C. Laat de ketel tapwaterbedrijf melden en
-stuur kort na de bevestigde overgang naar tapwater uit een PT1000-puls naar
-65,6 °C. Controleer de Modbus-stopopdracht en `source_stop` met reden
-`heating_water_limit`. Vergelijk `value_b - 1` met de tijd tussen het
-OpenTherm-statusbericht en de stopopdracht. Herhaal met dezelfde temperatuurpuls
-en constant inactieve tapwaterstatus. De stopreden blijft gelijk en `value_b`
-is dan nul.
-
-De drie contextrecords gebruiken:
+houdt `value_a` als vorige compressorstand. De context gebruikt:
 
 | `flags` | `value_a` | `value_b` | `threshold_a` |
 | --- | --- | --- | --- |

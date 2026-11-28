@@ -236,7 +236,9 @@ class Runtime {
         1000UL * static_cast<uint32_t>(oq_request::minimum_runtime_seconds(
                      id(oq_min_runtime_min).has_state(), id(oq_min_runtime_min).state, config.minimum_runtime_floor_s));
     const float outside_c = id(outside_temp_selected).state;
-    const float system_supply_c = id(oq_system_supply_temp).state;
+    const float post_dhw_hp_water_c = id(oq_post_dhw_hp_water_c);
+    const float system_supply_c =
+        std::isfinite(post_dhw_hp_water_c) ? post_dhw_hp_water_c : id(oq_system_supply_temp).state;
     const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
     bool any_resume_pending = id(oq_incident_manager).boot_resume_pending(1, now_ms);
 #if OQ_TOPOLOGY_DUO

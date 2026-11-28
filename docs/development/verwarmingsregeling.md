@@ -197,6 +197,18 @@ de tripgrens ligt 5 K erboven. CM3 kent een eigen hard-tripbevestiging. Bij
 daarnaast door hun consumenten worden afgehandeld. Een ontbrekende meting is
 geen bewezen veilige temperatuur.
 
+Op Heatpump Controller Q kan **Warmtepomp laten doorlopen na tapwater**
+een Power House-run door een korte aanvoerpiek heen helpen. Bij geldige
+OpenTherm-status zonder vlam en voldoende doorstroming eindigt de vrijgave op
+de eerste regeltick vanaf 45 s na het bevestigde tapwatereinde. De ketelbegrenzing
+volgt de lokale PT1000. De warmtepompbegrenzing
+volgt tijdelijk de hoogste verse in- of uitlaattemperatuur van de draaiende units.
+Die moet binnen de normale zachte bandgrens en onder 55 °C blijven. Vanaf
+70 °C aan de systeemaanvoer eindigt de vrijgave eveneens. Alleen het huidige
+compressorbedrijf kan doorlopen. Bij te heet ODU-water of ontbrekende
+temperatuurmetingen tijdens de aanvoerpiek blijft de veiligheidsstop actief
+tot verse metingen herstel bevestigen.
+
 CM3-ketelassistentie en CM4-foutfallback hebben aparte ingangsvoorwaarden.
 Een tekort, ontdooicyclus of positieve strategy-status is op zichzelf geen
 ketelvrijgave. Zie [de keten van ketelopdracht tot uitgang](system-overview.md#81-transport-neutral-command-target-fulfilling-output).

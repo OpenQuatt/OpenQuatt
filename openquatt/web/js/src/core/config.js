@@ -399,6 +399,7 @@
     ["silentEndTime", DOMAIN_TIME, "Silent end time", false],
     ["openquattResumeAt", DOMAIN_DATETIME, "OpenQuatt resume at"],
     ["maxWater", DOMAIN_NUMBER, "Maximum water temperature", false],
+    ["postDhwRunThrough", DOMAIN_SWITCH, "Continue heat pump after hot water"],
     ["minRuntime", DOMAIN_NUMBER, "Minimum runtime", false],
     ["totalPower", DOMAIN_SENSOR, "Total Power Input", false],
     ["heatingPowerInput", DOMAIN_SENSOR, "Heating Power Input"],

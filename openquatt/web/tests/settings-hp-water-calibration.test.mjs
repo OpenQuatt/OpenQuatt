@@ -212,3 +212,14 @@ test("waterinstellingen openen sensorcorrecties in een modal", () => {
   assert.equal(state.systemModal, "water-sensor-corrections");
   state.systemModal = "";
 });
+
+test("de optie voor doorlopen na tapwater verschijnt alleen bij ondersteunende firmware", () => {
+  state.loadingEntities = false;
+  state.entities = {};
+  assert.doesNotMatch(renderWaterSettingsFields(), /Warmtepomp laten doorlopen na tapwater/);
+
+  state.entities.postDhwRunThrough = { value: false, state: "OFF" };
+  const markup = renderWaterSettingsFields();
+  assert.match(markup, /Warmtepomp laten doorlopen na tapwater/);
+  assert.match(markup, /CV-circuit de korte aanvoerpiek veilig verdraagt/);
+});
