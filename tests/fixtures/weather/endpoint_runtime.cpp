@@ -380,7 +380,6 @@ void defrost_recovery() {
     auto value = h.device.make_observation(false, 20.1, 3200);
     value.valid = valid;
     value.defrost_active = defrost;
-    value.defrost_recovering = true;
     value.model_reusable = valid;
     value.missing_input = missing;
     h.device.observe(value);
@@ -438,7 +437,6 @@ void duo_defrost_recovery() {
       const auto heat_w = initial ? 2600 : valid_between ? 3100 : 3400;
       auto value = h.device.make_observation(initial, 20, heat_w);
       value.defrost_active = hp1_defrost || hp2_defrost;
-      value.defrost_recovering = !initial;
       value.valid = initial || valid_between || elapsed_s == restored_s;
       value.model_reusable = value.valid && !initial;
       if (!value.valid && !value.defrost_active) value.missing_input = InputIssue::HEAT_OUTPUT;
@@ -463,7 +461,8 @@ void duo_defrost_recovery() {
 }
 
 void atomic_scenario_failure_gates() {
-  for (const std::string gate : {"off", "pause", "ota", "pending", "save_failed", "invalid_query", "model", "clock"}) {
+  for (const std::string gate :
+       {"off", "pause", "ota", "pending", "save_failed", "invalid_query", "model", "clock", "defrost_control_mode"}) {
     Harness h;
     h.start();
     h.device.observation();
@@ -489,10 +488,23 @@ void atomic_scenario_failure_gates() {
       env.epoch += 5;  // Within weather tolerance, outside issue clock coherence.
       h.device.refresh();
     }
+    if (gate == "defrost_control_mode") {
+      env.now_ms += 10000;
+      env.epoch += 10;
+      auto defrost = h.device.make_observation(false, 20, 0);
+      defrost.valid = false;
+      defrost.defrost_active = true;
+      h.device.observe(defrost);
+      assert(h.get().response.body.find("\"last_scenario\":") != std::string::npos);
+      env.now_ms += 10000;
+      env.epoch += 10;
+      h.device.observe({});  // The runtime adapter rejects an incompatible control mode.
+    }
     if (gate == "invalid_query" || gate == "clock") assert(h.device.has_scalar());
     assert(h.issued_epoch.state.empty());
     for (const auto& sensor : h.temperatures) assert(std::isnan(sensor.state));
     const auto frame = h.get();
+    assert(frame.response.body.find("\"last_scenario\":") == std::string::npos);
     if (gate == "clock") assert(frame.response.body.find("\"reason\":\"clock_invalid\"") != std::string::npos);
     std::puts(frame.response.body.c_str());
   }

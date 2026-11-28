@@ -703,12 +703,15 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     if (state.reset_requested || state.restart_prepared || state.measurement_context_changed || state.learner.blocked ||
         !tick.opted_in || !tick.context_valid || !tick.active_line_valid)
       return observation;
+    const auto& operation = state.input.operation;
+    if (!operation.control_mode_valid || operation.control_mode != LearningControlMode::HEATING ||
+        !operation.service_or_ota_valid || operation.service_or_ota)
+      return observation;
     observation.monotonic_ms = tick.now_monotonic_ms;
     observation.epoch = tick.now_epoch_s;
     observation.context = tick.context.context_revision;
     observation.model_samples = state.summary.thermal.accepted_samples;
     observation.defrost_active = tick.defrost_active;
-    observation.defrost_recovering = state.learner.defrost_recovery_windows_remaining != 0;
     const auto& snapshot = tick.dynamic_snapshot;
     if (observation.defrost_active) return observation;
     if (!tick.dynamic_snapshot_available || !passive_runtime_detail::snapshot_matches_tick(snapshot, tick) ||

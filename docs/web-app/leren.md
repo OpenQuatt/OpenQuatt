@@ -241,6 +241,9 @@ warmteafgifte constant en gebruikt de verwachte buitentemperatuur. Wind en
 zoninstraling geven extra informatie bij de weersverwachting. Het scenario
 stuurt de regeling niet aan.
 
+Ook bij een berekend vermogenstekort in Power House rekent Vooruitblik door
+zolang de warmtemetingen bruikbaar zijn.
+
 Na een herstart zijn actuele metingen, een geldige weersverwachting en een
 actueel beoordeeld woningmodel nodig. De controller kan een opgeslagen schatting
 herstellen. Het scenario wacht op een nieuwe geldige meetperiode, normaal

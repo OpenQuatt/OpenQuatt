@@ -125,7 +125,7 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
 
     def test_invalid_atomic_object_never_leaks_retained_scalars_through_lifecycle_and_model_gates(self):
         results = [json.loads(line) for line in self.scenario("atomic_gates").splitlines()]
-        self.assertEqual(len(results), 8)
+        self.assertEqual(len(results), 9)
         for result in results:
             self.assertFalse(result["scenario"]["valid"])
             self.assertEqual(result["scenario"]["horizon_valid"], [False] * 3)
@@ -147,8 +147,8 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
         for frame in (missing, waiting, warming):
             self.assertFalse(frame["scenario"]["valid"])
             self.assertNotIn("last_scenario", frame)
-        for frame in (waiting, warming):
-            self.assertEqual(frame["scenario"]["reason"], "defrost")
+        self.assertEqual(waiting["scenario"]["reason"], "observation_invalid")
+        self.assertEqual(warming["scenario"]["reason"], "model_unavailable")
 
     def test_duo_defrost_reuses_latest_issue_and_recalculates_on_first_valid_sample(self):
         sequences = {}

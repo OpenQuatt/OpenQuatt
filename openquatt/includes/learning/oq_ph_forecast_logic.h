@@ -23,7 +23,7 @@ struct Observation {
   bool valid = false, model_ready = false;
   double room_c = NAN, outside_c = NAN, heat_w = NAN;
   double h_w_per_k = NAN, c_wh_per_k = NAN;
-  bool defrost_active = false, model_reusable = false, defrost_recovering = false;
+  bool defrost_active = false, model_reusable = false;
   InputIssue missing_input = InputIssue::NONE;
 };
 
@@ -173,22 +173,16 @@ inline double ticket_weather(const Ticket& t, double elapsed_s) {
 }
 
 inline InputIssue current_input_issue(const State& state, uint64_t now_ms) {
-  if (state.input_issue_ms && now_ms >= state.input_issue_ms && now_ms - state.input_issue_ms <= kObservationFreshMs)
-    return state.input_issue;
-  const auto& previous = state.previous;
-  if (previous.defrost_recovering && !valid_model(previous) && now_ms >= previous.monotonic_ms &&
-      now_ms - previous.monotonic_ms <= kObservationFreshMs)
-    return InputIssue::DEFROST;
-  return InputIssue::NONE;
+  return state.input_issue_ms && now_ms >= state.input_issue_ms && now_ms - state.input_issue_ms <= kObservationFreshMs
+             ? state.input_issue
+             : InputIssue::NONE;
 }
 
 inline void observe(State& state, const Observation& observation) {
   if (!valid_observation(observation)) {
     discard_pending(state);
     state.input_issue_ms = observation.monotonic_ms;
-    const bool defrost =
-        observation.defrost_active || (observation.defrost_recovering && observation.missing_input == InputIssue::NONE);
-    state.input_issue = defrost ? InputIssue::DEFROST : observation.missing_input;
+    state.input_issue = observation.defrost_active ? InputIssue::DEFROST : observation.missing_input;
     state.status = "invalid_observation";
     return;
   }
