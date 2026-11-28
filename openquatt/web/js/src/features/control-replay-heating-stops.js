@@ -78,6 +78,11 @@ export function getHeatingStopCopy(event, subject) {
   if (["heating_request_cleared", "supervisory_override", "frost_protection"].includes(event.reason) && !(Number(event.flags) & 32)) return null;
   const keys = event.event_type === "source_stop" && reasons[event.reason];
   if (!keys) return null;
+  const waterLimit = event.reason === "heating_water_limit";
+  // On water-limit stop records, zero means no DHW context. Values 1–61
+  // encode the seconds since the boiler reported the end of DHW, plus one.
+  const dhwEnd = waterLimit && (Number(event.flags) & 32) && Number.isInteger(event.value_b)
+    && event.value_b >= 1 && event.value_b <= 61;
   const snapshot = event._oq_heating_stop_snapshot;
   const lowLoad = event.reason === "ph_low_load";
   let snapshotSummary = "";
@@ -95,9 +100,12 @@ export function getHeatingStopCopy(event, subject) {
       snapshotSummary = t("heatingStops.waterBrief", {
         water: snapshotValue(snapshot.water.value_a, 2, 100), stop: snapshotValue(snapshot.water.threshold_a, 2, 100),
       });
+    } else if (waterLimit && hasValue(snapshot.water.value_a)) {
+      snapshotSummary = t("heatingStops.waterLimitBrief", { water: snapshotValue(snapshot.water.value_a, 2, 100) });
     }
   }
-  const summary = t(keys[1]);
+  const reasonLabel = t(dhwEnd ? "heatingStops.waterLimitAfterDhw" : keys[0]);
+  const summary = dhwEnd ? t("heatingStops.waterLimitAfterDhwCopy", { seconds: event.value_b - 1 }) : t(keys[1]);
   let next = t(keys[2]);
   if (snapshot && hasValue(snapshot.room.value_b) && ["ph_comfort_stop", "ph_comfort_hold"].includes(event.reason)) {
     next = t("heatingStops.comfortRestart", { value: snapshotValue(snapshot.room.value_b, 2, 100) });
@@ -105,8 +113,8 @@ export function getHeatingStopCopy(event, subject) {
     next = t("heatingStops.lowLoadRestart", { value: snapshotValue(snapshot.water.value_b, 0) });
   }
   return {
-    title: t("heatingStops.title", { subject, reason: t(keys[0]) }), summary,
-    reasonLabel: t(keys[0]), reasonSummary: summary,
+    title: t("heatingStops.title", { subject, reason: reasonLabel }), summary,
+    reasonLabel, reasonSummary: summary,
     detail: t("heatingStops.residual"), next, checks: [], snapshotSummary, heatingStop: true,
   };
 }

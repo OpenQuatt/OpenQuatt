@@ -23,6 +23,10 @@
 #include "../service/tasks/oq_manual_hp_logic.h"
 #include "oq_compressor_command_runtime.h"
 
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+#include "../boiler/oq_otb_telemetry.h"
+#endif
+
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_thermal_actuator_runtime {
 
@@ -1081,6 +1085,7 @@ class Runtime {
   void emit_transition_(bool is_hp1, bool starting, int level, bool was_cooling = false) const {
     uint8_t reason = this->transition_reason(starting);
     uint8_t flags = 0;
+    int16_t dhw_end_age_plus_one_s = 0;
     const bool heating = !was_cooling && !oq_manual_hp::owns_control() &&
                          (id(oq_heat_mode_code) == 1 || id(oq_strategy_output_source_code) == 3);
     if (!starting && heating) {
@@ -1139,6 +1144,16 @@ class Runtime {
       context(stop::ROOM, snapshot.room_c, snapshot.room_restart_c, snapshot.room_stop_c);
       context(stop::WATER, snapshot.supply_c, snapshot.supply_restart_c, snapshot.supply_stop_c);
       flags = openquatt_decision_log::FLAG_RAW_VALUE_VALID;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+      if (reason == openquatt_decision_log::REASON_HEATING_WATER_LIMIT && water_limit &&
+          id(oq_aux_heat_source_present).state && id(oq_otb_link_available_state) &&
+          id(oq_boiler_connection).current_option() == "OpenTherm") {
+        const uint64_t now = oq_sources::monotonic_ms();
+        const uint64_t dhw_end_ms = oq_otb::telemetry_state.recent_dhw_end_ms(now);
+        // Zero is the legacy value for absent context on this event.
+        if (dhw_end_ms != 0) dhw_end_age_plus_one_s = static_cast<int16_t>(1 + (now - dhw_end_ms) / 1000U);
+      }
+#endif
     }
     id(oq_decision_log)
         .emit(starting ? openquatt_decision_log::EVENT_SOURCE_START : openquatt_decision_log::EVENT_SOURCE_STOP,
@@ -1146,7 +1161,7 @@ class Runtime {
               openquatt_decision_log::SEVERITY_NORMAL, static_cast<uint8_t>(id(oq_control_mode_code)),
               starting ? openquatt_decision_log::STATE_IDLE : openquatt_decision_log::STATE_ACTIVE,
               starting ? openquatt_decision_log::STATE_ACTIVE : openquatt_decision_log::STATE_IDLE,
-              static_cast<int16_t>(level), 0, 0, 0, flags);
+              static_cast<int16_t>(level), dhw_end_age_plus_one_s, 0, 0, flags);
   }
 
   std::string last_optimizer_reason_;
