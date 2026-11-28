@@ -50,6 +50,21 @@ int main() {
   const auto old_v2 = old_v2_snapshot();
   const oq_odu::RuntimeFrequencySnapshot unknown{};
 
+  using oq_odu::Variant;
+  assert(oq_odu::known_odu_silent_level(Variant::V1, 0x0119U) == 7);
+  assert(oq_odu::known_odu_silent_level(Variant::V1_5, 0x011EU) == 7);
+  const int old_silent = oq_odu::known_odu_silent_level(old_v2.variant, 0x0122U);
+  assert(old_silent == 7);
+  assert(oq_odu::frequency_for_physical_level(old_v2.heating, old_silent) == 72);
+  assert(oq_odu::frequency_for_physical_level(old_v2.cooling, old_silent) == 56);
+  const int extended_silent = oq_odu::known_odu_silent_level(extended.variant, 0x0201U);
+  assert(extended_silent == 14);
+  assert(oq_odu::known_odu_silent_level(extended.variant, 0x0202U) == extended_silent);
+  assert(oq_odu::frequency_for_physical_level(extended.heating, extended_silent) == 76);
+  assert(oq_odu::frequency_for_physical_level(extended.cooling, extended_silent) == 56);
+  assert(oq_odu::known_odu_silent_level(extended.variant, 0x0203U) == 0);
+  assert(oq_odu::known_odu_silent_level(Variant::UNKNOWN, 0x011EU) == 0);
+
   assert(oq_odu::automatic_level_limit(true, extended, 2) == 17);
   for (int physical = 0; physical <= 17; ++physical) {
     const auto command = oq_odu::resolve_automatic_level(true, extended, 2, physical);

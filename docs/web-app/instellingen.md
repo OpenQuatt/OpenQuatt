@@ -28,9 +28,9 @@ Onder **Compressorinstellingen** kies je per warmtepomp één frequentiebereik v
 
 De kaart toont welke frequenties OpenQuatt overslaat. Onder **Beschikbare standen** zie je per tijdvak hoeveel compressorstanden overblijven na toepassing van de frequentielimiet en het uitgesloten bereik. Als de uitsluiting de laatste bruikbare stand wegneemt, vraagt de web-app om bevestiging.
 
-Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**.
+Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**. Met **Uit** of buiten het tijdvenster bij **Schema** vervalt de stille limiet van de buitenunit en gebruikt OpenQuatt de daglimiet.
 
-Onder de frequentiesliders zie je per bedrijfsmodus de hoogste compressorstand die binnen de ingestelde Hz-limiet valt. Bij een Duo verschijnen de buitenunits apart als hun frequentietabellen voor die modus verschillen.
+Onder de frequentiesliders zie je voor verwarmen en koelen de hoogste stand binnen de ingestelde Hz-limiet. De schuif voor stille uren toont ook de limiet van de buitenunit als OpenQuatt die kan afleiden uit de firmwareversie en de frequentietabel. De getoonde stand houdt rekening met beide limieten. Bij een Duo verschijnen de buitenunits apart als hun tabellen of limieten verschillen.
 
 Bij **Quatt Hybrid-versie** staat de ingestelde generatie boven de uitgelezen generatie en firmwareversie per buitenunit. Via **Aanpassen** kun je de buitenunits opnieuw laten detecteren.
 

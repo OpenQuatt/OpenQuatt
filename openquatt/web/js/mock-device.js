@@ -2167,7 +2167,7 @@
       setEntity("select", `HP${hp} - Frequency exclusion schedule`, {
         value: "Always", state: "Always", option: ["Always", "Quiet hours", "Off"],
       });
-      const frequencies = "26,31,36,41,46,51,56,61,66,71|30,34,38,42,46,50,54,58,62,66";
+      const frequencies = "26,31,36,41,46,51,56,61,66,71|30,34,38,42,46,50,54,58,62,66|7,56,54";
       setEntity("text_sensor", `HP${hp} - Automatic compressor frequencies`, { value: frequencies, state: frequencies });
     }
     setEntity("select", "Flow Control Mode", {

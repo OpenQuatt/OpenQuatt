@@ -719,7 +719,7 @@ test("frequentielimieten gelden voor beide modi", () => {
   });
 
   const markup = renderSilentSettingsGrid();
-  assert.match(markup, /Maximale compressorfrequentie tijdens stille uren/);
+  assert.match(markup, /OpenQuatt-limiet tijdens stille uren/);
   assert.match(markup, /Maximale compressorfrequentie overdag/);
   assert.doesNotMatch(markup, /Maximaal niveau tijdens stille uren/);
 });
