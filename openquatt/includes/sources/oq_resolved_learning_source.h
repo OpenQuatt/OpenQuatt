@@ -34,6 +34,7 @@ enum class LearningSourceRoute : uint8_t {
   FLOW_AGGREGATE,
   SYNTHESIZED_ZERO_FLOW,
   OPEN_METEO_OUTSIDE,
+  BLE_ROOM,
 };
 
 enum class LearningSourceProvenance : uint8_t {

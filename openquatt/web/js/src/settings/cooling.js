@@ -4,7 +4,7 @@ import { formatValue, toTimeInputValue } from "../core/entity-store.js";
 import { formatSettingsOptionLabel, renderSettingsAdvancedDisclosure, renderSettingsFieldCard, renderSettingsNumberField, renderSettingsOptionCardsField, renderSettingsSection, renderSettingsSelectField, renderSettingsSliderField, renderSettingsSwitchField, renderSettingsTimeField } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
-import { t } from "../i18n/index.js";
+import { optionLabel, t } from "../i18n/index.js";
 
   export function renderSettingsCoolingFact(label, value) {
     return `
@@ -26,6 +26,7 @@ import { t } from "../i18n/index.js";
       "Waiting for room request": t("settingsCooling.blockWaitingRoom"),
       "Cooling enabled, waiting for room temperature above cooling setpoint": t("settingsCooling.blockWaitingRoom"),
       "No dew point source": t("settingsCooling.blockNoDewPoint"),
+      "BLE dew point unavailable": optionLabel("BLE dew point unavailable"),
       "OpenQuatt paused": t("settingsCooling.blockPaused"),
       "Cooling disabled": t("settingsCooling.blockDisabled"),
       "Cooling minimum unavailable": t("settingsCooling.blockMinUnavailable"),

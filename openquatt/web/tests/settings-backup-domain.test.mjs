@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildSettingsBackupMqttConfig,
   collectUnknownSettingsBackupItems,
+  isLocalBleSourceSelection,
   isSettingsBackupMqttSourceSelection,
   normalizeSettingsBackupMqttConfig,
   normalizeSettingsBackupOduProfiles,
@@ -93,6 +94,13 @@ test("MQTT-dependent source selections are identified before restore", () => {
   assert.equal(isSettingsBackupMqttSourceSelection("heatingCurveModifierSource", "MQTT"), true);
   assert.equal(isSettingsBackupMqttSourceSelection("outsideTempSource", "Auto"), false);
   assert.equal(isSettingsBackupMqttSourceSelection("flowSource", "MQTT"), false);
+});
+
+test("BLE source selections depend on local device assignment", () => {
+  assert.equal(isLocalBleSourceSelection("roomTempSource", "BLE"), true);
+  assert.equal(isLocalBleSourceSelection("coolingDewPointSource", "BLE"), true);
+  assert.equal(isLocalBleSourceSelection("coolingDewPointSource", "Auto"), false);
+  assert.equal(isLocalBleSourceSelection("roomSetpointSource", "BLE"), false);
 });
 
 test("unknown settings are retained as individual restore result items", () => {

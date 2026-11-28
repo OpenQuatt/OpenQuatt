@@ -43,6 +43,10 @@ function closeSystemModal() {
 }
 
 const systemActionHandlers = {
+  "open-bluetooth-modal": () => {
+    state.systemModal = "bluetooth";
+    render();
+  },
   "open-connectivity-modal": async () => {
     state.controlError = "";
     state.controlNotice = "";

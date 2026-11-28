@@ -118,7 +118,7 @@ binary_sensor:
     icon: mdi:water-check
     device_class: connectivity
     lambda: |-
-      return id(cooling_dew_point_selected).has_state() && isfinite(id(cooling_dew_point_selected).state);
+      return oq_cooling_safety::runtime().dew_available();
 text_sensor:
   - platform: template
     id: cooling_guard_mode
@@ -164,6 +164,9 @@ sensor:
           alpha: 0.3
           send_every: 1
           send_first_at: 1
+      - lambda: |-
+          const auto guard = oq_cooling_safety::runtime().live_ble_guard(false);
+          return guard.active ? (isfinite(guard.dew) ? fmaxf(guard.dew, x) : NAN) : x;
   - platform: template
     id: minimum_safe_supply_temp
     name: "Cooling Minimum Safe Supply Temp"

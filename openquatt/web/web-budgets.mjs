@@ -103,7 +103,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Defrost method dialog in NL and EN: +2,453 B raw / +868 B gzip versus dev 40dff330 (Node 24.14.1).
     // Outdoor unit ceilings below the quiet-hours slider: +1,234 B raw / +467 B gzip
     // versus dev 40dff330 (Node 24.14.1); preserves 288 B of raw headroom.
-    raw: 1_535_415,
+    // Optional BLE discovery, sensor assignment and cooling coverage: +7,593 B gzip
+    // versus dev 3d2ca639 (Node 24.14.1), within the existing growth limit.
+    raw: 1_559_328,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.
@@ -141,5 +143,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // Weather charts, compass arrows and compact scenario state: +1,433 B raw / +282 B gzip (Node 24.14.1).
   // Defrost method sections and interval table: +447 B raw / +124 B gzip versus the same dev build.
   // Outdoor unit ceiling value with hint below the quiet-hours slider: +49 B raw / +9 B gzip versus dev 6d537ac1.
-  { file: "css/openquatt-app.css", raw: 233_635, gzipBaselineCeiling: 44_985 },
+  // BLE sensor lists and responsive controls: +880 B gzip versus dev 3d2ca639 (Node 24.14.1).
+  { file: "css/openquatt-app.css", raw: 237_652, gzipBaselineCeiling: 44_985 },
 ];

@@ -63,6 +63,12 @@ void test_hold_is_bound_to_selected_source() {
   sources.ha = {};
   assert(!select_direct(Source::HA, sources, true, 402000, 300000, hold).valid);
 
+  sources.ble = {23, true};
+  assert(select_direct(Source::BLE, sources, true, 403000, 300000, hold).value == 23);
+  sources.ble = {};
+  sources.ha = {28, true};
+  assert(!select_direct(Source::BLE, sources, true, 404000, 300000, hold).valid);
+
   // API inputs expire instead of inheriting the HA-only reload hold.
   sources.api = numeric_sample(true, true, 22.0f);
   assert(select_direct(Source::API, sources, true, 500000, 300000, hold).valid);

@@ -1046,6 +1046,20 @@
       guardMode = "Dew point (MQTT)";
     }
 
+    const ble = mockBleStatus();
+    if (source === "BLE" || (source === "Auto" && ble.dew_required)) {
+      if (!ble.dew_valid) {
+        selected = NaN;
+        guardMode = "Geen geldig dauwpunt";
+        setText("text_sensor", "Cooling Block Reason", "BLE dew point unavailable");
+      } else if (source === "BLE" || !Number.isFinite(selected) || ble.dew_point_c > selected) {
+        selected = ble.dew_point_c;
+        guardMode = "Dew point (BLE)";
+      }
+    }
+    if (Number.isFinite(selected) && getEntity("text_sensor", "Cooling Block Reason")?.value === "BLE dew point unavailable") {
+      setText("text_sensor", "Cooling Block Reason", "Ready");
+    }
     setNumber("Cooling Dew Point (Selected)", selected, "°C");
     setText("text_sensor", "Cooling Guard Mode", guardMode);
     syncMqttInputAgeEntities();
@@ -2267,7 +2281,7 @@
     setEntity("select", "Cooling Dew Point Source", {
       value: "Auto",
       state: "Auto",
-      option: ["Auto", "Home Assistant", "MQTT"],
+      option: ["Auto", "Home Assistant", "MQTT", ...(state.hardware === "heatpump_controller_q" ? ["BLE"] : [])],
     });
     setEntity("select", "Water Supply Source", {
       value: "Local",
@@ -2325,7 +2339,7 @@
     setEntity("select", "Room Temperature Source", {
       value: "OT thermostat",
       state: "OT thermostat",
-      option: ["CIC", "OT thermostat", "HA input", "MQTT"],
+      option: ["CIC", "OT thermostat", "HA input", "MQTT", ...(state.hardware === "heatpump_controller_q" ? ["BLE"] : [])],
     });
     setEntity("select", "Room Setpoint Source", {
       value: "OT thermostat",
@@ -2737,6 +2751,16 @@
 
   function syncDevMeta() {
     syncUptimeEntity();
+    for (const [name, fallback] of [["Room Temperature Source", "OT thermostat"], ["Cooling Dew Point Source", "Auto"]]) {
+      const entity = getEntity("select", name);
+      if (!Array.isArray(entity?.option)) continue;
+      if (state.hardware === "heatpump_controller_q") {
+        if (!entity.option.includes("BLE")) entity.option.push("BLE");
+      } else if (entity.option.includes("BLE")) {
+        entity.option = entity.option.filter(option => option !== "BLE");
+        if (entity.value === "BLE") entity.state = entity.value = fallback;
+      }
+    }
     const updateEntity = getEntity("update", "Firmware Update");
     const updateAvailable = Boolean(
       updateEntity
@@ -2895,6 +2919,10 @@
     setBinary("Cooling Enable (Selected)", coolingEnableSelected);
     setBinary("Heating blocked by thermostat", heatingEnabledScenario && !heatingEnableSelected);
     setText("text_sensor", "Room Temperature Effective Source", String(getEntity("select", "Room Temperature Source")?.value || "Unknown"));
+    if (getEntity("select", "Room Temperature Source")?.value === "BLE") {
+      const room = mockBle.sensors.find(item => item.mac === mockBle.room_mac);
+      setNumber("Room Temperature (Selected)", mockBle.enabled && room ? room.temperature_c : NaN, "°C");
+    }
     setText("text_sensor", "Room Setpoint Effective Source", String(getEntity("select", "Room Setpoint Source")?.value || "Unknown"));
     const waterSupplySource = String(getEntity("select", "Water Supply Source")?.value || "Unknown");
     const localWaterSupplySource = String(getEntity("select", "Local Water Supply Temp Source")?.value || "");
@@ -6141,11 +6169,82 @@
     return mockResponse(202, { ticket: ++mockLineTicket });
   }
 
+  const mockBleDevices = [
+    { mac: "DA:11:22:33:44:01", protocol: "bthome_v2", advertised_name: "BTHome Werkkamer", temperature_c: 21.6, humidity_pct: 58, dew_point_c: 13 },
+    { mac: "DA:11:22:33:44:02", protocol: "atc1441", advertised_name: "ATC_4402", temperature_c: 19.4, humidity_pct: 46, dew_point_c: 7.5 },
+    { mac: "DA:11:22:33:44:03", protocol: "bthome_v2", temperature_c: 20.1, humidity_pct: null, dew_point_c: null },
+  ];
+  const mockBle = { enabled: false, room_mac: "", revision: 1, sensors: [], found: false, scanUntil: 0 };
+
+  function mockBleStatus() {
+    const decorate = (device) => ({
+      ...device,
+      temperature_c: mockBle.enabled ? device.temperature_c : null,
+      humidity_pct: mockBle.enabled ? device.humidity_pct : null,
+      dew_point_c: mockBle.enabled ? device.dew_point_c : null,
+      age_s: mockBle.enabled ? 8 : null,
+      pair_age_s: mockBle.enabled && device.dew_point_c != null ? 8 : null,
+      rssi_dbm: mockBle.enabled ? -61 : null,
+    });
+    const sensors = mockBle.sensors.map(decorate);
+    const required = sensors.filter(device => device.use_dew_point);
+    const valid = required.filter(device => device.dew_point_c != null).sort((a, b) => b.dew_point_c - a.dew_point_c);
+    return { enabled: mockBle.enabled, room_mac: mockBle.room_mac, revision: mockBle.revision,
+      ready: mockBle.enabled, scanning: Date.now() < mockBle.scanUntil, csrf_token: state.auth.csrfToken,
+      required_count: required.length, valid_count: valid.length, dew_valid: !!valid.length, dew_required: !!required.length,
+      dew_point_c: valid[0]?.dew_point_c ?? null, dew_max_mac: valid[0]?.mac ?? null,
+      max_sensors: 8, max_name_bytes: 32, pending: false, storage_error: false, sensors,
+      discovered: mockBle.found && mockBle.enabled ? mockBleDevices.map(decorate) : [] };
+  }
+
+  function handleMockBle(endpoint, method, body) {
+    if (state.hardware !== "heatpump_controller_q") return mockResponse(404, {});
+    if (method === "GET" && endpoint === "status") return mockResponse(200, mockBleStatus());
+    const form = new URLSearchParams(body);
+    if (method !== "POST") return mockResponse(405, {});
+    if (!state.auth.csrfToken || form.get("csrf_token") !== state.auth.csrfToken) return mockResponse(403, { error: "forbidden" });
+    if (form.get("revision") !== String(mockBle.revision)) return mockResponse(409, { error: "stale_configuration" });
+    const mac = form.get("mac");
+    const sensor = mockBle.sensors.find(item => item.mac === mac);
+    const action = form.get("action");
+    if (endpoint === "scan" && mockBle.enabled) {
+      mockBle.scanUntil = form.get("active") === "1" ? Date.now() + 30000 : 0;
+      mockBle.found ||= mockBle.scanUntil > 0;
+    } else if (endpoint === "save") {
+      if (action === "enable") {
+        mockBle.enabled = form.get("enabled") === "1";
+        if (!mockBle.enabled) {
+          mockBle.scanUntil = 0;
+          mockBle.found = false;
+        }
+      } else if (action === "room" && (!mac || sensor)) mockBle.room_mac = mac;
+      else if (action === "remove" && sensor) {
+        mockBle.sensors = mockBle.sensors.filter(item => item !== sensor);
+        if (mockBle.room_mac === mac) mockBle.room_mac = "";
+      } else if (action === "upsert") {
+        const device = sensor || (mockBle.found && mockBleDevices.find(item => item.mac === mac));
+        const dew = form.get("use_dew_point") === "1";
+        const name = (form.get("name") || "").trim();
+        if (!device || !name || new TextEncoder().encode(name).length > 32 || device.protocol !== form.get("protocol") ||
+            (dew && !sensor?.use_dew_point && (!mockBle.enabled || device.dew_point_c == null))) {
+          return mockResponse(400, { error: "invalid_configuration" });
+        }
+        if (sensor) Object.assign(sensor, { name, use_dew_point: dew });
+        else mockBle.sensors.push({ ...device, name, use_dew_point: dew });
+      } else return mockResponse(400, { error: "invalid_configuration" });
+      mockBle.revision += 1;
+      applyCoolingDewPointSourceSelection();
+    } else return mockResponse(409, { error: "ble_unavailable" });
+    return mockResponse(202, { ok: true, pending: true, revision: mockBle.revision });
+  }
+
   function installFetchMock() {
     const realFetch = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = async function fetchMock(input, init) {
       const url = new URL(String(typeof input === "string" ? input : input.url), window.location.href);
       const method = String(init?.method || "GET").toUpperCase();
+      const bleEndpoint = url.pathname.match(/\/openquatt\/ble\/(status|save|scan)$/);
+      if (bleEndpoint) return handleMockBle(bleEndpoint[1], method, init?.body);
       if (url.pathname === "/auth/status" && (!init || !init.method || String(init.method).toUpperCase() === "GET")) {
         return handleAuthStatus();
       }

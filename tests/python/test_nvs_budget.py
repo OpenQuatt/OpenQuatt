@@ -13,7 +13,7 @@ import check_nvs_budget as budget  # noqa: E402
 
 
 def q_config(hp_count: int = 2) -> dict:
-    config = {component: {} for component, _, _ in budget.CUSTOM_PREFERENCE_LAYOUTS}
+    config = {component: {} for component, _, _ in budget.CUSTOM_PREFERENCE_LAYOUTS if component != "openquatt_ble"}
     config["openquatt_odu_settings"] = [{} for _ in range(hp_count)]
     config["openquatt_odu_defrost"] = [{} for _ in range(hp_count)]
     config.update(wifi={}, api={"encryption": {}}, safe_mode={}, factory_reset={"resets_required": 3})
@@ -54,6 +54,13 @@ class NvsBudgetTest(unittest.TestCase):
             budget.blob_entries(-1)
         with self.assertRaises(ValueError):
             budget.blob_entries(32, chunk_count=0)
+
+    def test_ble_opt_in_adds_blob_and_namespace(self) -> None:
+        config = q_config()
+        self.assertNotIn("namespace oq_ble", budget.estimate_system_preferences(config))
+        config["openquatt_ble"] = {}
+        self.assertEqual(budget.estimate_custom_preferences(config)["openquatt_ble"], 13)
+        self.assertEqual(budget.estimate_system_preferences(config)["namespace oq_ble"], 1)
 
     def test_known_full_population_shortage_fails_without_lowering_policy(self) -> None:
         config = q_config()

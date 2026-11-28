@@ -1,0 +1,17 @@
+# ==============================================================================
+# OpenQuatt - Experimental Q Duo Bluetooth Sensor Receiver
+# ==============================================================================
+packages:
+  openquatt_ble_base: !include oq_ble_base.yaml
+
+esp32_ble:
+  enable_on_boot: false
+  max_connections: 1
+  use_psram: true
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+    continuous: true
+    interval: 320ms
+    window: 30ms

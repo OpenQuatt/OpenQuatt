@@ -29,6 +29,16 @@ async function buildCompactFixture() {
     import { renderOduDefrostModal } from "./features/odu-defrost.js";
     import { state } from "./core/state.js";
     import { renderMeasurementArchive } from "./settings/measurement-archive.js";
+    import { renderBleSettings, renderBleModal, renderBleReadings } from "./settings/ble.js";
+    export function readBle(locale, withSensors = false) {
+      setLocale(locale, { persist: false, applyDocument: false, notify: false });
+      state.entities = { roomTempSource: { option: ["BLE"] } };
+      const sensors = withSensors ? [{ mac: "DA:11:22:33:44:01", name: "Test", use_dew_point: true }] : [];
+      const room_mac = sensors[0]?.mac || "";
+      const status = { sensors, room_mac, discovered: [], enabled: false };
+      return renderBleSettings() + renderBleModal() + renderBleReadings(status, false, false)
+        + (withSensors ? renderBleReadings(status, false, false, true, false, true) : "");
+    }
     import { renderLearningExplanation } from "./views/learning-explanation.js";
     export function readMeasurementArchive(locale, code) {
       setLocale(locale, { persist: false, applyDocument: false, notify: false });
@@ -102,6 +112,22 @@ test("compact i18n build keeps both locales and dynamic incident keys", async ()
     module.readDynamicTranslations("en", dynamicKeys),
     dynamicKeys.map((key) => enEntries.get(key)),
   );
+});
+
+test("the compact production bundle localizes Bluetooth settings and scan controls", async () => {
+  const { module } = await buildCompactFixture();
+  for (const [locale, catalogue] of [["nl", nl], ["en", en]]) {
+    const html = module.readBle(locale);
+    for (const key of ["title", "integrationCopy", "sourceHint", "enable", "sensors", "empty", "scan"]) assert.ok(html.includes(catalogue.ble[key]));
+    assert.ok(html.includes(catalogue.settingsIntegrations.integrationAdjust));
+    assert.ok(html.includes(catalogue.settingsIntegrations.integrationCurrentStatus));
+    assert.doesNotMatch(html, /ble\.[a-z]/);
+    const modal = module.readBle(locale, true);
+    for (const key of ["changeRoom", "clearRoom", "currentRoom", "temperatureShort", "humidityShort", "dewPoint", "lastMeasurement", "dewAssigned"]) {
+      assert.ok(modal.includes(catalogue.ble[key]), `${locale}: ${key}`);
+    }
+    assert.doesNotMatch(modal, /ble\.[a-z]/);
+  }
 });
 
 test("the compact production bundle resolves both learning guide translations", async () => {

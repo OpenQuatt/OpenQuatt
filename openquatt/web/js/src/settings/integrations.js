@@ -7,7 +7,8 @@ import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { isInstallationMonitoringBinaryActive, isInstallationMonitoringIntegrationEnabled } from "../core/installation-monitoring.js";
 import { state } from "../core/state.js";
 import { formatMqttSensorValiditySummary, getMqttStatusDetail, getMqttStatusLabel, getMqttValidityLabel } from "../features/mqtt.js";
-import { formatSettingsOptionLabel, getSelectEntityOptions, getSettingsStatValue, getSettingsTextStatValue, renderSettingsInfoToggle, renderSettingsIntegrationSwitchCard, renderSettingsSection } from "./controls.js";
+import { formatSettingsOptionLabel, getSelectEntityOptions, getSettingsStatValue, getSettingsTextStatValue, renderIntegrationConfigSection, renderIntegrationStatus, renderSettingsInfoToggle, renderSettingsIntegrationSwitchCard, renderSettingsSection } from "./controls.js";
+import { renderBleSource } from "./ble.js";
 import { getWaterSupplyCorrectionView } from "./water.js";
 import { escapeHtml } from "../core/html.js";
 import { getInstallationTopology } from "../features/device-context.js";
@@ -495,6 +496,18 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
     };
     const getCoolingDewPointUsedSource = () => {
       const source = String(getEntityValue("coolingDewPointSource") || "").trim();
+      const supportsBle = getSelectEntityOptions(state.entities.coolingDewPointSource).includes("BLE");
+      if (supportsBle && (source === "Auto" || source === "BLE")) {
+        const mode = String(getEntityValue("coolingGuardMode") || "");
+        if (getEntityValue("coolingBlockReason") === "BLE dew point unavailable") {
+          return optionLabel("BLE dew point unavailable");
+        }
+        if (mode === "Dew point (BLE)") return optionLabel("BLE");
+        if (source === "BLE") {
+          const value = String(getEntityValue("coolingDewPointSelected")).trim();
+          return value && Number.isFinite(Number(value)) ? optionLabel("BLE") : optionLabel("BLE dew point unavailable");
+        }
+      }
       if (source === "Home Assistant") {
         return isValidNumericSource("coolingDewPointHa", "coolingDewPointHaValid") ? optionLabel("HA input") : t("settingsIntegrations.dewHaMissing");
       }
@@ -527,6 +540,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       ["ha", /\b(?:ha|home assistant)\b/],
       ["api", /\bapi\b/],
       ["mqtt", /\bmqtt\b/],
+      ["bluetooth", /\b(?:ble|bluetooth)\b/],
       ["cic", /\bcic\b/],
       ["ot", /\b(?:opentherm|ot thermostat|ot-thermostaat)\b/],
       ["outdoor", /\b(?:outdoor unit|buitenunit|quatt-flow)\b/],
@@ -892,6 +906,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
           cicAvailable ? renderSourceRow({ label: "CIC", key: `cic${entityStem}`, sourceKind: "cic", sourceState: "available", effective: sourcesMatch(usedSource, "CIC") }) : "",
           otAvailable ? renderSourceRow({ label: "OpenTherm", key: `ot${entityStem}`, sourceKind: "ot", sourceState: "available", effective: sourcesMatch(usedSource, "OpenTherm") }) : "",
           ...renderExternalSourceRows(`${stem}Source`, usedSource, buildExternalSourceKeys(stem, externalStem)),
+          stem === "roomTemp" ? renderBleSource("room", getEntityValue("roomTempEffectiveSource") === "BLE") : "",
         ],
       });
     };
@@ -1092,7 +1107,8 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         icon: "thermometer",
         select: buildExternalSourceSelect("coolingDewPoint", "CoolingDewPoint", "cooling_dew_point", {
           infoId: "coolingDewPointSource-info",
-          infoCopy: mqttAvailable
+          infoCopy: getSelectEntityOptions(state.entities.coolingDewPointSource).includes("BLE")
+            ? t("ble.autoDew") : mqttAvailable
             ? t("settingsIntegrations.dewInfoFull")
             : t("settingsIntegrations.dewInfoHa"),
         }),
@@ -1101,6 +1117,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         routeWarning: invalidSourceValueWarning("coolingDewPointSelected"),
         measurementRows: [
           ...renderExternalSourceRows("coolingDewPointSource", coolingDewPointUsedSource, buildExternalSourceKeys("coolingDewPoint", "CoolingDewPoint")),
+          renderBleSource("dew", coolingDewPointUsedSource === optionLabel("BLE")),
         ],
       }),
       buildSourceSignal({
@@ -1321,33 +1338,12 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       </section>
     ` : "";
 
-    return renderSettingsSection(
-      t("settingsIntegrations.mqttGroup"),
-      t("settingsIntegrations.mqttTitle"),
-      t("settingsIntegrations.mqttCopy"),
-      `
-        <div class="oq-settings-mqtt-shell">
-          <section class="oq-settings-mqtt-panel oq-settings-mqtt-panel--broker">
-            <div class="oq-settings-field-head">
-              <h3>${escapeHtml(t("settingsIntegrations.mqttBrokerTitle"))}</h3>
-            </div>
-            <div class="oq-settings-quickstart-status-row oq-settings-mqtt-status-row">
-              <div>
-                <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settingsIntegrations.mqttCurrentStatus"))}</p>
-                <strong class="oq-settings-quickstart-status-value">${escapeHtml(getMqttStatusLabel())}</strong>
-                <p class="oq-settings-quickstart-status-copy">${escapeHtml(getMqttStatusDetail())}</p>
-              </div>
-              <button
-                class="oq-helper-button oq-helper-button--ghost"
-                type="button"
-                data-oq-action="open-mqtt-modal"
-              >
-                ${escapeHtml(t("settingsIntegrations.mqttAdjust"))}
-              </button>
-            </div>
-          </section>
-          ${sensorsPanel}
-        </div>
-      `,
-    );
+    return renderIntegrationConfigSection({
+      title: t("settingsIntegrations.mqttTitle"),
+      copy: t("settingsIntegrations.mqttCopy"),
+      panelTitle: t("settingsIntegrations.mqttBrokerTitle"),
+      statusMarkup: `<div>${renderIntegrationStatus(getMqttStatusLabel(), getMqttStatusDetail())}</div>`,
+      action: "open-mqtt-modal",
+      extra: sensorsPanel,
+    });
   }

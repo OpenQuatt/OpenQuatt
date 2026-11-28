@@ -1,0 +1,25 @@
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_ble]
+
+esp32:
+  framework:
+    sdkconfig_options:
+      CONFIG_BT_ENABLED: y
+      # One S3 controller activity; the observer makes no connections.
+      CONFIG_BT_CTRL_BLE_MAX_ACT: "1"
+      CONFIG_BT_CTRL_SCAN_DUPL_CACHE_SIZE: "20"
+      # Free internal SRAM on the S3. Flash operations may interrupt reception.
+      CONFIG_BT_CTRL_RUN_IN_FLASH_ONLY: y
+
+openquatt_ble:
+  id: oq_ble_receiver
+  web_auth: oq_web_auth_store
+
+select:
+  - id: !extend room_temp_source
+    options: [BLE]
+  - id: !extend cooling_dew_point_source
+    options: [BLE]

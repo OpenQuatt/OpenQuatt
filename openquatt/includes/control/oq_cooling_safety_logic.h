@@ -15,10 +15,50 @@ class CoolingSafetyRuntime {
     return id(cooling_without_dew_point_mode).has_state() &&
            id(cooling_without_dew_point_mode).current_option() == "Allow without dew point, user responsibility";
   }
+  BleGuard live_ble_guard(bool include_published = true) const {
+#ifdef USE_OPENQUATT_BLE
+    const int mode = dew_source_mode_code();
+    if (mode == 3 || mode == 5) {
+      const auto ble = esphome::openquatt_ble::dew_point(static_cast<uint32_t>(millis()));
+      auto guard = ble_guard(mode, ble.value, ble.required, id(cooling_dew_point_selected).get_raw_state());
+      if (include_published && finite_value(guard.dew))
+        guard.dew = fmaxf(guard.dew, id(cooling_dew_point_selected).state);
+      return guard;
+    }
+#endif
+    return {};
+  }
+  float live_ble_floor(const BleGuard& guard) {
+    const bool approximate = !finite_value(guard.dew) && without_dew_point_enabled();
+    return guard.floor(safety_margin_selected(), without_dew_point_user_responsibility_enabled(),
+                       id(cooling_min_supply_temp).state, approximate, approximate ? fallback_min_supply_temp() : NAN);
+  }
+  bool ble_cooling_must_stop() {
+    const auto guard = live_ble_guard();
+    if (!guard.active) return false;
+    return guard.must_stop(live_ble_floor(guard), id(oq_system_supply_temp).state,
+                           without_dew_point_user_responsibility_enabled());
+  }
+  bool ble_room_input_ready() const {
+#ifdef USE_OPENQUATT_BLE
+    if (id(cooling_room_request_required).state && id(room_temp_source).current_option() == "BLE")
+      return finite_value(oq_sensor_source::runtime().room_control_temperature());
+#endif
+    return true;
+  }
+  bool dew_available() const {
+    const auto guard = live_ble_guard();
+    return guard.active ? finite_value(guard.dew) : dew_selected_valid();
+  }
   bool fallback_active() {
+    const auto guard = live_ble_guard();
+    if (guard.active)
+      return !finite_value(guard.dew) && without_dew_point_enabled() && finite_value(fallback_min_supply_temp());
     return !dew_selected_valid() && id(cooling_without_dew_point_enabled).state && fallback_min_valid();
   }
   bool permitted_core() {
+    const auto guard = live_ble_guard();
+    if (guard.active) return finite_value(live_ble_floor(guard));
     return core_permitted(id(cooling_without_dew_point_user_responsibility_enabled).state,
                           id(cooling_min_supply_temp).has_state() && finite_value(id(cooling_min_supply_temp).state),
                           id(cooling_dew_point_available).state && dew_selected_valid(),
@@ -43,7 +83,8 @@ class CoolingSafetyRuntime {
   }
   const char* guard_mode() {
     if (id(cooling_without_dew_point_user_responsibility_enabled).state) return "User responsibility";
-    if (id(cooling_dew_point_available).state) {
+    if (dew_available()) {
+      if (dew_selection_.last_route == 5 && live_ble_guard().active) return "Dew point (BLE)";
       if (id(cooling_dew_point_source).has_state()) {
         if (id(cooling_dew_point_source).current_option() == "MQTT") return "Dew point (MQTT)";
         if (id(cooling_dew_point_source).current_option() == "API input") return "Dew point (API input)";
@@ -64,6 +105,7 @@ class CoolingSafetyRuntime {
       return "Cooling minimum unavailable";
     }
     if (!id(cooling_dew_point_available).state && !id(cooling_without_dew_point_user_responsibility_enabled).state) {
+      if (live_ble_guard().active && !without_dew_point_enabled()) return "BLE dew point unavailable";
       return fallback_block_reason();
     }
     if (!id(cooling_permitted_core).has_state() || !id(cooling_permitted_core).state) {
@@ -79,17 +121,26 @@ class CoolingSafetyRuntime {
   float safety_margin_selected() { return clamp_finite(id(cooling_safety_margin).state, 0.0f, 4.0f); }
   float selected_dew_point(uint32_t now_ms, uint32_t hold_ms, uint32_t ha_stale_s) {
     const int source_mode_code = dew_source_mode_code();
-    const DewPointSources sources{id(cooling_dew_point_ha).state,
-                                  id(api_input_cooling_dew_point).state,
-                                  id(mqtt_cooling_dew_point).state,
-                                  ha_dew_valid(now_ms, ha_stale_s),
-                                  api_dew_valid(),
-                                  mqtt_dew_valid()};
+    DewPointSources sources{id(cooling_dew_point_ha).state,
+                            id(api_input_cooling_dew_point).state,
+                            id(mqtt_cooling_dew_point).state,
+                            ha_dew_valid(now_ms, ha_stale_s),
+                            api_dew_valid(),
+                            mqtt_dew_valid()};
+#ifdef USE_OPENQUATT_BLE
+    if (source_mode_code == 3 || source_mode_code == 5) {
+      const auto ble = esphome::openquatt_ble::dew_point(now_ms);
+      sources.ble = ble.value;
+      sources.ble_required = ble.required;
+    }
+#endif
     const auto selected = select_dew_point(source_mode_code, sources, now_ms, hold_ms, dew_selection_);
     id(oq_cooling_dew_point_selected_hold_active) = selected.held;
     return selected.value;
   }
   float minimum_safe_supply() {
+    const auto guard = live_ble_guard();
+    if (guard.active) return guard.dew + safety_margin_selected();
     return dew_selected_valid() && id(cooling_safety_margin_selected).has_state() &&
                    finite_value(id(cooling_safety_margin_selected).state)
                ? id(cooling_dew_point_selected).state + id(cooling_safety_margin_selected).state
@@ -109,6 +160,8 @@ class CoolingSafetyRuntime {
                                    id(room_temp_selected).state);
   }
   float effective_min_supply_temp() {
+    const auto guard = live_ble_guard();
+    if (guard.active) return live_ble_floor(guard);
     if (id(cooling_without_dew_point_user_responsibility_enabled).state && id(cooling_min_supply_temp).has_state() &&
         finite_value(id(cooling_min_supply_temp).state)) {
       return id(cooling_min_supply_temp).state;
@@ -154,6 +207,7 @@ class CoolingSafetyRuntime {
     if (source == "Home Assistant") return 1;
     if (source == "MQTT") return 2;
     if (source == "API input") return 4;
+    if (source == "BLE") return 5;
     return 3;
   }
   const char* fallback_block_reason() {
@@ -190,7 +244,7 @@ class CoolingSafetyRuntime {
   static float outside_safety_temperature() { return oq_sensor_source::runtime().outside_safety_temperature(); }
 
   bool outside_valid() const { return finite_value(outside_safety_temperature()); }
-  bool room_valid() const { return id(room_temp_selected).has_state() && finite_value(id(room_temp_selected).state); }
+  bool room_valid() const { return finite_value(oq_sensor_source::runtime().room_control_temperature()); }
   bool setpoint_valid() const {
     return id(room_setpoint_selected).has_state() && finite_value(id(room_setpoint_selected).state);
   }
