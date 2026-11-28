@@ -17,7 +17,7 @@ const nativeFetch = globalThis.fetch;
 const { state } = await import("../js/src/core/state.js");
 const { normalizeWeatherForecast, weatherForecastCanDisplay, weatherForecastIsCurrent, weatherCurrentModelIsCurrent } = await import("../js/src/core/weather-forecast.js");
 const { refreshWeatherForecast, invalidateWeatherForecast, suspendWeatherForecast } = await import("../js/src/features/weather-forecast.js");
-const { renderWeatherForecast, getWeatherChartModel, patchWeatherForecast, getWeatherPointIndex, handleWeatherChartPointer, handleWeatherChartKeyDown, patchWeatherForecastCursor } = await import("../js/src/settings/weather-forecast.js");
+const { renderWeatherForecast, getWeatherChartModel, weatherChartPaths, patchWeatherForecast, getWeatherPointIndex, handleWeatherChartPointer, handleWeatherChartKeyDown, patchWeatherForecastCursor } = await import("../js/src/settings/weather-forecast.js");
 const { setLocale } = await import("../js/src/i18n/index.js");
 
 const epoch = 1793314800 - 1793314800 % 3600;
@@ -144,12 +144,33 @@ test("request timeout covers receiving the body and releases single flight", asy
 
 test("chart axes handle flat, negative and zero wind with separate units", () => {
   for (const values of [Array(36).fill(10), Array(36).fill(-40), Array(36).fill(0)]) {
-    const model = getWeatherChartModel(values, false, 360);
+    const model = getWeatherChartModel(values, "temperature", 360);
     assert.ok(model.upper > model.low);
     for (const value of values) assert.ok(Number.isFinite(model.y(value)));
     assert.equal(model.x(0), 42); assert.equal(model.x(35), 344);
   }
-  assert.equal(getWeatherChartModel(Array(36).fill(0), true).low, 0);
+  assert.deepEqual(getWeatherChartModel([0, 3.5], "wind").ticks, [6, 4, 2, 0]);
+  assert.deepEqual(getWeatherChartModel([0, 276, null], "solar").ticks, [300, 200, 100, 0]);
+  assert.ok(getWeatherChartModel([0, 75], "wind").upper >= 75 / 0.76);
+});
+
+test("curves stay within consecutive hourly values and the solar fill stops at missing hours", () => {
+  const values = [0, 0, 120, 200, 0, null, 300, 0];
+  const model = getWeatherChartModel(values, "solar");
+  const { line, fill } = weatherChartPaths(values, model);
+  assert.equal((line.match(/M/g) || []).length, 2);
+  assert.equal((fill.match(/Z/g) || []).length, 2);
+  for (const match of line.matchAll(/[MC]([\d.]+) ([\d.]+)(?: ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+))?/g)) {
+    const [, x, y, , y2, endX, endY] = match;
+    if (!endY) continue;
+    const previous = Math.round((Number(endX) - model.x(0)) / (model.x(1) - model.x(0))) - 1;
+    const endpoints = [model.y(values[previous]), Number(endY)];
+    for (const control of [y, y2]) {
+      assert.ok(Number(control) >= Math.min(...endpoints) - .01);
+      assert.ok(Number(control) <= Math.max(...endpoints) + .01);
+    }
+    assert.ok(Number(x) < Number(endX));
+  }
 });
 
 test("graphs and accessible hourly table localize and escape external labels", () => {
@@ -158,10 +179,46 @@ test("graphs and accessible hourly table localize and escape external labels", (
   let html = renderWeatherForecast();
   assert.equal((html.match(/<figure /g) || []).length, 2); assert.equal((html.match(/<tbody>/g) || []).length, 1);
   assert.equal((html.match(/<th scope="row">/g) || []).length, 36);
+  assert.doesNotMatch(html, /oq-weather-wind-overlay/);
+  assert.doesNotMatch(html, /data-oq-weather-now|>Nu<\/span>/);
+  assert.match(html, /Geselecteerd uur/);
+  const minutes = String(new Date(epoch * 1000).getMinutes()).padStart(2, "0");
+  for (const hour of ["00", "06", "12", "18"]) assert.ok(html.includes(`>${hour}:${minutes}</span>`));
   assert.match(html, /Buitentemperatuur/); assert.match(html, /m\/s/); assert.doesNotMatch(html, /Binnenbron gaat voor/);
   assert.ok(!html.includes('<img src=x')); assert.ok(html.includes('&lt;img'));
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   html = renderWeatherForecast(); assert.match(html, /Outdoor temperature/); assert.match(html, /View hourly values/);
+});
+
+test("optional wind direction and solar display in both languages, with zero distinct from unavailable data", () => {
+  const p = payload();
+  p.wind_mps[0] = 0;
+  p.wind_direction_deg = Array(36).fill(90);
+  p.wind_direction_deg[2] = 361;
+  const localTicks = Array.from({ length: 36 }, (_, i) => i).filter(i => i > 0 && i < 35 && new Date((epoch + i * 3600) * 1000).getHours() % 6 === 0);
+  const [omitted, faint, northwest] = localTicks.filter(index => index > 2);
+  p.wind_direction_deg[omitted] = null;
+  p.wind_mps[faint] = 0.6;
+  p.wind_direction_deg[northwest] = 315;
+  p.solar_wm2 = [0, 135, "0", -1, ...Array(32).fill(null)];
+  state.weatherForecast = normalizeWeatherForecast(p);
+  assert.deepEqual(state.weatherForecast.solar_wm2.slice(0, 4), [0, 135, null, null]);
+  assert.equal(state.weatherForecast.wind_direction_deg[2], null);
+  const html = renderWeatherForecast();
+  assert.match(html, /data-oq-weather-graph="solar"/);
+  assert.match(html, /Windrichting/);
+  assert.doesNotMatch(html, new RegExp(`data-oq-wind-hour="${omitted}"`));
+  assert.match(html, new RegExp(`data-oq-wind-hour="${faint}" data-calm="true"`));
+  assert.match(html, new RegExp(`data-oq-wind-hour="${northwest}"[^<]*<svg[^>]*135deg`));
+  assert.match(html, /Pijl wijst waarheen de wind waait/);
+  assert.match(html, /<td>—<\/td>\s*<td>0<\/td>/);
+  assert.match(html, /<td>O 90°<\/td>\s*<td>135<\/td>/);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.match(renderWeatherForecast(), /Solar irradiance/);
+  assert.match(renderWeatherForecast(), /Arrow points where the wind is blowing/);
+  assert.match(renderWeatherForecast(), /<td>E 90°<\/td>/);
+  state.weatherForecast = normalizeWeatherForecast({ ...p, solar_wm2: [0] });
+  assert.doesNotMatch(renderWeatherForecast(), /data-oq-weather-graph="solar"/);
 });
 
 test("a partial patch preserves disclosure, focus and table scroll without touching location input", () => {
@@ -256,20 +313,24 @@ test("hourly disclosure action survives a complete panel replacement and an inva
   assert.doesNotMatch(renderWeatherForecast(), /class="oq-weather-hourly" open/);
 });
 
-function mountWeatherCharts() {
-  const readout = { textContent: "" };
-  const figures = ["temperature", "wind"].map((metric) => {
+function mountWeatherCharts(metrics = ["temperature", "wind"]) {
+  const readout = { textContent: "", set innerHTML(html) { this.markup = html; this.textContent = html.replace(/<[^>]+>/g, ""); } };
+  const figures = metrics.map((metric) => {
     const attrs = {}, pointAttrs = {}, cursorAttrs = {};
     const svg = { dataset: { oqWeatherGraph: metric }, viewBox: { baseVal: { width: 422 } },
       getScreenCTM: () => ({ a: 2, d: 3, e: 90 }), setAttribute: (key, value) => { attrs[key] = value; } };
     const cursor = { setAttribute: (key, value) => { cursorAttrs[key] = value; },
       removeAttribute: (key) => { delete cursorAttrs[key]; },
       querySelector: () => ({ setAttribute: (key, value) => { pointAttrs[key] = value; } }) };
-    const figure = { dataset: { oqWeatherChart: metric }, svg, attrs, pointAttrs, cursorAttrs,
-      querySelector: (selector) => selector === "svg" ? svg : cursor };
+    const highlight = { style: {}, querySelector: () => ({ style: { setProperty: (_, value) => { highlight.angle = value; } } }) };
+    const sample = { dataset: { oqWindHour: 0 } };
+    const figure = { dataset: { oqWeatherChart: metric }, svg, attrs, pointAttrs, cursorAttrs, highlight, sample,
+      querySelector: (selector) => selector === "svg" ? svg : selector === "[data-oq-weather-cursor]" ? cursor : highlight,
+      querySelectorAll: () => [sample] };
     return figure;
   });
-  state.root = { querySelectorAll: () => figures, querySelector: () => readout };
+  const surface = { querySelector: () => readout };
+  state.root = { querySelectorAll: () => figures, querySelector: () => surface };
   return { figures, readout };
 }
 
@@ -294,6 +355,27 @@ test("pointer coordinates include the cropped plot offset and synchronize both e
   patchWeatherForecastCursor();
   assert.equal(figures[0].cursorAttrs.hidden, "");
   assert.doesNotMatch(readout.textContent, /11,2/);
+});
+
+test("the solar chart keeps the selected hour across charts even when its value is unavailable", () => {
+  const p = payload();
+  p.solar_wm2 = [0, null, ...Array(34).fill(135)];
+  p.wind_direction_deg = Array(36).fill(360);
+  state.weatherForecast = normalizeWeatherForecast(p);
+  const { figures, readout } = mountWeatherCharts(["temperature", "wind", "solar"]);
+  const [, wind, solar] = figures;
+  const press = (key) => handleWeatherChartKeyDown({ target: solar.svg, key, preventDefault() {} });
+  assert.equal(press("Home"), true);
+  assert.match(readout.textContent, /uit N \(360°\).*Zoninstraling 0 W\/m²/);
+  assert.match(readout.markup, /180deg/);
+  assert.equal(wind.highlight.angle, "180deg");
+  assert.equal(wind.sample.hidden, true);
+  assert.equal(solar.pointAttrs.visibility, "visible");
+  assert.equal(press("ArrowRight"), true);
+  assert.doesNotMatch(readout.textContent, /Zoninstraling/);
+  assert.equal(solar.pointAttrs.visibility, "hidden");
+  assert.equal(wind.sample.hidden, false);
+  assert.equal(figures[0].cursorAttrs.transform, solar.cursorAttrs.transform);
 });
 
 test("keyboard inspection clamps hourly selection and clears stale values", () => {

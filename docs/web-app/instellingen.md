@@ -28,9 +28,9 @@ Onder **Compressorinstellingen** kies je per warmtepomp één frequentiebereik v
 
 De kaart toont welke frequenties OpenQuatt overslaat. Onder **Beschikbare standen** zie je per tijdvak hoeveel compressorstanden overblijven na toepassing van de frequentielimiet en het uitgesloten bereik. Als de uitsluiting de laatste bruikbare stand wegneemt, vraagt de web-app om bevestiging.
 
-Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**.
+Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**. Met **Uit** of buiten het tijdvenster bij **Schema** vervalt de stille limiet van de buitenunit en gebruikt OpenQuatt de daglimiet.
 
-Onder de frequentiesliders zie je per bedrijfsmodus de hoogste compressorstand die binnen de ingestelde Hz-limiet valt. Bij een Duo verschijnen de buitenunits apart als hun frequentietabellen voor die modus verschillen.
+Onder de frequentiesliders zie je voor verwarmen en koelen de hoogste stand binnen de ingestelde Hz-limiet. De schuif voor stille uren toont ook de limiet van de buitenunit als OpenQuatt die kan afleiden uit de firmwareversie en de frequentietabel. De getoonde stand houdt rekening met beide limieten. Bij een Duo verschijnen de buitenunits apart als hun tabellen of limieten verschillen.
 
 Bij **Quatt Hybrid-versie** staat de ingestelde generatie boven de uitgelezen generatie en firmwareversie per buitenunit. Via **Aanpassen** kun je de buitenunits opnieuw laten detecteren.
 
@@ -307,7 +307,9 @@ voor iedere bedrijfsconditie; controleer de flowregeling na toepassen.
 Zie [Bodemplaatverwarming](../bodemplaatverwarming.md) voor regelmethoden,
 generatieverschillen en het opslaan en opnieuw toepassen van deze instellingen.
 
-Bij `Instellingen buitenunit` staat `Ontdooien` als derde rij. Het paneel toont per buitenunit de actuele status en cyclusduur. Onder `Instellingen` staan de huidige ontdooimethode met uitleg; `Instellingen uitlezen` leest deze uit de buitenunit. Alleen methoden die de herkende buitenunit daadwerkelijk ondersteunt kunnen tijdelijk worden gekozen na bevestiging van oud→nieuw: V1 biedt 0, 1 en 3; V1.5 en de bestaande V2-profielen bieden 0, 1, 3 en 4. De teruggelezen waarde geldt als bewijs. Sensorgegevens staan ingeklapt onder `Technische metingen`. Onbekende waarden blijven leeg; lokale tellers en mogelijke eindredenen zijn geen exacte weergave van de interne ODU-regeling. Zie [defrostdiagnostiek](../defrost.md) voor de beperkingen.
+Onder **Instellingen buitenunit → Ontdooien** zie je per buitenunit de actuele status en de waargenomen cyclusduur. Kies **Instellingen uitlezen** om de huidige methode te laden. Het info-icoon naast **Ontdooimethode** legt de ondersteunde modi uit. Een wijziging vraagt om bevestiging. De buitenunit moet de gekozen methode terugmelden voordat OpenQuatt de wijziging als geslaagd toont. Met **Na herstart opnieuw toepassen** kun je die methode per buitenunit bewaren.
+
+Onder **Technische metingen** staan de buitenluchttemperatuur, de verdampertemperatuur, de verdampingstemperatuur van het koudemiddel en de compressorfrequentie. Zie [Ontdooien](../defrost.md) voor de werking van de modi en de uitleg van de metingen.
 
 `Handmatig ontdooien` vraagt na bevestiging één cyclus aan bij een reeds verwarmende buitenunit met bewezen flow. De ODU beslist over acceptatie en uitvoering. OpenQuatt bewaart deze aanvraag niet en herhaalt haar niet automatisch. Veiligheidsstops houden voorrang; na afloop hervat de actuele regeling.
 

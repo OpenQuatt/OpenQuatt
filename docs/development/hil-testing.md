@@ -335,6 +335,41 @@ config-validaties controleren respectievelijk de testoverlay en de canonieke
 HIL-entrypoint tegen de actuele firmwarecompositie. De Duo HIL-config wordt ook
 automatisch in CI gevalideerd.
 
+## Ontdooiaansturing
+
+Gebruik deze checklist bij wijzigingen die de aansturing, cyclusbewaking of
+pompregeling tijdens ontdooien raken. Leg per scenario de verzonden opdrachten,
+de terugmeldingen van de buitenunit en de relevante timing vast.
+
+- Controleer een normale ontdooicyclus en een handmatige aanvraag van start
+  tot einde. Controleer bij het wegvallen van de warmtevraag tijdens het
+  ontdooien dat OpenQuatt wacht met een normale stop en na afloop de actuele
+  warmtevraag volgt. Een incidentstop houdt voorrang.
+- Laat bij een handmatige aanvraag het antwoord op het Modbus-commando
+  uitblijven en controleer dat OpenQuatt de aanvraag niet opnieuw verstuurt.
+  Blijft ook de start uit, controleer dan de time-out van 210 seconden en
+  hervatting pas na verse, niet-actieve terugmeldingen van werkmodus en
+  ontdooistatus.
+- Controleer communicatieverlies en herstel, een herstart van de controller
+  tijdens een actieve cyclus en overlap tussen buitenunits bij Duo. Bij verlies
+  van verse terugmeldingen (>30 s) houdt de regeling het laatste
+  compressorcommando vast zolang er geen bekende of aangevraagde cyclus is.
+  Na meer dan 90 s zonder geldige terugmelding volgt de
+  `telemetry_fault`-stop. Volledig transportverlies kan eerder ingrijpen.
+  Na verbindingsherstel of herstart moet een nog actieve cyclus opnieuw
+  worden herkend.
+- Herhaal na pompwijzigingen de overgangen rond CM0 en handmatig ontdooien,
+  proeven vlak onder en vanaf de minimale flow, wegvallende warmtevraag,
+  gemiste Modbus-bevestiging, verbindingsherstel en Duo-overlap.
+- Leg de waargenomen tijdschalen en cyclusgrenzen vast. Een vermoedelijk
+  bereikte maximale duur bewijst niet waardoor de buitenunit is gestopt.
+  Meet ook de interne heap, het grootste vrije blok en de stackmarges onder
+  gelijktijdige web-, API-, Home Assistant-, MQTT- en Modbus-belasting.
+  Volg voor die metingen [Herstarten bij geheugenmetingen](#herstarten-bij-geheugenmetingen).
+
+Voor het opslaan en opnieuw toepassen van de gekozen methode geldt het
+[HIL-plan voor persistente defrostprofielen](hil-defrost-profiles.md).
+
 ## Power House: langer doorverwarmen bij een hogere minimumstand
 
 De gerichte stage `extension` gebruikt HP1 als V2 old en HP2 als V2 new.

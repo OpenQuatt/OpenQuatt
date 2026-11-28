@@ -183,9 +183,10 @@ class Runtime {
         id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Cooling";
     const bool hp1_defrost_hold = id(hp1_odu_defrost).holding();
     const bool hp1_defrost_observed = id(hp1_odu_defrost).cycle.observed_active();
-    const bool hp1_active_guard =
+    const bool hp1_circulation_active =
         oq_defrost::hp_active(hp1_heating, hp1_cooling, hp1_target_heating, hp1_target_cooling, hp1_lvl,
-                              hp1_defrost_hold, hp1_defrost_observed);
+                              id(hp1_odu_defrost).holds_circulation(), hp1_defrost_observed);
+    const bool hp1_active_guard = hp1_circulation_active || hp1_defrost_hold;
 #if OQ_TOPOLOGY_DUO
     const int hp2_lvl = id(hp2_last_applied_level);
     const int hp2_cmd_lvl =
@@ -201,9 +202,10 @@ class Runtime {
         id(hp2_set_working_mode).has_state() && id(hp2_set_working_mode).current_option() == "Cooling";
     const bool hp2_defrost_hold = id(hp2_odu_defrost).holding();
     const bool hp2_defrost_observed = id(hp2_odu_defrost).cycle.observed_active();
-    const bool hp2_active_guard =
+    const bool hp2_circulation_active =
         oq_defrost::hp_active(hp2_heating, hp2_cooling, hp2_target_heating, hp2_target_cooling, hp2_lvl,
-                              hp2_defrost_hold, hp2_defrost_observed);
+                              id(hp2_odu_defrost).holds_circulation(), hp2_defrost_observed);
+    const bool hp2_active_guard = hp2_circulation_active || hp2_defrost_hold;
     const bool any_hp_active_guard = hp1_active_guard || hp2_active_guard;
     const bool any_hp_compressor_active = hp1_lvl > 0 || hp2_lvl > 0 || hp1_cmd_lvl > 0 || hp2_cmd_lvl > 0;
 #else
@@ -222,7 +224,7 @@ class Runtime {
         hp1_postflow_guard_.update(hp1_incidents, oq_sources::hp1.compressor_frequency, telemetry_now_ms);
     const bool hp1_circulation_evidence = !hp1_postflow.link_loss_hold_expired;
     this->compressor_postflow_active_ = hp1_postflow.required;
-    bool circulation_hp_active = hp1_circulation_evidence && hp1_active_guard;
+    bool circulation_hp_active = hp1_circulation_evidence && hp1_circulation_active;
     bool circulation_compressor_active = hp1_circulation_evidence && (hp1_lvl > 0 || hp1_cmd_lvl > 0);
     bool actuator_request_active = hp1_circulation_evidence && id(oq_actuator_hp1_req) > 0;
     bool minimum_off_active = oq_supervisory_state::low_load_minimum_off_active(
@@ -233,7 +235,7 @@ class Runtime {
         hp2_postflow_guard_.update(hp2_incidents, oq_sources::hp2.compressor_frequency, telemetry_now_ms);
     const bool hp2_circulation_evidence = !hp2_postflow.link_loss_hold_expired;
     this->compressor_postflow_active_ = this->compressor_postflow_active_ || hp2_postflow.required;
-    circulation_hp_active = circulation_hp_active || (hp2_circulation_evidence && hp2_active_guard);
+    circulation_hp_active = circulation_hp_active || (hp2_circulation_evidence && hp2_circulation_active);
     circulation_compressor_active =
         circulation_compressor_active || (hp2_circulation_evidence && (hp2_lvl > 0 || hp2_cmd_lvl > 0));
     actuator_request_active = actuator_request_active || (hp2_circulation_evidence && id(oq_actuator_hp2_req) > 0);

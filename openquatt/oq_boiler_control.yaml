@@ -356,4 +356,5 @@ interval:
               (uint32_t) (${oq_otb_field_timeout_s} * 1000UL),
               oq_boiler::RelayTargetConfig{${oq_boiler_relay_target_start_delta_c},
                                            ${oq_boiler_relay_target_stop_delta_c}},
+              ${oq_boiler_relay_power_house_on_off},
           }, inlet_fresh ? id(${secondary_water_out_temp_id}).state : NAN, ${oq_water_cp_j_per_kgk});

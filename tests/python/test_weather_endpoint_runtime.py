@@ -13,6 +13,8 @@ FIXTURES = ROOT / "tests/fixtures/weather"
 
 
 class WeatherEndpointRuntimeTest(unittest.TestCase):
+    archive_enabled = False
+
     @classmethod
     def setUpClass(cls):
         cls.directory = tempfile.TemporaryDirectory(prefix="oq-weather-endpoint-")
@@ -25,7 +27,9 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('#pragma once\n#include "weather_endpoint_stubs.h"\n')
         cls.binary = temporary / "weather-endpoint"
+        defines = ("-DUSE_OPENQUATT_MEASUREMENT_ARCHIVE",) if cls.archive_enabled else ()
         result = run_process(compiler_command(
+            *defines,
             "-I", str(temporary), "-I", str(FIXTURES), "-I", str(ROOT),
             "-I", str(ROOT / "openquatt"), "-I", str(ROOT / "components/openquatt_common"),
             str(FIXTURES / "endpoint_runtime.cpp"), "-o", str(cls.binary),
@@ -72,6 +76,10 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
         self.assertEqual(normal["fetched_ms"], (1 << 40) + 1000)
         self.assertEqual(normal["published_ms"], normal["fetched_ms"])
         self.assertEqual(normal["wind_direction_deg"], [0] * 36)
+        if self.archive_enabled:
+            self.assertEqual(normal["solar_wm2"], [0, None, 400] + [None] * 33)
+        else:
+            self.assertNotIn("solar_wm2", normal)
         self.assertAlmostEqual(normal["latitude"], 52.09, places=4)
         self.assertAlmostEqual(normal["longitude"], 6.15, places=4)
         self.assertEqual(partial["wind_direction_deg"][:3], [360, None, 0])
@@ -79,6 +87,7 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
         self.assertFalse(partial["current_wind"]["direction_valid"])
         self.assertIsNone(partial["current_wind"]["direction_deg"])
         self.assertEqual(missing["wind_direction_deg"], [None] * 36)
+        self.assertNotIn("solar_wm2", missing)
         self.assertFalse(missing["current_wind"]["valid"])
         self.assertTrue(missing["current"]["valid"])
         self.assertTrue(no_dew_point["current_wind"]["valid"])
@@ -91,6 +100,7 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
             self.assertIsNone(frame["current_wind"]["direction_deg"])
         for frame in (stale, disabled, location, ota):
             self.assertNotIn("wind_direction_deg", frame)
+            self.assertNotIn("solar_wm2", frame)
 
     def test_diagnostics_remain_readable_without_psram(self):
         self.scenario("diagnostics")
@@ -126,6 +136,10 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
         self.assertFalse(result["scenario"]["valid"])
         self.assertEqual(result["scenario"]["reason"], "location_invalid")
         self.assertEqual(result["scenario"]["temperature_c"], [None] * 3)
+
+
+class WeatherEndpointWithArchiveRuntimeTest(WeatherEndpointRuntimeTest):
+    archive_enabled = True
 
 
 if __name__ == "__main__":

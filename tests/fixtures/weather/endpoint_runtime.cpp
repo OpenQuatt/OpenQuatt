@@ -25,6 +25,12 @@ class Device : public openquatt_weather::OpenQuattWeather {
     series.current = {env.epoch - env.epoch % 900U, 10.5f, 85, 8, true};
     series.current_wind = {env.epoch - env.epoch % 900U, 2.5f, 359.5f, true, true};
     series.wind_direction_valid_mask = (uint64_t{1} << oq_weather::kHours) - 1;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    series.solar_valid_mask = 0b101;
+    series.solar_wm2[0] = 0;
+    series.solar_wm2[1] = 200;
+    series.solar_wm2[2] = 400;
+#endif
     for (size_t i = 0; i < oq_weather::kHours; ++i) {
       series.time[i] = env.epoch - env.epoch % 3600U + i * 3600U;
       series.temperature[i] = serial == 111 ? 11.1f : serial == 222 ? 22.2f : 10.5f;
@@ -43,6 +49,12 @@ class Device : public openquatt_weather::OpenQuattWeather {
     storage_[0].current.wind_direction_valid_mask = 0;
     publish_forecast_();
   }
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  void clear_solar() {
+    storage_[0].current.solar_valid_mask = 0;
+    publish_forecast_();
+  }
+#endif
   void partial_direction() {
     auto& series = storage_[0].current;
     series.wind_direction_valid_mask &= ~uint64_t{2};
@@ -418,6 +430,9 @@ void wind_research_gates() {
     h.device.install();
     if (gate == "partial") h.device.partial_direction();
     if (gate == "missing") h.device.clear_wind();
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+    if (gate == "missing") h.device.clear_solar();
+#endif
     if (gate == "no_dew_point") h.device.clear_current();
     if (gate == "stale") env.now_ms += 15001;
     if (gate == "expired") {

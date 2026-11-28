@@ -184,32 +184,6 @@ void test_confirmed_common_pump_pwm_rejects_frost_command() {
   assert(confirmed_common_pump_pwm(primary, &peer, now_ms, max_age_ms, 625) == frost_pwm);
 }
 
-void test_confirmed_common_pump_pwm_rejects_queued_frost_recovery_steps() {
-  oq_sources::RawFloatReceipt primary, peer;
-  constexpr uint64_t now_ms = 50'000;
-  constexpr uint64_t max_age_ms = 45'000;
-  constexpr int frost_pwm = 800;
-  FrostRecoveryCommands recovery;
-  primary.observe(kAutoStartFallbackIpwm, 20'000, true);
-  peer.observe(kAutoStartFallbackIpwm, 20'000, true);
-  const auto resume_pwm = [&](const oq_sources::RawFloatReceipt* other) {
-    return confirmed_common_pump_pwm(primary, other, now_ms, max_age_ms, frost_pwm, recovery);
-  };
-
-  assert(resume_pwm(nullptr) == kAutoStartFallbackIpwm);
-  assert(resume_pwm(&peer) == kAutoStartFallbackIpwm);
-  recovery.record(kAutoStartFallbackIpwm);
-  assert(resume_pwm(nullptr) == 0);
-  recovery.record(kMinimumIpwm);
-  assert(resume_pwm(&peer) == 0);
-  primary.observe(kMinimumIpwm, 25'000, true);
-  peer.observe(kMinimumIpwm, 25'000, true);
-  assert(resume_pwm(nullptr) == 0);
-  assert(resume_pwm(&peer) == 0);
-  recovery = {};
-  assert(resume_pwm(&peer) == kMinimumIpwm);
-}
-
 void test_local_flow_selection() {
   assert(select_local_flow(false, 720.0f, 400.0f, 150.0f) == 720.0f);
   assert(isnan(select_local_flow(false, NAN, 400.0f, 150.0f)));
@@ -248,12 +222,12 @@ void test_circulation_aggregate_uses_only_fresh_producers() {
   assert(selected_flow() == 525.0f);
   hp2.invalidate();
   assert(selected_flow() == 550.0f);
-  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, false, selected_flow(), 400.0f) == kMaximumIpwm);
+  assert(update_postflow_ipwm_limit(kMaximumIpwm, selected_flow(), 400.0f) == kMaximumIpwm);
   hp2.observe(500.0f, now_ms - max_age_ms - 1U, true);
   assert(selected_flow() == 550.0f);
   controller.invalidate();
   assert(isnan(selected_flow()));
-  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, false, selected_flow(), 400.0f) == kAutoStartFallbackIpwm);
+  assert(update_postflow_ipwm_limit(kMaximumIpwm, selected_flow(), 400.0f) == kMinimumIpwm);
   hp2.observe(500.0f, now_ms - max_age_ms, true);
   assert(selected_flow() == 500.0f);
 }
@@ -305,21 +279,14 @@ void test_flow_mismatch_hold_is_rollover_safe() {
   assert(update_mismatch(state, inputs));
 }
 
-void test_circulation_recovery_keeps_stronger_pump_drive() {
+void test_postflow_recovery_keeps_strongest_pump_drive() {
   constexpr float minimum_flow_lph = 400.0f;
-  int limit = update_circulation_ipwm_limit(kMaximumIpwm, 800, false, 550.0f, minimum_flow_lph);
+  int limit = update_postflow_ipwm_limit(kMaximumIpwm, minimum_flow_lph, minimum_flow_lph);
   assert(limit == kMaximumIpwm);
-  limit = update_circulation_ipwm_limit(limit, 800, false, 0.0f, minimum_flow_lph);
-  assert(limit == kAutoStartFallbackIpwm);
-  limit = update_circulation_ipwm_limit(limit, 440, false, 400.0f, minimum_flow_lph);
-  assert(limit == kAutoStartFallbackIpwm);
-  limit = update_circulation_ipwm_limit(limit, 440, false, NAN, minimum_flow_lph);
+  limit = update_postflow_ipwm_limit(limit, 399.0f, minimum_flow_lph);
   assert(limit == kMinimumIpwm);
-  assert(update_circulation_ipwm_limit(limit, 50, false, 700.0f, minimum_flow_lph) == kMinimumIpwm);
-
-  assert(update_circulation_ipwm_limit(kMaximumIpwm, 300, false, 0.0f, minimum_flow_lph) == kMinimumIpwm);
-  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, true, 399.0f, minimum_flow_lph) == kMinimumIpwm);
-  assert(update_circulation_ipwm_limit(kMaximumIpwm, 800, true, NAN, minimum_flow_lph) == kMinimumIpwm);
+  assert(update_postflow_ipwm_limit(limit, 700.0f, minimum_flow_lph) == kMinimumIpwm);
+  assert(update_postflow_ipwm_limit(kMaximumIpwm, NAN, minimum_flow_lph) == kMinimumIpwm);
 }
 
 void test_execution_mode_labels_are_stable() {
@@ -340,14 +307,13 @@ int main() {
   test_auto_start_ignores_a_saved_frost_command_after_frost();
   test_confirmed_common_pump_pwm();
   test_confirmed_common_pump_pwm_rejects_frost_command();
-  test_confirmed_common_pump_pwm_rejects_queued_frost_recovery_steps();
   test_local_flow_selection();
   test_local_flow_receipt_tracks_the_selected_contributors();
   test_circulation_aggregate_uses_only_fresh_producers();
   test_normal_cooling_and_manual_flow_setpoint_selection();
   test_flow_mismatch_hold_hysteresis_and_pump_gate();
   test_flow_mismatch_hold_is_rollover_safe();
-  test_circulation_recovery_keeps_stronger_pump_drive();
+  test_postflow_recovery_keeps_strongest_pump_drive();
   test_execution_mode_labels_are_stable();
   return 0;
 }

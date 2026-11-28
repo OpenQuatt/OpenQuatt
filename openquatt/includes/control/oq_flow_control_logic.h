@@ -22,13 +22,10 @@ inline int clamp_ipwm(int value) {
   return value;
 }
 
-inline int update_circulation_ipwm_limit(int limit, int current_ipwm, bool postflow, float flow_lph,
-                                         float minimum_flow_lph) {
+inline int update_postflow_ipwm_limit(int limit, float flow_lph, float minimum_flow_lph) {
   if (isfinite(flow_lph) && flow_lph >= minimum_flow_lph) return limit;
-  // A lower iPWM drives the pump harder. Keep the stronger setting for this
-  // circulation period so a recovered sample cannot undo the rescue.
-  const bool already_boosted = limit <= kAutoStartFallbackIpwm || current_ipwm <= kAutoStartFallbackIpwm;
-  return postflow || already_boosted ? kMinimumIpwm : kAutoStartFallbackIpwm;
+  // Keep the strongest pump setting until compressor postflow ends.
+  return kMinimumIpwm;
 }
 
 inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm,
@@ -39,25 +36,11 @@ inline int compute_start_pwm(bool commissioning_start, int commissioning_start_p
   return kAutoStartFallbackIpwm;
 }
 
-struct FrostRecoveryCommands {
-  bool fallback_queued{false};
-  bool maximum_drive_queued{false};
-
-  void record(int pwm) {
-    fallback_queued |= pwm == kAutoStartFallbackIpwm;
-    maximum_drive_queued |= pwm == kMinimumIpwm;
-  }
-
-  bool contains(float pwm) const {
-    return (fallback_queued && pwm == kAutoStartFallbackIpwm) || (maximum_drive_queued && pwm == kMinimumIpwm);
-  }
-};
-
 inline int confirmed_common_pump_pwm(const oq_sources::RawFloatReceipt& primary,
                                      const oq_sources::RawFloatReceipt* peer, uint64_t now_ms, uint64_t max_age_ms,
-                                     int ignored_pwm, const FrostRecoveryCommands& frost_recovery = {}) {
-  if (!primary.fresh(now_ms, max_age_ms) || primary.value == ignored_pwm || frost_recovery.contains(primary.value) ||
-      primary.value < kMinimumIpwm || primary.value > kMaximumIpwm)
+                                     int ignored_pwm) {
+  if (!primary.fresh(now_ms, max_age_ms) || primary.value == ignored_pwm || primary.value < kMinimumIpwm ||
+      primary.value > kMaximumIpwm)
     return 0;
   // A shared write cannot preserve two different pump commands.
   if (peer != nullptr && (!peer->fresh(now_ms, max_age_ms) || peer->value != primary.value)) return 0;

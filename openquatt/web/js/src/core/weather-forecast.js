@@ -4,6 +4,8 @@ import { getBasePath } from "./url-path.js";
 
 const integer = (value) => Number.isInteger(value) && value >= 0 && value <= 0xffffffff;
 const finiteRange = (value, low, high) => typeof value === "number" && Number.isFinite(value) && value >= low && value <= high;
+const optionalHours = (values, max) => Array.isArray(values) && values.length === 36
+  ? Array.from(values, value => finiteRange(value, 0, max) ? value : null) : [];
 const MODEL = "knmi_harmonie_arome_netherlands";
 const SCENARIO_HORIZONS = [1800, 3600, 10800];
 export const getWeatherForecastEndpoint = () => `${getBasePath()}/openquatt/weather/forecast`;
@@ -77,6 +79,8 @@ export function normalizeWeatherForecast(payload, receivedAt = Date.now(), recei
     ...payload, current: { ...current },
     ...(scenario ? { scenario } : {}), ...(last ? { last_scenario: last } : {}),
     temperature_c: payload.valid ? [...payload.temperature_c] : [], wind_mps: payload.valid ? [...payload.wind_mps] : [],
+    wind_direction_deg: payload.valid ? optionalHours(payload.wind_direction_deg, 360) : [],
+    solar_wm2: payload.valid ? optionalHours(payload.solar_wm2, 2000) : [],
     receivedAt, receivedMono, endpoint: getWeatherForecastEndpoint(),
   };
 }

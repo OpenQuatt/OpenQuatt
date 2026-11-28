@@ -20,6 +20,7 @@ struct Config {
   uint32_t otb_min_off_ms = 0;
   uint32_t otb_field_timeout_ms = 0;
   oq_boiler::RelayTargetConfig relay_target = {};
+  bool relay_power_house_on_off = false;
 };
 
 class Runtime {
@@ -87,7 +88,6 @@ class Runtime {
     const uint32_t now_ms = (uint32_t)millis();
     const int control_mode = id(oq_control_mode_code);
     const float supply_c = id(water_supply_temp_selected).state;
-    const bool supply_valid = !isnan(supply_c);
     const bool opentherm_selected =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     const bool runtime_available = !id(oq_runtime_polling_paused).state && !id(oq_boiler_runtime_pause_state);
@@ -98,10 +98,34 @@ class Runtime {
         id(oq_boiler_transport_settle_required), now_ms, id(oq_boiler_transport_change_ms), config.transport_settle_ms);
     if (transport_settled) id(oq_boiler_transport_settle_required) = false;
 
-    const auto command = command_();
+    auto command = command_();
+    const bool fixed_power_r1 = config.relay_power_house_on_off && !opentherm_selected &&
+                                command.source == oq_boiler::COMMAND_SOURCE_POWER_HOUSE;
+    if (fixed_power_r1) {
+      // An earlier Power House request can outlive revocation of permission.
+      const bool heating_allowed = id(heating_enable_valid).has_state() && id(heating_enable_valid).state &&
+                                   id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
+      const auto relay_power =
+          oq_boiler::evaluate_fixed_relay_power(command.requested_power_w, id(oq_cm3_deficit_on_w).state,
+                                                id(oq_cm3_deficit_off_w).state, id(oq_boiler_output_request));
+      command.demand_present &= heating_allowed && relay_power.valid;
+      command.heat_request &= relay_power.heat_requested;
+    }
+    // The fixed-output heater needs a live measurement after the heater.
+    // An outdoor-unit outlet fallback cannot measure the heat it adds.
+    const bool supply_valid =
+        isfinite(supply_c) &&
+        (!fixed_power_r1 ||
+         (id(water_supply_source).current_option() == "Local" && id(oq_water_supply_temp_current_source_ready) &&
+          !id(oq_water_supply_temp_selected_hold_active) && !id(oq_water_supply_temp_fallback_runtime_active)));
+    // Also check the current sample: the independent temperature guard can
+    // still reflect the previous sample when a local sensor recovers.
+    const float maximum_water_c = maximum_water_temperature_();
+    const bool boiler_inhibit =
+        id(oq_water_temp_boiler_inhibit_active) || (fixed_power_r1 && supply_valid && supply_c >= maximum_water_c);
     const float target_c = command.target_temperature_c;
     const float flow_lph = id(flow_rate_selected).state;
-    const bool flow_valid = !isnan(flow_lph);
+    const bool flow_valid = isfinite(flow_lph);
     const bool flow_sufficient = flow_valid && flow_lph >= config.minimum_flow_lph && !id(oq_lowflow_fault_active);
     const bool target_valid = !isnan(target_c) && target_c > 0.0f && target_c <= 90.0f && flow_sufficient;
     // Same degraded gate as the supervisor: confirmed stops pass, and
@@ -109,9 +133,6 @@ class Runtime {
     // sites must stay in sync so CM4 selection and the physical boiler output
     // cannot disagree.
     const bool fallback_outputs_safe = id(oq_incident_manager).all_fallback_output_gates_clear();
-    const float water_limit_setting_c = id(max_water_temp_limit_c).state;
-    const float maximum_water_c =
-        isnan(water_limit_setting_c) ? 60.0f : fmaxf(25.0f, fminf(water_limit_setting_c, 75.0f));
     const auto thermal =
         start_thermal_decision_(command, opentherm_selected, supply_c, target_c, maximum_water_c, now_ms, config);
     publish_start_thermal_decision_(thermal, command, supply_c, target_c);
@@ -119,12 +140,11 @@ class Runtime {
     const bool command_rearmed =
         oq_boiler::command_satisfies_rearm(id(oq_boiler_rearm_required), command, id(oq_boiler_rearm_after_command_ms));
     if (command_rearmed) id(oq_boiler_rearm_required) = false;
-    // The R1 relay has no target channel, so the target temperature the command
-    // already carries is realised by regulating the binary output around it.
-    // OpenTherm keeps receiving the target over the bus and is unaffected.
+    // A fixed-output R1 heater can serve the Power House heat request directly.
+    // The other target-controlled R1 commands regulate around the water target.
     const auto relay_target = oq_boiler::evaluate_relay_target(
-        {oq_boiler::relay_target_control_applies(command.source, opentherm_selected), command.heat_request,
-         id(oq_boiler_output_request), supply_c, target_c, config.relay_target});
+        {oq_boiler::relay_target_control_applies(command.source, opentherm_selected, fixed_power_r1),
+         command.heat_request, id(oq_boiler_output_request), supply_c, target_c, config.relay_target});
     publish_relay_target_state_(relay_target, supply_c, target_c);
     const uint32_t minimum_on_ms = opentherm_selected ? config.otb_min_on_ms : config.relay_min_on_ms;
     const uint32_t minimum_off_ms = opentherm_selected ? config.otb_min_off_ms : config.relay_min_off_ms;
@@ -136,7 +156,7 @@ class Runtime {
         flow_valid,
         flow_sufficient,
         fallback_outputs_safe,
-        id(oq_water_temp_boiler_inhibit_active),
+        boiler_inhibit,
         id(oq_water_temp_hard_trip_active),
         id(oq_boiler_connection_mismatch_state),
         transport_available,
@@ -299,6 +319,11 @@ class Runtime {
     }
     return oq_boiler::evaluate_boiler_start_thermal_state(opentherm_selected, boiler_temperature_fresh,
                                                           boiler_temperature_c, supply_c, target_c, maximum_c);
+  }
+
+  static float maximum_water_temperature_() {
+    const float configured_c = id(max_water_temp_limit_c).state;
+    return isnan(configured_c) ? 60.0f : fmaxf(25.0f, fminf(configured_c, 75.0f));
   }
 
   static float boiler_temperature_() {
