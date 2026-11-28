@@ -186,7 +186,9 @@ inline void confirm_flame(const Input& input, State& state, Output& output, cons
   // hand-over) says nothing about this target, also when it keeps burning
   // after the hand-over.
   if (input.feedback_available) {
-    if (!input.firing) {
+    // During hot water the burner may keep running while no heating flame
+    // is reported, so that says nothing about the earlier flame.
+    if (!input.firing && !input.dhw_active) {
       state.foreign_flame = false;
     } else if (!input.command_applied) {
       state.foreign_flame = true;

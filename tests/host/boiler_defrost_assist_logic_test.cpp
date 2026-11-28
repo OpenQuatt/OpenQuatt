@@ -614,6 +614,29 @@ void test_flame_that_burns_through_the_handover_does_not_confirm() {
   assert(source.confirmations == 1);
 }
 
+void test_hot_water_does_not_clear_a_foreign_flame() {
+  // The supervisory reports no heating flame while the source makes hot
+  // water, although the burner keeps running. A short tap during the
+  // hand-over must not turn the earlier flame into this session's own.
+  Source source;
+  source.applied = false;
+  source.start_session();
+  for (int tick = 0; tick < 6; ++tick) source.step(true, true);
+  source.applied = true;
+  for (int tick = 0; tick < 3; ++tick) source.step(true, true);
+  source.dhw = true;
+  for (int tick = 0; tick < 2; ++tick) source.step(true, false);
+  assert(source.state.foreign_flame);
+  source.dhw = false;
+  for (int tick = 0; tick < 6; ++tick) source.step(true, true);
+  assert(source.confirmations == 0);
+  assert(source.raises == 0);
+  // Once the flame really goes out the full search runs.
+  for (int tick = 0; tick < 60; ++tick) source.step(true, source.fires_below(8.0f));
+  assert(source.raises == 3);
+  assert(source.confirmations == 1);
+}
+
 void test_flame_on_the_first_applied_tick_confirms() {
   // No flame before the command: a source that answers within one tick fires
   // for this session.
@@ -939,6 +962,7 @@ int main() {
   test_dhw_pauses_search_and_flame_does_not_count();
   test_foreign_flame_does_not_confirm_before_the_command_is_applied();
   test_flame_that_burns_through_the_handover_does_not_confirm();
+  test_hot_water_does_not_clear_a_foreign_flame();
   test_flame_on_the_first_applied_tick_confirms();
   test_foreign_flame_is_forgotten_at_session_end();
   test_flame_loss_below_target_gets_one_extra_step();
