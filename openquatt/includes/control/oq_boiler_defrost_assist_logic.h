@@ -110,6 +110,10 @@ struct State {
   // every interruption of the applied command, because the source then has
   // to start over.
   bool ignition_wait_due = true;
+  // A flame that already burned before this session's command was applied
+  // answers another command (normal assist that hands CM3 over without an
+  // off/on cycle). It does not count until it has gone out once.
+  bool foreign_flame = false;
   bool ceiling_reported = false;
 };
 
@@ -179,8 +183,23 @@ inline void confirm_flame(const Input& input, State& state, Output& output, cons
   const float step_c = usable_step(config.raise_step_c);
   // Only a flame that answers this session's own applied command confirms
   // it. A flame that another command still holds (normal assist before a
-  // hand-over) says nothing about this target.
+  // hand-over) says nothing about this target, also when it keeps burning
+  // after the hand-over.
+  if (input.feedback_available) {
+    if (!input.firing) {
+      state.foreign_flame = false;
+    } else if (!input.command_applied) {
+      state.foreign_flame = true;
+    }
+  }
   if (input.feedback_available && input.command_applied && input.firing && !input.dhw_active) {
+    if (state.foreign_flame) {
+      // The source fires, so there is nothing to raise. Once it stops it has
+      // to start over for this session.
+      state.wait_timing = false;
+      state.ignition_wait_due = true;
+      return;
+    }
     if (!state.flame_confirmed) {
       state.flame_confirmed = true;
       output.flame_confirmed_now = true;
@@ -320,6 +339,7 @@ inline Output update(const Input& input, State state, const Config& config = {})
     state.extra_step_used = false;
     state.wait_timing = false;
     state.ignition_wait_due = true;
+    state.foreign_flame = false;
     state.ceiling_reported = false;
   }
   output.released = was_active && !state.active;

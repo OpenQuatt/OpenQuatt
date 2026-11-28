@@ -591,6 +591,52 @@ void test_foreign_flame_does_not_confirm_before_the_command_is_applied() {
   assert(source.confirmations == 1);
 }
 
+void test_flame_that_burns_through_the_handover_does_not_confirm() {
+  // Normal assist makes the source fire, and CM3 continues into this session
+  // without an off/on cycle: the flame keeps burning when the session's own
+  // command is applied. It still answers the earlier command.
+  Source source;
+  source.applied = false;
+  source.start_session();
+  for (int tick = 0; tick < 6; ++tick) source.step(true, true);
+  source.applied = true;
+  for (int tick = 0; tick < 12; ++tick) source.step(true, true);
+  assert(source.confirmations == 0);
+  assert(!source.state.flame_confirmed);
+  // A burning source is no reason to raise either.
+  assert(source.raises == 0);
+  assert(near(source.target_c, 34.4f));
+  // The source stops because its water is above its start point. The full
+  // search runs, not just the single extra step after a confirmed flame.
+  for (int tick = 0; tick < 60; ++tick) source.step(true, source.fires_below(8.0f));
+  assert(source.raises == 3);
+  assert(near(source.target_c, 40.4f));
+  assert(source.confirmations == 1);
+}
+
+void test_flame_on_the_first_applied_tick_confirms() {
+  // No flame before the command: a source that answers within one tick fires
+  // for this session.
+  Source source;
+  source.applied = false;
+  source.start_session();
+  for (int tick = 0; tick < 3; ++tick) source.step(true, false);
+  source.applied = true;
+  source.step(true, true);
+  assert(source.confirmations == 1);
+  assert(source.raises == 0);
+}
+
+void test_foreign_flame_is_forgotten_at_session_end() {
+  Source source;
+  source.applied = false;
+  source.start_session();
+  for (int tick = 0; tick < 6; ++tick) source.step(true, true);
+  assert(source.state.foreign_flame);
+  while (source.in_session) source.step(false, true);
+  assert(!source.state.foreign_flame);
+}
+
 // Runs the recorded e-boiler until it fires at 36.4 C.
 Source confirmed_source() {
   Source source;
@@ -892,6 +938,9 @@ int main() {
   test_blocked_command_is_never_raised();
   test_dhw_pauses_search_and_flame_does_not_count();
   test_foreign_flame_does_not_confirm_before_the_command_is_applied();
+  test_flame_that_burns_through_the_handover_does_not_confirm();
+  test_flame_on_the_first_applied_tick_confirms();
+  test_foreign_flame_is_forgotten_at_session_end();
   test_flame_loss_below_target_gets_one_extra_step();
   test_flame_loss_when_satisfied_is_not_raised();
   test_satisfied_uses_supply_without_boiler_water();

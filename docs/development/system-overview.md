@@ -391,7 +391,9 @@ transport reports the flame (OpenTherm), the session therefore confirms it.
 The supervisory passes the policy whether fresh feedback exists, whether
 the boiler chain has applied the command, whether the source fires for
 heating (a domestic-hot-water flame does not count) and the boiler water
-temperature. While an applied command is not followed by a flame, the
+temperature. A flame that already burned before the session's command was
+applied (normal assist handing CM3 over) does not count until it has gone
+out once. While an applied command is not followed by a flame, the
 policy raises the target by `oq_boiler_defrost_assist_raise_step_c` after
 `_ignition_wait_s` and then every `_raise_interval_s`, by `_raise_max_c` in
 total at most and never above the ceiling. At that bound the session stays
