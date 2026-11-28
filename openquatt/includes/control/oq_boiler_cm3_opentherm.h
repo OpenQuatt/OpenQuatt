@@ -35,6 +35,7 @@ struct Decision {
   bool managed = false;
   float target_c = NAN;
   oq_boiler::BlockReason block_reason = oq_boiler::BLOCK_NONE;
+  const char* stop_reason = nullptr;
 };
 
 class Control {
@@ -57,21 +58,22 @@ class Control {
 
   void discard_credit() { energy_ws_ = fminf(0.0f, energy_ws_); }
 
-  Decision stop(bool account_residual_heat = false, oq_boiler::BlockReason block_reason = oq_boiler::BLOCK_NONE) {
+  Decision stop(const char* reason, bool account_residual_heat = false,
+                oq_boiler::BlockReason block_reason = oq_boiler::BLOCK_NONE) {
     running_ = false;
     flame_seen_ = false;
     residual_heat_active_ = account_residual_heat;
-    return {true, NAN, block_reason};
+    return {true, NAN, block_reason, reason};
   }
 
-  Decision failed(uint32_t now_ms, bool early_flame_loss = false) {
+  Decision failed(uint32_t now_ms, const char* reason, bool early_flame_loss = false) {
     failed_at_ms_ = now_ms;
     // The flame receipt can precede the controller's filtered flow reading.
     // Only a confirmed flow interruption in the next few ticks can explain
     // this early flame loss. A timeout or thermal cutoff keeps its own rest.
     retry_ = early_flame_loss ? Retry::AwaitFlowConfirmation : Retry::Rest;
     discard_credit();
-    return stop();
+    return stop(reason);
   }
 
   bool managed_ = false;
@@ -93,7 +95,7 @@ class Control {
   float ordinary_target_c_ = NAN;
 };
 
-void apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::ControllerDecision& decision,
-           float& output_target_c);
+const char* apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::ControllerDecision& decision,
+                  float& output_target_c);
 
 }  // namespace oq_boiler_cm3_opentherm

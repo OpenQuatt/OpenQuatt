@@ -164,13 +164,21 @@ class Runtime {
     const auto cm3_input = cm3_context ? cm3_inputs_(config, command, input, decision, flow_lph, boiler_inlet_c,
                                                      water_cp_j_per_kgk, maximum_water_c)
                                        : oq_boiler_cm3_opentherm::Inputs{};
-    oq_boiler_cm3_opentherm::apply(cm3_opentherm_, cm3_context, cm3_input, decision, output_target_c);
+    const char* cm3_stop =
+        oq_boiler_cm3_opentherm::apply(cm3_opentherm_, cm3_context, cm3_input, decision, output_target_c);
     decision.block_reason = oq_boiler::refine_opentherm_transport_block_reason(
         decision.block_reason, opentherm_selected, oq_otb::connection_verification_state.ever_verified(),
         oq_otb::connection_verification_state.currently_verified());
 #endif
     const auto role = oq_boiler::boiler_role_for_source(command.source);
     const bool output_changed = id(oq_boiler_output_request) != decision.output_active;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    if (cm3_context && output_changed && !decision.output_active) {
+      ESP_LOGI("quatt.boiler", "CM3 OpenTherm CH off: %s (request=%.0f W, defrost=%d, flame=%d)",
+               cm3_stop != nullptr ? cm3_stop : oq_boiler::block_reason_text(decision.block_reason),
+               cm3_input.requested_power_w, cm3_input.defrost_active, cm3_input.flame_on);
+    }
+#endif
     id(oq_boiler_output_request) = decision.output_active;
     if (output_changed) id(oq_boiler_output_last_change_ms) = now_ms;
     id(oq_boiler_output_target_temperature_c) = output_target_c;

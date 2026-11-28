@@ -69,20 +69,20 @@ Decision Control::tick(const Inputs& in) {
 
   if (!in.flow_sufficient) {
     energy_ws_ = 0.0f;
-    return stop();
+    return stop("insufficient flow");
   }
   if (!telemetry_valid && (in.heat_requested || in.minimum_on_active)) {
     discard_credit();
-    return stop(false, oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE);
+    return stop("telemetry unavailable", false, oq_boiler::BLOCK_CM3_OPENTHERM_TELEMETRY_UNAVAILABLE);
   }
   if (elapsed_ms > kMaximumTickGapMs || in.dhw_active || in.fault_active) {
     discard_credit();
-    return stop();
+    return stop(in.fault_active ? "boiler fault" : in.dhw_active ? "domestic hot water" : "controller tick gap");
   }
 
   const float ceiling_c = in.maximum_water_c - kWaterLimitReserveC;
   const float outlet_cutoff_c = in.maximum_water_c - kOutletCutoffReserveC;
-  if (running_ && in.outlet_c >= outlet_cutoff_c) return failed(in.now_ms);
+  if (running_ && in.outlet_c >= outlet_cutoff_c) return failed(in.now_ms, "outlet temperature limit");
   if (!in.heat_requested || waiting_for_setpoint_command_ || (dose && !room_below_target)) {
     energy_ws_ = 0.0f;
     // Keep CH on for a normal stop within the minimum run time, dropping
@@ -93,7 +93,9 @@ Decision Control::tick(const Inputs& in) {
       target_c_ = running_ ? fminf(target_c_, hold_c) : hold_c;
       return {true, target_c_, oq_boiler::BLOCK_MIN_ON_TIME};
     }
-    return stop();
+    return stop(!in.heat_requested              ? "heat request ended"
+                : waiting_for_setpoint_command_ ? "awaiting command after setpoint reduction"
+                                                : "room target reached");
   }
 
   const auto target = oq_boiler::target_from_power(fmaxf(in.requested_power_w, minimum_w), in.capacity_kw * 1000.0f,
@@ -101,7 +103,7 @@ Decision Control::tick(const Inputs& in) {
   if (!isfinite(in.requested_power_w) || in.requested_power_w <= 0.0f || !target.valid ||
       target.requested_power_w < minimum_w) {
     discard_credit();
-    return stop();
+    return stop("no feasible water target for requested heat");
   }
 
   const float seconds = elapsed_ms / 1000.0f;
@@ -121,24 +123,25 @@ Decision Control::tick(const Inputs& in) {
   }
 
   if (running_) {
-    if (!in.ch_applied) return stop();
+    if (!in.ch_applied) return stop("CH command withdrawn");
     if (flame_seen_ && !in.flame_on) {
       // A stable burn ended. The normal CH minimum-off time and the
       // boiler's own anti-cycle timer still guard the next start.
-      if (in.now_ms - flame_ms_ >= kStableFlameMs) return stop();
-      return failed(in.now_ms, true);
+      if (in.now_ms - flame_ms_ >= kStableFlameMs) return stop("flame went out");
+      return failed(in.now_ms, "early flame loss", true);
     }
-    if (!flame_seen_ && !in.flame_on && in.now_ms - started_ms_ >= kIgnitionTimeoutMs) return failed(in.now_ms);
+    if (!flame_seen_ && !in.flame_on && in.now_ms - started_ms_ >= kIgnitionTimeoutMs)
+      return failed(in.now_ms, "ignition timeout");
     if (!flame_seen_ && in.flame_on) {
       flame_seen_ = true;
       flame_ms_ = in.now_ms;
     }
-    if (!flame_seen_ && in.defrost_active) return stop();
+    if (!flame_seen_ && in.defrost_active) return stop("defrost before ignition");
 
     const uint32_t flame_age_ms = in.now_ms - flame_ms_;
     if (dose && flame_seen_ && flame_age_ms >= kDoseMinimumMs && energy_ws_ <= 0.0f) {
       residual_heat_started_ms_ = in.now_ms;
-      return stop(true);
+      return stop("heat dose complete", true);
     }
     if (flame_seen_ && flame_age_ms >= kStableFlameMs) {
       const float ramp_rate = dose ? kDoseTargetRampCPerSecond : kTargetRampCPerSecond;
@@ -146,7 +149,7 @@ Decision Control::tick(const Inputs& in) {
       const float outlet_floor_c = dose ? fminf(target_c_, in.outlet_c - kDoseTargetBelowOutletC) : ramp_target_c;
       target_c_ = fmaxf(target.target_temperature_c, fmaxf(ramp_target_c, outlet_floor_c));
     } else if (target_c_ > ceiling_c) {
-      return stop();
+      return stop("ignition target exceeds water ceiling");
     }
     target_c_ = fminf(target_c_, ceiling_c);
     return {true, target_c_};
@@ -175,8 +178,8 @@ Decision Control::tick(const Inputs& in) {
   return {true, target_c_};
 }
 
-void apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::ControllerDecision& decision,
-           float& output_target_c) {
+const char* apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::ControllerDecision& decision,
+                  float& output_target_c) {
   if (!cm3_context) {
     // During an authorized CM3 -> CM4 handover, dispatch can still hold the
     // previous PH command. Preserve the ordinary target and the CH-on edge,
@@ -187,11 +190,11 @@ void apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::Cont
       output_target_c = NAN;
     }
     control = {};
-    return;
+    return nullptr;
   }
 
   const auto cm3 = control.tick(in);
-  if (!cm3.managed || decision.force_off) return;
+  if (!cm3.managed || decision.force_off) return nullptr;
   output_target_c = cm3.target_c;
   decision.output_active = isfinite(output_target_c);
   if (cm3.block_reason != oq_boiler::BLOCK_NONE) {
@@ -203,6 +206,7 @@ void apply(Control& control, bool cm3_context, const Inputs& in, oq_boiler::Cont
     decision.block_reason = oq_boiler::BLOCK_CM3_OPENTHERM_WAITING;
     decision.blocked = false;
   }
+  return cm3.stop_reason;
 }
 
 }  // namespace oq_boiler_cm3_opentherm
