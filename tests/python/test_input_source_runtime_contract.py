@@ -23,6 +23,12 @@ def entity_block(source: str, entity_id: str) -> str:
 
 
 class InputSourceRuntimeContractTest(unittest.TestCase):
+    def test_switch_to_local_refreshes_the_local_probe_before_the_selected_supply(self) -> None:
+        callback = SOURCE_RUNTIME.split("void water_source_changed(", 1)[1].split("\n  }", 1)[0]
+        refresh_local = 'if (option == "Local") id(water_supply_temp_esp).update();'
+        self.assertIn(refresh_local, callback)
+        self.assertLess(callback.index(refresh_local), callback.index("id(water_supply_temp_selected).update();"))
+
     def test_circulation_uses_the_receipt_for_the_current_flow_route(self) -> None:
         flow_check = SOURCE_RUNTIME.split("float circulation_flow_lph(", 1)[1].split("\n  }", 1)[0]
         self.assertIn("flow_selection()", flow_check)

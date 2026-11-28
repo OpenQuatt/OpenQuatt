@@ -20,24 +20,24 @@ class Runtime {
     if (id(oq_post_dhw_run_through).state || state_.post_dhw_active || state_.awaiting_supply ||
         state_.awaiting_heat_pump_water) {
       const uint64_t now = oq_sources::monotonic_ms();
-      const bool local_pt1000 = id(water_supply_source).current_option() == "Local" &&
-                                id(oq_local_supply_temp_source).current_option() == "PT1000";
-      const bool fresh_pt1000 =
-          oq_sources::local_supply_pt1000.fresh(now, 7500) &&
-          id(oq_water_supply_temp_current_source_code) == oq_supply_calibration::SOURCE_LOCAL_PT1000;
-      inputs.supply_observed = isfinite(inputs.supply_c) && id(oq_water_supply_temp_current_source_ready) &&
-                               !id(oq_water_supply_temp_fallback_runtime_active) &&
-                               !id(oq_water_supply_temp_selected_hold_active) && (!local_pt1000 || fresh_pt1000);
-      if (local_pt1000 && inputs.supply_observed) inputs.dhw_end_ms = post_dhw_end_(now, inputs.control_mode);
-      if (local_pt1000 && inputs.supply_observed &&
-          (inputs.dhw_end_ms != 0 || state_.post_dhw_active || state_.awaiting_supply ||
-           state_.awaiting_heat_pump_water)) {
+      const auto source = id(oq_water_supply_temp_current_source_code);
+      const bool local =
+          source == oq_supply_calibration::SOURCE_LOCAL_PT1000 || source == oq_supply_calibration::SOURCE_LOCAL_DS18B20;
+      float offset_c = 0.0f;
+      const auto& sources = oq_sensor_source::runtime();
+      const auto receipt = sources.system_supply_raw_receipt(offset_c);
+      // Local sensors poll every 5 s. Remote inputs need their own recent update;
+      // the normal selected sensor can keep showing their value for much longer.
+      inputs.supply_observed =
+          isfinite(inputs.supply_c) && receipt.fresh(now, local ? 7500 : 15000) && receipt.value >= -20.0f;
+      if (inputs.supply_observed) inputs.dhw_end_ms = post_dhw_end_(now, inputs.control_mode);
+      if (inputs.supply_observed && (inputs.dhw_end_ms != 0 || state_.post_dhw_active || state_.awaiting_supply ||
+                                     state_.awaiting_heat_pump_water)) {
         // Check the newest receipt as well as the last selected update. The
-        // selection and the MAX31865 publish independently of this loop.
-        const float offset = id(water_supply_temp_calibration_offset).state;
-        const float raw_c = oq_sources::local_supply_pt1000.value;
-        if (isfinite(offset)) inputs.supply_c = fmaxf(inputs.supply_c, raw_c + offset);
-        if (raw_c >= oq_thermal_limits::kPostDhwSystemCeilingC) inputs.supply_c = fmaxf(inputs.supply_c, raw_c);
+        // producer and the selected sensor publish independently of this loop.
+        inputs.supply_c = fmaxf(inputs.supply_c, receipt.value + offset_c);
+        if (receipt.value >= oq_thermal_limits::kPostDhwSystemCeilingC)
+          inputs.supply_c = fmaxf(inputs.supply_c, receipt.value);
       }
       if (inputs.dhw_end_ms != 0 || state_.post_dhw_active || state_.awaiting_heat_pump_water) {
         const uint8_t applied = applied_units_();

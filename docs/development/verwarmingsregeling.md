@@ -206,7 +206,15 @@ zijn dan het ODU-water. De vrijgave eindigt zodra de systeemaanvoer terug is
 op of onder de zachte grens, of op de eerste regeltick vanaf 90 s na het
 tapwatereinde.
 
-De ketelbegrenzing volgt de lokale PT1000. De warmtepomp regelt tijdelijk terug
+De ketelbegrenzing volgt de geselecteerde systeemaanvoer. De lokale PT1000,
+DS18B20, CIC en Home Assistant kunnen de meting leveren. Voor lokale bronnen
+mag de ontvangst maximaal 7,5 s oud zijn en voor CIC en Home Assistant maximaal
+15 s. Een externe bron moet ook bij een gelijkblijvende temperatuur verse
+waarden aanleveren. Na een bronwissel kan de vrijgave doorgaan met een verse,
+geldige meting van de nieuwe bron. Bij een vastgehouden waarde of ODU-fallback
+eindigt de vrijgave.
+
+De warmtepomp regelt tijdelijk terug
 op de hoogste verse in- of uitlaattemperatuur van de draaiende units. De
 vrijgave eindigt zodra dit water de ingestelde maximumtemperatuur of 55 °C
 bereikt, of als de systeemaanvoer 70 °C bereikt. Alleen het huidige
