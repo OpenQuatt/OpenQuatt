@@ -25,7 +25,7 @@
 # Interaction with Control Modes:
 #   - Active in CM1/CM2/CM3/CM4/CM5/CM100 (AUTO=PI, MANUAL=fixed iPWM)
 #   - CM0: early return (supervisory owns pump state in idle)
-#   - CM98: frost PWM with a low-flow recovery path
+#   - CM98: fixed frost PWM
 #
 # Safety / fail-safe:
 #   - Hydraulic safety: at insufficient flow, heat production must stop (via CM1)

@@ -44,6 +44,15 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
         ):
             self.assertRegex(route_reader, rf"case Route::{route}:\s*return [^;]*{re.escape(receipt)}")
 
+    def test_frost_uses_fixed_pwm_and_only_compressor_postflow_can_boost(self) -> None:
+        self.assertRegex(SUBSTITUTIONS_YAML, r'(?m)^oq_cm98_pump_ipwm: "800"\s')
+        self.assertIn("const bool postflow = cm_code == 1 && config.compressor_postflow_active;", FLOW_RUNTIME)
+        self.assertIn("if (!postflow) postflow_ipwm_limit_ = oq_flow_control::kMaximumIpwm;", FLOW_RUNTIME)
+        frost_branch = FLOW_RUNTIME.split("} else if (frost) {", 1)[1].split("} else {", 1)[0]
+        self.assertIn("pwm = oq_flow_control::clamp_ipwm(config.frost_ipwm);", frost_branch)
+        self.assertRegex(FLOW_RUNTIME, r"if \(postflow\) \{\s+const float flow_lph =\s+"
+                         r"oq_sensor_source::runtime\(\)\.circulation_flow_lph\(")
+
     def test_entity_options_defaults_and_ranges_are_preserved(self) -> None:
         source_contracts = {
             "water_supply_source": ("options: [Local, CIC, HA input]", "initial_option: Local"),
