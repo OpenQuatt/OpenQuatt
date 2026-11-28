@@ -20,6 +20,7 @@ enum class Source : uint8_t {
   HEATING_CURVE,
   SCHEDULE,
   OPEN_METEO,
+  BLE,
 };
 
 struct NumericSample {
@@ -124,6 +125,7 @@ struct NumericSources {
   NumericSample mqtt;
   NumericSample opentherm;
   NumericSample open_meteo;
+  NumericSample ble;
 };
 
 inline NumericSample sample_for(Source source, const NumericSources& sources) {
@@ -144,6 +146,8 @@ inline NumericSample sample_for(Source source, const NumericSources& sources) {
       return sources.opentherm;
     case Source::OPEN_METEO:
       return sources.open_meteo;
+    case Source::BLE:
+      return sources.ble;
     default:
       return {};
   }

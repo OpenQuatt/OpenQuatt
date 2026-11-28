@@ -192,6 +192,11 @@ sensor:
       // Keep room comfort in the room-demand hysteresis. The water target is only
       // the coldest allowed supply target from configuration and dew-point safety.
       float base_floor_c = id(cooling_min_supply_temp).state;
+      const auto guard = oq_cooling_safety::runtime().live_ble_guard();
+      if (guard.active) {
+        const float floor = oq_cooling_safety::runtime().live_ble_floor(guard);
+        return isfinite(floor) ? fmaxf(base_floor_c, floor) : NAN;
+      }
       if (id(cooling_effective_min_supply_temp).has_state() && isfinite(id(cooling_effective_min_supply_temp).state)) {
         base_floor_c = fmaxf(base_floor_c, id(cooling_effective_min_supply_temp).state);
       }

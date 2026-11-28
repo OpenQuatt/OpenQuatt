@@ -5,6 +5,9 @@
 #include <array>
 #include <string>
 
+#ifdef USE_OPENQUATT_BLE
+#include "esphome/components/openquatt_ble/openquatt_ble.h"
+#endif
 #include "oq_api_ingress_runtime.h"
 #include "oq_flow_control_logic.h"
 #include "oq_flow_pump_logic.h"
@@ -21,7 +24,26 @@ namespace oq_sensor_source {
 
 class Runtime {
  public:
-  oq_sources::ResolvedLearningSource resolved_room_temperature() const { return this->resolved_room_; }
+  float room_control_temperature() const {
+#ifdef USE_OPENQUATT_BLE
+    if (id(room_temp_source).has_state() && id(room_temp_source).current_option() == "BLE") {
+      const float live = esphome::openquatt_ble::room_temperature(static_cast<uint32_t>(millis()));
+      if (resolved_room_.route != oq_sources::LearningSourceRoute::BLE_ROOM || !isfinite(live) ||
+          resolved_room_.configuration.endpoint_generation != esphome::openquatt_ble::room_generation())
+        return NAN;
+    } else if (resolved_room_.route == oq_sources::LearningSourceRoute::BLE_ROOM) {
+      return NAN;
+    }
+#endif
+    return id(room_temp_selected).has_state() ? id(room_temp_selected).state : NAN;
+  }
+  oq_sources::ResolvedLearningSource resolved_room_temperature() const {
+#ifdef USE_OPENQUATT_BLE
+    if (resolved_room_.route == oq_sources::LearningSourceRoute::BLE_ROOM && !isfinite(room_control_temperature()))
+      return {};
+#endif
+    return this->resolved_room_;
+  }
   oq_sources::ResolvedLearningSource resolved_room_setpoint() const { return this->resolved_setpoint_; }
   oq_sources::ResolvedLearningSource resolved_outside_temperature() const { return this->resolved_outside_; }
   oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
@@ -472,9 +494,7 @@ class Runtime {
                         id(thermostat_room_temp_ha));
     const auto selected = oq_input_source::select_direct(configured, sources, true, now_ms, hold_ms, room_hold_);
     id(oq_room_temp_selected_hold_active) = selected.held;
-    const oq_sources::SourceConfigurationKey configuration{
-        static_cast<uint8_t>(configured), 0U, 0U,
-        configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    const auto configuration = room_configuration_key(false);
     const uint32_t generation = this->room_generation_.observe(configuration);
     this->resolved_room_ = resolve_room(selected, false, generation);
     this->resolved_room_.configuration = configuration;
@@ -652,6 +672,9 @@ class Runtime {
     if (option == "Heating curve") return oq_input_source::Source::HEATING_CURVE;
     if (option == "Schedule") return oq_input_source::Source::SCHEDULE;
     if (option == "Open-Meteo") return oq_input_source::Source::OPEN_METEO;
+#ifdef USE_OPENQUATT_BLE
+    if (option == "BLE") return oq_input_source::Source::BLE;
+#endif
     return oq_input_source::Source::NONE;
   }
 
@@ -713,6 +736,10 @@ class Runtime {
     const auto& selector = setpoint ? id(room_setpoint_source) : id(room_temp_source);
     const auto configured =
         selector.has_state() ? parse_source(selector.current_option()) : oq_input_source::Source::NONE;
+#ifdef USE_OPENQUATT_BLE
+    if (configured == oq_input_source::Source::BLE)
+      return {static_cast<uint8_t>(configured), 0U, 0U, esphome::openquatt_ble::room_generation()};
+#endif
     return {static_cast<uint8_t>(configured), 0U, 0U,
             configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
   }
@@ -745,6 +772,8 @@ class Runtime {
         return setpoint ? LearningSourceRoute::API_SETPOINT : LearningSourceRoute::API_ROOM;
       case oq_input_source::Source::MQTT:
         return setpoint ? LearningSourceRoute::MQTT_SETPOINT : LearningSourceRoute::MQTT_ROOM;
+      case oq_input_source::Source::BLE:
+        return setpoint ? LearningSourceRoute::NONE : LearningSourceRoute::BLE_ROOM;
       default:
         return LearningSourceRoute::NONE;
     }
@@ -797,6 +826,9 @@ class Runtime {
         parse_source(setpoint ? id(room_setpoint_source).current_option() : id(room_temp_source).current_option());
     const auto producer = oq_input_source::sample_for(source, room_sources(ot_fresh, setpoint));
     bool current = producer.valid;
+#ifdef USE_OPENQUATT_BLE
+    if (source == oq_input_source::Source::BLE && (!current || !isfinite(room_control_temperature()))) return {};
+#endif
     if (!setpoint && source == oq_input_source::Source::HA) {
       current = current && ha_live_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha),
                                          static_cast<uint32_t>(millis()), ha_stale_s);
@@ -911,6 +943,12 @@ class Runtime {
       sources.mqtt = room_setpoint_sample(mqtt_valid(id(mqtt_room_setpoint_valid), id(mqtt_room_setpoint)),
                                           id(mqtt_room_setpoint));
     } else {
+#ifdef USE_OPENQUATT_BLE
+      if (id(room_temp_source).has_state() && id(room_temp_source).current_option() == "BLE") {
+        const float value = esphome::openquatt_ble::room_temperature(static_cast<uint32_t>(millis()));
+        sources.ble = {value, isfinite(value), !isfinite(value)};
+      }
+#endif
       sources.ha = sample(ha_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha)), id(thermostat_room_temp_ha));
       sources.opentherm = sample(opentherm_fresh, id(ot_thermostat_room_temp));
       sources.cic = sample(cic_feed_valid(), id(cic_room_temp));

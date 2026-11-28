@@ -27,6 +27,32 @@ int main() {
   sources.ha_valid = false;
   assert(select_dew_point(1, sources, 100, 250, state).held &&
          isnan(select_dew_point(2, sources, 101, 250, state).value));
+  // Required coverage invalidates Auto even when another source or an HA hold is available.
+  sources = {16, 15, 14, true, true, true, 12, true};
+  assert(select_dew_point(3, sources, 100, 1000, state).route == 1);
+  sources.ble = NAN;
+  assert(isnan(select_dew_point(3, sources, 101, 1000, state).value));
+  sources.ha_valid = sources.api_valid = sources.mqtt_valid = false;
+  sources.ble_required = false;
+  assert(isnan(select_dew_point(3, sources, 102, 1000, state).value));
+  sources = {16, 15, 14, true, true, true, 21, true};
+  assert(select_dew_point(3, sources, 103, 1000, state).value == 21);
+  assert(select_dew_point(5, sources, 104, 1000, state).route == 5);
+  sources.ble = NAN;
+  assert(isnan(select_dew_point(5, sources, 105, 1000, state).value));
+  assert(select_dew_point(1, sources, 106, 1000, state).value == 16);
+  sources.ble = 21;
+  sources.ble_required = false;
+  assert(select_dew_point(3, sources, 107, 1000, state).value == 16);
+  const auto rising = ble_guard(3, 22, true, 13);
+  assert(rising.active && rising.floor(2, false, 18, false, NAN) == 24);
+  assert(rising.must_stop(24, 21, false) && !rising.must_stop(24, 25, false));
+  const auto stale = ble_guard(3, NAN, true, 22);
+  assert(isnan(stale.dew) && isnan(stale.floor(2, false, 18, false, 20)) && stale.must_stop(NAN, 22, false));
+  assert(stale.floor(2, false, 18, true, 20) == 20 && stale.floor(2, true, 18, false, 20) == 18);
+  assert(!stale.must_stop(18, 18, true) && stale.must_stop(NAN, 18, true));
+  assert(!ble_guard(3, NAN, false, 20).active && !ble_guard(1, NAN, true, 20).active);
+  assert(isnan(ble_guard(5, NAN, false, 20).dew));
   bool latched = false;
   RoomRequestInput in{true, false, false, true, true, 20, 20, 0.4f, 0.1f};
   auto demand = [&](float room_c) {

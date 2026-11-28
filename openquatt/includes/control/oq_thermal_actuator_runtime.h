@@ -11,6 +11,9 @@
 #include "oq_compressor_start_limit.h"
 #include "oq_cooling_limiter_logic.h"
 #include "oq_cooling_start_status.h"
+#ifdef USE_OPENQUATT_BLE
+#include "oq_cooling_safety_logic.h"
+#endif
 #include "oq_defrost_logic.h"
 #include "oq_incident_actuator_logic.h"
 #include "oq_heating_curve_runtime.h"
@@ -528,6 +531,10 @@ class Runtime {
     const auto boot_safety = boot_hold ? oq_boot_resume_runtime::capture(is_hp1) : oq_boot_resume_runtime::Safety{};
     const bool safety_stop =
         stop_pending || this->defrost_safety_stop_(is_hp1) ||
+#ifdef USE_OPENQUATT_BLE
+        (!cycle.manual_service_active && (cycle.request_mode_code == 1 || was_cooling) &&
+         oq_cooling_safety::runtime().ble_cooling_must_stop()) ||
+#endif
         (!(cycle.manual_service_active && requested > 0 && oq_manual_hp::positive_cooling_request(is_hp1)) &&
          oq_cooling::confirmed_dew_stop_requires_off(id(oq_cooling_stop_reason_code),
                                                      cycle.request_mode_code == 1 || was_cooling)) ||
@@ -654,6 +661,15 @@ class Runtime {
       candidate_reason = openquatt_decision_log::REASON_PH_COMFORT_HOLD;
       this->log_block_change(is_hp1, block_reason);
     }
+#ifdef USE_OPENQUATT_BLE
+    if (applied > 0 && previous == 0 && cycle.request_mode_code == 1 && !cycle.manual_service_active &&
+        !oq_cooling_safety::runtime().ble_room_input_ready()) {
+      applied = 0;
+      block_reason = "cooling start blocked by stale BLE room input";
+      candidate_reason = openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
+      this->log_block_change(is_hp1, block_reason);
+    }
+#endif
 
 #if OQ_TOPOLOGY_DUO
     // Check the cached strategy request too: slew and minimum runtime can retain a peer during a Single handoff.

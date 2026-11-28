@@ -11,6 +11,43 @@ Een bron levert een waarde aan OpenQuatt, bijvoorbeeld de kamertemperatuur. Het 
 
 `Auto` kiest volgens de regels van het betreffende signaal; het betekent niet dat altijd dezelfde integratie voorrang heeft. Een dauwpuntbron gebruikt bijvoorbeeld de hoogste geldige waarde, terwijl buitentemperatuur de laagste geldige waarde gebruikt. Zie [Instellingen en meetwaarden](../instellingen-en-meetwaarden.md#5-bronselectie) voor de bronregels.
 
+## Bluetooth-sensoren
+
+In de experimentele BLE-build voor Heatpump Controller Q Duo staat onder
+**Instellingen → Bronnen / integraties** het onderdeel **Bluetooth-sensoren**.
+Kies **Aanpassen**, zet de ontvangst aan en zoek naar sensoren. OpenQuatt stelt
+de uitgezonden Bluetooth-naam voor als die bij de meting is meegestuurd. Je
+kunt zelf een herkenbare sensornaam kiezen. De proef ondersteunt de thermometeradvertenties van
+onversleuteld BTHome v2, ATC1441 en PVVX Custom. Kies bij een LYWSD03MMC met
+PVVX-firmware een van die advertentieformaten. De originele Xiaomi-firmware
+gebruikt MiBeacon en wordt in deze proef niet ondersteund. Schakel voor NimBLE
+`oq_include_ble_nimble: "true"` in bovenop `configs/heatpump_controller_q/duo.yaml`.
+Voor een proef met Bluedroid gebruik je in plaats daarvan `oq_include_ble: "true"`.
+
+- **Kamertemperatuur.** Wijs één sensor aan en kies **Bluetooth** bij
+  `Room Temperature Source` onder **Sensorselectie**. Temperatuur volstaat.
+  Na opstarten of bij ontvangstverlies wacht OpenQuatt op een verse meting.
+  Het setpoint blijft afkomstig van de afzonderlijk ingestelde bron.
+- **Dauwpunt.** Vink per bewaakte ruimte de thermometer voor dauwpuntbewaking
+  aan. Kies **Bluetooth** of **Auto** bij `Cooling Dew Point Source`. OpenQuatt gebruikt
+  het hoogste actuele dauwpunt van de aangewezen sensoren als Bluetooth-waarde.
+  Een sensor telt mee zolang het meetpaar van temperatuur en relatieve
+  luchtvochtigheid geldig is. Bij uitval blijft OpenQuatt de hoogste geldige
+  meting van de overige sensoren gebruiken. De interface toont hoeveel
+  toegewezen sensoren nog een geldige meting leveren. Als alle toegewezen
+  Bluetooth-sensoren wegvallen, bepaalt de koelbeveiligingsmodus de reactie.
+
+Koppelingen blijven lokaal op de controller opgeslagen. Na een herstart zijn
+meetwaarden pas geldig zodra nieuwe advertenties binnenkomen. Een meting
+verloopt na vijf minuten. Stel de sensor bij voorkeur in op een nieuwe meting
+om de 30 tot 60 seconden, zodat er marge is als OpenQuatt een advertentie mist.
+Laat voor dauwpuntbewaking temperatuur en relatieve luchtvochtigheid samen
+uitzenden. Bij BTHome met een packet ID vernieuwt een herhaling met hetzelfde
+ID de meetleeftijd niet. Controleer de meetleeftijd en dekkingsstatus op de
+definitieve plek van de sensor.
+De instellingenbackup bevat in deze proef geen sensortoewijzingen. Kies
+Bluetooth na het terugzetten van een back-up zelf opnieuw als bron.
+
 ## Open-Meteo als buitenbron
 
 De standaardfirmware voor Heatpump Controller Q Single en Duo bevat de

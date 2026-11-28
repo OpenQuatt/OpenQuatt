@@ -6,6 +6,7 @@ import { buildEntityPath } from "../core/domain-helpers.js";
 import { getEnergyHistoryRequestQuery } from "../core/energy-history-query.js";
 import { getEnergyHistoryDateKeyFromDate, parseEnergyHistoryDateKey } from "../core/energy-history-domain.js";
 import { updateEnergyHistoryState } from "../core/feature-state.js";
+import { isLocalBleSourceSelection } from "../core/settings-backup-domain.js";
 import { setEntityBackupValue, verifyEntityBackupValue, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
 import { formatValue, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber } from "../core/entity-store.js";
 import { refreshEntities, syncEntities } from "../core/entity-sync.js";
@@ -1675,6 +1676,17 @@ import { t } from "../i18n/index.js";
           }
 
           const value = sectionValues[key];
+          // The experimental backup has no BLE device identities. A restored
+          // selector would read the target controller's local assignment.
+          if (isLocalBleSourceSelection(key, value)) {
+            skipped.push(createSettingsBackupRestoreItem(
+              key,
+              backupSectionLabel(section),
+              t("storageHistory.sourceNotApplied"),
+              t("storageHistory.bleSourceNotRestored"),
+            ));
+            continue;
+          }
           if (key === "setupComplete") {
             shouldCompleteSetup = value === true;
             continue;

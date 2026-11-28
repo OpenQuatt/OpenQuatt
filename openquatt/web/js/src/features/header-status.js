@@ -8,6 +8,7 @@ import { renderModalShell } from "../core/modal-shell.js";
 import { getEntitySignatureFragment, getRenderSignature } from "../core/render-signatures.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
 import { state } from "../core/state.js";
+import { renderBleModal } from "../settings/ble.js";
 import { getDebugRecordingHubStatusLabel, renderDebugRecordingHeaderStatus, renderDebugRecordingModal } from "./debug-recording.js";
 import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel, getRuntimeCounterResetKey } from "./device-context.js";
 import { getFirmwareUpdateEntity, getUpdateStatus, isFirmwareUpdateAvailable } from "./firmware-update.js";
@@ -511,6 +512,10 @@ import { render } from "../core/render-scheduler.js";
 
     if (state.systemModal === "api-security") {
       return renderApiSecurityModal();
+    }
+
+    if (state.systemModal === "bluetooth") {
+      return renderBleModal();
     }
 
     if (state.systemModal === "mqtt") {

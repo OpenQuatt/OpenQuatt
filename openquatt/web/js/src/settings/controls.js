@@ -558,6 +558,30 @@ export function renderSettingsTimeField(key, title, copy, className = "") {
   return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--time"><input class="oq-helper-input oq-helper-input--time" type="time" step="60" lang="nl-NL" inputmode="numeric" aria-label="${escapeHtml(title)}" data-oq-field="${escapeHtml(key)}" value="${escapeHtml(value)}" ${state.loadingEntities || state.savingTimeFields.has(key) ? "disabled" : ""}><span class="oq-settings-time-icon" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M10 6.2 V10 L12.9 11.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span></label>`, className || "oq-settings-field--time");
 }
 
+export function renderIntegrationStatus(value, detail) {
+  return `
+    <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settingsIntegrations.integrationCurrentStatus"))}</p>
+    <strong class="oq-settings-quickstart-status-value">${escapeHtml(value)}</strong>
+    <p class="oq-settings-quickstart-status-copy">${escapeHtml(detail)}</p>
+  `;
+}
+
+export function renderIntegrationConfigSection({ title, copy, panelTitle, statusMarkup, action, extra = "" }) {
+  return renderSettingsSection(t("settingsIntegrations.groupIntegrations"), title, copy, `
+    <div class="oq-settings-mqtt-shell">
+      <section class="oq-settings-mqtt-panel oq-settings-mqtt-panel--broker">
+        <div class="oq-settings-field-head"><h3>${escapeHtml(panelTitle)}</h3></div>
+        <div class="oq-settings-quickstart-status-row oq-settings-mqtt-status-row">
+          ${statusMarkup}
+          <button class="oq-helper-button oq-helper-button--ghost" type="button"
+            data-oq-action="${escapeHtml(action)}">${escapeHtml(t("settingsIntegrations.integrationAdjust"))}</button>
+        </div>
+      </section>
+      ${extra}
+    </div>
+  `);
+}
+
 export function renderSettingsSection(kicker, title, copy, body, badgeMarkup = "", className = "", headerActions = "") {
   return `<section class="oq-settings-section${className ? ` ${escapeHtml(className)}` : ""}"><div class="oq-settings-section-head"><div class="oq-settings-section-head-meta"><p class="oq-helper-label">${escapeHtml(kicker)}</p>${badgeMarkup ? `<div class="oq-settings-section-head-meta-badge">${badgeMarkup}</div>` : ""}${headerActions ? `<div class="oq-settings-section-head-actions">${headerActions}</div>` : ""}</div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(copy)}</p></div>${body}</section>`;
 }

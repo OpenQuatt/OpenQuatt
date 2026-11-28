@@ -6,6 +6,7 @@
 
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_cooling_demand_logic.h"
+#include "oq_cooling_safety_logic.h"
 #include "oq_cooling_dispatch_logic.h"
 #include "oq_thermal_request_logic.h"
 
@@ -50,10 +51,14 @@ class Runtime {
                                   id(oq_cooling_request_hp2_level) > 0;
     const bool enabled = id(cooling_enable_selected).has_state() && id(cooling_enable_selected).state;
     const bool request_known = id(cooling_request_active).has_state();
-    const bool request_active = request_known && id(cooling_request_active).state;
+    auto& safety = oq_cooling_safety::runtime();
+    const bool request_active = request_known && id(cooling_request_active).state && safety.ble_room_input_ready();
     const bool request_cleared = enabled && request_known && !request_active;
     const bool request_still_active = cycle_was_active && enabled && request_active;
-    const bool core_permitted = id(cooling_permitted_core).has_state() && id(cooling_permitted_core).state;
+    const auto guard = safety.live_ble_guard();
+    const float live_floor = guard.active ? safety.live_ble_floor(guard) : NAN;
+    const bool core_permitted = (id(cooling_permitted_core).has_state() && id(cooling_permitted_core).state) &&
+                                (!guard.active || std::isfinite(live_floor));
     const bool core_permission_lost = request_still_active && !core_permitted;
     const bool flow_permission_lost =
         request_still_active && core_permitted && (!id(cooling_permitted).has_state() || !id(cooling_permitted).state);
@@ -64,23 +69,28 @@ class Runtime {
         ;
     const bool minimum_off_wait_active =
         cooling_hp_applied || id(oq_cooling_confirmed_stop_seen) || this->stop_confirmation_pending_();
-    const bool user_responsibility = id(cooling_without_dew_point_user_responsibility_enabled).has_state() &&
-                                     id(cooling_without_dew_point_user_responsibility_enabled).state;
-    const bool dew_mode = !user_responsibility && id(cooling_dew_point_available).has_state() &&
-                          id(cooling_dew_point_available).state && id(cooling_dew_point_selected).has_state() &&
-                          std::isfinite(id(cooling_dew_point_selected).state);
+    const bool user_responsibility = guard.active
+                                         ? safety.without_dew_point_user_responsibility_enabled()
+                                         : id(cooling_without_dew_point_user_responsibility_enabled).has_state() &&
+                                               id(cooling_without_dew_point_user_responsibility_enabled).state;
+    const float dew = guard.active ? guard.dew : id(cooling_dew_point_selected).state;
+    const bool dew_mode =
+        !user_responsibility && std::isfinite(dew) && (guard.active || id(cooling_dew_point_available).state);
     const bool fallback_mode = !user_responsibility && !dew_mode && id(cooling_fallback_active).has_state() &&
                                id(cooling_fallback_active).state;
-    const bool room_valid = id(room_temp_selected).has_state() && std::isfinite(id(room_temp_selected).state) &&
+    const bool room_valid = std::isfinite(oq_sensor_source::runtime().room_control_temperature()) &&
                             id(room_setpoint_selected).has_state() && std::isfinite(id(room_setpoint_selected).state);
     const float room_error_c = room_valid ? id(room_temp_selected).state - id(room_setpoint_selected).state : NAN;
     const bool supply_valid = id(oq_system_supply_temp).has_state() && std::isfinite(id(oq_system_supply_temp).state);
-    const bool target_valid = id(cooling_supply_target).has_state() && std::isfinite(id(cooling_supply_target).state);
+    const float target = guard.active
+                             ? (std::isfinite(live_floor) ? fmaxf(live_floor, id(cooling_min_supply_temp).state) : NAN)
+                             : id(cooling_supply_target).state;
+    const bool target_valid = std::isfinite(target);
 
     oq_cooling::DemandInput input;
     input.now_ms = static_cast<uint32_t>(millis());
-    input.control_active =
-        enabled && request_active && id(cooling_permitted).has_state() && id(cooling_permitted).state;
+    input.control_active = enabled && request_active && (!guard.active || core_permitted) &&
+                           id(cooling_permitted).has_state() && id(cooling_permitted).state;
     input.cycle_was_active = cycle_was_active;
     input.request_cleared = request_cleared;
     input.sensor_valid = supply_valid && target_valid;
@@ -99,10 +109,9 @@ class Runtime {
     input.fallback_mode = fallback_mode;
     input.room_error_valid = room_valid && std::isfinite(room_error_c);
     input.supply_c = supply_valid ? id(oq_system_supply_temp).state : NAN;
-    input.target_c = target_valid ? id(cooling_supply_target).state : NAN;
-    input.dew_point_c = dew_mode ? id(cooling_dew_point_selected).state : NAN;
-    input.safety_margin_c =
-        id(cooling_safety_margin_selected).has_state() ? id(cooling_safety_margin_selected).state : NAN;
+    input.target_c = target;
+    input.dew_point_c = dew_mode ? dew : NAN;
+    input.safety_margin_c = guard.active ? safety.safety_margin_selected() : id(cooling_safety_margin_selected).state;
     input.room_error_c = room_error_c;
     input.restart_delta_c = id(cooling_restart_delta).has_state() ? id(cooling_restart_delta).state : NAN;
     input.demand_max = id(cooling_demand_max_f).has_state() ? id(cooling_demand_max_f).state : NAN;

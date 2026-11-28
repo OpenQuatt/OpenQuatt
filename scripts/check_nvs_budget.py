@@ -26,6 +26,7 @@ REQUIRED_AVAILABLE_ENTRIES = 100
 # (component, bytes per blob, blobs per configured instance). Sizes correspond
 # to the current component storage structs, not their runtime buffers.
 CUSTOM_PREFERENCE_LAYOUTS = (
+    ("openquatt_ble", 341, 1),
     ("openquatt_mqtt_config", 272, 1),
     ("openquatt_web_auth", 104, 1),
     ("openquatt_crash_telemetry", 56, 1),
@@ -146,6 +147,8 @@ def estimate_system_preferences(config: Any) -> dict[str, int]:
     entries = {"namespace esphome": 1}
     if component_instances(config, "openquatt_incident_manager"):
         entries["namespace openquatt"] = 1
+    if component_instances(config, "openquatt_ble"):
+        entries["namespace oq_ble"] = 1
     if "wifi" in config:
         entries["WiFi settings"] = blob_entries(98)
         entries["WiFi fast connect"] = blob_entries(8)

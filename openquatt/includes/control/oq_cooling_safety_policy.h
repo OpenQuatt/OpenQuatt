@@ -10,6 +10,8 @@ inline float clamp_finite(float value, float low, float high) {
 struct DewPointSources {
   float ha = NAN, api = NAN, mqtt = NAN;
   bool ha_valid = false, api_valid = false, mqtt_valid = false;
+  float ble = NAN;
+  bool ble_required = false;
 };
 struct DewPointSelectionState {
   float last_valid = NAN;
@@ -30,13 +32,20 @@ inline DewPointSelection select_dew_point(int mode, const DewPointSources& sourc
       out.route = route;
     }
   };
-  if (mode == 1)
+  if ((mode == 3 || mode == 5) && sources.ble_required && !finite_value(sources.ble)) {
+    state = {};
+    return out;
+  }
+  if (mode == 5)
+    take(sources.ble, true, 5);
+  else if (mode == 1)
     take(sources.ha, sources.ha_valid, 1);
   else if (mode == 2)
     take(sources.mqtt, sources.mqtt_valid, 2);
   else if (mode == 4)
     take(sources.api, sources.api_valid, 4);
   else if (mode == 3) {
+    if (sources.ble_required) take(sources.ble, true, 5);
     take(sources.mqtt, sources.mqtt_valid, 2);
     take(sources.api, sources.api_valid, 4);
     take(sources.ha, sources.ha_valid, 1);
@@ -49,6 +58,30 @@ inline DewPointSelection select_dew_point(int mode, const DewPointSources& sourc
                         now_ms - state.last_valid_ms < hold_ms && finite_value(state.last_valid);
   if (may_hold) return {state.last_valid, 1, true};
   return out;
+}
+// The BLE guard is read at the point of use. A cached entity can predate a
+// rising dew point, an expiry, or a change of room coverage.
+struct BleGuard {
+  bool active = false;
+  float dew = NAN;
+
+  bool must_stop(float floor_c, float supply_c, bool user_responsibility) const {
+    if (!active) return false;
+    if (!finite_value(floor_c) || !finite_value(supply_c)) return true;
+    return !user_responsibility && finite_value(dew) && supply_c <= dew;
+  }
+
+  float floor(float margin_c, bool user_responsibility, float minimum_c, bool approximate,
+              float approximation_c) const {
+    if (user_responsibility) return minimum_c;
+    if (finite_value(dew)) return finite_value(margin_c) ? dew + margin_c : NAN;
+    return approximate ? approximation_c : NAN;
+  }
+};
+inline BleGuard ble_guard(int mode, float live_ble, bool required, float selected) {
+  if (mode == 5) return {true, live_ble};
+  if (mode != 3 || !required) return {};
+  return {true, finite_value(live_ble) ? fmaxf(live_ble, selected) : NAN};
 }
 struct RoomRequestInput {
   bool room_required = true, enabled_valid = false, enabled = false, room_valid = false, setpoint_valid = false;

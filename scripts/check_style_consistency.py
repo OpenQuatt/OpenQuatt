@@ -84,6 +84,8 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
         "substitutions",
         "esphome",
         "packages",
+        "external_components",
+        "openquatt_duo_build",
     ),
     "openquatt/base/common.yaml": (
         "esphome",
@@ -171,6 +173,8 @@ NESTED_KEY_ORDER_RULES = {
         "openquatt_packages_common",
         "openquatt_topology_duo",
         "openquatt_weather",
+        "openquatt_ble",
+        "openquatt_ble_nimble",
         "openquatt_measurement_archive",
     ),
     ("openquatt/oq_packages_common.yaml", "packages"): (

@@ -153,6 +153,10 @@ export function isSettingsBackupMqttSourceSelection(key, value) {
   return SETTINGS_BACKUP_MQTT_SOURCE_KEYS.has(key) && /\bMQTT\b/i.test(String(value || ""));
 }
 
+export function isLocalBleSourceSelection(key, value) {
+  return (key === "roomTempSource" || key === "coolingDewPointSource") && value === "BLE";
+}
+
 export function collectUnknownSettingsBackupItems(settings, sections) {
   const knownSections = new Map((sections || []).map((section) => [section.id, new Set(section.keys || [])]));
   const unknown = [];

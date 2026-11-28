@@ -64,6 +64,17 @@ function renderFocusedSource(key) {
   return renderSettingsSensorSelectionSection();
 }
 
+test("BLE appears independently in room and dew inspectors on capable firmware", () => {
+  setSourceSelectionState(true);
+  state.entities.roomTempSource.option.push("BLE");
+  state.entities.coolingDewPointSource.option.push("BLE");
+  for (const [signal, key] of [["room-temperature", "roomTempSource"], ["cooling-dew-point", "coolingDewPointSource"]]) {
+    const markup = renderFocusedSource(signal);
+    assert.match(getSelectMarkup(markup, key), /<option value="BLE"[^>]*>Bluetooth<\/option>/);
+    assert.match(markup, /<oq-ble-settings data-context="(?:room|dew)"/);
+  }
+});
+
 function binaryEntity(active) {
   return { value: active, state: active ? "ON" : "OFF" };
 }

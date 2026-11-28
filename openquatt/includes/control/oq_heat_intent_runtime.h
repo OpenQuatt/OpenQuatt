@@ -5,12 +5,18 @@
 
 #include "oq_heat_intent_logic.h"
 #include "oq_input_source_logic.h"
+#ifdef USE_OPENQUATT_BLE
+#include "oq_sensor_source_runtime.h"
+#endif
 
 namespace oq_heat_intent_runtime {
 
 inline bool room_temperature_fresh(bool ot_fresh) {
   if (!id(room_temp_source).has_state()) return false;
   const auto source = id(room_temp_source).current_option();
+#ifdef USE_OPENQUATT_BLE
+  if (source == "BLE") return std::isfinite(oq_sensor_source::runtime().room_control_temperature());
+#endif
   return (source == "HA input" && id(room_temp_valid_ha).state && id(thermostat_room_temp_ha).has_state() &&
           std::isfinite(id(thermostat_room_temp_ha).state) && !id(oq_room_temp_selected_hold_active)) ||
          (source == "OT thermostat" && ot_fresh && id(ot_thermostat_room_temp).has_state() &&

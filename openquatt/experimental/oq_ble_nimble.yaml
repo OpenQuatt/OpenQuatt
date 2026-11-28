@@ -1,0 +1,5 @@
+packages:
+  openquatt_ble_base: !include oq_ble_base.yaml
+
+openquatt_ble:
+  backend: nimble

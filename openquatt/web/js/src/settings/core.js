@@ -19,6 +19,7 @@ import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
 import { renderSettingsPrivacySection, renderSettingsPrivacyUnavailable } from "./privacy.js";
+import { renderBleSettings } from "./ble.js";
 import { getApiSecurityStatusDetail, getApiSecurityStatusLabel, renderSettingsAccessSecuritySection } from "./security.js";
 import { renderSettingsCounterServiceSection, renderSettingsServiceSection } from "./service.js";
 import { renderSettingsSilentSection } from "./silent.js";
@@ -119,6 +120,7 @@ function syncFrequencyRangeControl(control) {
             ? [
                 renderSettingsOpenThermCicSection(),
                 renderSettingsMqttSection(),
+                renderBleSettings(),
                 renderSettingsSensorSelectionSection(),
               ]
             : [
