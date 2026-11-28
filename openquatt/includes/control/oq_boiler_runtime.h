@@ -4,6 +4,7 @@
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
 #include "../boiler/oq_otb_connection_state.h"
 #include "../boiler/oq_otb_telemetry.h"
+#include "oq_boiler_cm3_opentherm.h"
 #endif
 
 namespace oq_boiler_runtime {
@@ -25,6 +26,7 @@ struct Config {
 class Runtime {
  public:
   void shutdown() {
+    reset_cm3_opentherm_();
     id(oq_boiler_command_valid) = false;
     id(oq_boiler_command_heat_request) = false;
     id(oq_boiler_output_request) = false;
@@ -47,6 +49,7 @@ class Runtime {
     id(oq_boiler_transport_settle_required) = true;
     id(oq_boiler_rearm_required) = true;
     id(oq_boiler_rearm_after_command_ms) = now_ms;
+    reset_cm3_opentherm_();
     withdraw_output_(now_ms);
     id(boiler_relay).turn_off();
     return true;
@@ -81,7 +84,7 @@ class Runtime {
     return oq_boiler::command_is_fresh(command_(), (uint32_t)millis(), maximum_age_ms);
   }
 
-  void tick(const Config& config) {
+  void tick(const Config& config, [[maybe_unused]] float boiler_inlet_c, [[maybe_unused]] float water_cp_j_per_kgk) {
     const uint32_t now_ms = (uint32_t)millis();
     const int control_mode = id(oq_control_mode_code);
     const float supply_c = id(water_supply_temp_selected).state;
@@ -117,8 +120,9 @@ class Runtime {
           !id(oq_water_supply_temp_selected_hold_active) && !id(oq_water_supply_temp_fallback_runtime_active)));
     // Also check the current sample: the independent temperature guard can
     // still reflect the previous sample when a local sensor recovers.
-    const bool boiler_inhibit = id(oq_water_temp_boiler_inhibit_active) ||
-                                (fixed_power_r1 && supply_valid && supply_c >= maximum_water_temperature_());
+    const float maximum_water_c = maximum_water_temperature_();
+    const bool boiler_inhibit =
+        id(oq_water_temp_boiler_inhibit_active) || (fixed_power_r1 && supply_valid && supply_c >= maximum_water_c);
     const float target_c = command.target_temperature_c;
     const float flow_lph = id(flow_rate_selected).state;
     const bool flow_valid = isfinite(flow_lph);
@@ -129,7 +133,8 @@ class Runtime {
     // sites must stay in sync so CM4 selection and the physical boiler output
     // cannot disagree.
     const bool fallback_outputs_safe = id(oq_incident_manager).all_fallback_output_gates_clear();
-    const auto thermal = start_thermal_decision_(command, opentherm_selected, supply_c, target_c, now_ms, config);
+    const auto thermal =
+        start_thermal_decision_(command, opentherm_selected, supply_c, target_c, maximum_water_c, now_ms, config);
     publish_start_thermal_decision_(thermal, command, supply_c, target_c);
 
     const bool command_rearmed =
@@ -169,18 +174,34 @@ class Runtime {
         minimum_off_ms,
     };
     auto decision = oq_boiler::evaluate(command, input);
+    float output_target_c =
+        oq_boiler::effective_output_target(decision.output_active, opentherm_selected, decision.desired_active,
+                                           target_valid, target_c, id(oq_boiler_output_target_temperature_c));
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    const bool power_house_command = opentherm_selected && command.source == oq_boiler::COMMAND_SOURCE_POWER_HOUSE;
+    const bool cm3_context = power_house_command && control_mode == 3 && id(oq_strategy_active_code) == 3 &&
+                             !id(oq_cold_start_assist_active);
+    const auto cm3_input = cm3_context ? cm3_inputs_(config, command, input, decision, flow_lph, boiler_inlet_c,
+                                                     water_cp_j_per_kgk, maximum_water_c)
+                                       : oq_boiler_cm3_opentherm::Inputs{};
+    const char* cm3_stop =
+        oq_boiler_cm3_opentherm::apply(cm3_opentherm_, cm3_context, cm3_input, decision, output_target_c);
     decision.block_reason = oq_boiler::refine_opentherm_transport_block_reason(
         decision.block_reason, opentherm_selected, oq_otb::connection_verification_state.ever_verified(),
         oq_otb::connection_verification_state.currently_verified());
 #endif
     const auto role = oq_boiler::boiler_role_for_source(command.source);
     const bool output_changed = id(oq_boiler_output_request) != decision.output_active;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    if (cm3_context && output_changed && !decision.output_active) {
+      ESP_LOGI("quatt.boiler", "CM3 OpenTherm CH off: %s (request=%.0f W, defrost=%d, flame=%d)",
+               cm3_stop != nullptr ? cm3_stop : oq_boiler::block_reason_text(decision.block_reason),
+               cm3_input.requested_power_w, cm3_input.defrost_active, cm3_input.flame_on);
+    }
+#endif
     id(oq_boiler_output_request) = decision.output_active;
     if (output_changed) id(oq_boiler_output_last_change_ms) = now_ms;
-    id(oq_boiler_output_target_temperature_c) =
-        oq_boiler::effective_output_target(decision.output_active, opentherm_selected, decision.desired_active,
-                                           target_valid, target_c, id(oq_boiler_output_target_temperature_c));
+    id(oq_boiler_output_target_temperature_c) = output_target_c;
     id(oq_boiler_block_reason_code) = decision.block_reason;
 
     const auto controller_log = oq_boiler::classify_boiler_controller_log({role, decision.block_reason}, log_codes_());
@@ -194,6 +215,65 @@ class Runtime {
   }
 
  private:
+  void reset_cm3_opentherm_() {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    cm3_opentherm_ = {};
+#endif
+  }
+
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+  static oq_boiler_cm3_opentherm::Inputs cm3_inputs_(const Config& config, const oq_boiler::BoilerCommand& command,
+                                                     const oq_boiler::ControllerInput& input,
+                                                     const oq_boiler::ControllerDecision& decision, float flow_lph,
+                                                     float boiler_inlet_c, float water_cp_j_per_kgk,
+                                                     float maximum_water_c) {
+    const uint32_t now_ms = input.now_ms;
+    const auto status = oq_otb::telemetry_state.field_receipt(oq_otb::FIELD_STATUS);
+    const bool status_valid = status.valid && oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_STATUS, now_ms,
+                                                                                     config.otb_field_timeout_ms);
+    const auto fresh_temperature = [&](oq_otb::Field field, float value) {
+      return oq_otb::telemetry_state.field_is_fresh(field, now_ms, config.otb_field_timeout_ms) ? value : NAN;
+    };
+    const bool capacity_valid = oq_otb::telemetry_state.field_is_valid(oq_otb::FIELD_MAX_BOILER_CAPACITY);
+    const float return_c = fresh_temperature(oq_otb::FIELD_RETURN_WATER_TEMPERATURE, id(otb_return_water_temp).state);
+    const bool flow_loss_confirmed =
+        id(oq_lowflow_fault_active) || (isfinite(flow_lph) && flow_lph >= 0.0f && flow_lph < config.minimum_flow_lph);
+    bool defrost = id(hp1_defrost).state || id(hp1_4_way_valve).state || id(hp1_odu_defrost).cycle.observed_active();
+#if OQ_TOPOLOGY_DUO
+    defrost |= id(hp2_defrost).state || id(hp2_4_way_valve).state || id(hp2_odu_defrost).cycle.observed_active();
+#endif
+    return {
+        now_ms,
+        command.updated_at_ms,
+        decision.desired_active && !decision.force_off,
+        decision.output_active,
+        id(oq_otb_applied_command_active),
+        !decision.force_off && input.output_active &&
+            oq_boiler::minimum_time_active(now_ms, input.output_last_change_ms, input.min_on_ms),
+        status_valid,
+        (status.value & 0x0008U) != 0,
+        (status.value & 0x0004U) != 0,
+        (status.value & 0x0001U) != 0,
+        defrost,
+        input.flow_sufficient,
+        flow_loss_confirmed,
+        capacity_valid ? id(otb_max_capacity).state : NAN,
+        capacity_valid ? id(otb_min_modulation).state : NAN,
+        command.requested_power_w,
+        isfinite(return_c) ? return_c : boiler_inlet_c,
+        fresh_temperature(oq_otb::FIELD_BOILER_WATER_TEMPERATURE, id(otb_boiler_water_temp).state),
+        flow_lph,
+        water_cp_j_per_kgk,
+        maximum_water_c,
+        command.target_temperature_c,
+        id(room_temp_selected).state,
+        id(room_setpoint_selected).state,
+    };
+  }
+
+  oq_boiler_cm3_opentherm::Control cm3_opentherm_;
+#endif
+
   static oq_boiler::BoilerCommand command_() {
     return {
         id(oq_boiler_command_valid),
@@ -206,7 +286,10 @@ class Runtime {
     };
   }
 
-  static void withdraw_output_(uint32_t now_ms) {
+  void withdraw_output_(uint32_t now_ms) {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    cm3_opentherm_.withdraw_output();
+#endif
     if (id(oq_boiler_output_request)) {
       id(oq_boiler_output_request) = false;
       id(oq_boiler_output_last_change_ms) = now_ms;
@@ -217,11 +300,10 @@ class Runtime {
 
   static oq_boiler::BoilerStartThermalDecision start_thermal_decision_(const oq_boiler::BoilerCommand& command,
                                                                        bool opentherm_selected, float supply_c,
-                                                                       float target_c, uint32_t now_ms,
+                                                                       float target_c, float maximum_c, uint32_t now_ms,
                                                                        const Config& config) {
     const bool commissioning = command.source == oq_boiler::COMMAND_SOURCE_COMMISSIONING;
     if (!command.heat_request && !commissioning) return {};
-    const float maximum_c = maximum_water_temperature_();
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     const bool boiler_temperature_fresh =
         opentherm_selected && oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_BOILER_WATER_TEMPERATURE, now_ms,

@@ -339,6 +339,11 @@ interval:
     startup_delay: 4600ms
     then:
       - lambda: |-
+          // Use the current heat-pump outlet when the boiler has no current return temperature.
+          const uint32_t inlet_updated_ms = id(${secondary_hp_id}_water_out_temp_last_update_ms);
+          const bool inlet_fresh = id(${secondary_hp_id}_is_online) && inlet_updated_ms != 0 &&
+                                   (uint32_t)(millis() - inlet_updated_ms) <=
+                                       (uint32_t)(${oq_hp_water_temp_stale_s} * 1000UL);
           oq_boiler_runtime::runtime().tick({
               ${oq_otb_supported},
               ${oq_cm_min_flow_lph},
@@ -352,4 +357,4 @@ interval:
               oq_boiler::RelayTargetConfig{${oq_boiler_relay_target_start_delta_c},
                                            ${oq_boiler_relay_target_stop_delta_c}},
               ${oq_boiler_relay_power_house_on_off},
-          });
+          }, inlet_fresh ? id(${secondary_water_out_temp_id}).state : NAN, ${oq_water_cp_j_per_kgk});

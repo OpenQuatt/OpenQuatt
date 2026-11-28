@@ -55,6 +55,14 @@ esphome:
   build_flags:
     - -DOQ_POWER_HOUSE_LEARNING_TARGET=1
 
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_xtensa_literals]
+
+openquatt_xtensa_literals:
+
 packages:
   oq_partition_migration: !include ../oq_partition_migration.yaml
   oq_power_house_learning: !include ../oq_power_house_learning.yaml
