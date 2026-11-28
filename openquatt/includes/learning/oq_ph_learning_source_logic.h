@@ -128,8 +128,16 @@ struct LearningOperationalContext {
   LearningControlMode control_mode = LearningControlMode::UNKNOWN;
   bool active_limit_valid = false;
   bool active_limit = false;
+  bool power_house_deficit = false;  // A dispatch estimate, independent of calorimetry validity.
   bool service_or_ota_valid = false;
   bool service_or_ota = false;
+
+  void classify_limit(bool power_house, bool saturated, bool other_limit) {
+    power_house_deficit = power_house && saturated;
+    active_limit = other_limit || (saturated && !power_house);
+  }
+
+  bool limit_reported() const { return active_limit || power_house_deficit; }
 };
 
 struct LearningSourceInput {

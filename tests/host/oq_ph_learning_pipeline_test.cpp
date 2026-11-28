@@ -150,6 +150,7 @@ void heating_cycles_keep_idle_time_and_pump_runout(bool interrupt_idle = false) 
     const int cm = phase < 30 ? 2 : phase < 35 ? 1 : 0;
     const uint64_t now = 1000ULL + minute * 60000ULL;
     auto raw = observation(now, epoch + minute * 60U, 5.0f);
+    raw.operation.classify_limit(true, cm == 2 && phase >= 10 && phase < 20, false);
     const float flow = cm == 0 ? 0.0f : 1000.0f;
     const float total_delta = cm == 2 ? 4000.0f * 3600.0f / (1000.0f * 4180.0f) : -0.2f;
     oq_input_source::FlowInputs flow_input;

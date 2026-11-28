@@ -245,7 +245,7 @@ void MeasurementArchive::observe(const LearningSourceInput& input, const Calorim
   if (input.hp2.present) add_unit_operation(input.hp2, HP2_RUNNING);
   const bool boiler_valid = fresh(input.boiler_heat, input.monotonic_ms);
   if (boiler_valid && input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE) sample.flags |= BOILER;
-  if (input.operation.active_limit) sample.flags |= LIMITED;
+  if (input.operation.limit_reported()) sample.flags |= LIMITED;
   if (input.operation.service_or_ota) sample.flags |= SERVICE;
   if (!input.operation.control_mode_valid || !input.operation.active_limit_valid ||
       !input.operation.service_or_ota_valid || !boiler_valid)
