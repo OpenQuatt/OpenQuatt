@@ -1588,6 +1588,11 @@ import { t } from "../i18n/index.js";
     if (!draft || state.settingsBackupBusy) {
       return;
     }
+    if (state.savingFrequencyRange) {
+      state.settingsBackupError = t("actions.frequencyRangeBusy");
+      render();
+      return;
+    }
 
     const mqttPassword = String(state.settingsBackupMqttPassword || "");
     if (settingsBackupMqttNeedsPassword(draft.mqtt) && !mqttPassword) {

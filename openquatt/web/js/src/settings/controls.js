@@ -4,6 +4,7 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeNumber, parseLoose
 import { escapeHtml } from "../core/html.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
+import { formatFrequencyRangeLabel } from "../features/frequency-exclusion.js";
 import { getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
 import { optionLabel, t } from "../i18n/index.js";
 
@@ -458,31 +459,27 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy, s
   }
   const meta = getNumberMeta(minKey);
   const min = meta.min;
-  const max = Math.min(meta.max, 110);
-  let minValue = Math.min(max, normalizeNumber(minKey, getInputDraftValue(minKey)));
-  let maxValue = Math.min(max, normalizeNumber(maxKey, getInputDraftValue(maxKey)));
+  const max = meta.max;
+  const minValue = Math.min(max, normalizeNumber(minKey, getInputDraftValue(minKey)));
+  const maxValue = Math.min(max, normalizeNumber(maxKey, getInputDraftValue(maxKey)));
   const disabled = minValue === 0 || maxValue === 0;
-  if (disabled) {
-    minValue = maxValue = 0;
-  }
   const invalid = !disabled && minValue > maxValue;
-  const valueLabel = disabled
-    ? t("settingsControls.noExclusion")
-    : invalid
-      ? t("settingsControls.invalidRange")
-      : `${minValue}–${maxValue} ${meta.uom || "Hz"}`;
+  const busy = Boolean(state.savingFrequencyRange);
+  const savingThisRange = state.savingFrequencyRange === minKey || state.savingFrequencyRange === maxKey;
+  const valueLabel = savingThisRange ? t("settingsControls.savingRange") : formatFrequencyRangeLabel(minValue, maxValue, meta.uom || "Hz");
   const span = Math.max(1, max - min);
+  const floor = ((20 - min) / span) * 100;
   const start = ((minValue - min) / span) * 100;
   const end = ((maxValue - min) / span) * 100;
   const markup = `
     <div
-      class="oq-helper-dual-range${disabled ? " is-disabled" : ""}${invalid ? " is-invalid" : ""}"
+      class="oq-helper-dual-range${disabled ? " is-disabled" : ""}${invalid ? " is-invalid" : ""}${minValue === maxValue ? " is-collapsed" : ""}"
       data-oq-dual-range="true"
-      style="--oq-range-start:${start}%;--oq-range-end:${end}%"
+      style="--oq-range-floor:${floor}%;--oq-range-start:${start}%;--oq-range-end:${end}%"
     >
       <div class="oq-helper-slider-meta" style="position:relative">
         <span>${escapeHtml(t("common.off"))}</span>
-        <span style="position:absolute;left:18.18%;transform:translateX(-50%)">20Hz</span>
+        <span style="position:absolute;left:var(--oq-range-floor);transform:translateX(-50%)">20Hz</span>
         <strong data-oq-range-value>${escapeHtml(valueLabel)}</strong>
         <span>${escapeHtml(`${max}${meta.uom || ""}`)}</span>
       </div>
@@ -497,6 +494,7 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy, s
           max="${max}"
           step="${meta.step}"
           value="${minValue}"
+          aria-disabled="${busy}"
           ${state.loadingEntities ? "disabled" : ""}
         >
         <input
@@ -509,12 +507,13 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy, s
           max="${max}"
           step="${meta.step}"
           value="${maxValue}"
+          aria-disabled="${busy}"
           ${state.loadingEntities ? "disabled" : ""}
         >
       </div>
     </div>
   `;
-  const disableButton = showDisable ? `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${disabled || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>` : "";
+  const disableButton = showDisable ? `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${(minValue === 0 && maxValue === 0) || state.loadingEntities || busy ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>` : "";
   return renderSettingsFieldCard(minKey, title, copy, markup, "oq-settings-field--frequency-range", "", disableButton);
 }
 

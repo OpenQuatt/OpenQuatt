@@ -3272,6 +3272,8 @@ export default {
     minBelowMax: "The lower boundary must not exceed the upper boundary ({value} Hz).", maxAboveMin: "The upper boundary must not be below the lower boundary ({value} Hz).",
     numberOutOfRange: "{name}: choose a value from {min} to {max}.",
     frequencyExclusionDisabled: "Frequency exclusion disabled.", frequencyExclusionDisableFailed: "Frequency exclusion could not be fully disabled or confirmed.",
+    frequencyRangeChanged: "the boundaries or exclusion schedule changed. Check the setting and try again",
+    frequencyRangeBusy: "wait for the current setting to finish saving",
     timeNotConfirmed: "the controller did not confirm the configured time", setupCompleted: "Setup marked as completed.",
     quickStartReset: "Quick Start reset to the beginning. Current tuning values remain in place for now.",
     actionFailedFor: "Action failed for \"{name}\". {error}", hpActionAccepted: "Action for HP{hp} accepted; checking the result.",
@@ -4736,6 +4738,8 @@ export default {
     advancedShow: "Advanced",
   },
   frequencyExclusion: {
+    chooseLower: "Set the lower boundary to complete the range.",
+    chooseUpper: "Set the upper boundary to complete the range.",
     scope: "Apply exclusion",
     always: "Always",
     quietOnly: "Only during quiet hours",
@@ -5546,6 +5550,7 @@ export default {
   settingsControls: {
     infoAria: "Help for {title}", noExclusion: "No exclusion", invalidRange: "Invalid range",
     rangeLowerAria: "Lower range boundary", rangeUpperAria: "Upper range boundary",
+    openLowerRange: "Up to {value}", openUpperRange: "From {value}", savingRange: "Saving boundary…",
   },
   entitySync: {
     missingBulkField: "{name} is missing from the bulk response",

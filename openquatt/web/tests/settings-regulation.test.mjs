@@ -784,7 +784,7 @@ test("backup zonder uitsluitingsschema herstelt het eerdere altijd-actieve berei
   assert.deepEqual(migrateLegacySettingsBackupSettings({ compressor: explicit }).compressor, explicit);
 });
 
-test("frequentiebereik accepteert 0 als uitschakelstand zonder terug te springen", () => {
+test("frequentiebereik toont een opgeslagen grens als de andere op Uit staat", () => {
   assert.match(entityActionsSource, /inputValue > 0 && inputValue < 20/);
   assert.match(entityActionsSource, /inputValue === 0[\s\S]*minInput\.value = maxInput\.value = "0";/);
   assert.match(entityActionsSource, /dataset\.oqRangeRole && Number\(event\.target\.value\) === 0/);
@@ -797,8 +797,15 @@ test("frequentiebereik accepteert 0 als uitschakelstand zonder terug te springen
     hp1ExcludeMaxHz: numberEntity(61, "Hz", { max_value: 120, step: 1 }),
   });
   const markup = renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1");
+  assert.match(markup, /Tot 61 Hz/);
   assert.match(markup, /data-oq-range-role="min"[\s\S]*?value="0"/);
-  assert.match(markup, /data-oq-range-role="max"[\s\S]*?value="0"/);
+  assert.match(markup, /data-oq-range-role="max"[\s\S]*?value="61"/);
+  state.entities.hp1ExcludeMinHz.value = 44;
+  state.entities.hp1ExcludeMaxHz.value = 0;
+  assert.match(renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1"), /Vanaf 44 Hz/);
+  state.entities.hp1ExcludeMinHz.value = 0;
+  state.entities.hp1ExcludeMaxHz.value = 120;
+  assert.match(renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1"), /Tot 120 Hz/);
 });
 
 test("uitschakelen vereist bevestigde nulwaarden voor beide grenzen", async () => {

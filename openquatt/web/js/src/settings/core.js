@@ -1,4 +1,4 @@
-import { patchFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
+import { formatFrequencyRangeLabel, patchFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
 import { getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
@@ -41,24 +41,28 @@ function syncFrequencyRangeControl(control) {
   if (!minInput || !maxInput) {
     return;
   }
-  let minValue = Number(minInput.value);
-  let maxValue = Number(maxInput.value);
+  const minValue = Number(minInput.value);
+  const maxValue = Number(maxInput.value);
   const scaleMin = Number(minInput.min);
   const scaleMax = Number(minInput.max);
   const span = Math.max(1, scaleMax - scaleMin);
   const disabled = minValue === 0 || maxValue === 0;
-  if (disabled) {
-    minValue = maxValue = 0;
-    minInput.value = maxInput.value = "0";
-  }
   const invalid = !disabled && minValue > maxValue;
   control.classList.toggle("is-disabled", disabled);
   control.classList.toggle("is-invalid", invalid);
+  control.classList.toggle("is-collapsed", minValue === maxValue);
+  for (const input of [minInput, maxInput]) {
+    input.disabled = state.loadingEntities;
+    input.setAttribute("aria-disabled", String(Boolean(state.savingFrequencyRange)));
+  }
+  const disableButton = control.closest("[data-oq-settings-field]")?.querySelector('[data-oq-action="disable-range"]');
+  if (disableButton) disableButton.disabled = (minValue === 0 && maxValue === 0) || state.loadingEntities || state.savingFrequencyRange;
   control.style.setProperty("--oq-range-start", `${((minValue - scaleMin) / span) * 100}%`);
   control.style.setProperty("--oq-range-end", `${((maxValue - scaleMin) / span) * 100}%`);
   const value = control.querySelector("[data-oq-range-value]");
   if (value) {
-    value.textContent = disabled ? t("settings.noExclusion") : invalid ? t("settings.invalidRange") : `${minValue}–${maxValue} Hz`;
+    const savingThisRange = state.savingFrequencyRange === minInput.dataset.oqField || state.savingFrequencyRange === maxInput.dataset.oqField;
+    value.textContent = savingThisRange ? t("settingsControls.savingRange") : formatFrequencyRangeLabel(minValue, maxValue);
   }
 }
 

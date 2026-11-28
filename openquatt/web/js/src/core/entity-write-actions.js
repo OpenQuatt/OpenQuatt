@@ -1,5 +1,6 @@
 import { commitWeatherLocation } from "../features/weather.js";
 import { invalidateWeatherForecast, refreshWeatherForecast } from "../features/weather-forecast.js";
+import { getFrequencyExclusionSaveWarning } from "./frequency-exclusion-model.js";
 import { hasEntity } from "./app-shared.js";
 import { fetchWithTimeout } from "./browser-utils.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEADER_ENTITY_KEYS, LIMIT_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
@@ -193,7 +194,9 @@ export async function undoSettingsChange(toastUndo = null) {
     // A refresh failure afterwards reports its own error; the write itself decides here.
     restored = state.entities[undo.key]?.value === enabled;
   } else if (domain === "number") {
-    restored = await commitNumber(undo.key, undo.value);
+    restored = /^hp[12]Exclude(?:Min|Max)Hz$/.test(undo.key)
+      ? await commitFrequencyRangeBoundary(undo.key, undo.value)
+      : await commitNumber(undo.key, undo.value);
   } else if (domain === "time") {
     restored = await commitTime(undo.key, undo.value);
   } else if (domain === "datetime") {
@@ -214,7 +217,7 @@ export async function commitSelect(key, option) {
   const verifyControlModeOverride = key === "controlModeOverride";
   const verifySelection = key === "waterSupplySource" || key === "localWaterSupplyTempSource"
     || key === "hp1ExcludeScope" || key === "hp2ExcludeScope";
-  if (verifySelection && state.busyAction) return false;
+  if (verifySelection && (state.busyAction || (state.savingFrequencyRange && /ExcludeScope$/.test(key)))) return false;
   const busyAction = `save-${key}`;
   const actionRevision = startEntityWriteAction(busyAction);
   const isCurrent = () => isEntityWriteActionCurrent(actionRevision);
@@ -582,7 +585,102 @@ export async function commitNumber(key, value, successNotice = "") {
   return succeeded;
 }
 
+export async function commitFrequencyRangeBoundary(key, value) {
+  const hp = key.slice(0, 3);
+  const scopeKey = `${hp}ExcludeScope`;
+  const keys = [`${hp}ExcludeMinHz`, `${hp}ExcludeMaxHz`];
+  if (hasEntity(scopeKey)) keys.push(scopeKey);
+  const boundary = keys.indexOf(key);
+  const saved = (entity, index) => index === 2
+    ? String(entity?.value ?? entity?.state ?? "")
+    : parseLooseNumber(entity?.value ?? entity?.state);
+  const before = keys.map((field, index) => saved(state.entities[field], index));
+  const normalized = normalizeNumber(key, value);
+  const clearDraft = () => {
+    delete state.drafts[key];
+    delete state.inputDrafts[key];
+  };
+  if (state.savingFrequencyRange) return false;
+  if (state.busyAction || state.settingsBackupBusy) {
+    clearDraft();
+    state.controlError = t("actions.frequencyRangeBusy");
+    render();
+    return false;
+  }
+
+  const busyAction = `save-${key}`;
+  const revision = startEntityWriteAction(busyAction);
+  state.savingFrequencyRange = key;
+  state.frequencyRangeWriteRevision += 1;
+  state.controlNotice = "";
+  state.controlError = "";
+  state.drafts[key] = normalized;
+  state.inputDrafts[key] = String(normalized);
+  render();
+
+  const name = getEntityFeedbackName(key);
+  const [chunk] = buildBulkEntityChunks(keys, "state");
+  const [preflightChunk] = buildBulkEntityChunks([...keys, "dayMaxHz", "silentMaxHz", `${hp}AutomaticFrequencies`], "state");
+  const unconfirmed = () => new Error(t("actions.savedChoiceNotConfirmed"));
+  const read = async (request, timeoutMs) => {
+    const payload = await fetchBulkEntityChunk(request, timeoutMs);
+    if (!Array.isArray(payload?.missing) || keys.some((field) => payload.missing.includes(field))) throw unconfirmed();
+    const values = keys.map((field, index) => saved(payload.entities?.[field], index));
+    if (values.slice(0, 2).some((hz) => !Number.isInteger(hz) || hz < 0 || hz > 120)
+        || (keys.length > 2 && !["Always", "Quiet hours", "Off"].includes(values[2]))) throw unconfirmed();
+    for (const field of keys) {
+      state.entities[field] = mergeEntityPayload(field, state.entities[field], payload.entities[field]);
+    }
+    return { values, entities: payload.entities };
+  };
+
+  try {
+    const { values: current, entities } = await read(preflightChunk);
+    if (current.some((field, index) => field !== before[index]) || !isEntityWriteActionCurrent(revision)) {
+      throw new Error(t("actions.frequencyRangeChanged"));
+    }
+    const error = getNumberSettingValidationError(key, normalized);
+    if (error) throw new Error(error);
+    if (current[boundary] === normalized) return true;
+
+    const readWarningValue = (field) => entities[field]?.value ?? entities[field]?.state;
+    const warning = getFrequencyExclusionSaveWarning(hp, { [boundary === 0 ? "MinHz" : "MaxHz"]: normalized }, readWarningValue);
+    if (warning && !window.confirm(warning)) return false;
+
+    const { domain, name: entityName } = ENTITY_DEFS[key];
+    const url = `${buildEntityPath(domain, entityName, "set")}?value=${encodeURIComponent(normalized)}`;
+    let writeError;
+    try {
+      const response = await fetchWithTimeout(url, { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      writeError = error;
+    }
+    // Another setting may use the global write revision while this response is in flight.
+    // Always reconcile this boundary on its own before unlocking the frequency controls.
+    const { confirmed } = await pollEntityConfirmation((timeoutMs) => read(chunk, timeoutMs),
+      ({ values }) => values.every((field, index) => field === (index === boundary ? normalized : current[index])));
+    if (!confirmed) throw writeError || unconfirmed();
+    if (ownsBusyAction(revision, busyAction)) {
+      state.controlNotice = t("actions.entityUpdated", { name });
+      recordEntityChange(key, current[boundary], normalized);
+    } else {
+      void recordSettingsChange(name, formatChangeLogValue(key, current[boundary]), formatChangeLogValue(key, normalized));
+    }
+    return true;
+  } catch (error) {
+    state.controlError = t("actions.entityUpdateFailed", { name, error: error.message });
+    return false;
+  } finally {
+    clearDraft();
+    state.savingFrequencyRange = "";
+    if (ownsBusyAction(revision, busyAction)) state.busyAction = "";
+    render();
+  }
+}
+
 export async function disableRange(minKey, maxKey) {
+  if (state.savingFrequencyRange || state.settingsBackupBusy) return false;
   const keys = [minKey, maxKey];
   state.inputDrafts[minKey] = state.inputDrafts[maxKey] = "0";
   render();

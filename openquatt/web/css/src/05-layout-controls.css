@@ -1001,7 +1001,7 @@
 .oq-helper-dual-range-track::before {
   right: 0;
   left: 0;
-  background: linear-gradient(90deg, var(--oq-helper-muted) 18.18%, var(--oq-helper-line) 0);
+  background: linear-gradient(90deg, var(--oq-helper-muted) var(--oq-range-floor), var(--oq-helper-line) 0);
 }
 
 .oq-helper-dual-range-track::after {
@@ -1035,6 +1035,15 @@
 
 .oq-helper-dual-range-input--max {
   z-index: 3;
+}
+
+/* Keep both thumbs reachable when the range contains one frequency. */
+.oq-helper-dual-range.is-collapsed .oq-helper-dual-range-input--min {
+  transform: translateY(-9px);
+}
+
+.oq-helper-dual-range.is-collapsed .oq-helper-dual-range-input--max {
+  transform: translateY(9px);
 }
 
 .oq-helper-dual-range-input:focus-visible {
@@ -1074,6 +1083,14 @@
   box-shadow: 0 0 0 1px var(--oq-helper-accent), 0 2px 6px rgba(15, 23, 42, 0.18);
   cursor: grab;
   pointer-events: auto;
+}
+
+.oq-helper-dual-range-input[aria-disabled="true"]::-webkit-slider-thumb {
+  pointer-events: none;
+}
+
+.oq-helper-dual-range-input[aria-disabled="true"]::-moz-range-thumb {
+  pointer-events: none;
 }
 
 .oq-helper-dual-range-input:focus-visible::-webkit-slider-thumb {
