@@ -3,10 +3,12 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "../sources/oq_source_receipt_runtime.h"
 #include "oq_boot_resume_runtime.h"
 #include "oq_defrost_logic.h"
 #include "oq_flow_control_logic.h"
 #include "oq_flow_delta_t_runtime.h"
+#include "oq_sensor_source_runtime.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 
@@ -16,6 +18,9 @@ struct TickConfig {
   float dt_s = 10.0f;
   int startup_hold_s = 20;
   int frost_ipwm = 800;
+  float minimum_flow_lph = 400.0f;
+  bool compressor_postflow_active = false;
+  float mismatch_threshold_lph = 150.0f;
 };
 
 class Runtime {
@@ -88,6 +93,9 @@ class Runtime {
     const int cm_code = id(oq_control_mode_code);
     const int task_code = id(oq_commissioning_task_code);
     const bool want_manual = id(oq_flow_control_mode).active_index().value_or(0) == 1;
+    const bool frost = cm_code == 98;
+    const bool postflow = cm_code == 1 && config.compressor_postflow_active;
+    if (!postflow) postflow_ipwm_limit_ = oq_flow_control::kMaximumIpwm;
     const bool cm100_idle = cm_code == 100 && task_code == oq_commissioning::TASK_NONE;
     const bool flow_idle = cm_code == 0 || cm100_idle;
     const bool cm100_task_started =
@@ -114,7 +122,6 @@ class Runtime {
       return;
     }
 
-    const bool frost = cm_code == 98;
     const int fixed_mode = frost ? 2 : 0;
     if (fixed_mode != last_fixed_mode_) {
       reset_pi_();
@@ -216,6 +223,13 @@ class Runtime {
       }
     }
 
+    if (postflow) {
+      const float flow_lph =
+          oq_sensor_source::runtime().circulation_flow_lph(oq_sources::monotonic_ms(), config.mismatch_threshold_lph);
+      postflow_ipwm_limit_ =
+          oq_flow_control::update_postflow_ipwm_limit(postflow_ipwm_limit_, flow_lph, config.minimum_flow_lph);
+      if (pwm > postflow_ipwm_limit_) pwm = postflow_ipwm_limit_;
+    }
     pwm = oq_flow_control::clamp_ipwm(pwm);
     set_output_pwm_(pwm);
     write_pumps_(pwm);
@@ -236,7 +250,7 @@ class Runtime {
     float flow_lph{NAN};
   };
 
-  static PumpResume resumed_pump_(uint32_t now_ms, int frost_pwm) {
+  PumpResume resumed_pump_(uint32_t now_ms, int frost_pwm) {
     const auto& incidents = id(oq_incident_manager);
     bool resumed = incidents.boot_protection_hold(1U, now_ms);
     const oq_sources::RawFloatReceipt* peer = nullptr;
@@ -255,7 +269,7 @@ class Runtime {
         !oq_defrost::minimum_flow_ready(sources.flow_lph, oq_boot_resume_runtime::minimum_flow_lph))
       return {};
 
-    // A fresh read can contain a frost command written after boot acquisition ended.
+    // A fresh read can contain a frost command queued after boot acquisition ended.
     const int pwm = oq_flow_control::confirmed_common_pump_pwm(oq_sources::hp1.pump_pwm, peer, now_monotonic_ms,
                                                                oq_boot_resume::COMMAND_FRESH_MS, frost_pwm);
     return {pwm, sources.flow_lph};
@@ -338,6 +352,7 @@ class Runtime {
   int last_cm_code_ = 0;
   int last_task_code_ = 0;
   int last_fixed_mode_ = 0;
+  int postflow_ipwm_limit_ = oq_flow_control::kMaximumIpwm;
   bool have_published_mode_ = false;
   oq_flow_control::ExecutionMode published_mode_ = oq_flow_control::ExecutionMode::CM0;
 };

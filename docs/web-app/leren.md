@@ -85,12 +85,37 @@ lijn. Oude vieruursmetingen blijven herkenbaar in de grafiek en tellen niet mee
 als dagmeting. Na goedkeuring is de groene lijn binnen het gemeten bereik
 doorgetrokken en daarbuiten gestippeld. Een voorlopige lijn blijft overal
 gestippeld, ook binnen het gemeten bereik.
+Gebruik de labels in de legenda om de lijnen, meetpunten en onzekerheidsband
+apart te tonen of te verbergen. De webapp onthoudt per browser welke reeksen
+je hebt verborgen en welke rekenaanvoer je hebt gekozen.
 
 Open **Bekijk beoordeling** voor de voortgangsbalken en uitleg.
 
 Onder de grafiek staan de geschatte warmtevraag bij −10 °C en de
 buitentemperatuur waarbij de geleerde lijn 0 kW bereikt. Buiten het gemeten
 bereik rekent de webapp de lijnen door.
+
+### Warmtecapaciteit bij Power House
+
+De paarse lijn schat het maximale thermische vermogen van de geïnstalleerde
+Quatt-buitenunits. Kies **35 °C** of **45 °C** naast **Geschat Quatt-maximum**. Deze keuze
+geldt alleen voor de grafiek. De berekening gebruikt het ingestelde
+verwarmingsdebiet, de daglimiet, de frequentietabellen en uitsluitingen per
+buitenunit en de elektrische grens voor langdurig bedrijf. Bij Duo stroomt het
+water door beide buitenunits in serie.
+
+Het gekleurde gebied toont hoeveel vermogen er boven de warmtevraag overblijft.
+Wijs een punt op de capaciteitslijn aan om het vermogen en de marge te zien.
+De markering bij het geschatte omslagpunt noemt de gebruikte woninglijn. Een
+voorlopige geleerde woninglijn telt daarvoor nog niet mee. Voor een goedgekeurde
+geleerde lijn telt alleen een kruising binnen het bereik met geschikte metingen.
+
+Bij V1 en V1.5 eindigt de capaciteitslijn bij **+7 °C**. Daarboven ontbreken
+kaartwaarden om het maximum te schatten. Ontbrekende kaartwaarden op de hoogste
+toegestane stand geven een gat in de lijn. De schatting gaat uit van stabiel
+verwarmen tussen ontdooicycli. Het omslagpunt geeft aan waar de twee schattingen
+elkaar kruisen. Wanneer de ketel daadwerkelijk bijspringt, hangt ook af van de
+hybride regeling en de actuele omstandigheden.
 
 ### Woninglijnadvies overnemen
 
@@ -203,13 +228,18 @@ Bij een firmwaredownload wacht de controller maximaal twee seconden op de vorige
 verbinding. Is die dan nog bezet, dan start de download niet; probeer de update
 later opnieuw.
 
-Het scherm toont 36 uur aan buitentemperatuur en wind. Wijs in de grafiek een uur
-aan, gebruik de pijltjestoetsen of open **Bekijk uurwaarden**.
+Het scherm toont 36 uur aan buitentemperatuur en windsnelheid, met windrichting
+en zoninstraling waar die beschikbaar zijn. In de windgrafiek wijzen de pijlen
+waarheen de wind waait. Bij het gekozen uur staat uit welke richting de wind komt.
+Zoninstraling staat in W/m² en is het gemiddelde over het uur dat op het
+aangegeven tijdstip eindigt. Wijs in de grafiek een uur aan, gebruik de
+pijltjestoetsen of open **Bekijk uurwaarden**.
 
 **Temperatuur in huis** geeft een voorlopig scenario voor 30, 60 en 180 minuten.
 De berekening neemt de actuele kamertemperatuur als beginpunt, houdt de gemeten
-warmteafgifte constant en gebruikt de verwachte buitentemperatuur. Wind is
-extra informatie in de grafiek. Het scenario stuurt de regeling niet aan.
+warmteafgifte constant en gebruikt de verwachte buitentemperatuur. Wind en
+zoninstraling geven extra informatie bij de weersverwachting. Het scenario
+stuurt de regeling niet aan.
 
 Na een herstart zijn actuele metingen, een geldige weersverwachting en een
 actueel beoordeeld woningmodel nodig. De controller kan een opgeslagen schatting

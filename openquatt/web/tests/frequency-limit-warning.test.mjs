@@ -6,7 +6,7 @@ import { loadReplayHarness } from "./helpers/replay-render-harness.mjs";
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.window = { location: { pathname: "/" }, localStorage: { getItem: () => null } };
 const { state } = await import("../js/src/core/state.js");
-const { getFrequencyLimitModel, getFrequencyLimitWarning, patchFrequencyLimitWarnings } = await import("../js/src/features/frequency-limits.js");
+const { getAutomaticFrequencyTables, getFrequencyLimitModel, getFrequencyLimitWarning, patchFrequencyLimitWarnings, renderFrequencyLimitLevels } = await import("../js/src/features/frequency-limits.js");
 const { renderSilentSettingsGrid } = await import("../js/src/settings/silent.js");
 const { renderSystemModal } = await import("../js/src/features/header-status.js");
 const source = await readFile(new URL("../js/src/features/control-replay-view.js", import.meta.url), "utf8");
@@ -41,7 +41,9 @@ test("silent/day sliders warn below the actual minimum and keep equality/default
   assert.match(markup, /data-oq-frequency-limit-warning="silentMaxHz" role="status" aria-live="polite"/);
   assert.match(markup, /Deze buitenunits kunnen in die bedrijfsmodi niet starten/);
   state.systemModal = "silent-settings";
-  assert.match(renderSystemModal(), /oq-helper-modal--wide oq-helper-modal--scrollable/);
+  const modal = renderSystemModal();
+  assert.match(modal, /oq-helper-modal--wide oq-helper-modal--scrollable/);
+  assert.match(modal, /Met Stille modus op Uit of buiten het tijdvenster bij Schema vervalt de stille limiet/);
   assert.equal(getFrequencyLimitWarning("dayMaxHz").text, "");
   for (const cap of [30, 67, 90]) {
     state.drafts.silentMaxHz = cap;
@@ -59,6 +61,61 @@ test("Duo compares each unit and mode independently, including a valid 20 Hz min
   assert.equal(getFrequencyLimitModel("silentMaxHz", { mode: "cooling" }).blocked.length, 2);
 });
 
+test("frequency sliders show the highest physical level per mode and distinguish Duo tables", () => {
+  setup("duo");
+  state.entities.silentMaxHz.value = 72;
+  state.entities.silentMaxHz.min_value = 0;
+  state.entities.hp1AutomaticFrequencies = { value: "30,39,49,55,61,67,72,79,85,90|26,32,38" };
+  state.entities.hp2AutomaticFrequencies = { value: "26,32,38,50,62,71,71,80|26,32,38" };
+  const markup = renderSilentSettingsGrid();
+  assert.match(markup, /type="range" data-oq-field="silentMaxHz" min="0" max="120" step="1" value="72"/);
+  assert.match(markup, /<span>Verwarmen · HP1<\/span><strong>F7 · 72 Hz<\/strong>/);
+  assert.match(markup, /<span>Verwarmen · HP2<\/span><strong>F7 · 71 Hz<\/strong>/);
+  assert.match(markup, /<span>Verwarmen · HP1<\/span><strong>F10 · 90 Hz<\/strong>/);
+  assert.equal((markup.match(/<span>Koelen<\/span>/g) || []).length, 2);
+});
+
+test("V2 tables show two summaries per cap, including F20 and an in-between value", () => {
+  setup();
+  state.entities.silentMaxHz.value = 73;
+  state.entities.silentMaxHz.min_value = 0;
+  state.entities.dayMaxHz.min_value = 0;
+  state.entities.hp1AutomaticFrequencies = {
+    value: "20,26,30,36,40,45,48,52,55,60,65,67,68,69,72,76,82,85,88,90|26,32,38,44,50,56,62,68,74,80",
+  };
+  const markup = renderSilentSettingsGrid();
+  assert.match(markup, /type="range" data-oq-field="silentMaxHz" min="0" max="120" step="1" value="73"/);
+  assert.match(markup, /<span>Verwarmen<\/span><strong>F15 · 72 Hz<\/strong>/);
+  assert.match(markup, /<span>Koelen<\/span><strong>F8 · 68 Hz<\/strong>/);
+  assert.match(markup, /<span>Verwarmen<\/span><strong>F20 · 90 Hz<\/strong>/);
+  assert.equal((markup.match(/class="oq-settings-frequency-caption"/g) || []).length, 4);
+  assert.doesNotMatch(markup, /frequency-ticks|--oq-frequency-position/);
+});
+
+test("quiet hours combine the slider and the actual tables with each unit's native ceiling", () => {
+  setup("duo");
+  state.entities.silentMaxHz.value = 91;
+  state.entities.hp1AutomaticFrequencies = { value: "30,39,49,55,61,67,72,79,85,90|26,28,30,32,34,36,38,40,71,74|7,72,38" };
+  state.entities.hp2AutomaticFrequencies = { value: "20,26,30,36,40,45,48,52,55,60,65,68,72,76,82,85,90|20,26,30,34,36,38,40,42,44,46|14,76,56" };
+  const quiet = renderFrequencyLimitLevels("silentMaxHz");
+  assert.match(quiet, /Verwarmen · HP1<.*?<strong>F7 · 72 Hz<.*?<small>Begrensd door de buitenunit</);
+  assert.match(quiet, /Koelen · HP1<.*?<strong>F7 · 38 Hz<.*?<small>Begrensd door de buitenunit</);
+  assert.match(quiet, /Verwarmen · HP2<.*?<strong>F14 · 76 Hz<.*?<small>Begrensd door de buitenunit</);
+  assert.match(quiet, /Koelen · HP2<.*?<strong>F10 · 46 Hz<.*?<small>Limiet van de buitenunit · F14 · 56 Hz</);
+  assert.match(renderSilentSettingsGrid(), /data-oq-field="silentMaxHz"[^>]*value="91"/);
+  const day = renderFrequencyLimitLevels("dayMaxHz");
+  assert.match(day, /Verwarmen · HP1<.*?<strong>F10 · 90 Hz</);
+  assert.doesNotMatch(day, /buitenunit/i);
+  assert.equal(getAutomaticFrequencyTables("hp2")[1].length, 10);
+
+  state.drafts.silentMaxHz = 65;
+  assert.match(renderFrequencyLimitLevels("silentMaxHz"), /Verwarmen · HP1<.*?<strong>F5 · 61 Hz<.*?<small>Limiet van de buitenunit · F7 · 72 Hz</);
+  state.entities.hp1AutomaticFrequencies.value = "30,39,49,55,61,67,72,79,85,90|26,28,30,32,34,36,38,40,71,74|7,76,38";
+  const mixed = renderFrequencyLimitLevels("silentMaxHz");
+  assert.match(mixed, /de limiet van de buitenunit onbekend is/);
+  assert.match(mixed, /Verwarmen · HP1<\/span><strong>F5 · 61 Hz<\/strong>/);
+});
+
 test("missing or invalid minimum data stays unknown; polling repairs the existing warning node", () => {
   setup();
   for (const value of [undefined, null, "", "NAN", 0, -1, 121]) {
@@ -71,28 +128,46 @@ test("missing or invalid minimum data stays unknown; polling repairs the existin
     classList: { toggle: (_name, active) => { node.warning = active; } }, closest: () => card };
   const input = { value: "20" };
   const label = { textContent: "20 Hz" };
-  const card = { querySelector: (selector) => selector.startsWith("input") ? input : label };
+  const levels = { innerHTML: "" };
+  const elements = {
+    'input[type="range"]': input,
+    ".oq-helper-slider-meta strong": label,
+    "[data-oq-frequency-limit-levels]": levels,
+  };
+  const card = { querySelector: (selector) => elements[selector] };
   const root = { querySelectorAll: () => [node] };
   patchFrequencyLimitWarnings(root);
   assert.match(node.textContent, /nog niet beschikbaar/);
+  assert.equal(levels.innerHTML, "");
   state.entities.hp1MinimumHeatingHz = { value: 30 };
   state.entities.hp1MinimumCoolingHz = { value: 30 };
+  state.entities.hp1AutomaticFrequencies = { state: "30,39|30,34" };
   patchFrequencyLimitWarnings(root);
   assert.equal(node.warning, true);
-  state.drafts.silentMaxHz = 30;
+  assert.match(levels.innerHTML, /<strong>Onder F1<\/strong>/);
+  state.drafts.silentMaxHz = 35;
   patchFrequencyLimitWarnings(root);
   assert.equal(node.hidden, true);
   assert.equal(node.warning, false);
-  assert.equal(input.value, "30");
-  assert.equal(label.textContent, "30 Hz");
+  assert.equal(input.value, "35");
+  assert.equal(label.textContent, "35 Hz");
+  assert.match(levels.innerHTML, /<span>Verwarmen<\/span><strong>F1 · 30 Hz<\/strong>/);
+  assert.match(levels.innerHTML, /<span>Koelen<\/span><strong>F2 · 34 Hz<\/strong>/);
+  state.entities.hp1AutomaticFrequencies.state = "30,31,32,33,34,35,42,49|30,31,32,33,34,35,40,45|7,42,40";
+  state.drafts.silentMaxHz = 90;
+  patchFrequencyLimitWarnings(root);
+  assert.match(levels.innerHTML, /<strong>F7 · 42 Hz<\/strong><small>Begrensd door de buitenunit/);
+  state.drafts.silentMaxHz = 35;
   state.entities.silentMaxHz.value = 20;
   patchFrequencyLimitWarnings(root);
-  assert.equal(input.value, "30", "polling must preserve the unsaved draft");
+  assert.equal(input.value, "35", "polling must preserve the unsaved draft");
   state.drafts = {};
+  state.entities.hp1AutomaticFrequencies.state = "30,,39|";
   patchFrequencyLimitWarnings(root);
   assert.equal(input.value, "20");
   assert.equal(label.textContent, "20 Hz");
   assert.equal(node.warning, true);
+  assert.equal(levels.innerHTML, "");
 });
 
 test("current control status does not infer a blocked start from a low cap", () => {

@@ -93,7 +93,7 @@ inline oq_frequency_policy::FrequencyRange effective_excluded_range(bool is_hp1,
   return {read_hz(id(hp1_excluded_frequency_min_hz)), read_hz(id(hp1_excluded_frequency_max_hz))};
 }
 
-inline Context capture() {
+inline Context capture(bool silent) {
   const bool configured_v2 = id(hp_generation).has_state() && id(hp_generation).current_option() == "V2";
   const auto hp1_snapshot = oq_odu::decode_runtime_frequency_snapshot(id(hp1_runtime_frequency_snapshot_storage));
   const auto hp1_variant =
@@ -106,7 +106,6 @@ inline Context capture() {
   const auto hp2_snapshot = hp1_snapshot;
   const auto hp2_variant = oq_odu::Variant::UNKNOWN;
 #endif
-  const bool silent = id(oq_silent_active).state;
   return {
       configured_v2,
       hp1_snapshot,
@@ -118,6 +117,8 @@ inline Context capture() {
       hp2_variant,
   };
 }
+
+inline Context capture() { return capture(id(oq_silent_active).state); }
 #endif
 
 }  // namespace oq_frequency_runtime

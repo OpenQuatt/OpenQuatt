@@ -14,7 +14,7 @@ struct Snapshot {
   std::array<uint8_t, kLevels> hz{};
   uint32_t confirmed_mask = 0;
   bool missing = false, settling = false, response_changed = false, qualified_run = false;
-  bool awaiting_requested_hz = false;
+  bool awaiting_requested_hz = false, current_level_stable = false;
   uint8_t requested_hz = 0, actual_hz = 0;
   int hold_level(int level, bool policy_allowed, bool current_power_safe, bool control_allows_hold) const {
     return this->settling && level > 0 && policy_allowed && current_power_safe && control_allows_hold ? level : 0;
@@ -55,6 +55,10 @@ struct Response {
 
 class Observer {
  public:
+  bool running_for(uint32_t now_ms, uint32_t duration_ms) const {
+    return this->continuous_run_ && static_cast<uint32_t>(now_ms - this->run_since_ms_) >= duration_ms;
+  }
+
   Snapshot observe(const std::array<uint8_t, kLevels>& nominal, uint8_t variant, const Observation& in) {
     if (nominal != this->nominal_ || variant != this->variant_) {
       *this = {};
@@ -144,6 +148,7 @@ class Observer {
       // a continuously moving ODU indefinitely. Unsettled points are never saved.
       out.settling = out.missing || (!stable && command_age < kMaximumSettlingMs);
       if (stable && may_learn && context_valid) {
+        out.current_level_stable = true;
         this->qualified_run_ = true;
         this->confirmed_mask_ |= 1U << in.applied_level;
         auto& response = this->responses_[in.applied_level];

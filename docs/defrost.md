@@ -1,47 +1,78 @@
-# Defrostdiagnostiek
+# Ontdooien
 
-Onder **Instellingen buitenunit → Ontdooien** staan live metingen en een handmatige aanvraag per HP. De buitenunit blijft eigenaar van de ontdooicyclus. OpenQuatt stuurt geen eigen compressorfrequentie, ventilator of vierwegklep tijdens die cyclus.
+De buitenunit bepaalt wanneer een ontdooicyclus begint en eindigt. In OpenQuatt kun je de cyclus per buitenunit volgen, een ondersteunde methode kiezen of een extra ontdooicyclus aanvragen.
 
-De UI scheidt status en handmatige bediening, één methodekeuze met korte uitleg en ingeklapte **Technische metingen**. De keuze blijft een concept tot **Toepassen** en de aparte bevestiging; de uitgelezen methode blijft zichtbaar.
+## Ontdooimethoden
 
-Het **i** naast **Ontdooimethode** licht de ondersteunde methoden van deze variant toe, inclusief de grenzen van de startvoorspelling. Interne ODU-kwalificatie blijft leidend; de uitleg toont geen gegarandeerde aftelling of universele drempels.
+- [Modus 0 met wisselende wachttijd](#modus-0-met-wisselende-wachttijd)
+- [Modus 1 met 45 minuten draaitijd](#modus-1-met-45-minuten-draaitijd)
+- [Modus 3 met eerdere metingen](#modus-3-met-eerdere-metingen)
+- [Modus 4 met temperatuurverschil](#modus-4-met-temperatuurverschil)
 
-## Bediening
+Modus 2 is gereserveerd en ontbreekt in de methodekeuze.
 
-- Laad de actuele parameters uit de aangesloten ODU; voorbeeldwaarden zijn geen defaults.
-- Een handmatige aanvraag vereist verse meetwaarden, een bekende ODU, ODU-gestuurde defrost, een draaiende compressor in verwarmen, geldige actuele flow en geen blokkerende incidenten of servicetaak. Bij Duo mag de andere HP niet bezig of onbekend zijn.
-- Na bevestiging wordt eenmaal een ontdooiaanvraag verzonden. Een verloren antwoord veroorzaakt geen automatische herhaling. De terugmelding van de werkmodus bevestigt acceptatie; alleen de ontdooistatus niet.
-- Alleen de ontdooimethode kan per HP worden gewijzigd. De mogelijkheden zijn variantafhankelijk: **V1 ondersteunt 0, 1 en 3; V1.5 en de bestaande V2-profielen behouden 0, 1, 3 en 4**. De gereserveerde modus is niet selecteerbaar. Vereist zijn verse identiteit/telemetrie, stilstaande compressor, geen actieve/aangevraagde defrost en geen incident of conflicterende serviceactie. Vóór schrijven wordt de actuele methode opnieuw gelezen; wijkt deze af van de getoonde waarde, dan eerst opnieuw laden. Er wordt precies één waarde geschreven en daarna teruggelezen; alleen een overeenkomende readback geldt als succes. Een onzeker antwoord wordt niet meteen herhaald of teruggedraaid.
-- **Na herstart opnieuw toepassen** bewaart optioneel per HP alleen de methode en de bijbehorende ODU-identiteit in NVS. Hertoepassing wacht op verse identiteit, een stilstaande compressor en dezelfde veiligheidsvrijgave; een andere variant of control-board-identiteit blokkeert herstel. Opslagfouten worden gemeld en mogen niet als geslaagde toepassing worden getoond. Zonder deze optie wordt de bewaarde methode niet automatisch hersteld. Andere defrostparameters blijven alleen-lezen.
-- Bij opslag wordt automatische hertoepassing eerst duurzaam geblokkeerd. Alleen een volledig bevestigde opslag met deze optie aan verleent opnieuw toestemming. Een fout ná die blokkering kan de oude toestemming na een herstart niet terugbrengen. Mislukt al de eerste opslag van de blokkering, dan kan OpenQuatt dit niet garanderen: de interface meldt dat de oude keuze na een herstart kan terugkomen. Sla de keuze opnieuw op en controleer de bevestiging. Oudere profielen zonder bevestigde toestemming worden na een upgrade niet automatisch toegepast; bevestig de optie opnieuw als je haar wilt blijven gebruiken.
-- V1 ondersteunt interval-/trendmethoden (waaronder methode 3), maar **niet** de V1.5 mode-4-regeling op `Ta − Tevap`. Een uitgelezen methode 4 op een V1 mag daarom niet als dezelfde methode worden geïnterpreteerd of opnieuw worden toegepast. De backend blokkeert dit ook buiten de UI om. Onbekende identiteiten kunnen niet schrijven.
-- Tijdens wachten/ontdooien worden normale mode- en niveaucommando's vastgehouden. Veiligheidsstops blijven mogelijk.
-- Een stopverzoek, ook `Force CM0`, wacht in CM1 met normale circulatie zolang de ODU of actuator nog actief is. De bestaande minimumlooptijd en defrosthold blijven gelden; CM0 volgt pas na stilstand. Veiligheidsstops worden hierdoor niet uitgesteld.
-- Start de cyclus niet binnen 210 seconden, dan gaat de regeling pas na verse niet-actieve terugmelding verder. Na een actieve cyclus moeten beide terugmeldingen opnieuw niet-actief zijn. Vervolgens wordt de **actuele** gewenste werkmodus gestuurd, ook wanneer de warmtevraag inmiddels is verdwenen. Dit is geen bevestiging van fysieke uitvoering van die normale modewrite.
-- Herstart of communicatieverlies wist meetzekerheid en lokale historie. Een nog actieve ODU-cyclus wordt opnieuw herkend. Incidentstops blijven ook bij herstart leidend.
+## Modus 0 met wisselende wachttijd
 
-De API gebruikt bestaande webauthenticatie, origincontrole en CSRF voor acties. HTTP en Modbus delen alleen een kleine gesynchroniseerde snapshot; regeling en Modbus-transities lopen op de hoofdloop. Het optionele NVS-profiel wijzigt geen EEPROM-persistentie in de buitenunit en start nooit een handmatige defrostcyclus.
+De buitenunit begint met een interval van 50 minuten compressordraaitijd en kan dit aanpassen binnen een bereik van 45 tot 120 minuten. De teller loopt op terwijl de compressor draait. Hoelang het ontdooien zelf duurde bepaalt het volgende interval. Duurt een ontdooibeurt bijvoorbeeld 2 minuten, dan gaat een interval van 50 naar 70 minuten.
 
-## Meeverwarmen tijdens ontdooien
+| Duur van de vorige ontdooibeurt | Volgende wachttijd |
+| --- | --- |
+| 1 s t/m 3 min | 20 minuten erbij, maximaal 120 minuten |
+| 3 min 1 s t/m 4 min 59 s | Blijft gelijk |
+| 5 min t/m 7 min 59 s | 10 minuten eraf, minimaal 45 minuten |
+| Vanaf 8 min | Terug naar 45 minuten |
 
-Standaard verandert een ontdooicyclus niets aan de aansturing van de aanvullende warmtebron. Met de optionele instelling `Meeverwarmen tijdens ontdooien` (zie [Instellingen](web-app/instellingen.md)) start OpenQuatt de warmtebron zodra een buitenunit ontdooien meldt, zodat die brandt voordat de buitenunit warmte gaat onttrekken. Het doel begint op de aanvoer van vlak vóór het ontdooien plus 3 °C en gaat via OpenTherm stapsgewijs omhoog zolang de warmtebron niet brandt, tot hooguit 3 °C onder de maximale watertemperatuur. Hoeveel de temperatuurdip kleiner wordt, hangt af van het vermogen van de warmtebron. OpenQuatt stuurt daarbij nog steeds geen compressorfrequentie, ventilator of vierwegklep.
+Bij ongeveer −3 tot +3 °C buiten kan een vaste wachttijd van 45 minuten voorrang krijgen, afhankelijk van de instelling. Voor de volgende ontdooibeurt moet ook de verdamper koud genoeg zijn. OpenQuatt kan de actuele verdampergrens uitlezen en schat hoelang de verdamper lokaal aan die voorwaarde voldoet. De buitenunit houdt de gekozen wachttijd zelf bij.
 
-## Telemetrie-ontwerpkeuze: vasthouden bij stale, stoppen bij langdurige blindheid
+Bij droog winterweer kan een langere wachttijd onnodige onderbrekingen voorkomen. Trekt er mist op rond het vriespunt, dan kan rijp ineens sneller aangroeien en kan de gekozen wachttijd te lang zijn. Ook de beschikbare warmte uit het cv-water beïnvloedt hoelang het ontdooien duurt.
 
-- Zolang mode-/defrostterugmeldingen vers zijn (30 s) volgt de regeling de ODU. Is de telemetrie stale maar is er geen bewezen defrost actief of aangevraagd, dan blijft het vorige compressorcommando staan; gewone demandwijzigingen wachten. Dit is bewust conservatief: een ongemerkt lopende ODU-cyclus mag niet door een normale write worden verstoord. Andere ODU-serviceoperaties kunnen de normale polling tijdelijk pauzeren; daarom is dit als contracttest vastgelegd.
-- Pas na 90 seconden zonder geldige mode-/defrostmeting volgt een veiligheidsstop via `telemetry_fault`. Transportverlies zelf gaat elders sneller fail-closed; deze 30/90 s-keuze vervangt dat niet.
+## Modus 1 met 45 minuten draaitijd
 
-## Interpretatie
+Voor een gewone ontdooiing moet de compressor in totaal 45 minuten hebben gedraaid. De verdamper moet ook lang genoeg onder zijn temperatuurgrens blijven. Staat de compressor tussendoor stil, dan pauzeert de teller. Met 30 minuten draaien, 10 minuten stilstand en nog 15 minuten draaien bereikt de unit na 55 minuten kloktijd zijn 45 minuten draaitijd.
 
-OpenQuatt leest de actuele instellingen op aanvraag uit. Aanvullende instellingen voor methode 4 worden alleen gelezen voor varianten die deze methode ondersteunen. Er is geen periodieke scan van het buitenunitgeheugen.
+Neem een temperatuurgrens van −3 °C. Bij −2 °C blijft de buitenunit verwarmen. Zakt de verdamper naar −4 °C en blijft hij lang genoeg onder −3 °C, dan kan de buitenunit ontdooien. OpenQuatt gebruikt ongeveer 3 minuten als schatting voor de tijd onder de grens. De draaitijdteller loopt op tot 50 minuten. Ook daarna kan de buitenunit blijven verwarmen zolang de verdamper te warm is.
 
-- Mode 0: geselecteerde verdampertemperatuurdrempel en geschatte lokale kwalificatietijd. Het interne adaptieve interval en de uitzonderingen daarop zijn niet volledig bekend.
-- Mode 1: verdampertemperatuurdrempel; geen exacte aftelling voor de nog onduidelijke 45-/50-minutenlogica.
-- Mode 2: gereserveerd; geen instelbare strategie.
-- Mode 3: beperkte diagnostiek, geen reconstructie van interne trendhistorie.
-- Mode 4: parameterafhankelijke `Ta - Tevap`-drempel en normale interval-/looptijdparameters, alleen op de varianten die deze methode implementeren. V1.5 en beide onderzochte V2-varianten hebben hiervoor een gevuld eigen parameterprofiel; de waarden verschillen per variant en worden daarom live uitgelezen. Dit omvat niet alle interne startpaden.
+De eerste ontdooiing kan vóór 45 minuten beginnen als de verdamper lang genoeg kouder dan −7 °C blijft en de compressor minstens 5 minuten heeft gedraaid. Bij mist kan rijp de luchtstroom al beperken vóór de gewone draaitijd is bereikt. Bij droge vorst kan de verdamper lang koud blijven terwijl er weinig rijp zit.
 
-Lokale looptijden beginnen bij waarneming en kunnen na een herstart korter zijn dan de werkelijke ODU-looptijd. De tijdschalen van de interne duurbegrenzingen zijn niet volledig bekend: de benodigde eindbevestiging blijft daarom onbekend. Een mogelijke maximale-duur-eindreden blijft een afleiding, nooit een bewezen oorzaak.
+## Modus 3 met eerdere metingen
+
+Draait de ventilator vrijwel op het gevraagde toerental, dan kan de buitenunit 60 metingen van de omvormer verzamelen. Hij vergelijkt het gemiddelde met een eerder opgeslagen waarde voor dezelfde ventilatorstand. In de uitgelezen profielen telt een afwijking van minstens 400 naar boven of beneden mee bij een ontdooiaanvraag. Dat getal hoort bij de interne schaal van het signaal. Welke fysieke grootheid de waarde weergeeft, is onbekend.
+
+In die profielen schakelt de buitenunit de vergelijking in bij 8 °C buiten of kouder en uit bij 14 °C of warmer. Tussen die grenzen houdt hij zijn vorige stand vast. Bij 11 °C kan de vergelijking dus actief zijn als het eerder 6 °C was, of uitstaan als het eerder 15 °C was. De buitenunit houdt ook bij hoelang de verdamper onder zijn temperatuurgrens blijft. Voor een ontdooiaanvraag moet de compressor minstens 5 minuten hebben gedraaid.
+
+Op een vochtige ochtend rond het vriespunt kan rijp aangroeien terwijl de ventilator op dezelfde snelheid blijft draaien. De buitenunit kan in die periode veranderingen in de omvormerwaarde meewegen. Wisselt de ventilator vaak van stand, dan kan het langer duren voordat er genoeg vergelijkbare metingen zijn. OpenQuatt kan het toerental en de verdampertemperatuur uitlezen. De referentiewaarde blijft in de buitenunit.
+
+## Modus 4 met temperatuurverschil
+
+Tijdens het verwarmen neemt het verdampende koudemiddel warmte op uit de buitenlucht. De buitenunit trekt de verdampingstemperatuur (`Tevap`) af van de buitenluchttemperatuur (`Ta`). Dat verschil telt mee bij de beslissing om te ontdooien.
+
+Bij +3 °C buiten en een Tevap van −6 °C is het verschil 9 K. Daalt Tevap naar −9 °C terwijl het buiten +3 °C blijft, dan loopt het verschil op naar 12 K. Daarmee wordt de verschilgrens voor +3 °C in beide profielen hieronder bereikt.
+
+### Temperatuurgrenzen bij modus 4
+
+Onder +9 °C buiten kiest de buitenunit de verschilgrens op basis van de buitentemperatuur. De tabel toont het minimale verschil uit twee uitgelezen buitenunits, één V1.5 en één V2. De instellingen op jouw buitenunit kunnen afwijken.
+
+| Buitenlucht (Ta) | Quatt V1.5 | Quatt V2 |
+| --- | ---: | ---: |
+| 0 tot onder +9 °C | 12 K | 12 K |
+| −5 tot onder 0 °C | 11 K | 11 K |
+| −10 tot onder −5 °C | 11 K | 10 K |
+| −15 tot onder −10 °C | 10 K | 10 K |
+| −20 tot onder −15 °C | 9 K | 9 K |
+| −23 tot onder −20 °C | 7 K | 6 K |
+| Onder −23 °C | 6 K | 5 K |
+
+Bij −8 °C buiten ligt de grens in deze profielen op 11 K voor de V1.5 en 10 K voor de V2. Tevap moet dan bij de V1.5 −19 °C of kouder zijn en bij de V2 −18 °C of kouder.
+
+Van +9 °C tot onder +15 °C buiten geldt in deze twee profielen een vaste grens voor Tevap zelf. Tevap moet dan −4 °C of kouder zijn. Vanaf +15 °C geldt −1 °C of kouder. Bij Tevap onder ongeveer −29,4 °C kan een aparte temperatuurvoorwaarde gelden.
+
+### Tijdsvoorwaarden bij modus 4
+
+In de beschreven instellingen geldt gewoonlijk een tijdgrens van 45 minuten en moet de compressor minstens 5 minuten hebben gedraaid. Rond +7 °C buiten of kouder kan voor de eerste ontdooibeurt 25 minuten gelden. De teller voor de tijdgrens loopt tijdens compressorbedrijf op tot maximaal 180 minuten. De buitenunit controleert ook hoelang het temperatuurverschil groot genoeg blijft. Na het bereiken van de tijdgrens kan hij blijven verwarmen zolang de temperatuurvoorwaarden nog uitblijven.
+
+Bij sommige buitenunits kan de tijdgrens ook na de eerste ontdooibeurt korter worden als het temperatuurverschil bij koud weer lang genoeg groot blijft. Bij lang compressorbedrijf kan tot ongeveer +12 °C buiten een aparte temperatuurvoorwaarde meespelen.
+
+Bij vochtig weer rond het vriespunt kan rijp de warmteopname bemoeilijken. Een oplopend temperatuurverschil kan daarop wijzen. Een harder draaiende compressor of minder lucht langs de lamellen kan het verschil ook vergroten. Bij droge vorst kunnen beide temperaturen juist laag zijn terwijl het verschil klein blijft. Bij −6 °C buiten en een Tevap van −12 °C is dat bijvoorbeeld 6 K.
 
 ## V1 tegenover V1.5
 
@@ -49,12 +80,32 @@ Handmatig ontdooien en defrostmethode 4 zijn twee verschillende zaken. De handma
 
 De V1.5 heeft aanvullende mode-4-instellingen voor het verschil tussen buitentemperatuur en verdampingstemperatuur. Die uitbreiding ontbreekt op V1. Ook wanneer de actieve methode op mode 0 staat, kan V1.5 eigen instellingen voor mode 4 hebben. Mode 4 op V1.5 gebruikt het eigen V1.5-profiel; er hoeft en mag geen V2-profiel naar de V1.5 worden gekopieerd.
 
-Ook beide ondersteunde V2-varianten hebben een eigen mode-4-profiel en staan standaard op mode 4. Oudere en nieuwere V2-buitenunits gebruiken daarbij niet exact dezelfde Ta−Tevap-drempels. OpenQuatt leest daarom altijd de actuele instellingen van de aangesloten buitenunit en gebruikt geen generiek V2-profiel.
+Ook beide ondersteunde V2-varianten gebruiken de mode-4-instellingen van de aangesloten buitenunit. OpenQuatt leest de actuele waarden uit wanneer je de instellingen opvraagt.
 
-V1 heeft daarnaast niet de V1.5-opties voor afdruiptijd en ventilatorbijschakeling op hoge druk tijdens ontdooien; OpenQuatt presenteert die daarom niet als V1-capability.
+## Bediening
 
-## Nog te valideren op hardware
+Open **Instellingen buitenunit → Ontdooien** en kies **Instellingen uitlezen**. Bij een Duo kies je de buitenunit die je wilt bekijken.
 
-Voor vrijgave: normale en handmatige cyclus, vraag weg tijdens defrost, gemiste ACK, 210-seconden-timeout, communicatieverlies/herstel, reboot tijdens defrost, incidentstop, Duo-overlap en de tijdschalen. Na pompwijzigingen opnieuw vereist: CM0→forced-defrost, flow onder/boven de grens, demandverlies tijdens defrost, lost ACK, reconnect en Duo. Controleer daarbij interne heap, grootste vrije blok en stackmarges onder gelijktijdige web/API/HA/MQTT/Modbus-belasting. Een geslaagde compile is daarvoor geen vervanging.
+### Handmatig ontdooien
 
-Expertwijzigingen aan algoritme of drempels zijn conform fase 3 van issue #733 pas aan de orde na praktijkvalidatie. Temperatuurgrenzen, intervallen, maximale duur, compressorfrequenties en overige defrostparameters worden niet geschreven; de UI toont geen invoervelden hiervoor.
+Kies **Handmatig ontdooien** en bevestig de aanvraag. De knop is beschikbaar als de buitenunit verwarmt, de compressor draait en er voldoende water door het systeem stroomt. Een actieve ontdooiing, een blokkering of een andere serviceactie kan de aanvraag tegenhouden. Bij een Duo moet OpenQuatt ook kunnen vaststellen dat de andere buitenunit niet aan het ontdooien is.
+
+OpenQuatt stuurt één aanvraag. De buitenunit beslist of de cyclus start. Volg de status in de web-app om te zien of de buitenunit daadwerkelijk ontdooit.
+
+### Ontdooimethode wijzigen
+
+Het info-icoon naast **Ontdooimethode** legt de beschikbare modi uit. V1 biedt modus 0, 1 en 3. V1.5 en de ondersteunde V2-buitenunits bieden ook modus 4.
+
+Kies een methode als de compressor stilstaat. Klik op **Toepassen** en bevestig de wijziging. Onder **Uitgelezen** zie je welke methode de buitenunit terugmeldt. Als OpenQuatt vraagt om opnieuw uit te lezen, kies je eerst **Instellingen uitlezen**.
+
+Met **Na herstart opnieuw toepassen** kan OpenQuatt je keuze voor deze buitenunit bewaren. Na een herstart van OpenQuatt of na herstel van de verbinding leest OpenQuatt de methode opnieuw uit. Daarna controleert het ongeveer eens per tien minuten of die nog overeenkomt met je opgeslagen keuze. Als er een verschil is, wacht OpenQuatt tot wijzigen veilig kan. Meldt de web-app dat de keuze niet is opgeslagen, pas haar dan opnieuw toe en controleer de bevestiging.
+
+### Metingen en cyclusduur
+
+Onder **Technische metingen** staan de buitenluchttemperatuur, de verdampertemperatuur, de verdampingstemperatuur van het koudemiddel en de compressorfrequentie. Tijdens het ontdooien zie je de verstreken tijd. Na een waargenomen ontdooiing zie je hoelang die duurde en hoeveel tijd sindsdien is verstreken. Na een herstart kan die geschiedenis ontbreken. De buitenunit bepaalt zelf wanneer de volgende cyclus begint.
+
+## Meeverwarmen tijdens ontdooien
+
+Standaard verandert het ontdooien niets aan de aanvullende warmtebron. Met de optionele instelling **Meeverwarmen tijdens ontdooien** (zie [Instellingen](web-app/instellingen.md)) start OpenQuatt de warmtebron zodra een buitenunit ontdooien meldt. Zo brandt die voordat de buitenunit warmte aan het cv-water onttrekt. Na het ontdooien loopt de hulp nog 2 minuten door.
+
+Het doel begint op de aanvoertemperatuur van vlak vóór het ontdooien plus 3 °C. Brandt de warmtebron via OpenTherm niet, dan gaat het doel stapsgewijs omhoog: in totaal hooguit 8 °C en nooit hoger dan 3 °C onder de maximale watertemperatuur. Hoeveel de temperatuurdip kleiner wordt, hangt af van het vermogen van de warmtebron. De buitenunit blijft zelf bepalen wanneer het ontdooien begint en eindigt.

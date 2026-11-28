@@ -63,7 +63,7 @@ class OpenQuattHouseLearningStatus : public Component {
   void write_snapshot(httpd_req_t* req, size_t length) const;
 
  protected:
-  static constexpr size_t STATUS_BUFFER_SIZE = 4U * 1024U;
+  static constexpr size_t STATUS_BUFFER_SIZE = 5U * 1024U;
   // Retained daily quality; all endpoint copies remain strict PSRAM.
   static constexpr size_t EXPORT_BUFFER_SIZE = 37U * 1024U;
   static constexpr size_t REQUEST_BUFFER_SIZE = EXPORT_BUFFER_SIZE;

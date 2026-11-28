@@ -54,7 +54,9 @@ class BoilerRuntimeContractTest(unittest.TestCase):
         # in een YAML-lambda.
         self.assertIn("oq_boiler::evaluate_relay_target(", CONTROL_RUNTIME)
         self.assertIn("oq_boiler::relay_target_control_applies(", CONTROL_RUNTIME)
-        self.assertIn("bool relay_target_control_applies(uint8_t source, bool opentherm_selected)", BOILER_LOGIC)
+        self.assertIn("bool power_house_on_off = false", BOILER_LOGIC)
+        self.assertIn('oq_boiler_relay_power_house_on_off: "false"', SUBSTITUTIONS)
+        self.assertIn("${oq_boiler_relay_power_house_on_off}", CONTROL_YAML)
         self.assertNotIn("relay_target", DISPATCH_LOGIC)
         self.assertNotIn("RelayTargetConfig{", DISPATCH_YAML)
         # De OpenTherm-transport blijft onaangeroerd: die ontvangt het doel via

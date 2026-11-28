@@ -23,6 +23,22 @@ inline constexpr std::array<uint8_t, 11> V1_HEATING_DEMAND_REFERENCE_HZ = {
     0, 30, 39, 49, 55, 61, 67, 72, 79, 85, 90,
 };
 
+// Diagnostic only. These PCB programs have a verified level clamp for Modbus 2006 = 1.
+inline int known_odu_silent_level(Variant variant, uint16_t pcb_program) {
+  switch (variant) {
+    case Variant::V1:
+      return pcb_program == 0x0119U ? 7 : 0;
+    case Variant::V1_5:
+      return pcb_program == PCB_PROGRAM_V1_5 ? 7 : 0;
+    case Variant::V2_OLD_MODEL:
+      return pcb_program == PCB_PROGRAM_V2_OLD_MODEL ? 7 : 0;
+    case Variant::V2_NEW_MODEL:
+      return pcb_program == 0x0201U || pcb_program == 0x0202U ? 14 : 0;
+    default:
+      return 0;
+  }
+}
+
 enum class CompressorLevelProfile : uint8_t {
   UNKNOWN = 0,
   V2_EXTENDED = 1,

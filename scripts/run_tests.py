@@ -23,9 +23,11 @@ from tests.support.cpp import (  # noqa: E402
     compiler_command,
 )
 from tests.support.process import run_process  # noqa: E402
+from tests.support.firmware_runtime import write_firmware_runtime_methods  # noqa: E402
 
 
 SUITES = ("host", "python", "hil", "web")
+HOST_TESTS_DIR = Path("tests/host")
 
 
 def test_files(suite: str, pattern: str | None = None) -> list[Path]:
@@ -35,12 +37,13 @@ def test_files(suite: str, pattern: str | None = None) -> list[Path]:
             "Tests still exist in scripts/tests; move them to tests/python so discovery cannot silently omit them."
         )
     directory, default_pattern = {
-        "host": (ROOT / "tests/host", "*_test.cpp"),
+        "host": (ROOT / HOST_TESTS_DIR, "*_test.cpp"),
         "python": (ROOT / "tests/python", "test_*.py"),
         "hil": (ROOT / "tests/hil", "*.test.mjs"),
         "web": (ROOT / "openquatt/web/tests", "*.test.mjs"),
     }[suite]
-    files = sorted(path for path in directory.glob(pattern or default_pattern) if path.is_file())
+    glob = directory.rglob if suite == "host" else directory.glob
+    files = sorted(path for path in glob(pattern or default_pattern) if path.is_file())
     if not files:
         raise RuntimeError(f"No {suite} tests found ({directory / (pattern or default_pattern)}).")
     return files
@@ -83,15 +86,21 @@ def run_host(files: list[Path]) -> None:
     command = compiler_command("-I", str(ROOT), "-I", str(ROOT / "openquatt"))
     with tempfile.TemporaryDirectory(prefix="openquatt-host-tests-") as directory:
         for source in files:
-            binary = Path(directory) / source.stem
-            print(f"[build] {source.stem}", flush=True)
+            target = source.relative_to(ROOT / HOST_TESTS_DIR).with_suffix("")
+            binary = Path(directory) / target
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            extra_flags = []
+            if source.name.endswith("_chain_test.cpp"):
+                write_firmware_runtime_methods(ROOT, binary.parent)
+                extra_flags = ["-I", str(binary.parent)]
+            print(f"[build] {target.as_posix()}", flush=True)
             run_process(
-                [*command, str(source), "-o", str(binary)],
+                [*command, *extra_flags, str(source), "-o", str(binary)],
                 cwd=ROOT,
                 check=True,
                 timeout=COMPILE_TIMEOUT_SECONDS,
             )
-            print(f"[run] {source.stem}", flush=True)
+            print(f"[run] {target.as_posix()}", flush=True)
             run_process([str(binary)], cwd=ROOT, check=True, timeout=RUN_TIMEOUT_SECONDS)
     print(f"Host regression tests passed ({len(files)}).", flush=True)
 
@@ -118,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("suites", nargs="*", choices=(*SUITES, "all"), default=["all"])
     parser.add_argument("--list", action="store_true", help="List test files without running tools or tests.")
-    parser.add_argument("--pattern", help="Filename glob for one host or Python suite; quote the glob.")
+    parser.add_argument("--pattern", help="Glob for one host or Python suite. Host globs can include subdirectories; quote the glob.")
     parser.add_argument("--sanitize", action="store_true", help="Enable ASan and UBSan for all C++ test harnesses.")
     args = parser.parse_args(argv)
     suites = list(SUITES) if "all" in args.suites else list(dict.fromkeys(args.suites))

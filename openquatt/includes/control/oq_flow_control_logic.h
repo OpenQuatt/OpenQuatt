@@ -22,6 +22,12 @@ inline int clamp_ipwm(int value) {
   return value;
 }
 
+inline int update_postflow_ipwm_limit(int limit, float flow_lph, float minimum_flow_lph) {
+  if (isfinite(flow_lph) && flow_lph >= minimum_flow_lph) return limit;
+  // Keep the strongest pump setting until compressor postflow ends.
+  return kMinimumIpwm;
+}
+
 inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm,
                              bool cooling_target, int last_good_pwm_cooling, int ignored_pwm = 0) {
   if (commissioning_start) return clamp_ipwm(commissioning_start_pwm);
@@ -65,6 +71,10 @@ inline LocalFlowSelection local_flow_selection(bool secondary_enabled, float hp1
 inline float select_local_flow(bool secondary_enabled, float hp1_flow_lph, float hp2_flow_lph,
                                float mismatch_threshold_lph) {
   return local_flow_selection(secondary_enabled, hp1_flow_lph, hp2_flow_lph, mismatch_threshold_lph).value;
+}
+
+inline float fresh_flow_lph(const oq_sources::RawFloatReceipt& receipt, uint64_t now_ms, uint64_t max_age_ms) {
+  return receipt.fresh(now_ms, max_age_ms) ? receipt.value : NAN;
 }
 
 inline oq_sources::RawFloatReceipt local_flow_receipt(const LocalFlowSelection& selection,

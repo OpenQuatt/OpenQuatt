@@ -2168,7 +2168,7 @@
       setEntity("select", `HP${hp} - Frequency exclusion schedule`, {
         value: "Always", state: "Always", option: ["Always", "Quiet hours", "Off"],
       });
-      const frequencies = "26,31,36,41,46,51,56,61,66,71|30,34,38,42,46,50,54,58,62,66";
+      const frequencies = "26,31,36,41,46,51,56,61,66,71|30,34,38,42,46,50,54,58,62,66|7,56,54";
       setEntity("text_sensor", `HP${hp} - Automatic compressor frequencies`, { value: frequencies, state: frequencies });
     }
     setEntity("select", "Flow Control Mode", {
@@ -2410,7 +2410,7 @@
       ["Power House comfort above setpoint", 0.3, 0, 2, 0.05, "°C"],
       ["Power House demand rise time", 8, 2, 20, 1, "min"],
       ["Power House demand fall time", 3, 1, 10, 1, "min"],
-      ["Power House run extension stop margin", 0.5, 0.1, 1, 0.1, "°C"],
+      ["Power House run extension stop margin", 0.5, 0.1, 2, 0.1, "°C"],
       ["Power House run extension restart cooldown", 0.2, 0.1, 3, 0.1, "°C"],
       ["Controlled warmup trigger", 1.5, 0.5, 5, 0.1, "°C"],
       ["Controlled warmup step", 0.1, 0.1, 0.5, 0.1, "°C"],
@@ -5968,6 +5968,11 @@
       fetched_epoch: valid ? now : 0, start_epoch: now - now % 3600, step_s: 3600,
       temperature_c: valid ? Array.from({ length: 36 }, (_, i) => Math.round((9 + 4 * Math.sin(i / 4)) * 10) / 10) : [],
       wind_mps: valid ? Array.from({ length: 36 }, (_, i) => Math.round((2.5 + Math.sin(i / 3)) * 10) / 10) : [],
+      wind_direction_deg: valid ? Array.from({ length: 36 }, (_, i) => (235 + i * 4) % 360) : [],
+      solar_wm2: valid ? Array.from({ length: 36 }, (_, i) => {
+        const hour = new Date((now - now % 3600 + i * 3600) * 1000).getHours();
+        return hour > 8 && hour < 17 ? Math.round(280 * Math.sin((hour - 8) * Math.PI / 9)) : 0;
+      }) : [],
       scenario: { schema: 1, valid: ready, reason: ready ? "ready" : "model_unavailable",
         restored_model: false, issued_epoch: ready ? now : 0, configuration: 1,
         weather_generation: ready ? 1 : 0, weather_fetched_epoch: ready ? now : 0, weather_start_epoch: ready ? now - now % 3600 : 0,
@@ -5991,6 +5996,13 @@
     const ready = !retesting && invalidReasons.length === 0 && dailyCount >= 24;
     return {
       schema: 1, mode: "passive", enabled, storage_ready: true,
+      heating_capacity: {
+        flow_lph: 800, limit_w: 3400, cap_hz: 90,
+        points: Array.from({ length: 23 }, (_, index) => {
+          const coldReductionW = Math.max(0, 5 - index) * 150;
+          return [(index - 15) * 100, 5500 + index * 300 - coldReductionW, 5520 + index * 287 - coldReductionW];
+        }),
+      },
       manual_line_restore: mockLineCanRestore(),
       manual_line_retesting: retesting,
       shadow_ttl_ms: enabled && ready ? 10000 : 0,

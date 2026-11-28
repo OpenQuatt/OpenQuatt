@@ -58,6 +58,12 @@ struct Endpoint {
   }
 } oq_ph_learning_status_endpoint;
 #define id(value) value
+struct TestGeneration {
+  bool has_state() const { return true; }
+  std::string current_option() const { return "V2"; }
+} hp_generation;
+#include "../../../openquatt/includes/diagnostics/oq_house_capacity_curve.h"
+
 const char* paused_status = nullptr;
 const char* paused_reason = nullptr;
 
@@ -67,6 +73,7 @@ const char* paused_reason = nullptr;
 
 struct RuntimeStorage {
   PassiveRuntimeStorage learner;
+  oq_house_capacity::Curve house_capacity;
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
   QualityConfig daily_quality;
@@ -95,6 +102,7 @@ struct RuntimeStorage {
   DailyRestartDiagnostics daily_restart;
   SnapshotSourceStatus batch_source_status = SnapshotSourceStatus::OK;
   uint64_t max_tick_us = UINT64_MAX;
+  uint64_t house_capacity_max_us = UINT64_MAX;
   char json[kExportJsonBufferSize]{};
 };
 struct Production {
@@ -287,6 +295,17 @@ int main() {
   test_daily_resume_cause_before_journal_load();
   RuntimeStorage state;
   state.daily_restart = {1, UINT32_MAX, kDailyMaximumRestartGapMs, true, "restore", "operational_context_unknown"};
+  oq_house_capacity::Installation installation;
+  installation.available = true;
+  installation.units[0].variant = oq_odu::Variant::V2_NEW_MODEL;
+  installation.flow_lph = 3000;
+  installation.limit_w = 10000;
+  installation.cap_hz = 90;
+  installation.max_water_c = 60;
+  for (size_t index = 0; index < oq_house_capacity::MAX_POINTS * oq_house_capacity::SUPPLY_C.size(); ++index)
+    state.house_capacity.step(installation);
+  assert(state.house_capacity.complete() && state.house_capacity.count == state.house_capacity.points.size());
+  for (auto& point : state.house_capacity.points) point.watts.fill(18000);
   auto& learner = state.learner;
   auto& summary = state.summary;
   learner.initialized = learner.opted_in = learner.blocked = true;

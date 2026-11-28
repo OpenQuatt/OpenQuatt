@@ -1480,7 +1480,8 @@
     "hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp1ExcludeScope",
     "hp2ExcludeMinHz", "hp2ExcludeMaxHz", "hp2ExcludeScope",
   ];
-  export const FREQUENCY_EXCLUSION_STATE_KEYS = ["hp1AutomaticFrequencies", "hp2AutomaticFrequencies", "silentActive", "silentStatus"];
+  export const AUTOMATIC_FREQUENCY_TABLE_KEYS = ["hp1AutomaticFrequencies", "hp2AutomaticFrequencies"];
+  export const FREQUENCY_EXCLUSION_STATE_KEYS = [...AUTOMATIC_FREQUENCY_TABLE_KEYS, "silentActive", "silentStatus"];
   export const COMPRESSOR_SETTING_KEYS = ["minRuntime", ...EXCLUDED_FREQUENCY_KEYS];
   // Restore order: gate, thresholds and run-on first, the function last, so a backup
   // restore cannot energize the relay with stale gate settings in between.

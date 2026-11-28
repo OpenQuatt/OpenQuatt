@@ -31,7 +31,7 @@ test("defrost gebruikt per-HP endpoints en toont alleen ondersteunde modusknoppe
   const modal = renderOduDefrostModal();
   assert.match(modal, /Handmatig ontdooien/);
   assert.match(modal, /Ontdooimethode/);
-  assert.match(modal, /Ta − Tevap/);
+  assert.match(modal, /Verschil tussen buitenlucht en koudemiddel/);
   assert.match(modal, /Instellingen uitlezen/);
   assert.match(modal, /Toepassen kan alleen/);
   assert.match(modal, /Technische metingen/);
@@ -382,16 +382,36 @@ test("poll bewaart checkboxfocus en concept ook bij een mislukt statusrequest", 
   }
 });
 
-test("methodeinformatie blijft variantbewust en sluit terug naar het conceptformulier", () => {
+test("methodeinformatie toont intervalregels en voorbeelden voor de ondersteunde modi", () => {
   reset();
   state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, variant: 1, defrost_mode: 1, compressor_hz: 0 });
   assert.match(renderOduDefrostModal(), /data-oq-action="odu-defrost-info"[^>]*aria-label=/);
   handleOduDefrostAction("odu-defrost-info", { dataset: { hp: "1" } });
   const info = renderOduDefrostModal();
-  assert.match(info, /0 · Adaptief/);
-  assert.match(info, /3 · Adaptieve trend/);
-  assert.doesNotMatch(info, /4 · Ta/);
-  assert.match(renderSystemModal(), /alleen de methoden|alleen de methode|Alleen de methode/);
+  assert.match(info, /0 · Aanpasbaar interval/);
+  assert.match(info, /<th scope="col">Volgend interval<\/th>/);
+  assert.match(info, /<th scope="row">3:01–4:59 min<\/th>/);
+  assert.match(info, /1 · Vast interval/);
+  assert.match(info, /40 minuten mee/);
+  assert.match(info, /3 · Vergelijking per ventilatorstand/);
+  assert.match(info, /400 of meer/);
+  assert.match(info, /8 °C of kouder/);
+  assert.match(info, /14 °C of warmer/);
+  assert.doesNotMatch(info, /4 · Verschil/);
+  assert.match(renderSystemModal(), /alleen de methoden/);
+
+  state.oduDefrostStatuses[1].variant = 2;
+  assert.match(renderOduDefrostModal(), /4 · Verschil tussen buitenlucht en koudemiddel/);
+  assert.match(renderOduDefrostModal(), /het verschil 9 graden/);
+  try {
+    setLocale("en", { persist: false, applyDocument: false, notify: false });
+    const englishInfo = renderOduDefrostModal();
+    assert.match(englishInfo, /Next interval/);
+    assert.match(englishInfo, /400 or more/);
+    assert.match(englishInfo, /the difference is 9 degrees/);
+  } finally {
+    setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  }
   handleOduDefrostAction("odu-defrost-cancel", {});
   assert.equal(state.systemModal, "odu-defrost");
 });

@@ -130,6 +130,16 @@ int main() {
   d.sample(p, true, false, 2, -5, -11, 35, 22000);
   assert(d.confirm_required_s == -1 && std::isnan(d.start_c));
 
+  const bool profile_check = service_holds_circulation(true, true, false, false);
+  const bool idle_with_profile_check = hp_active(false, false, false, false, 0, profile_check, false);
+  assert(!oq_supervisory_state::standby_requires_postflow(98, idle_with_profile_check));
+  assert(!oq_supervisory_state::standby_requires_postflow(0, idle_with_profile_check));
+  assert(hp_active(false, false, false, false, 0, profile_check, true));
+  assert(service_holds_circulation(true, true, true, false));
+  assert(service_holds_circulation(true, true, false, true));
+  assert(service_holds_circulation(true, false, false, false));
+  assert(!service_holds_circulation(false, false, false, false));
+
   assert(hp_active(false, false, false, false, 0, false, false) == false);
   assert(hp_active(true, false, false, false, 0, false, false));
   assert(hp_active(false, false, false, false, 1, false, false));
@@ -142,7 +152,9 @@ int main() {
   // Force CM0 and normal standby both use CM1 until ODU/actuator idle.
   assert(oq_supervisory_state::standby_requires_postflow(0, true));
   assert(!oq_supervisory_state::standby_requires_postflow(0, false));
-  const int non_standby_modes[] = {1, 2, 3, 4, 5, 98, 100};
+  assert(oq_supervisory_state::standby_requires_postflow(98, true));
+  assert(!oq_supervisory_state::standby_requires_postflow(98, false));
+  const int non_standby_modes[] = {1, 2, 3, 4, 5, 100};
   for (int mode : non_standby_modes) assert(!oq_supervisory_state::standby_requires_postflow(mode, true));
   // P1b: manual defrost needs actual valid minimum flow, not only the delayed fault.
   assert(minimum_flow_ready(800, 250));

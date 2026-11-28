@@ -1,4 +1,4 @@
-import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive } from "../core/app-shared.js";
+import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive, isHeatPumpDefrosting } from "../core/app-shared.js";
 import { HP_PANEL_CONFIGS } from "../core/config.js";
 import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
@@ -11,7 +11,7 @@ import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { formatNumericState } from "../core/formatting.js";
-import { getHeatPumpPanelStatusLabel, getOverviewStatusModel, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
+import { formatEstimatedCurrent, getHeatPumpPanelStatusLabel, getOverviewStatusModel, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
 import { formatNumber, t } from "../i18n/index.js";
@@ -19,8 +19,8 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
 import { renderStatCard } from "./stat-card.js";
 
   export function getHeatPumpRuntimeModel(title, keys, accent) {
-    const mode = formatWorkingMode(getEntityStateText(keys.mode, "Unknown"));
-    const defrostActive = isEntityActive(keys.defrost);
+    const defrostActive = isHeatPumpDefrosting(keys);
+    const mode = defrostActive ? t("heatpump.modeDefrost") : formatWorkingMode(getEntityStateText(keys.mode, "Unknown"));
     const failures = formatFailures(getEntityStateText(keys.failures, "None"));
     const warningFailures = formatWarningFailures(failures);
     const running = mode === t("heatpump.modeHeating") || mode === t("heatpump.modeCooling") || defrostActive;
@@ -47,6 +47,9 @@ import { renderStatCard } from "./stat-card.js";
     if (defrostActive) {
       return t("heatpump.summaryDefrost");
     }
+    if (mode === t("heatpump.modeDefrostTransition")) {
+      return t("heatpump.summaryDefrostTransition");
+    }
     if (mode === t("heatpump.modeHeating")) {
       return t("heatpump.summaryHeating");
     }
@@ -63,7 +66,7 @@ import { renderStatCard } from "./stat-card.js";
     if (!Array.isArray(heatPumpPanels) || heatPumpPanels.length === 0) {
       return "";
     }
-    return `<p class="oq-overview-hp-summary">${escapeHtml(heatPumpPanels.map((panel) => `${panel.title} ${formatHeatPumpSummaryMode(formatWorkingMode(getEntityStateText(panel.keys.mode, "Unknown")), isEntityActive(panel.keys.defrost))}`).join(", "))}</p>`;
+    return `<p class="oq-overview-hp-summary">${escapeHtml(heatPumpPanels.map((panel) => `${panel.title} ${formatHeatPumpSummaryMode(formatWorkingMode(getEntityStateText(panel.keys.mode, "Unknown")), isHeatPumpDefrosting(panel.keys))}`).join(", "))}</p>`;
   }
 
   export function formatComponentPositionLabel(key) {
@@ -98,6 +101,9 @@ import { renderStatCard } from "./stat-card.js";
     }
     if (raw === "Cooling") {
       return t("heatpump.modeCooling");
+    }
+    if (raw === "Defrost") {
+      return t("heatpump.modeDefrostTransition");
     }
     return raw;
   }
@@ -317,11 +323,15 @@ import { renderStatCard } from "./stat-card.js";
     `;
   }
 
-  export function renderHeatPumpFooterItem({ label, value, bind, ariaLabel = "", valueBind = "", labelBind = "", labelMarkup = "" }) {
+  function renderHeatPumpFooterValue(value, valueSuffix) {
+    return `${escapeHtml(value)}${valueSuffix ? ` <small>${escapeHtml(valueSuffix)}</small>` : ""}`;
+  }
+
+  export function renderHeatPumpFooterItem({ label, value, valueSuffix, bind, ariaLabel = "", valueBind = "", labelBind = "", labelMarkup = "" }) {
     return `
       <div class="oq-hp-tech-footer-item">
         <span${ariaLabel ? ` aria-label="${escapeHtml(ariaLabel)}"` : ""}${labelBind ? ` data-oq-bind="${escapeHtml(labelBind)}"` : ""}>${labelMarkup || escapeHtml(label)}</span>
-        <strong${valueBind ? ` data-oq-bind="${escapeHtml(valueBind)}"` : ""}>${escapeHtml(value)}</strong>
+        <strong${valueBind ? ` data-oq-bind="${escapeHtml(valueBind)}"` : ""}>${renderHeatPumpFooterValue(value, valueSuffix)}</strong>
       </div>
     `;
   }
@@ -373,7 +383,7 @@ import { renderStatCard } from "./stat-card.js";
     const freqText = Number.isNaN(freqValue) ? "—" : String(Math.round(freqValue));
     const freqDemand = parseLooseNumber(getEntityValue(keys.freqDemand));
     const compressorFreqDemandText = t("heatpump.frequencyDemand", { value: formatNumericState(freqDemand, 0, "Hz") });
-    const powerValue = getEntityNumericValue(keys.power);
+    const powerValue = parseLooseNumber(getEntityValue(keys.power));
     const heatValue = getEntityNumericValue(keys.heat);
     const coolingValue = getEntityNumericValue(keys.cooling);
     const flowReading = getHeatPumpFlowReading(keys.flow);
@@ -404,7 +414,7 @@ import { renderStatCard } from "./stat-card.js";
     const efficiencyValue = mode === t("heatpump.modeCooling")
       ? ((!Number.isNaN(powerValue) && powerValue >= 5.0 && !Number.isNaN(coolingValue)) ? (coolingValue / powerValue) : Number.NaN)
       : getLiveHeatingCopValue(keys.cop);
-    const efficiencyText = formatNumericState(efficiencyValue, 1);
+    const efficiencyText = defrostActive ? t("heatpump.copNotApplicable") : formatNumericState(efficiencyValue, 1);
     const efficiencyLabel = mode === t("heatpump.modeCooling") ? t("overview.topCopEer") : t("overview.topCop");
     const heatLabel = mode === t("heatpump.modeCooling") ? t("heatpump.heatCoolLabel") : t("heatpump.heatWarmLabel");
     const heatDescription = mode === t("heatpump.modeCooling") ? t("heatpump.heatCoolNote") : t("heatpump.heatWarmNote");
@@ -478,6 +488,7 @@ import { renderStatCard } from "./stat-card.js";
       eevPositionText,
       fourWayPositionText,
       powerText,
+      estimatedCurrent: formatEstimatedCurrent(powerValue),
       heatText,
       heatLabel,
       heatDescription,
@@ -543,7 +554,7 @@ import { renderStatCard } from "./stat-card.js";
     const activeCondWaterGradientId = model.reverseCycle ? condWaterCoolGradientId : condWaterHeatGradientId;
     const footerItems = [
       { label: t("heatpump.footerMode"), value: model.mode, valueBind: "footer-mode" },
-      { label: t("heatpump.compactPower"), ariaLabel: t("heatpump.compactPower"), labelMarkup: t("heatpump.footerPowerShort"), value: model.powerText, valueBind: "footer-power" },
+      { label: t("heatpump.compactPower"), ariaLabel: t("heatpump.compactPower"), labelMarkup: t("heatpump.footerPowerShort"), value: model.powerText, valueSuffix: model.estimatedCurrent, valueBind: "footer-power" },
       { label: model.heatLabel, ariaLabel: model.heatLabel, labelBind: "footer-heat-label", labelMarkup: model.heatLabel === t("heatpump.heatCoolLabel") ? t("heatpump.footerHeatCool") : t("heatpump.footerHeatWarm"), value: model.heatText, valueBind: "footer-heat" },
       { label: model.efficiencyLabel, labelBind: "footer-efficiency-label", value: model.efficiencyText, valueBind: "footer-efficiency" },
     ];
@@ -776,9 +787,9 @@ import { renderStatCard } from "./stat-card.js";
         </div>
         <div class="oq-overview-hp-stats">
           ${renderOverviewStatCards([
-            { key: keys.power, label: t("heatpump.compactPower"), tone: "blue", note: t("heatpump.compactPowerNote") },
+            { key: keys.power, label: t("heatpump.compactPower"), tone: "blue", note: t("heatpump.compactPowerNote"), valueSuffix: schematicModel.estimatedCurrent },
             { key: thermalKey, label: schematicModel.heatLabel, tone: "orange", note: schematicModel.heatDescription },
-            { label: schematicModel.efficiencyLabel, value: schematicModel.efficiencyText, tone: "green", note: t("heatpump.compactEfficiencyNote") },
+            { label: schematicModel.efficiencyLabel, value: schematicModel.efficiencyText, tone: "green", note: defrostActive ? "" : t("heatpump.compactEfficiencyNote") },
           ])}
         </div>
         <div class="oq-overview-hp-meta">
@@ -1516,13 +1527,16 @@ import { renderStatCard } from "./stat-card.js";
       ["compressor-freq", model.compressorFreqText],
       ["compressor-freq-demand", model.compressorFreqDemandText],
       ["footer-mode", model.mode],
-      ["footer-power", model.powerText],
       ["footer-heat", model.heatText],
       ["footer-efficiency-label", model.efficiencyLabel],
       ["footer-efficiency", model.efficiencyText],
       ["fourway-detail", model.fourWayPositionText],
       ["eev-detail", model.eevPositionText],
     ]);
+    const footerPower = board.querySelector('[data-oq-bind="footer-power"]');
+    if (footerPower) {
+      setInnerHtmlIfChanged(footerPower, renderHeatPumpFooterValue(model.powerText, model.estimatedCurrent));
+    }
     const footerHeatLabel = board.querySelector('[data-oq-bind="footer-heat-label"]');
     if (footerHeatLabel) {
       syncAttribute(footerHeatLabel, "aria-label", model.heatLabel);

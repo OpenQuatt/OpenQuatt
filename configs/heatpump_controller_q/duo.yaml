@@ -21,3 +21,11 @@ packages:
   openquatt_measurement_archive: !include
     file: ../../openquatt/experimental/measurement_archive.yaml
     condition: "${oq_include_measurement_archive}"
+
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_duo_build]
+
+openquatt_duo_build:

@@ -28,7 +28,9 @@ Onder **Compressorinstellingen** kies je per warmtepomp één frequentiebereik v
 
 De kaart toont welke frequenties OpenQuatt overslaat. Onder **Beschikbare standen** zie je per tijdvak hoeveel compressorstanden overblijven na toepassing van de frequentielimiet en het uitgesloten bereik. Als de uitsluiting de laatste bruikbare stand wegneemt, vraagt de web-app om bevestiging.
 
-Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**.
+Bij **Stille uren** kies je voor **Uit**, **Aan** (altijd actief) of **Schema** (volgt de ingestelde start- en eindtijd). Dezelfde keuze staat op het overzicht bij **Stille modus**. Met **Uit** of buiten het tijdvenster bij **Schema** vervalt de stille limiet van de buitenunit en gebruikt OpenQuatt de daglimiet.
+
+Onder de frequentiesliders zie je voor verwarmen en koelen de hoogste stand binnen de ingestelde Hz-limiet. De schuif voor stille uren toont ook de limiet van de buitenunit als OpenQuatt die kan afleiden uit de firmwareversie en de frequentietabel. De getoonde stand houdt rekening met beide limieten. Bij een Duo verschijnen de buitenunits apart als hun tabellen of limieten verschillen.
 
 Bij **Quatt Hybrid-versie** staat de ingestelde generatie boven de uitgelezen generatie en firmwareversie per buitenunit. Via **Aanpassen** kun je de buitenunits opnieuw laten detecteren.
 
@@ -203,7 +205,7 @@ Langer doorverwarmen staat standaard aan; uitzetten kan hier met de schakelaar *
 
 Dit blok staat binnen **Power House — comfort**. Bij weinig warmtebehoefte kan een draaiende warmtepomp op laag vermogen blijven verwarmen. Je kiest een aparte stoptemperatuur en hoeveel de kamer daarna moet afkoelen. Ook als de comfortregeling al warmte terugneemt, mag de lopende run op laag vermogen doorgaan tot deze stopgrens. Een stilstaande warmtepomp wordt hierdoor niet gestart. De overgang naar laag vermogen hangt af van hoeveel warmte je woning nodig heeft; daarvoor geldt geen vaste kamertemperatuur.
 
-1. Kies bij **Stopgrens boven gewenste temperatuur** hoeveel graden boven je gewenste temperatuur de stopgrens ligt: 0,1–1,0 °C, standaard +0,5 °C. Voorbeeld: je wilt **21,0 °C** en stelt **0,7 °C** in. De stopgrens wordt **21,7 °C**. Met **0,5 °C** wordt dat **21,5 °C**. Verander je deze instelling, kijk dan ook naar de berekende temperatuur voor opnieuw verwarmen: die kan meeveranderen.
+1. Kies bij **Stopgrens boven gewenste temperatuur** hoeveel graden boven je gewenste temperatuur de stopgrens ligt: 0,1–2,0 °C, standaard +0,5 °C. Voorbeeld: je wilt **21,0 °C** en stelt **0,7 °C** in. De stopgrens wordt **21,7 °C**. Met **0,5 °C** wordt dat **21,5 °C**. Verander je deze instelling, kijk dan ook naar de berekende temperatuur voor opnieuw verwarmen: die kan meeveranderen.
 2. Kies bij **Afkoeling na stoppen** hoeveel graden de kamer na de stop moet afkoelen: 0,1–3,0 °C, standaard 0,2 °C. Voorbeeld: de stopgrens is **21,7 °C** en je stelt **0,2 °C afkoeling** in. Opnieuw verwarmen is dan mogelijk bij **21,5 °C of lager**. Met **0,7 °C afkoeling** wordt dat **21,0 °C**. We rekenen vanaf de ingestelde stopgrens, ook als de kamer na het stoppen nog warmer wordt. Dezelfde afkoelgrens geldt na een comfortstop én na een gewone stopperiode.
 
 De twee getalvelden staan altijd in dit blok. Daaronder staan **Stopgrens** en **Opnieuw verwarmen mogelijk bij**, berekend met je gewenste temperatuur. Tijdens bewerken staat er **Voorbeeld van je wijziging — nog niet bevestigd**; de huidige instellingen blijven daarnaast leesbaar. De informatieknoppen geven uitleg met getalvoorbeelden. De status toont wat er nu gebeurt, bijvoorbeeld **Wacht op afkoeling** of **Stop aangevraagd**.
@@ -220,6 +222,8 @@ Voorbeelden bij een gewenste temperatuur van **21,0 °C**, een stopgrens van **2
 | 1,2 °C | 20,8 °C | De instelling **Afkoeling onder gewenste temperatuur** gaat voor: je hoeft niet tot 20,5 °C te wachten |
 
 Bij de stopgrens vraagt Power House de warmtepomp om te stoppen. De warmtepomp stopt later als hij zijn minimale looptijd nog moet afmaken. Ook daarna kunnen de radiatoren of vloer nog warmte afgeven. Bij opnieuw verwarmen bepaalt Power House weer hoeveel vermogen nodig is; de warmtepomp start dus niet altijd op minimumvermogen. De normale beveiligingen blijven gelden.
+
+De voorbeelden hierboven gaan uit van een comfortstop **boven** de gewenste temperatuur. Bij lage vraag met een minimumstand boven F1 kan Power House al stoppen **op** de gewenste temperatuur. Na zo'n stop controleert Power House de actuele kamerwaarde en het setpoint opnieuw vlak vóór het eerste compressorcommando. De start wacht bij een ongeldige of verlopen waarde of als de kamer op of boven het setpoint is.
 
 Langer doorverwarmen staat standaard aan. De instellingen blijven na een controllerherstart behouden. Zie [Power House: langer doorverwarmen](../power-house.md#langer-doorverwarmen) voor de precieze werking, statussen en het gedrag na een herstart.
 
@@ -297,9 +301,9 @@ Hier staan commissioning, tests, kalibratie en andere servicetaken. Gebruik deze
 
 **Ontluchten** draait in CM100 een pomp-only programma van 5 minuten met een rustige start, pomp-pulsen en stabilisatie. Tijdens een rustpuls mag de gemeten flow kort naar nul zakken. De routine stopt met een fout zodra 120 seconden aaneengesloten geen geldige flow van minstens 20 L/h is gedetecteerd. De gevraagde iPWM toont de opdracht van het programma, niet een bevestiging dat de pomp draait of water stroomt. Het resultaat onderscheidt **Mislukt** met foutreden van **Afgebroken**. Na een fout of afbreken keert de routine niet automatisch terug naar Auto; de optie voor terugkeer naar Auto geldt alleen bij normaal afronden.
 
-#### Flow autotune
+#### Flowregeling afstellen
 
-Start de service (CM100) en open **Flow autotune**. De autotune voert twee
+Start de service (CM100) en open **Flowregeling afstellen**. OpenQuatt voert twee
 pompstaptests uit en controleert daarna de berekende Kp/Ki met een
 flowdoelstap. Laat kleppen en andere pompen tijdens de test gelijk staan.
 **Huidige Kp/Ki** toont de actieve waarden; tijdens validatie worden tijdelijk
@@ -321,7 +325,9 @@ voor iedere bedrijfsconditie; controleer de flowregeling na toepassen.
 Zie [Bodemplaatverwarming](../bodemplaatverwarming.md) voor regelmethoden,
 generatieverschillen en het opslaan en opnieuw toepassen van deze instellingen.
 
-Bij `Instellingen buitenunit` staat `Ontdooien` als derde rij. Het paneel toont per buitenunit de actuele status en cyclusduur. Onder `Instellingen` staan de huidige ontdooimethode met uitleg; `Instellingen uitlezen` leest deze uit de buitenunit. Alleen methoden die de herkende buitenunit daadwerkelijk ondersteunt kunnen tijdelijk worden gekozen na bevestiging van oud→nieuw: V1 biedt 0, 1 en 3; V1.5 en de bestaande V2-profielen bieden 0, 1, 3 en 4. De teruggelezen waarde geldt als bewijs. Sensorgegevens staan ingeklapt onder `Technische metingen`. Onbekende waarden blijven leeg; lokale tellers en mogelijke eindredenen zijn geen exacte weergave van de interne ODU-regeling. Zie [defrostdiagnostiek](../defrost.md) voor de beperkingen.
+Onder **Instellingen buitenunit → Ontdooien** zie je per buitenunit de actuele status en de waargenomen cyclusduur. Kies **Instellingen uitlezen** om de huidige methode te laden. Het info-icoon naast **Ontdooimethode** legt de ondersteunde modi uit. Een wijziging vraagt om bevestiging. De buitenunit moet de gekozen methode terugmelden voordat OpenQuatt de wijziging als geslaagd toont. Met **Na herstart opnieuw toepassen** kun je die methode per buitenunit bewaren.
+
+Onder **Technische metingen** staan de buitenluchttemperatuur, de verdampertemperatuur, de verdampingstemperatuur van het koudemiddel en de compressorfrequentie. Zie [Ontdooien](../defrost.md) voor de werking van de modi en de uitleg van de metingen.
 
 `Handmatig ontdooien` vraagt na bevestiging één cyclus aan bij een reeds verwarmende buitenunit met bewezen flow. De ODU beslist over acceptatie en uitvoering. OpenQuatt bewaart deze aanvraag niet en herhaalt haar niet automatisch. Veiligheidsstops houden voorrang; na afloop hervat de actuele regeling.
 

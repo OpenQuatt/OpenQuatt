@@ -198,7 +198,11 @@ De standaard minimumflow voor compressorbedrijf is 400 L/h; precies 400 L/h vold
 
 **ΔT-regeling.** Met `Flow Control Mode` op `Delta T` beweegt de verwarmingsflow mee met de warmtevraag. OpenQuatt stelt het flowsetpoint rustig bij, standaard eens per 5 minuten (`Flow Delta T Step Interval`, 2–30 minuten) met hooguit 50 L/h per stap (`Flow Delta T Max Step`), en negeert afwijkingen binnen `Flow Delta T Deadband` (standaard 0,3 °C), zodat het temperatuurverschil over elke draaiende warmtepomp naar `Flow Delta T Target` gaat (standaard 3 °C), binnen `Flow Delta T Minimum Flow` en `Flow Delta T Maximum Flow`. Bij een Duo telt het gemiddelde verschil per draaiende warmtepomp. Het geldt alleen tijdens verwarmen met de warmtepomp (CM2); koelen houdt `Cooling Flow Setpoint`. `Flow Setpoint` blijft het start- en terugvaldebiet: daar begint de pomp, en daarheen gaat hij terug bij een flowstoring of ontbrekende temperaturen. Bij ontdooien houdt de regeling de flow die hij had, maar nooit minder dan `Flow Setpoint`: minder water koelt de warmtewisselaar verder af en vertraagt het ontdooien. Dat blijft zo tot 10 minuten na het ontdooien; daarna begint de regeling opnieuw vanaf die flow. Na elke stap telt de eerste minuut niet mee, omdat de temperaturen dan nog naar de nieuwe flow toe bewegen. Haalt de pomp op volle kracht het gevraagde debiet niet, dan vraagt de regeling niet meer dan de pomp levert; loopt de flow alleen achter terwijl de pomp nog ruimte heeft, dan wacht de regeling met verder verhogen. Bij `Manual PWM`, vorstbeveiliging, stilstand of een servicetaak stopt de regeling; daarna begint hij opnieuw met stabiliseren. Tijdens een olieretourcyclus blijft de flow staan waar hij staat en worden de metingen van die cyclus en de 2 minuten erna niet gebruikt. Het maximum ligt nooit onder `Flow Setpoint` en nooit onder het standaarddebiet van de Quatt-versie die bij de installatie is gekozen (`Quatt Hybrid version`: 800 L/h, V2 1000 L/h); het minimum ligt altijd minstens 50 L/h boven de minimumflow voor compressorbedrijf. Instellingen die elkaar tegenspreken worden binnen die grenzen gecorrigeerd. Grijpt de watertemperatuurbeveiliging in, dan gaat de flow eerst naar het maximum; knijpt de beveiliging na vijf minuten op maximumflow nog steeds vermogen af, dan gaat `Flow Delta T Warning` aan. `Flow Delta T Status` laat zien wat de regeling doet en waarom, met het verschil per warmtepomp. De ketelvermogenstest in CM100 vraagt nog steeds `Flow Setpoint`.
 
-CM98 gebruikt iPWM 800 voor vorstcirculatie. Na CM98 gebruikt AUTO de laatst bekende goede iPWM voor verwarmen of koelen. Is die waarde ongeldig of gelijk aan de vorststand, dan gebruikt AUTO iPWM 440. Als een verwarmingscyclus doorloopt na een herstart, neemt AUTO bij voldoende debiet de teruggemelde pompstand over als die afwijkt van de vorststand. Bij een Duo moeten beide pompstanden daarvoor overeenkomen.
+Bij een stop naar CM0 of CM98 blijft de pompuitloop in CM1 actief tot de compressor aantoonbaar stilstaat. Bij bevestigd communicatieverlies begrenst OpenQuatt de uitloop voor die buitenunit tot 60 seconden vanaf het vaststellen van het verlies. Een latere verse frequentiemeting die aantoont dat de compressor nog draait, start die termijn opnieuw. De stopbewaking blijft actief. Bij te weinig of ontbrekende flow tijdens de uitloop stuurt OpenQuatt de pomp harder aan.
+
+Bij een normale stop met een gezonde verbinding heeft de compressor 90 seconden om stilstand te melden. Bij het verstrijken van die termijn wacht OpenQuatt nog op de tweede nulmeting als de eerste minder dan 15 seconden oud is. Herstart en ketelvrijgave wachten op bevestigde stilstand.
+
+CM98 gebruikt een vaste pompstand van iPWM 800 voor vorstcirculatie. Na CM98 gebruikt AUTO de laatst bekende goede iPWM voor verwarmen of koelen. Is die waarde ongeldig of gelijk aan de vorststand, dan gebruikt AUTO iPWM 440. Als een verwarmingscyclus doorloopt na een herstart, kan AUTO bij voldoende debiet de teruggemelde pompstand overnemen. AUTO slaat de vorststand over. Bij een Duo moeten beide pompstanden daarvoor overeenkomen.
 
 Gebruik deze groep voorzichtig. Bij verkeerde bronwaarden of hydraulische problemen maak je hier snel meer ruis dan winst.
 
@@ -352,6 +356,13 @@ De signalen kunnen gelijktijdig actief zijn en worden weer inactief zodra de
 bijbehorende actuele conditie is hersteld. Een eerder gedetecteerde maar alleen
 nog gelatchte melding houdt `Compressor cycling warning` niet actief.
 
+De tellers voor gemeten compressorstarts van de afgelopen 2, 6, 24 en 72 uur
+gebruiken PSRAM. Als OpenQuatt daarvoor geen geheugen kan reserveren, tonen
+deze tellers een onbekende waarde en verschijnt een foutmelding in het log.
+De waarschuwingen voor de vensters van 2 en 72 uur kunnen dan geen alarm
+afleiden. De waarschuwing voor afwisselende starts bij Duo en de begrenzer
+voor startopdrachten blijven actief.
+
 ## Wanneer zit je waarschijnlijk in de verkeerde laag?
 
 Gebruik deze vuistregels:
@@ -366,7 +377,7 @@ Gebruik deze vuistregels:
 Voor de meeste gebruikers zijn dit geen eerste knoppen:
 
 - compile-time constanten;
-- flow autotune-details;
+- details van de afstelling van de flowregeling;
 - lage-level optimizer- of guardrailinstellingen;
 - meerdere groepen instellingen tegelijk.
 

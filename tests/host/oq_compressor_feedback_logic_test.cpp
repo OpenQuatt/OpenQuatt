@@ -67,6 +67,32 @@ void test_transients_and_missing_receipts() {
   const auto out = observer.observe(table(), 3, defrost);
   assert(!out.missing && out.frequency(2, 26) == 26);
 }
+void test_physical_run_age_resets_without_an_applied_level_or_mode_change() {
+  constexpr uint32_t required_run_ms = 400000;
+  for (int interruption = 0; interruption < 3; ++interruption) {
+    Observer observer;
+    for (uint32_t now = 1000; now <= 401000; now += 10000) observer.observe(table(), 3, reading(now));
+    assert(!observer.running_for(400999, required_run_ms));
+    assert(observer.running_for(401000, required_run_ms));
+
+    uint32_t fresh_at = 441000;
+    if (interruption < 2) {
+      auto interrupted = reading(411000);
+      if (interruption == 0)
+        interrupted.actual_hz = 0;
+      else
+        interrupted.fresh = false;
+      observer.observe(table(), 3, interrupted);
+      assert(!observer.running_for(411000, required_run_ms));
+      fresh_at = 421000;
+    }
+    auto restored = observer.observe(table(), 3, reading(fresh_at));
+    assert(!restored.qualified_run && !observer.running_for(fresh_at, required_run_ms));
+    for (uint32_t elapsed = 10000; elapsed <= required_run_ms; elapsed += 10000)
+      restored = observer.observe(table(), 3, reading(fresh_at + elapsed));
+    assert(restored.qualified_run && observer.running_for(fresh_at + required_run_ms, required_run_ms));
+  }
+}
 void test_expiry_context_identity_and_recovery() {
   Observer original;
   confirm(original);
@@ -146,6 +172,27 @@ void test_unsettled_response_is_not_learned_or_held_forever() {
   auto stopped = reading(251000, 0, 0);
   stopped.working_mode = 0;
   assert(observer.observe(table(), 3, stopped).frequency(2, 26) == 26);
+}
+void test_previous_level_confirmation_cannot_prove_a_new_command() {
+  Observer observer;
+  auto out = confirm(observer, 1000, 4, 48);
+  assert(out.current_level_stable && (out.confirmed_mask & (1U << 4)));
+  auto other = reading(171000, 5, 52);
+  other.applied_ms = 170000;
+  observer.observe(table(), 3, other);
+  for (uint32_t now = 181000; now <= 371000; now += 10000) {
+    auto in = reading(now, 4, (now / 10000) % 2 == 0 ? 48 : 52);
+    in.applied_ms = 180000;
+    out = observer.observe(table(), 3, in);
+    assert(!out.current_level_stable);
+  }
+  assert(!out.settling && out.qualified_run && (out.confirmed_mask & (1U << 4)));
+  for (uint32_t now = 381000; now <= 411000; now += 10000) {
+    auto in = reading(now, 4, 48);
+    in.applied_ms = 180000;
+    out = observer.observe(table(), 3, in);
+  }
+  assert(out.current_level_stable);
 }
 void test_receipt_and_control_clock_origins_are_independent() {
   Observer observer;
@@ -312,9 +359,11 @@ void test_response_to_higher_command_has_a_bounded_wait() {
 int main() {
   test_live_feedback_and_nonmonotonic_response();
   test_transients_and_missing_receipts();
+  test_physical_run_age_resets_without_an_applied_level_or_mode_change();
   test_expiry_context_identity_and_recovery();
   test_receipt_after_response_window();
   test_unsettled_response_is_not_learned_or_held_forever();
+  test_previous_level_confirmation_cannot_prove_a_new_command();
   test_receipt_and_control_clock_origins_are_independent();
   test_startup_plateaus_never_qualify_an_override();
   test_confirmed_power_excludes_live_boost_and_old_run();

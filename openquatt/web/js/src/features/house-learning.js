@@ -5,7 +5,9 @@ import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { patchLearningDom } from "../core/view-patch-controls.js";
 import { getBasePath } from "../core/url-path.js";
+import { CAPACITY_SUPPLY_CHOICES, HOUSE_LEARNING_SERIES, rememberHiddenHouseLearningSeries, rememberHouseCapacitySupply } from "../core/house-learning-chart-preferences.js";
 import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
+import { normalizeHouseCapacity } from "../settings/house-learning-capacity.js";
 import { t } from "../i18n/index.js";
 
 export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
@@ -122,6 +124,7 @@ export function normalizeHouseLearningStatus(payload = {}, requestStartedAt = pe
       || preview.min_c !== null && preview.max_c !== null && preview.min_c <= preview.max_c);
   return {
     enabled: payload.enabled === true,
+    heatingCapacity: normalizeHouseCapacity(payload.heating_capacity),
     shadow: normalizeHouseLearningShadow(payload, requestStartedAt),
     controlMode: numberOrNull(payload.control_mode),
     storageReady: payload.storage_ready === true,
@@ -239,6 +242,14 @@ function scheduleShadowRefresh(previous) {
 
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
 export const getHouseLearningExportEndpoint = () => `${getBasePath()}/openquatt/learning/export`;
+
+export function changeHouseCapacitySupply(input) {
+  const supplyC = Number(input.value);
+  if (!CAPACITY_SUPPLY_CHOICES.includes(supplyC)) return;
+  state.houseLearningCapacitySupplyC = supplyC;
+  rememberHouseCapacitySupply(supplyC);
+  if (!patchLearningDom()) render();
+}
 
 // The measurement card is always open, so its data loads once the status is known.
 // A cleared journal has nothing to show, and a failed load waits for the refresh button.
@@ -369,6 +380,16 @@ async function changeHouseLine(action, button, refreshEntities) {
 }
 
 export function handleHouseLearningAction(action, button, pressNamedButton, refreshEntities) {
+  if (action === "toggle-house-learning-series") {
+    const series = button?.dataset?.oqHouseLearningSeries;
+    if (HOUSE_LEARNING_SERIES.includes(series)) {
+      const hidden = state.houseLearningHiddenSeries;
+      state.houseLearningHiddenSeries = hidden.includes(series) ? hidden.filter(item => item !== series) : [...hidden, series];
+      rememberHiddenHouseLearningSeries(state.houseLearningHiddenSeries);
+      if (!patchLearningDom()) render();
+    }
+    return true;
+  }
   if (action === "apply-house-line" || action === "restore-house-line") {
     void changeHouseLine(action === "apply-house-line" ? "apply" : "restore", button, refreshEntities);
     return true;

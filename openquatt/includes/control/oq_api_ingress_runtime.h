@@ -43,6 +43,10 @@ class Runtime {
 
   void set_accept_updates(bool accept) { accept_updates_ = accept; }
 
+  bool fresh(Slot slot, uint32_t now_ms, uint32_t stale_s) const {
+    return oq_input_source::evaluate_freshness(states_[index(slot)], now_ms, stale_s, entity_valid(slot)).valid;
+  }
+
   void observe(Slot slot, uint32_t now_ms) {
     if (!accept_updates_) return;
     auto& state = states_[index(slot)];

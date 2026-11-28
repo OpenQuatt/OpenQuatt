@@ -181,6 +181,20 @@ inline AssistSignal power_house_assist(float deficit_w, float on_threshold_w, fl
   };
 }
 
+struct FixedRelayPowerDecision {
+  bool valid;
+  bool heat_requested;
+};
+
+inline FixedRelayPowerDecision evaluate_fixed_relay_power(float requested_w, float start_w, float stop_w,
+                                                          bool output_active) {
+  if (!isfinite(requested_w) || !isfinite(start_w) || !isfinite(stop_w) || requested_w < 0.0f || stop_w < 0.0f ||
+      start_w <= stop_w) {
+    return {false, false};
+  }
+  return {true, output_active ? requested_w > stop_w : requested_w >= start_w};
+}
+
 inline AssistSignal heating_curve_assist(bool heat_request, bool hp_saturated, float target_temperature_c,
                                          float supply_temperature_c, float on_delta_c, float off_delta_c) {
   const bool temperatures_valid = !isnan(target_temperature_c) && !isnan(supply_temperature_c);
@@ -292,9 +306,9 @@ inline bool relay_must_be_off(bool opentherm_selected, bool startup_probe_active
 // CM4 fault fallback and CM100 commissioning deliberately keep their existing
 // on/off semantics: they are not normal auxiliary heat and must not change
 // meaning as a side effect of target control.
-inline bool relay_target_control_applies(uint8_t source, bool opentherm_selected) {
+inline bool relay_target_control_applies(uint8_t source, bool opentherm_selected, bool power_house_on_off = false) {
   if (opentherm_selected) return false;
-  return source == COMMAND_SOURCE_POWER_HOUSE || source == COMMAND_SOURCE_HEATING_CURVE ||
+  return (source == COMMAND_SOURCE_POWER_HOUSE && !power_house_on_off) || source == COMMAND_SOURCE_HEATING_CURVE ||
          source == COMMAND_SOURCE_COLD_START || source == COMMAND_SOURCE_DEFROST_ASSIST;
 }
 

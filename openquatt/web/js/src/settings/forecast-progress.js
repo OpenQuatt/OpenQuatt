@@ -78,19 +78,19 @@ export function renderForecastProgress({ statusOnly = false } = {}) {
   return `<section class="oq-learning-workspace-scenario" data-oq-learning-scenario data-scenario-freshness="${available ? (cached || held) ? "cached" : "current" : "unavailable"}" data-quality="${available ? "provisional" : "unknown"}" aria-label="${escapeHtml(t("learningWorkspace.forecast.title"))}">
     <div class="oq-learning-workspace-result-head"><h4>${escapeHtml(t("learningWorkspace.forecast.title"))}</h4><span class="oq-learning-workspace-quality" data-quality="${available ? "provisional" : "unknown"}">${escapeHtml(t(label))}</span></div>
     ${held || cached ? `<p class="oq-learning-workspace-scenario-condition" role="status">${escapeHtml(t(held ? "learningWorkspace.forecast.defrostCopy" : "learningWorkspace.forecast.cachedCopy"))}</p>` : ""}
-    ${!available && gapKey ? `<p class="oq-weather-chart-note" role="status">${escapeHtml(t(gapKey))}</p>` : ""}
-    <div class="oq-learning-workspace-targets">${horizons.map(({ seconds, target, value, valid }) => `<article data-scenario-horizon="${seconds}">
+    ${!available && gapKey ? `<p class="oq-learning-workspace-scenario-empty oq-weather-chart-note" role="status">${escapeHtml(t(gapKey))}</p>` : ""}
+    ${available ? `<div class="oq-learning-workspace-targets">${horizons.map(({ seconds, target, value, valid }) => `<article data-scenario-horizon="${seconds}">
       <h5>${escapeHtml(issuedValid ? time(target) : t("learningWorkspace.forecast.afterMinutes", { minutes: seconds / 60 }))}</h5>
       <strong>${escapeHtml(valid ? `${formatNumber(value, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} °C` : "—")}</strong>
       ${valid ? `<p class="oq-learning-workspace-temperature-condition">${escapeHtml(t("learningWorkspace.forecast.condition"))}</p>` : ""}
       ${issuedValid && target <= now ? `<small>${escapeHtml(t("learningWorkspace.forecast.expired"))}</small>` : ""}
     </article>`).join("")}</div>
-    ${available ? `<p class="oq-learning-workspace-issued">${escapeHtml(t("learningWorkspace.forecast.issued", { time: time(issued) }))}</p>` : ""}
+    <p class="oq-learning-workspace-issued">${escapeHtml(t("learningWorkspace.forecast.issued", { time: time(issued) }))}</p>
     <div class="oq-learning-workspace-forecast-notes">
-      ${available ? `<p class="oq-weather-chart-note">${escapeHtml(t("learningWorkspace.forecast.estimateExplanation"))}</p>` : ""}
+      <p class="oq-weather-chart-note">${escapeHtml(t("learningWorkspace.forecast.estimateExplanation"))}</p>
       ${earlierWeather ? `<p class="oq-weather-chart-note">${escapeHtml(t("learningWorkspace.forecast.earlierWeather"))}</p>` : ""}
-      ${available && gapKey ? `<p class="oq-weather-chart-note" role="status">${escapeHtml(t(gapKey))}</p>` : ""}
-    </div>
+      ${gapKey ? `<p class="oq-weather-chart-note" role="status">${escapeHtml(t(gapKey))}</p>` : ""}
+    </div>` : ""}
   </section>`;
 }
 

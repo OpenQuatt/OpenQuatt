@@ -45,6 +45,16 @@ De web-app heeft vijf hoofdschermen.
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
 
+Naast **Elektrisch vermogen** en bij **Stroomverbruik** per warmtepomp staat de
+geschatte stroomsterkte. OpenQuatt deelt het betreffende vermogen in watt door
+230 V en rondt af op één decimaal.
+
+Na een ontdooimelding blijft de actuele COP zichtbaar zolang de vierwegklep
+in verwarmingsstand staat en de draaiende warmtepomp netto warmte afgeeft.
+Tijdens ontdooien staat bij die warmtepomp **n.v.t.**. Bij de totale COP staat
+welke warmtepomp ontdooit. De COP komt terug zodra de klep weer in verwarmingsstand
+staat, de metingen geldig zijn en de warmtepomp weer netto warmte afgeeft.
+
 In de `Beslislog` staat de nieuwste melding bovenaan, met seconden in het tijdstip.
 Een startverloop bundelt de gelogde voorbereiding, startopdracht en
 compressorbevestiging. Klik erop om de stappen te zien; onder de technische details
@@ -100,6 +110,12 @@ bepalen wat werkelijk wordt geleverd. Ontbreken benodigde model-, frequentie-
 of temperatuurgegevens, dan staat er **—**. **0 W** betekent dat de berekening
 met geldige gegevens geen beschikbare capaciteit vindt. De sensornaam
 `HP capacity (W)` blijft gelijk; bij koelen is deze verwarmingsschatting niet beschikbaar.
+
+Bij Power House toont de statuskaart **Warmtevraag boven geschat maximum** als de
+vraag meer dan 150 W boven de geschatte capaciteit ligt. **Minder warmte geleverd
+dan gevraagd** verschijnt als de actuele afgifte meer dan 250 W onder de vraag
+ligt. De capaciteitsmelding krijgt voorrang. Onder de melding staan de twee
+vergeleken vermogens in kW.
 
 ## Wat wil je doen?
 

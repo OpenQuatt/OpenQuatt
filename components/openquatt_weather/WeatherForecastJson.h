@@ -135,6 +135,20 @@ bool write_forecast_json(const ForecastSnapshot& value, Sink sink) {
        !out.values(value.wind_mps) || !out.literal(",\"wind_direction_deg\":") ||
        !out.directions(value.wind_direction_deg, value.wind_direction_valid_mask)))
     return false;
+#ifdef USE_OPENQUATT_MEASUREMENT_ARCHIVE
+  if (value.valid && value.solar_valid_mask) {
+    if (!out.literal(",\"solar_wm2\":[")) return false;
+    for (size_t i = 0; i < oq_weather::kHours; ++i) {
+      if (i && !out.byte(',')) return false;
+      if (value.solar_valid_mask & (uint64_t{1} << i)) {
+        if (!out.integer(value.solar_wm2[i])) return false;
+      } else if (!out.literal("null")) {
+        return false;
+      }
+    }
+    if (!out.byte(']')) return false;
+  }
+#endif
   const auto& wind = value.current_wind;
   if (!out.literal(",\"current_wind\":{\"schema\":1,\"source\":\"model\",\"height_m\":10,"
                    "\"direction_convention\":\"from_true_north_clockwise\",\"used_by_model\":false,\"valid\":") ||

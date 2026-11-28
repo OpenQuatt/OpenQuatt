@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -8,6 +9,7 @@ API_YAML = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
 HA_YAML = (ROOT / "openquatt/oq_ha_inputs.yaml").read_text()
 SUBSTITUTIONS_YAML = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 SOURCE_RUNTIME = (ROOT / "openquatt/includes/control/oq_sensor_source_runtime.h").read_text()
+FLOW_RUNTIME = (ROOT / "openquatt/includes/control/oq_flow_runtime.h").read_text()
 HEAT_INTENT_RUNTIME = (ROOT / "openquatt/includes/control/oq_heat_intent_runtime.h").read_text()
 API_RUNTIME = (ROOT / "openquatt/includes/control/oq_api_ingress_runtime.h").read_text()
 SOURCE_LOGIC = (ROOT / "openquatt/includes/control/oq_input_source_logic.h").read_text()
@@ -21,6 +23,36 @@ def entity_block(source: str, entity_id: str) -> str:
 
 
 class InputSourceRuntimeContractTest(unittest.TestCase):
+    def test_circulation_uses_the_receipt_for_the_current_flow_route(self) -> None:
+        flow_check = SOURCE_RUNTIME.split("float circulation_flow_lph(", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("flow_selection()", flow_check)
+        self.assertIn("selected_flow_receipt_(selected.route)", flow_check)
+        self.assertIn("fresh_flow_lph(selected_flow_receipt_(selected.route), now_ms, max_age_ms)", flow_check)
+        self.assertIn("fresh_flow_lph(primary_local_flow_receipt_()", flow_check)
+        self.assertIn("fresh_flow_lph(oq_sources::hp2.flow", flow_check)
+        self.assertIn("select_local_flow(OQ_TOPOLOGY_DUO, primary, secondary, mismatch_threshold_lph)", flow_check)
+        self.assertIn("oq_sensor_source::runtime().circulation_flow_lph(", FLOW_RUNTIME)
+        self.assertNotIn("odu_poll_fresh", FLOW_RUNTIME)
+        route_reader = SOURCE_RUNTIME.split("static oq_sources::RawFloatReceipt selected_flow_receipt_(", 1)[1]
+        route_reader = route_reader.split("\n  }", 1)[0]
+        for route, receipt in (
+            ("CONTROLLER", "oq_sources::current_controller_filtered_flow()"),
+            ("CIC", "id(cic_component).flow_rate_receipt()"),
+            ("HP1", "oq_sources::hp1.flow"),
+            ("HP2", "oq_sources::hp2.flow"),
+            ("AGGREGATE", "oq_sources::local_flow"),
+        ):
+            self.assertRegex(route_reader, rf"case Route::{route}:\s*return [^;]*{re.escape(receipt)}")
+
+    def test_frost_uses_fixed_pwm_and_only_compressor_postflow_can_boost(self) -> None:
+        self.assertRegex(SUBSTITUTIONS_YAML, r'(?m)^oq_cm98_pump_ipwm: "800"\s')
+        self.assertIn("const bool postflow = cm_code == 1 && config.compressor_postflow_active;", FLOW_RUNTIME)
+        self.assertIn("if (!postflow) postflow_ipwm_limit_ = oq_flow_control::kMaximumIpwm;", FLOW_RUNTIME)
+        frost_branch = FLOW_RUNTIME.split("} else if (frost) {", 1)[1].split("} else {", 1)[0]
+        self.assertIn("pwm = oq_flow_control::clamp_ipwm(config.frost_ipwm);", frost_branch)
+        self.assertRegex(FLOW_RUNTIME, r"if \(postflow\) \{\s+const float flow_lph =\s+"
+                         r"oq_sensor_source::runtime\(\)\.circulation_flow_lph\(")
+
     def test_entity_options_defaults_and_ranges_are_preserved(self) -> None:
         source_contracts = {
             "water_supply_source": ("options: [Local, CIC, HA input]", "initial_option: Local"),
