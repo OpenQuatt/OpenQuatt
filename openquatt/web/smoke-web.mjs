@@ -64,6 +64,8 @@ const boundaryAllowedEdges = new Set([
   "core/entity-sync.js -> features/frequency-limits.js",
   "core/entity-actions.js -> features/frequency-exclusion.js",
   "core/entity-actions.js -> features/frequency-limits.js",
+  // Range writes and undo use the warning already shown by the frequency settings.
+  "core/entity-write-actions.js -> features/frequency-exclusion.js",
   "core/entity-write-actions.js -> features/firmware-update.js",
   "core/entity-write-actions.js -> features/house-learning.js",
   "core/entity-write-actions.js -> features/settings-change-log.js",

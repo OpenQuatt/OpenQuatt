@@ -19,7 +19,7 @@ export function getSettingsSelectModel(key) {
     available: hasEntity(key),
     value: String(getEntityValue(key) || ""),
     options: getSelectEntityOptions(state.entities[key] || {}),
-    busy: getFieldBusy(key),
+    busy: getFieldBusy(key) || (Boolean(state.savingFrequencyRange) && /^hp[12]ExcludeScope$/.test(key)),
   };
 }
 

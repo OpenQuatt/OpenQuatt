@@ -1078,6 +1078,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
     const now = Date.now();
     const canUpdateControlError = controlErrorGuard();
     const timeWriteRevision = state.timeWriteRevision;
+    const frequencyRangeWriteRevision = state.frequencyRangeWriteRevision;
+    const savingFrequencyRange = state.savingFrequencyRange;
     const weatherRevision = state.weatherConfigRevision;
     const weatherWriteBusy = ["switch-weatherEnabled", "save-weatherLocation"].includes(state.busyAction);
     const learningRequestId = state.houseLearningRequestId;
@@ -1150,6 +1152,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
         // A poll started before/during a time write must not restore the old time.
         if (ENTITY_DEFS[key]?.domain === "time"
             && (state.savingTimeFields.has(key) || state.timeWriteRevision !== timeWriteRevision)) return;
+        if ((savingFrequencyRange || state.frequencyRangeWriteRevision !== frequencyRangeWriteRevision)
+            && /^hp[12]Exclude(?:Scope|MinHz|MaxHz)$/.test(key)) return;
         if (Object.prototype.hasOwnProperty.call(entities, key)) {
           if (state.optionalMissingEntities) {
             delete state.optionalMissingEntities[key];

@@ -135,6 +135,8 @@ export const state = {
   overviewMetadataHydrated: false,
   overviewMetadataHydrating: false,
   busyAction: "",
+  savingFrequencyRange: "",
+  frequencyRangeWriteRevision: 0,
   controlError: "",
   controlNotice: "",
   // The previous value of the last plain settings write, offered as undo while its notice shows.

@@ -1,4 +1,4 @@
-import { getFrequencyExclusionModel, getFrequencyExclusionSaveWarning, patchFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
+import { formatFrequencyRangeLabel, getFrequencyExclusionModel, getFrequencyExclusionSaveWarning, patchFrequencyExclusionDetails } from "../features/frequency-exclusion.js";
 import { handleWeatherChartFocus, handleWeatherChartKeyDown, handleWeatherChartPointer } from "../settings/weather-forecast.js";
 import { handlePerformanceTelemetryPromptAction, handlePerformanceTelemetryPromptKeyDown } from "../features/performance-telemetry-prompt.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
@@ -10,7 +10,7 @@ import { reportUnknownAction } from "./action-router.js";
 import { commitQuickStartStrategySelection, handleControlAction } from "./control-actions.js";
 import { isCurveMode } from "./domain-helpers.js";
 import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, parseLooseNumber } from "./entity-store.js";
-import { commitDateTime, commitNumber, commitSelect, commitText, disableRange, getNumberRangeError, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
+import { commitDateTime, commitFrequencyRangeBoundary, commitNumber, commitSelect, commitText, disableRange, getNumberRangeError, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { finishTimeInput, handleTimeInputFocus } from "./time-input.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
@@ -98,12 +98,13 @@ function updateFrequencyRangeControl(input) {
   const span = Math.max(1, scaleMax - scaleMin);
   const disabled = minValue === 0 || maxValue === 0;
   control.classList.toggle("is-disabled", disabled);
-  control.classList.remove("is-invalid");
+  control.classList.toggle("is-invalid", !disabled && minValue > maxValue);
+  control.classList.toggle("is-collapsed", minValue === maxValue);
   control.style.setProperty("--oq-range-start", `${((minValue - scaleMin) / span) * 100}%`);
   control.style.setProperty("--oq-range-end", `${((maxValue - scaleMin) / span) * 100}%`);
   const value = control.querySelector("[data-oq-range-value]");
   if (value) {
-    value.textContent = disabled ? t("settings.noExclusion") : `${minValue}–${maxValue} Hz`;
+    value.textContent = formatFrequencyRangeLabel(minValue, maxValue);
   }
   patchFrequencyExclusionDetails(input.closest(".oq-settings-hp-group"), { MinHz: minValue, MaxHz: maxValue });
 }
@@ -369,6 +370,10 @@ function updateFrequencyRangeControl(input) {
 
     if (event.target.type === "range" || event.target.type === "number") {
       if (event.target.dataset.oqRangeRole) {
+        if (state.savingFrequencyRange) {
+          event.target.value = event.target.defaultValue;
+          return;
+        }
         updateFrequencyRangeControl(event.target);
       }
       if (event.target.type === "number") {
@@ -541,6 +546,10 @@ function updateFrequencyRangeControl(input) {
     if (exclusion) {
       const [, hp, setting] = exclusion;
       const value = event.target.value;
+      if (state.savingFrequencyRange) return;
+      if (event.target.dataset.oqRangeRole && Number(value) > 0) {
+        return commitFrequencyRangeBoundary(field, value);
+      }
       const invalid = setting === "Scope" && value !== "Off" && getFrequencyExclusionModel(hp).invalidRange;
       const warning = getFrequencyExclusionSaveWarning(hp, { [setting]: value });
       if (invalid || (warning && !window.confirm(warning))) {
@@ -783,7 +792,13 @@ function updateFrequencyRangeControl(input) {
     updateCurveDraftFromPointer(event.clientY);
   }
 
-  export function handlePointerUp() {
+  export function handlePointerUp(event) {
+    const field = event?.type === "pointercancel" && event.target.dataset?.oqRangeRole && event.target.dataset.oqField;
+    if (field && !state.savingFrequencyRange && Object.hasOwn(state.drafts, field)) {
+      delete state.drafts[field];
+      delete state.inputDrafts[field];
+      render();
+    }
     if (state.warmupSettingsPointerActive) {
       state.warmupSettingsPointerActive = false;
       // The click following pointerup must finish before replacing the root.

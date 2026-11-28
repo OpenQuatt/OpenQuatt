@@ -36,12 +36,12 @@ export function getFrequencyExclusionModel(hp, edits = {}, read = getEntityValue
       : [];
     return { mode, known, available, excluded };
   });
-  return { scope, hasRange, invalidRange: max > 0 && min > max, summaries };
+  return { scope, min, max, hasRange, invalidRange: max > 0 && min > max, summaries };
 }
 
-export function getFrequencyExclusionSaveWarning(hp, edits) {
-  const current = getFrequencyExclusionModel(hp, {}, savedValue);
-  const next = getFrequencyExclusionModel(hp, edits, savedValue);
+export function getFrequencyExclusionSaveWarning(hp, edits, read = savedValue) {
+  const current = getFrequencyExclusionModel(hp, {}, read);
+  const next = getFrequencyExclusionModel(hp, edits, read);
   if (next.scope === "Off") return "";
   const blocked = next.summaries.flatMap(({ mode, available }, index) => available
     .filter(({ label, blocked }) => blocked && (current.scope === "Off"
@@ -58,10 +58,21 @@ function periodLabel(label) {
   return label === "day" ? t("frequencyExclusion.day") : t("frequencyExclusion.quiet");
 }
 
+export function formatFrequencyRangeLabel(min, max, unit = "Hz") {
+  if (min === 0 && max === 0) return t("settingsControls.noExclusion");
+  if (min === 0) return t("settingsControls.openLowerRange", { value: `${max} ${unit}` });
+  if (max === 0) return t("settingsControls.openUpperRange", { value: `${min} ${unit}` });
+  if (min > max) return t("settingsControls.invalidRange");
+  return `${min}–${max} ${unit}`;
+}
+
 function getDetails(hp, edits) {
-  const { scope, hasRange, summaries } = getFrequencyExclusionModel(hp, edits);
+  const saving = state.savingFrequencyRange.startsWith(`${hp}Exclude`);
+  const { scope, min, max, hasRange, summaries } = getFrequencyExclusionModel(hp, edits, saving ? savedValue : getEntityValue);
   let status = t("frequencyExclusion.noRange");
   if (scope === "Off") status = t("frequencyExclusion.off");
+  else if (min === 0 && max > 0) status = t("frequencyExclusion.chooseLower");
+  else if (max === 0 && min > 0) status = t("frequencyExclusion.chooseUpper");
   else if (hasRange && scope === "Always") status = t("frequencyExclusion.alwaysActive");
   else if (hasRange) {
     const silentStatus = getEntityValue("silentStatus");

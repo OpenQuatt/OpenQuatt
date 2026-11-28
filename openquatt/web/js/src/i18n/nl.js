@@ -3272,6 +3272,8 @@ export default {
     minBelowMax: "De ondergrens mag niet hoger zijn dan de bovengrens ({value} Hz).", maxAboveMin: "De bovengrens mag niet lager zijn dan de ondergrens ({value} Hz).",
     numberOutOfRange: "{name}: kies een waarde van {min} tot en met {max}.",
     frequencyExclusionDisabled: "Frequentie-uitsluiting uitgeschakeld.", frequencyExclusionDisableFailed: "Frequentie-uitsluiting kon niet volledig worden uitgeschakeld of bevestigd.",
+    frequencyRangeChanged: "de grenzen of het uitsluitingsschema zijn ondertussen gewijzigd. Controleer de instelling en probeer opnieuw",
+    frequencyRangeBusy: "wacht tot de lopende instelling is opgeslagen",
     timeNotConfirmed: "de controller heeft de ingestelde tijd niet bevestigd", setupCompleted: "Setup gemarkeerd als afgerond.",
     quickStartReset: "Quick Start teruggezet naar het begin. Huidige tuningwaarden blijven voorlopig staan.",
     actionFailedFor: "Actie mislukt voor \"{name}\". {error}", hpActionAccepted: "Actie voor HP{hp} geaccepteerd; resultaat wordt gecontroleerd.",
@@ -4736,6 +4738,8 @@ export default {
     advancedShow: "Geavanceerd",
   },
   frequencyExclusion: {
+    chooseLower: "Kies ook de ondergrens om het bereik in te stellen.",
+    chooseUpper: "Kies ook de bovengrens om het bereik in te stellen.",
     scope: "Uitsluiting toepassen",
     always: "Altijd",
     quietOnly: "Alleen tijdens stille uren",
@@ -5546,6 +5550,7 @@ export default {
   settingsControls: {
     infoAria: "Uitleg bij {title}", noExclusion: "Geen uitsluiting", invalidRange: "Ongeldig bereik",
     rangeLowerAria: "Ondergrens bereik", rangeUpperAria: "Bovengrens bereik",
+    openLowerRange: "Tot {value}", openUpperRange: "Vanaf {value}", savingRange: "Grens opslaan…",
   },
   entitySync: {
     missingBulkField: "{name} ontbreekt in bulk response",

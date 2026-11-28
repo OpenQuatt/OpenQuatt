@@ -11,8 +11,8 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
-const { refreshEntities } = await import("../js/src/core/entity-sync.js");
-const { commitDateTime, commitNumber, commitSelect, commitSwitch, commitText } = await import("../js/src/core/entity-write-actions.js");
+const { refreshEntities, startEntityWriteAction } = await import("../js/src/core/entity-sync.js");
+const { commitDateTime, commitFrequencyRangeBoundary, commitNumber, commitSelect, commitSwitch, commitText } = await import("../js/src/core/entity-write-actions.js");
 const { patchLearningDom } = await import("../js/src/core/view-patch-controls.js");
 const { renderLearningView } = await import("../js/src/views/learning.js");
 const { dismissSettingsFeedback } = await import("../js/src/features/settings-feedback.js");
@@ -101,6 +101,131 @@ function confirmationClock(t) {
     },
   };
 }
+
+function frequencyDevice(t, values, hp = "hp1") {
+  const keys = ["MinHz", "MaxHz", "Scope"].map(suffix => `${hp}Exclude${suffix}`);
+  const snapshot = () => Object.fromEntries(keys.map((key, index) => [key, { value: values[index] }]));
+  state.entities = snapshot();
+  const device = {
+    keys,
+    writes: [],
+    extra: {},
+    beforeRead: () => {},
+    write(index, value) {
+      values[index] = value;
+      return 200;
+    },
+    save: (index, value) => commitFrequencyRangeBoundary(keys[index], value),
+  };
+  t.mock.method(globalThis, "fetch", async url => {
+    if (url === "/auth/status") return response({});
+    if (url === "/openquatt/entities") {
+      const entities = { ...snapshot(), ...device.extra };
+      await device.beforeRead();
+      return response({ entities, missing: [] });
+    }
+    const match = decodeURIComponent(url).match(/^\/number\/HP[12] - Excluded frequency (minimum|maximum)\/set\?value=(\d+)$/);
+    assert.ok(match, url);
+    const index = match[1] === "minimum" ? 0 : 1;
+    const value = Number(match[2]);
+    device.writes.push([index, value]);
+    return response({}, await device.write(index, value));
+  });
+  return device;
+}
+
+for (const [hp, first] of [["hp1", 1], ["hp2", 0]]) {
+  test(`${hp} schrijft één frequentiegrens per handeling in beide invoervolgordes`, async t => {
+    const values = [0, 0, "Quiet hours"];
+    const desired = [42, 60];
+    const device = frequencyDevice(t, values, hp);
+    assert.equal(await device.save(first, desired[first]), true);
+    assert.deepEqual(device.writes, [[first, desired[first]]]);
+    assert.equal(values[1 - first], 0);
+    assert.equal(await device.save(1 - first, desired[1 - first]), true);
+    assert.deepEqual(device.writes, [[first, desired[first]], [1 - first, desired[1 - first]]]);
+    assert.deepEqual(device.keys.map(key => state.entities[key].value), [42, 60, "Quiet hours"]);
+  });
+}
+
+test("een schrijfactie en een verlate poll verstoren de bevestiging van een frequentiegrens niet", async t => {
+  const values = [0, 0, "Always"];
+  const device = frequencyDevice(t, values);
+  const pollStarted = Promise.withResolvers();
+  const releasePoll = Promise.withResolvers();
+  device.beforeRead = () => {
+    device.beforeRead = () => {};
+    pollStarted.resolve();
+    return releasePoll.promise;
+  };
+  const poll = refreshEntities(device.keys);
+  await pollStarted.promise;
+  device.write = async (index, value) => {
+    assert.equal(await device.save(0, 40), false);
+    startEntityWriteAction("save-silentMaxHz");
+    values[index] = value;
+    return 200;
+  };
+  try {
+    assert.equal(await device.save(1, 60), true);
+  } finally {
+    releasePoll.resolve();
+    await poll;
+  }
+  assert.deepEqual(device.writes, [[1, 60]]);
+  assert.equal(state.entities[device.keys[1]].value, 60);
+  assert.equal(state.busyAction, "save-silentMaxHz");
+  assert.equal(state.savingFrequencyRange, "");
+});
+
+for (const external of [false, true]) {
+  test(`een ${external ? "externe" : "lokale"} wijziging tijdens de preflight voorkomt een frequentiewrite`, async t => {
+    const values = [0, 60, "Off"];
+    const device = frequencyDevice(t, values);
+    if (external) {
+      values[1] = 70;
+      values[2] = "Always";
+    } else {
+      device.beforeRead = () => { startEntityWriteAction("save-dayMaxHz"); };
+    }
+    assert.equal(await device.save(0, 42), false);
+    assert.match(state.controlError, /ondertussen gewijzigd/);
+    assert.deepEqual(device.writes, []);
+  });
+}
+
+for (const stored of [false, true]) {
+  test(`de opgeslagen grens beslist bij ${stored ? "een verloren HTTP-antwoord" : "een ongevolgde HTTP-bevestiging"}`, async t => {
+    confirmationClock(t);
+    const values = [0, 0, "Always"];
+    const device = frequencyDevice(t, values);
+    device.write = (index, value) => {
+      if (stored) values[index] = value;
+      return stored ? 500 : 200;
+    };
+    assert.equal(await device.save(1, 45), stored);
+    assert.equal(state.entities[device.keys[1]].value, stored ? 45 : 0);
+    assert.equal(Boolean(state.controlNotice), stored);
+    assert.equal(Boolean(state.controlError), !stored);
+    assert.equal(device.writes.length, 1);
+  });
+}
+
+test("de waarschuwing voor de laatste compressorstand gebruikt de actuele daglimiet", async t => {
+  const device = frequencyDevice(t, [0, 45, "Always"]);
+  device.extra.hp1AutomaticFrequencies = { value: "45,50|45,50" };
+  device.extra.dayMaxHz = { value: 45 };
+  state.entities.dayMaxHz = { value: 90 };
+  const confirm = t.mock.fn(() => false);
+  window.confirm = confirm;
+  try {
+    assert.equal(await device.save(0, 45), false);
+    assert.match(confirm.mock.calls[0].arguments[0], /verwarmen \(overdag\)/);
+    assert.deepEqual(device.writes, []);
+  } finally {
+    delete window.confirm;
+  }
+});
 
 test("leerschakelaar bevestigt een trage verse bulkbody en schrijft eenmaal", async t => {
   const clock = confirmationClock(t);
