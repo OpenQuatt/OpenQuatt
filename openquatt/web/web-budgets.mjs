@@ -103,7 +103,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Defrost method dialog in NL and EN: +2,453 B raw / +868 B gzip versus dev 40dff330 (Node 24.14.1).
     // Outdoor unit ceilings below the quiet-hours slider: +1,234 B raw / +467 B gzip
     // versus dev 40dff330 (Node 24.14.1); preserves 288 B of raw headroom.
-    raw: 1_535_415,
+    // Optional boiler support during defrost (settings switch and copy in both locales):
+    // +1,073 B raw versus dev 3d2ca63, measured raw 1,536,368 B (Node 24.21.0); raw headroom unchanged.
+    raw: 1_536_488,
     gzipBaselineCeiling: 408_085,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

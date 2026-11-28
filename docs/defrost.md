@@ -103,3 +103,9 @@ Met **Na herstart opnieuw toepassen** kan OpenQuatt je keuze voor deze buitenuni
 ### Metingen en cyclusduur
 
 Onder **Technische metingen** staan de buitenluchttemperatuur, de verdampertemperatuur, de verdampingstemperatuur van het koudemiddel en de compressorfrequentie. Tijdens het ontdooien zie je de verstreken tijd. Na een waargenomen ontdooiing zie je hoelang die duurde en hoeveel tijd sindsdien is verstreken. Na een herstart kan die geschiedenis ontbreken. De buitenunit bepaalt zelf wanneer de volgende cyclus begint.
+
+## Meeverwarmen tijdens ontdooien
+
+Standaard verandert het ontdooien niets aan de aanvullende warmtebron. Met de optionele instelling **Meeverwarmen tijdens ontdooien** (zie [Instellingen](web-app/instellingen.md)) start OpenQuatt de warmtebron zodra een buitenunit ontdooien meldt. Zo brandt die voordat de buitenunit warmte aan het cv-water onttrekt. Na het ontdooien loopt de hulp nog 2 minuten door.
+
+Het doel begint op de aanvoertemperatuur van vlak vóór het ontdooien plus 3 °C. Brandt de warmtebron via OpenTherm niet, dan gaat het doel stapsgewijs omhoog: in totaal hooguit 8 °C en nooit hoger dan 3 °C onder de maximale watertemperatuur. Hoeveel de temperatuurdip kleiner wordt, hangt af van het vermogen van de warmtebron. De buitenunit blijft zelf bepalen wanneer het ontdooien begint en eindigt.

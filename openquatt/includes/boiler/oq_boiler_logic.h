@@ -15,6 +15,7 @@ enum CommandSource : uint8_t {
   COMMAND_SOURCE_HEATING_CURVE = 3,
   COMMAND_SOURCE_FALLBACK = 4,
   COMMAND_SOURCE_COLD_START = 5,
+  COMMAND_SOURCE_DEFROST_ASSIST = 6,
 };
 
 enum BlockReason : uint8_t {
@@ -308,7 +309,14 @@ inline bool relay_must_be_off(bool opentherm_selected, bool startup_probe_active
 inline bool relay_target_control_applies(uint8_t source, bool opentherm_selected, bool power_house_on_off = false) {
   if (opentherm_selected) return false;
   return (source == COMMAND_SOURCE_POWER_HOUSE && !power_house_on_off) || source == COMMAND_SOURCE_HEATING_CURVE ||
-         source == COMMAND_SOURCE_COLD_START;
+         source == COMMAND_SOURCE_COLD_START || source == COMMAND_SOURCE_DEFROST_ASSIST;
+}
+
+// Which user permission covers a CM3 assist command. The optional defrost
+// assist is its own permission, so it works without normal boiler assist and
+// normal boiler assist does not enable it.
+inline bool assist_permission_for_source(uint8_t source, bool assist_enabled, bool defrost_assist_enabled) {
+  return source == COMMAND_SOURCE_DEFROST_ASSIST ? defrost_assist_enabled : assist_enabled;
 }
 
 inline uint8_t refine_opentherm_transport_block_reason(uint8_t block_reason, bool opentherm_selected,
@@ -354,7 +362,7 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
     decision.force_off = true;
     decision.block_reason = BLOCK_FALLBACK_DISABLED;
   } else if ((command.source == COMMAND_SOURCE_POWER_HOUSE || command.source == COMMAND_SOURCE_HEATING_CURVE ||
-              command.source == COMMAND_SOURCE_COLD_START) &&
+              command.source == COMMAND_SOURCE_COLD_START || command.source == COMMAND_SOURCE_DEFROST_ASSIST) &&
              !input.assist_enabled) {
     decision.force_off = true;
     decision.block_reason = BLOCK_ASSIST_DISABLED;

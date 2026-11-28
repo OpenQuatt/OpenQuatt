@@ -253,6 +253,18 @@ oq_boiler_relay_min_off_s: "0"                        # R1 minimum off-time [s];
 oq_boiler_relay_power_house_on_off: "false"            # Fixed-output R1 heater follows the Power House heat request in CM3.
 oq_boiler_relay_target_start_delta_c: "2.0"           # R1 energises once supply is this far below the requested boiler target [K]; deliberately not tied to the Heating Curve CM margins.
 oq_boiler_relay_target_stop_delta_c: "0.5"            # R1 releases once supply recovered to within this of the requested boiler target [K]; must stay below the start delta.
+oq_boiler_defrost_assist_max_s: "900"                 # Hard bound on one optional defrost-assist boiler session [s].
+oq_boiler_defrost_assist_margin_c: "3.0"              # Defrost-assist boiler target above the pre-defrost supply [K]; kept below the water-limit soft band.
+oq_boiler_defrost_assist_confirm_s: "10"              # A defrost report must persist this long before an assist session starts [s].
+oq_boiler_defrost_assist_min_run_s: "60"              # Minimum run of a started assist session, also if the report clears earlier [s].
+oq_boiler_defrost_assist_rearm_s: "120"               # Clear time after a session before a new assist session may start [s].
+oq_boiler_defrost_assist_release_s: "120"             # A started session ends only after the report has been clear this long [s].
+oq_boiler_defrost_assist_reference_settle_s: "300"    # Settle time after boiler heat before the supply is a defrost reference again [s].
+oq_boiler_defrost_assist_ignition_wait_s: "45"        # Time an applied defrost-assist command gets before its target is first raised [s].
+oq_boiler_defrost_assist_raise_step_c: "2.0"          # One raise of the defrost-assist target while the heat source does not fire [K].
+oq_boiler_defrost_assist_raise_interval_s: "30"       # Time between two raises while the heat source does not fire [s].
+oq_boiler_defrost_assist_flame_loss_confirm_s: "20"   # Flame must be gone this long before the single extra raise after a confirmed flame [s].
+oq_boiler_defrost_assist_raise_max_c: "8.0"           # Bound on the whole raise above the base defrost-assist target [K].
 oq_boiler_otb_min_on_s: "30"                          # OpenTherm minimum requested on-time [s]; safety trips override it.
 oq_boiler_otb_min_off_s: "120"                        # OpenTherm minimum requested off-time [s].
 oq_otb_supported: "false"                             # Compile-time availability of the boiler OpenTherm master transport.

@@ -1925,6 +1925,8 @@ export default {
     powerCopy: "Vul hier het vermogen in dat OpenQuatt mag meerekenen.",
     assistTitle: "Hybride verwarmen bij vermogenstekort",
     assistCopy: "Laat de aanvullende warmtebron meeverwarmen wanneer het beschikbare warmtepompvermogen niet genoeg is voor de warmtevraag en tijdens een koude opstart van 5 tot 12 °C.",
+    defrostAssistTitle: "Meeverwarmen tijdens ontdooien",
+    defrostAssistCopy: "Start de aanvullende warmtebron op tijd als de warmtepomp gaat ontdooien, zodat de temperatuurdip kleiner wordt. Hoeveel dat scheelt, hangt af van het vermogen van de warmtebron. Gebruikt extra gas of stroom. Werkt ook als hybride verwarmen uit staat. Staat standaard uit.",
     backupTitle: "Overnemen wanneer de warmtepomp niet beschikbaar is",
     backupCopy: "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is, ook bij een koude opstart onder 5 °C. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.",
     boilerSectionGroup: "Basis",

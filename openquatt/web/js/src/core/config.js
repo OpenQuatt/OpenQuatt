@@ -113,6 +113,7 @@
     ["openquattEnabled", DOMAIN_SWITCH, "OpenQuatt Enabled"],
     ["auxHeatSourcePresent", DOMAIN_SWITCH, "Auxiliary heat source connected"],
     ["boilerCvAssistEnabled", DOMAIN_SWITCH, "Boiler assist enabled"],
+    ["defrostBoilerSupportEnabled", DOMAIN_SWITCH, "Boiler support during defrost"],
     ["boilerFaultFallbackEnabled", DOMAIN_SWITCH, "Boiler fallback on heat-pump fault"],
     ["boilerConnection", DOMAIN_SELECT, "Boiler connection"],
     ["otbConnectionAutoSelected", DOMAIN_BINARY_SENSOR, "OTB - Boiler Connection Auto-selected"],
@@ -1178,6 +1179,7 @@
   export const BOILER_SETTING_KEYS = [
     "auxHeatSourcePresent",
     "boilerConnection",
+    "defrostBoilerSupportEnabled",
     "boilerFaultFallbackEnabled",
   ];
   export const CIC_POLLING_SETTING_KEYS = ["cicPollingEnabled", "cicFeedUrl", "cicDataStale"];
