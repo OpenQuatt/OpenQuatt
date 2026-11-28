@@ -13,6 +13,9 @@ constexpr float kOutletCutoffReserveC = 1.0f;
 constexpr uint32_t kIgnitionTimeoutMs = 150000;
 constexpr uint32_t kStableFlameMs = 60000;
 constexpr uint32_t kDoseMinimumMs = 180000;
+constexpr uint32_t kDoseEntryConfirmationMs = 60000;
+constexpr float kDoseEntryMarginFraction = 0.15f;
+constexpr float kDoseEntryMaximumMarginW = 750.0f;
 constexpr uint32_t kFailedStartRestMs = 360000;
 constexpr uint32_t kFlowConfirmationMs = 15000;
 constexpr uint32_t kResidualHeatMs = 90000;
@@ -65,7 +68,7 @@ Decision Control::tick(const Inputs& in) {
     waiting_for_setpoint_command_ = false;
   }
   const bool room_below_target = isfinite(in.room_c) && isfinite(in.setpoint_c) && in.room_c < in.setpoint_c;
-  const bool dose = in.requested_power_w < minimum_w;
+  const bool below_minimum = in.requested_power_w < minimum_w;
 
   if (!in.flow_sufficient) {
     energy_ws_ = 0.0f;
@@ -83,8 +86,9 @@ Decision Control::tick(const Inputs& in) {
   const float ceiling_c = in.maximum_water_c - kWaterLimitReserveC;
   const float outlet_cutoff_c = in.maximum_water_c - kOutletCutoffReserveC;
   if (running_ && in.outlet_c >= outlet_cutoff_c) return failed(in.now_ms, "outlet temperature limit");
-  if (!in.heat_requested || waiting_for_setpoint_command_ || (dose && !room_below_target)) {
+  if (!in.heat_requested || waiting_for_setpoint_command_ || (below_minimum && !room_below_target)) {
     energy_ws_ = 0.0f;
+    dose_entry_since_ms_.reset();
     // Keep CH on for a normal stop within the minimum run time, dropping
     // ignition boost immediately. Do not ignite during defrost or hot water.
     if (in.minimum_on_active && (!in.defrost_active || in.flame_on) && in.outlet_c < outlet_cutoff_c &&
@@ -95,7 +99,7 @@ Decision Control::tick(const Inputs& in) {
     }
     return stop(!in.heat_requested              ? "heat request ended"
                 : waiting_for_setpoint_command_ ? "awaiting command after setpoint reduction"
-                                                : "room target reached");
+                                                : "room demand not confirmed");
   }
 
   const auto target = oq_boiler::target_from_power(fmaxf(in.requested_power_w, minimum_w), in.capacity_kw * 1000.0f,
@@ -139,14 +143,25 @@ Decision Control::tick(const Inputs& in) {
     if (!flame_seen_ && in.defrost_active) return stop("defrost before ignition");
 
     const uint32_t flame_age_ms = in.now_ms - flame_ms_;
-    if (dose && flame_seen_ && flame_age_ms >= kDoseMinimumMs && energy_ws_ <= 0.0f) {
-      residual_heat_started_ms_ = in.now_ms;
-      return stop("heat dose complete", true);
-    }
     if (flame_seen_ && flame_age_ms >= kStableFlameMs) {
-      const float ramp_rate = dose ? kDoseTargetRampCPerSecond : kTargetRampCPerSecond;
+      // A dip near the ID15 minimum must not turn an established burn into a
+      // completed dose. An active dose still returns to continuous heat at the nominal minimum.
+      if (!below_minimum) dose_active_ = false;
+      const float entry_margin_w = fminf(minimum_w * kDoseEntryMarginFraction, kDoseEntryMaximumMarginW);
+      if (!dose_active_ && in.requested_power_w < minimum_w - entry_margin_w) {
+        if (!dose_entry_since_ms_) dose_entry_since_ms_ = in.now_ms;
+        dose_active_ = in.now_ms - *dose_entry_since_ms_ >= kDoseEntryConfirmationMs;
+      } else {
+        dose_entry_since_ms_.reset();
+      }
+      if (dose_active_ && flame_age_ms >= kDoseMinimumMs && energy_ws_ <= 0.0f) {
+        residual_heat_started_ms_ = in.now_ms;
+        return stop("heat dose complete", true);
+      }
+      const float ramp_rate = dose_active_ ? kDoseTargetRampCPerSecond : kTargetRampCPerSecond;
       const float ramp_target_c = target_c_ - ramp_rate * seconds;
-      const float outlet_floor_c = dose ? fminf(target_c_, in.outlet_c - kDoseTargetBelowOutletC) : ramp_target_c;
+      const float outlet_floor_c =
+          dose_active_ ? fminf(target_c_, in.outlet_c - kDoseTargetBelowOutletC) : ramp_target_c;
       target_c_ = fmaxf(target.target_temperature_c, fmaxf(ramp_target_c, outlet_floor_c));
     } else if (target_c_ > ceiling_c) {
       return stop("ignition target exceeds water ceiling");
@@ -156,7 +171,7 @@ Decision Control::tick(const Inputs& in) {
   }
 
   if (retry_ == Retry::Rest && in.now_ms - failed_at_ms_ >= kFailedStartRestMs) retry_ = Retry::Ready;
-  if (retry_ != Retry::Ready || !in.start_allowed || in.defrost_active || (dose && energy_ws_ < reserve_ws))
+  if (retry_ != Retry::Ready || !in.start_allowed || in.defrost_active || (below_minimum && energy_ws_ < reserve_ws))
     return {true};
   if (in.flame_on) {
     // A flame inherited at the CM3 handover cannot receive another boost.
@@ -174,6 +189,7 @@ Decision Control::tick(const Inputs& in) {
   }
   started_ms_ = in.now_ms;
   running_ = true;
+  dose_active_ = below_minimum;
   residual_heat_active_ = false;
   return {true, target_c_};
 }

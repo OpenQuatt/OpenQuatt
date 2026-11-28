@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "../boiler/oq_boiler_logic.h"
 
 namespace oq_boiler_cm3_opentherm {
@@ -62,6 +64,8 @@ class Control {
                 oq_boiler::BlockReason block_reason = oq_boiler::BLOCK_NONE) {
     running_ = false;
     flame_seen_ = false;
+    dose_active_ = false;
+    dose_entry_since_ms_.reset();
     residual_heat_active_ = account_residual_heat;
     return {true, NAN, block_reason, reason};
   }
@@ -80,6 +84,7 @@ class Control {
   bool have_tick_ = false;
   bool running_ = false;
   bool flame_seen_ = false;
+  bool dose_active_ = false;
   Retry retry_ = Retry::Ready;
   bool waiting_for_setpoint_command_ = false;
   bool residual_heat_active_ = false;
@@ -89,6 +94,7 @@ class Control {
   uint32_t failed_at_ms_ = 0;
   uint32_t setpoint_reduced_at_ms_ = 0;
   uint32_t residual_heat_started_ms_ = 0;
+  std::optional<uint32_t> dose_entry_since_ms_;
   float energy_ws_ = 0.0f;
   float setpoint_c_ = NAN;
   float target_c_ = NAN;

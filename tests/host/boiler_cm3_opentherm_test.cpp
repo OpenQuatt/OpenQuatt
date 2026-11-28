@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include <initializer_list>
+#include <string_view>
 
 #include "../../openquatt/includes/control/oq_boiler_cm3_opentherm.cpp"
 
@@ -117,6 +118,32 @@ void test_warm_start_replay() {
   assert(candidate.starts == 1);
   assert(candidate.short_burns == 0);
   assert(candidate.longest_burn_ms > 1500000);
+}
+
+void test_running_flame_survives_power_dips() {
+  for (const bool defrost : {false, true}) {
+    Control control;
+    auto in = field_inputs();
+    assert(isfinite(control.tick(in).target_c));
+    in.ch_applied = in.flame_on = true;
+    in.outlet_c = in.inlet_c + 6000.0f / kConductance;
+    expect_targets_for(control, in, 210000, true);
+
+    in.defrost_active = defrost;
+    in.requested_power_w = 4010.0f;
+    expect_targets_for(control, in, 90000, true);
+    in.requested_power_w = 3675.0f;
+    expect_targets_for(control, in, 50000, true);
+    in.requested_power_w = 4700.0f;
+    expect_targets_for(control, in, 10000, true);
+
+    in.requested_power_w = 1800.0f;
+    expect_targets_for(control, in, 60000, true);
+    in.now_ms += kTickMs;
+    const auto stop = control.tick(in);
+    assert(isnan(stop.target_c));
+    assert(stop.stop_reason != nullptr && std::string_view(stop.stop_reason) == "heat dose complete");
+  }
 }
 
 void test_small_deficit_is_served_in_doses() {
@@ -488,6 +515,7 @@ void test_flow_confirmation_after_flame_loss() {
 
 int main() {
   test_warm_start_replay();
+  test_running_flame_survives_power_dips();
   test_small_deficit_is_served_in_doses();
   test_setpoint_recovery_in_room_model();
   test_start_holds_then_ramps_to_the_hydraulic_target();
