@@ -258,34 +258,55 @@ void defrost_holds_last_scenario_and_reuses_validated_model() {
   observe(state, during);
   assert(!issue(state, weather, 1));
   assert(state.discarded_count == 1 && state.errors[0].issued.count == 0);
-  during.monotonic_ms += 600000;
-  during.epoch += 600;
-  recovery.update(during, true, state.previous);
-  observe(state, during);
-  assert(recovery.holding_issue);
+  const auto next_observation = [](Observation& value, DefrostForecastRecovery& recovery, State& state) {
+    value.monotonic_ms += 10000;
+    value.epoch += 10;
+    recovery.update(value, true, state.previous);
+    observe(state, value);
+  };
+  for (int step = 0; step < 48; ++step) {
+    next_observation(during, recovery, state);
+    assert(recovery.holding_issue);
+  }
 
   auto settling = during;
   settling.defrost_active = false;
-  settling.monotonic_ms += 10000;
-  settling.epoch += 10;
-  recovery.update(settling, true, state.previous);
-  assert(recovery.holding_issue);
-  observe(state, settling);
+  settling.missing_input = InputIssue::HEAT_OUTPUT;
+  for (int step = 0; step < 27; ++step) {
+    next_observation(settling, recovery, state);
+    assert(recovery.holding_issue);
+  }
 
-  auto valid = observation(670);
+  auto valid = observation(780);
   valid.model_ready = false;
   valid.model_reusable = true;
   valid.model_samples = fitted.model_samples;
   auto another_context = recovery;
   another_context.update(valid, false, state.previous);
   assert(!valid.model_ready && !another_context.holding_issue);
-  auto stale = observation(770);
-  stale.model_ready = false;
-  stale.model_reusable = true;
-  stale.model_samples = fitted.model_samples;
+  auto stale = valid;
+  stale.monotonic_ms += kMaxSampleGapMs;
+  stale.epoch += kMaxSampleGapMs / 1000U;
+  auto interrupted = recovery;
+  interrupted.update(stale, true, state.previous);
+  assert(!stale.model_ready && !interrupted.holding_issue);
+
+  auto missing_room = settling;
+  missing_room.missing_input = InputIssue::ROOM_TEMPERATURE;
+  auto missing_input = recovery;
+  auto missing_state = state;
+  next_observation(missing_room, missing_input, missing_state);
+  assert(!missing_input.holding_issue);
+
   auto expired = recovery;
-  expired.update(stale, true, state.previous);
-  assert(!stale.model_ready && !expired.holding_issue);
+  auto expired_state = state;
+  while (settling.monotonic_ms - during.monotonic_ms < kPostDefrostRecoveryMs) {
+    next_observation(settling, expired, expired_state);
+    assert(expired.holding_issue);
+  }
+  next_observation(settling, expired, expired_state);
+  assert(!expired.holding_issue);
+
   auto unknown_model = valid;
   ++unknown_model.model_samples;
   auto changed_fit = recovery;
@@ -297,7 +318,7 @@ void defrost_holds_last_scenario_and_reuses_validated_model() {
   observe(state, valid);
   assert(issue(state, weather, 1));
   assert(state.latest_issue_epoch == valid.epoch);
-  auto unrelated_gap = observation(680);
+  auto unrelated_gap = observation(790);
   unrelated_gap.valid = unrelated_gap.model_ready = false;
   recovery.update(unrelated_gap, true, state.previous);
   assert(!recovery.holding_issue);

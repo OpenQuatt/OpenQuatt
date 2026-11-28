@@ -125,11 +125,70 @@ class WeatherEndpointRuntimeTest(unittest.TestCase):
 
     def test_invalid_atomic_object_never_leaks_retained_scalars_through_lifecycle_and_model_gates(self):
         results = [json.loads(line) for line in self.scenario("atomic_gates").splitlines()]
-        self.assertEqual(len(results), 8)
+        self.assertEqual(len(results), 9)
         for result in results:
             self.assertFalse(result["scenario"]["valid"])
             self.assertEqual(result["scenario"]["horizon_valid"], [False] * 3)
             self.assertEqual(result["scenario"]["temperature_c"], [None] * 3)
+
+    def test_defrost_keeps_frozen_issue_until_valid_water_measurements_return(self):
+        original, during, settling, resumed, missing, waiting, warming = [
+            json.loads(line) for line in self.scenario("defrost_recovery").splitlines()
+        ]
+        for frame in (during, settling):
+            self.assertFalse(frame["scenario"]["valid"])
+            self.assertEqual(frame["scenario"]["reason"], "defrost")
+            self.assertEqual(frame["last_scenario"], original["scenario"])
+        self.assertTrue(resumed["scenario"]["valid"])
+        self.assertEqual(resumed["scenario"]["held_heat_w"], 3200)
+        self.assertEqual(resumed["scenario"]["issued_epoch"], resumed["now_epoch"])
+        self.assertNotIn("last_scenario", resumed)
+        self.assertEqual(missing["scenario"]["reason"], "room_temperature_unavailable")
+        for frame in (missing, waiting, warming):
+            self.assertFalse(frame["scenario"]["valid"])
+            self.assertNotIn("last_scenario", frame)
+        self.assertEqual(waiting["scenario"]["reason"], "observation_invalid")
+        self.assertEqual(warming["scenario"]["reason"], "model_unavailable")
+
+    def test_duo_defrost_reuses_latest_issue_and_recalculates_on_first_valid_sample(self):
+        sequences = {}
+        for line in self.scenario("duo_defrost_recovery").splitlines():
+            row = json.loads(line)
+            sequences.setdefault(row["sequence"], {})[row["elapsed_s"]] = row["forecast"]
+        self.assertEqual(set(sequences), {"overlap", "invalid_gap", "valid_gap"})
+        for name, frames in sequences.items():
+            with self.subTest(sequence=name):
+                original = frames[0]["scenario"]
+                self.assertTrue(original["valid"])
+                self.assertEqual(frames[790]["last_scenario"], original)
+                second_start = 1220 if name == "overlap" else 1410
+                second_end = second_start + 480
+                if name == "valid_gap":
+                    latest = frames[1330]["scenario"]
+                    self.assertTrue(latest["valid"])
+                    self.assertEqual(latest["issued_epoch"], original["issued_epoch"] + 1330)
+                    self.assertEqual(latest["held_heat_w"], 3100)
+                    self.assertNotIn("last_scenario", frames[1330])
+                else:
+                    latest = original
+                    self.assertEqual(frames[1330]["last_scenario"], original)
+                self.assertEqual(frames[second_start]["last_scenario"], latest)
+                self.assertEqual(frames[1790]["last_scenario"], latest)
+                expired = {**latest, "horizon_valid": [False, True, True],
+                           "temperature_c": [None, *latest["temperature_c"][1:]]}
+                expected = latest if name == "valid_gap" else expired
+                self.assertEqual(frames[1800]["last_scenario"], expected)
+                self.assertEqual(frames[second_end + 260]["last_scenario"], expected)
+                self.assertEqual(frames[second_end + 260]["scenario"]["reason"], "defrost")
+                restored = frames[second_end + 270]
+                issue = restored["scenario"]
+                self.assertTrue(issue["valid"])
+                self.assertEqual(issue["issued_epoch"], restored["now_epoch"])
+                self.assertEqual(issue["issued_epoch"] - frames[second_end]["now_epoch"], 270)
+                self.assertEqual(issue["held_heat_w"], 3400)
+                self.assertEqual(issue["model_samples"], original["model_samples"])
+                self.assertEqual(issue["horizon_valid"], [True] * 3)
+                self.assertNotIn("last_scenario", restored)
 
     def test_failed_receipt_publication_observes_an_already_invalid_atomic_scenario(self):
         result = json.loads(self.scenario("receipt_interleave"))

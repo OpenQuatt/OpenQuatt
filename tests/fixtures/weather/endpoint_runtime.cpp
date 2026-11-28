@@ -75,7 +75,7 @@ class Device : public openquatt_weather::OpenQuattWeather {
   static size_t storage_bytes() { return sizeof(Storage); }
   const auto& issued_scenario() const { return storage_[0].issued_scenario; }
   bool has_scalar() const { return std::isfinite(storage_[0].forecast.latest[0]); }
-  void observation(bool ready = true, double room = 0, double heat = 0) {
+  oq_power_house::forecast::Observation make_observation(bool ready, double room, double heat) const {
     oq_power_house::forecast::Observation value;
     value.monotonic_ms = env.now_ms;
     value.epoch = env.epoch;
@@ -88,7 +88,10 @@ class Device : public openquatt_weather::OpenQuattWeather {
     value.heat_w = heat;
     value.h_w_per_k = 220;
     value.c_wh_per_k = 8000;
-    observe(value);
+    return value;
+  }
+  void observation(bool ready = true, double room = 0, double heat = 0) {
+    observe(make_observation(ready, room, heat));
   }
   void finish_job() {
     try {
@@ -365,8 +368,101 @@ void atomic_scenario_origin_and_new_fetch() {
   std::puts(h.get().response.body.c_str());
 }
 
+void defrost_recovery() {
+  using oq_power_house::forecast::InputIssue;
+  Harness h;
+  h.start();
+  h.device.observation(true, 20, 2600);
+  std::puts(h.get().response.body.c_str());
+  const auto tick = [&](bool defrost, bool valid, InputIssue missing = InputIssue::NONE) {
+    env.now_ms += 10000;
+    env.epoch += 10;
+    auto value = h.device.make_observation(false, 20.1, 3200);
+    value.valid = valid;
+    value.defrost_active = defrost;
+    value.model_reusable = valid;
+    value.missing_input = missing;
+    h.device.observe(value);
+  };
+  for (int step = 0; step < 48; ++step) tick(true, false);
+  assert(!h.device.has_scalar());
+  std::puts(h.get().response.body.c_str());
+  for (int step = 0; step < 27; ++step) tick(false, false, InputIssue::HEAT_OUTPUT);
+  assert(!h.device.has_scalar());
+  std::puts(h.get().response.body.c_str());
+  tick(false, true);
+  assert(h.device.has_scalar());
+  std::puts(h.get().response.body.c_str());
+
+  tick(false, false, InputIssue::ROOM_TEMPERATURE);
+  std::puts(h.get().response.body.c_str());
+  tick(false, false);
+  std::puts(h.get().response.body.c_str());
+  tick(false, true);
+  std::puts(h.get().response.body.c_str());
+}
+
+void duo_defrost_recovery() {
+  using oq_power_house::forecast::InputIssue;
+  struct Sequence {
+    const char* name;
+    uint32_t second_start_s;
+    bool valid_between;
+  };
+  for (const Sequence sequence :
+       {Sequence{"overlap", 1220, false}, Sequence{"invalid_gap", 1410, false}, Sequence{"valid_gap", 1410, true}}) {
+    Harness h;
+    h.start();
+    h.device.observation(true, 20, 2600);
+    const uint32_t original_epoch = env.epoch;
+
+    constexpr uint32_t first_start_s = 790;
+    constexpr uint32_t first_end_s = first_start_s + 480;
+    constexpr uint32_t between_s = first_end_s + 60;
+    const uint32_t second_end_s = sequence.second_start_s + 480;
+    const uint32_t restored_s = second_end_s + 270;
+    const auto emit = [&](uint32_t elapsed_s, const std::string& body) {
+      std::printf("{\"sequence\":\"%s\",\"elapsed_s\":%u,\"forecast\":%s}\n", sequence.name,
+                  static_cast<unsigned>(elapsed_s), body.c_str());
+    };
+    emit(0, h.get().response.body);
+    for (uint32_t elapsed_s = 10; elapsed_s <= restored_s; elapsed_s += 10) {
+      env.now_ms += 10000;
+      env.epoch += 10;
+      const bool hp1_defrost = elapsed_s >= first_start_s && elapsed_s < first_end_s;
+      const bool hp2_defrost = elapsed_s >= sequence.second_start_s && elapsed_s < second_end_s;
+      const bool initial = elapsed_s < first_start_s;
+      const bool valid_between =
+          sequence.valid_between && elapsed_s >= between_s && elapsed_s < sequence.second_start_s;
+      const auto heat_w = initial ? 2600 : valid_between ? 3100 : 3400;
+      auto value = h.device.make_observation(initial, 20, heat_w);
+      value.defrost_active = hp1_defrost || hp2_defrost;
+      value.valid = initial || valid_between || elapsed_s == restored_s;
+      value.model_reusable = value.valid && !initial;
+      if (!value.valid && !value.defrost_active) value.missing_input = InputIssue::HEAT_OUTPUT;
+      h.device.observe(value);
+
+      // Check every ten-second tick, including the handoff between units.
+      assert(h.device.has_scalar() == value.valid);
+      const uint32_t expected_issue = elapsed_s == restored_s                            ? original_epoch + restored_s
+                                      : sequence.valid_between && elapsed_s >= between_s ? original_epoch + between_s
+                                                                                         : original_epoch;
+      assert(h.device.issued_scenario().epoch == expected_issue);
+      const auto response = h.get();
+      assert(response.response.status == 200);
+      const auto& body = response.response.body;
+      assert((body.find("\"last_scenario\":") != std::string::npos) == !value.valid);
+      if (elapsed_s == first_start_s || elapsed_s == first_end_s || elapsed_s == between_s ||
+          elapsed_s == sequence.second_start_s || elapsed_s == second_end_s || elapsed_s == 1790 || elapsed_s == 1800 ||
+          elapsed_s == restored_s - 10 || elapsed_s == restored_s)
+        emit(elapsed_s, body);
+    }
+  }
+}
+
 void atomic_scenario_failure_gates() {
-  for (const std::string gate : {"off", "pause", "ota", "pending", "save_failed", "invalid_query", "model", "clock"}) {
+  for (const std::string gate :
+       {"off", "pause", "ota", "pending", "save_failed", "invalid_query", "model", "clock", "defrost_control_mode"}) {
     Harness h;
     h.start();
     h.device.observation();
@@ -392,10 +488,23 @@ void atomic_scenario_failure_gates() {
       env.epoch += 5;  // Within weather tolerance, outside issue clock coherence.
       h.device.refresh();
     }
+    if (gate == "defrost_control_mode") {
+      env.now_ms += 10000;
+      env.epoch += 10;
+      auto defrost = h.device.make_observation(false, 20, 0);
+      defrost.valid = false;
+      defrost.defrost_active = true;
+      h.device.observe(defrost);
+      assert(h.get().response.body.find("\"last_scenario\":") != std::string::npos);
+      env.now_ms += 10000;
+      env.epoch += 10;
+      h.device.observe({});  // The runtime adapter rejects an incompatible control mode.
+    }
     if (gate == "invalid_query" || gate == "clock") assert(h.device.has_scalar());
     assert(h.issued_epoch.state.empty());
     for (const auto& sensor : h.temperatures) assert(std::isnan(sensor.state));
     const auto frame = h.get();
+    assert(frame.response.body.find("\"last_scenario\":") == std::string::npos);
     if (gate == "clock") assert(frame.response.body.find("\"reason\":\"clock_invalid\"") != std::string::npos);
     std::puts(frame.response.body.c_str());
   }
@@ -470,6 +579,10 @@ int main(int argc, char** argv) {
     diagnostic_snapshots_survive_without_storage();
   else if (scenario == "atomic")
     atomic_scenario_origin_and_new_fetch();
+  else if (scenario == "defrost_recovery")
+    defrost_recovery();
+  else if (scenario == "duo_defrost_recovery")
+    duo_defrost_recovery();
   else if (scenario == "atomic_gates")
     atomic_scenario_failure_gates();
   else if (scenario == "receipt_interleave")

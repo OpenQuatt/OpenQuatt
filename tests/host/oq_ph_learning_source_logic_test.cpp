@@ -267,10 +267,23 @@ void test_operational_context_is_explicit_and_fail_closed() {
   wrong_mode.operation.control_mode = LearningControlMode::OTHER;
   assert_failed(build(wrong_mode), SnapshotSourceStatus::CONTROL_MODE_BLOCKED);
 
-  auto limited = valid_input();
-  limited.operation.active_limit = true;
+  auto deficit = valid_input();
+  deficit.operation.classify_limit(true, true, false);
+  assert(deficit.operation.limit_reported());
+  const auto thermal = build_learning_snapshot(deficit, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
+  assert(thermal.measurement_valid);
+  const auto measured = evaluate_calorimetry(deficit, QualityConfig{});
+  assert(measured.valid && thermal.snapshot.heat_to_water_w == measured.heat_to_water_w);
+
+  auto limited = deficit;
+  limited.operation.classify_limit(true, true, true);
   assert(build(limited).measurement_valid);
   assert_failed(build_learning_snapshot(limited, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC),
+                SnapshotSourceStatus::ACTIVE_LIMIT);
+
+  auto heating_curve = valid_input();
+  heating_curve.operation.classify_limit(false, true, false);
+  assert_failed(build_learning_snapshot(heating_curve, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC),
                 SnapshotSourceStatus::ACTIVE_LIMIT);
 
   auto maintenance = valid_input();
